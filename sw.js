@@ -1,6 +1,6 @@
 // オフラインでも遊べるようにするための Service Worker
 // ファイルを更新したら CACHE_VERSION を上げる（古いキャッシュを削除させるため）
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const APP_CACHE = `blockpuzzle-app-${CACHE_VERSION}`;
 const FONT_CACHE = "blockpuzzle-fonts";
 const APP_FILES = [
