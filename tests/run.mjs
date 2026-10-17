@@ -26,6 +26,7 @@ export const GROUPS = [
   { key: 'P', title: 'P 遊べること', file: 'play.mjs', weight: { smoke: 4, full: 21 } },
   { key: 'A', title: 'A 効果音', file: 'sound.mjs', weight: { smoke: 4, full: 16 } },
   { key: 'T', title: 'T タッチ操作（ダブルタップ拡大の抑止・音の準備）', file: 'touch.mjs', weight: { smoke: 5, full: 28 } },
+  { key: 'I', title: 'I いろコード（ロジック・保存・戻れる・画面内・オフライン・色覚・効果音・日付）', file: 'irocode.mjs', weight: { smoke: 7, full: 30 } },
 ];
 
 const args = process.argv.slice(2);

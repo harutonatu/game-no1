@@ -1,7 +1,7 @@
 // S: オフラインで起動できる・更新で古いキャッシュが消える（Service Worker）。
 // オフラインは「サーバーが接続を切る」方式で再現（Playwright の setOffline は SW 自身の fetch に効かないため）。
 // キャッシュ版数は sw.js から読み取り、決め打ちしない。
-import { BASE, T48, BLK, custom, newPage, seed, ST, sleep, swInfo as libSwInfo, IS_CHROMIUM, SFX_SPY } from '../lib.mjs';
+import { BASE, T48, BLK, IRO, custom, newPage, seed, ST, sleep, swInfo as libSwInfo, IS_CHROMIUM, SFX_SPY } from '../lib.mjs';
 const V = () => custom(390, 844, null, 'iPhone 13');
 const swInfo = (root) => { const i = libSwInfo(root); return { ...i, files: i.n }; };
 async function installed(browser, label, allowNetErrors = false, opts = {}) {
@@ -54,14 +54,14 @@ export const tests = [
         res[k].sfx = await page.evaluate(() => typeof window.YubiSfx?.create).catch(() => 'error');
       }
       page.off('response', onResp);
-      check('オフライン：メニュー・ブロック・2048 が開く', res.menu.t === 'ゆびあそび' && res.menu.el === 2 && res.blocks.t === 'ブロックパズル' && res.blocks.el === 1 && res.t2048.t === 'ばいばいタイル' && res.t2048.el >= 2, res);
+      check('オフライン：メニュー・ブロック・2048 が開く', res.menu.t === 'ゆびあそび' && res.menu.el === 3 && res.blocks.t === 'ブロックパズル' && res.blocks.el === 1 && res.t2048.t === 'ばいばいタイル' && res.t2048.el >= 2, res);
       check('オフライン：3画面とも common/sfx.js をキャッシュから読み、効果音（YubiSfx）が使える', Object.values(res).every((r) => r.sfx === 'function') && sfxResp.length === 3 && sfxResp.every((r) => r.sw && r.status === 200), { res, sfxResp });
       await page.goto(BASE);
       await page.locator('a.game').nth(0).click(); await page.waitForURL(BLK);
       await page.locator('#card [data-cmd=menu]').click(); await page.waitForURL(BASE);
       await page.locator('a.game').nth(1).click(); await page.waitForURL(T48);
       await page.locator('#backLink').click(); await page.waitForURL(BASE);
-      check('オフラインのまま メニュー→ブロック→メニュー→2048→メニュー と行き来できる', page.url() === BASE && await page.locator('a.game').count() === 2);
+      check('オフラインのまま メニュー→ブロック→メニュー→2048→メニュー と行き来できる', page.url() === BASE && await page.locator('a.game').count() === 3);
       await srv.ctl('offline=0');
       await ctx.close();
     },
@@ -109,7 +109,7 @@ export const tests = [
       check('オフライン：index.html・クエリ付き・games/2048/index.html も開く', r.idx.t === 'ゆびあそび' && r.q.t === 'ばいばいタイル' && r.i2.t === 'ばいばいタイル', r);
       await page.goto(BASE + 'nope/deep/path/'); await page.waitForLoadState('load');
       const u = await page.evaluate(async () => ({ url: location.href, title: document.title, links: [...document.querySelectorAll('a.game')].map((a) => a.href), img: await fetch(document.querySelector('link[rel=apple-touch-icon]').href).then((x) => x.ok && x.headers.get('content-type')).catch(() => 'error') }));
-      check('オフラインで存在しないパス → メニューへ移り、リンク・画像の URL が壊れない', u.url === BASE && u.title === 'ゆびあそび' && JSON.stringify(u.links) === JSON.stringify([BLK, T48]) && u.img === 'image/png', u);
+      check('オフラインで存在しないパス → メニューへ移り、リンク・画像の URL が壊れない', u.url === BASE && u.title === 'ゆびあそび' && JSON.stringify(u.links) === JSON.stringify([BLK, T48, IRO]) && u.img === 'image/png', u);
       const miss = await page.evaluate(async () => fetch('icons/nothing.png').then((x) => 'status ' + x.status + ' ' + x.headers.get('content-type')).catch((e) => 'error:' + e.name));
       await srv.ctl('offline=0');
       const miss2 = await page.evaluate(async () => fetch('icons/nothing.png').then((x) => x.status));

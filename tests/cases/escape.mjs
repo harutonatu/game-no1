@@ -12,7 +12,7 @@ export const tests = [
       const { ctx, page } = await newPage(browser, V(), 'E1', { clock: true });
       await seed(page, {});
       await page.goto(BASE);
-      check('メニューにゲームのカードが2枚・見出し「ゆびあそび」', await page.evaluate(() => document.querySelectorAll('a.game').length === 2 && document.querySelector('h1').textContent === 'ゆびあそび'));
+      check('メニューにゲームのカードが3枚・見出し「ゆびあそび」', await page.evaluate(() => document.querySelectorAll('a.game').length === 3 && document.querySelector('h1').textContent === 'ゆびあそび'));
       await page.locator('a.game').nth(0).tap(); await page.waitForURL('**/games/blocks/');
       const title = await cardText(page);
       check('ブロック：タイトル画面に「スタート」と「メニューへ」', /スタート/.test(title) && /メニューへ/.test(title), title);

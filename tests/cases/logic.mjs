@@ -94,8 +94,8 @@ export const tests = [
       const files = [...(sw.match(/APP_FILES\s*=\s*\[([\s\S]*?)\]/) || [, ''])[1].matchAll(/["']([^"']+)["']/g)].map((m) => m[1]);
       const missing = files.filter((f) => { const p = path.join(root, f); return !(fs.existsSync(p) && (fs.statSync(p).isFile() || fs.existsSync(path.join(p, 'index.html')))); });
       check(`事前キャッシュする ${files.length} ファイルがすべて存在（1つでも欠けると install が失敗しオフライン不可）`, files.length >= 8 && missing.length === 0, missing);
-      const pages = ['index.html', 'games/blocks/index.html', 'games/2048/index.html'];
-      const needed = ['./', './games/blocks/', './games/2048/', './manifest.webmanifest'];
+      const pages = ['index.html', 'games/blocks/index.html', 'games/2048/index.html', 'games/irocode/index.html'];
+      const needed = ['./', './games/blocks/', './games/2048/', './games/irocode/', './manifest.webmanifest'];
       check('メニュー・各ゲーム・manifest が事前キャッシュに含まれる', needed.every((n) => files.includes(n)), files);
       const m = JSON.parse(fs.readFileSync(path.join(root, 'manifest.webmanifest'), 'utf8'));
       const icons = (m.icons || []).map((i) => i.src);

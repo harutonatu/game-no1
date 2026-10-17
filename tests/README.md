@@ -1,6 +1,6 @@
 # ゆびあそび 統合テスト（tests/）
 
-ゲーム集「ゆびあそび」（メニュー・ブロックパズル・ばいばいタイル）を、本物のブラウザで動かして確かめるテストです。
+ゲーム集「ゆびあそび」（メニュー・ブロックパズル・ばいばいタイル・いろコード）を、本物のブラウザで動かして確かめるテストです。
 アプリのファイル（index.html・games/・common/・sw.js・manifest.webmanifest・icons/）には触れず、読むだけです。
 設計・項目の対応表は [design.md](design.md) にあります。
 
@@ -31,6 +31,14 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | `CLOCK` | — | `0` で待ち時間の早送りを止め、すべて実時間で待つ（早送りのせいで合否が変わっていないかの確認用） |
 | `TEST_TIMEOUT` | `60000` | 1 項目の上限（ms）。止まっても全体は止まらない |
 
+### いろコード（I グループ）の見方
+
+- **I1〜I3・I9 は Node だけ**（ブラウザ不要）。`games/irocode/logic.js` を `require` し、score は 1296×1296 通りを別実装と照合、保存データの検証は壊れた値 55 種で確かめる。画面ができる前でも流せる。
+- **I4〜I8 は smoke**（基本操作・保存・メニューへ戻れる・画面内・オフライン）、**I10〜I18 は full**（境界値・色覚・効果音・ダブルタップ抑止・日付の変わり目・最大値・保存不可・画面サイズ）。
+- 画面の確認は担当間で決めた DOM（`a#back`、`#palette button[data-color]`、`#submit`、`#rows .row[data-hit][data-blow]`、`#overlay .card`、`[data-cmd=again|menu|restart|confirm|cancel]`、`window.IroCodeGame.getState()` など）だけに頼る。問題の答えは `getState().secret` から読み、途中経過は logic.js の `newGame`・`score` で作って `irocode.state` に注入する。
+- 初めて開くと「遊び方」カードが出る。画面のテストは開いた直後にそのカードの `[data-cmd=close]` を押して閉じてから操作する（`open()`・`closeHelp()`）。ふつうは入力中の同じ色を押せないので、外れの推測（`wrong()`）は4色ともちがう並びにする。
+- 「今日の1問」の日付の確認（I14）は `page.clock.install({ time })` で端末の時計を 23:59:50 などに合わせる（時刻の指定は端末のタイムゾーンで解釈）。
+
 ### 結果の読み方
 
 ```
@@ -52,6 +60,7 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | 保存データ（localStorage）・2048 のロジック | smoke ＋ `ONLY=D1,D2,D3,D4,D5,D6,D7,D8,D9 node tests/run.mjs full` |
 | 効果音（common/sfx.js）・♪ボタン | smoke ＋ `ONLY=A1,A2,A3,A4,A5,T1,T4,P5 node tests/run.mjs full` |
 | タッチ操作・ダブルタップ抑止 | smoke ＋ `ONLY=T1,T2,T3,T4,T5,P7,E5 node tests/run.mjs full`（WebKit でも `BROWSER=webkit … smoke`） |
+| いろコード（games/irocode/）の変更 | smoke ＋ `ONLY=I10,I11,I12,I13,I14,I15,I16,I17,I18 node tests/run.mjs full`（ロジックだけなら `ONLY=I1,I2,I3 node tests/run.mjs smoke`、0 秒） |
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
 | テストを変えたとき・月 1 回 | `node tests/mutants/mutate.mjs both`（テストがわざと入れた不具合を見つけられるか） |
 
@@ -70,6 +79,7 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | P | 遊べること | キー・ボタン・スワイプ、0.8 秒の待ち、クリア、演出 |
 | A | 効果音 | 音名の一致、操作で鳴る、オフなら鳴らない、メニューの tap |
 | T | タッチ操作 | ダブルタップ拡大の抑止、タッチでの音の準備（unlock）、操作一式 |
+| I | いろコード | logic.js（score・乱数・日付・保存データの検証）を Node で直接、画面（基本操作・保存・メニューへ戻れる・画面内・オフライン・境界値・色覚・効果音・ダブルタップ抑止・日付の変わり目・最大値・保存不可） |
 | X1 | 共通 | 全ページでコンソールエラー 0（最後に 1 回） |
 
 ## 構成
@@ -79,7 +89,7 @@ tests/
   run.mjs          実行（グループの並列・結果の表示）
   lib.mjs          共通部品：Playwright の読み込み、サーバー、端末と safe-area、待ち時間の早送り、タッチ操作、
                    画面の共通確認（layoutProbe）、合否の記録、既知の不具合（KNOWN_ISSUES）
-  cases/           グループごとのテスト（logic, data, escape, sw, layout, play, sound, touch）
+  cases/           グループごとのテスト（logic, data, escape, sw, layout, play, sound, touch, irocode）
   mutants/         変異テスト（mutate.mjs）
   design.md        設計と対応表
 ```
@@ -173,7 +183,7 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 
 アプリを一時フォルダにコピーし、わざと不具合を 1 つずつ入れて smoke・full を流し、検出できるかを表で出します。アプリが変わって置換前の文字列が見つからないときは「!! 置換対象なし」と出るので、`mutate.mjs` の文字列を直します。結果（`mutants/result*.json`）はコミットしません。
 
-2026-10 の結果（Chromium）：smoke 12/16・full 16/16 を検出（M14〜M16 は hotfix/k2 で追加。遅い回線・版の食い違いは full だけで確かめる）。
+2026-10 の結果（Chromium）：smoke 12/16・full 16/16 を検出（M14〜M16 は hotfix/k2 で追加。遅い回線・版の食い違いは full だけで確かめる）。M17〜M20 はいろコード用に追加（結合時に `M=M17,M18,M19,M20` と I グループ＋L5 に絞って流し、full で 4/4 を検出。M19・M20 は full の I15・I13 で検出する設計）。
 
 | 変異（わざと入れた不具合） | smoke | full |
 |---|---|---|
@@ -193,5 +203,9 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | M14 sfx.js などをネットワーク優先・打ち切りなしに戻す（K2） | 見逃し（遅い回線は full のみ） | 検出（S4, S6） |
 | M15 新しい版が出ていても古い sfx.js をキャッシュから返す | 見逃し（full のみ） | 検出（S7） |
 | M16 中身の違う新しい版のファイルを旧キャッシュに混ぜる | 見逃し（full のみ） | 検出（S7） |
+| M17 いろコード：同じ色が重なったとき blow を数え過ぎる（logic.js の score） | 検出（I1） | 検出（I1） |
+| M18 いろコード：logic.js を事前キャッシュから外す | 検出（L5, I9, I8, X1） | 検出（L5, I9, I8, X1） |
+| M19 いろコード：成績を 10 億で止めない（次に開くと初期化） | 見逃し（full のみ） | 検出（I15） |
+| M20 いろコード：結果カードの「もう一度」の連続タップが下の色ボタンに届く | 見逃し（full のみ） | 検出（I13） |
 
 M10 は最初、どのテストも見逃した（2 回目のタップは別の仕組みでも止まるため）。盤面は「1 回目から常に止める」作りなので、T5 にその確認を足して検出できるようにした。
