@@ -1,0 +1,1018 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ゆびあそび">
+<meta name="theme-color" content="#1b1f2e">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<title>ゼンマイさんぽ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+  /* Layout: 上に「← メニュー / 見出し / ？ ♪ II」、その下にステージ選択かプレイ画面（どちらか一方） */
+  :root {
+    --bg: #1b1f2e;
+    --panel: #252c41;
+    --well: #0d111d;
+    --line: #2f3750;
+    --ink: #ece6d6;
+    --muted: #8a91a8;
+    --accent: #f0a43a;
+    --accent-ink: #231705;
+    --warn: #f2cb32;
+    --danger: #ed5f5b;
+    --font-display: "Chakra Petch", "Hiragino Sans", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --font-text: "Hiragino Sans", system-ui, sans-serif;
+    --dial: 160px;
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  /* ダブルタップ拡大・ピンチ拡大を止める（iOS Safari は user-scalable=no を無視するため CSS と JS の両方で防ぐ） */
+  html { overscroll-behavior: none; touch-action: none; }
+  body {
+    margin: 0;
+    font-size: 14px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-display);
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+  .app {
+    box-sizing: border-box;
+    height: 100%;
+    /* ノッチ・ホームバーに重ならないよう safe-area 分を空ける */
+    padding-top: max(10px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 10px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  .head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  /* 「← メニュー」：既存ゲームと同じ表記・同じ見た目（枠つき、44×44px 以上） */
+  .back {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    font: 700 14px var(--font-text);
+    text-decoration: none;
+    white-space: nowrap;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+  }
+  .back:active { filter: brightness(1.3); }
+  h1.title { margin: 0; flex: 1 1 auto; min-width: 0; font-size: 20px; letter-spacing: 0.04em; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+  .tools { display: flex; gap: 6px; flex: 0 0 auto; margin-left: auto; }
+  .tool {
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink);
+    font: 700 16px var(--font-display);
+    padding: 0 8px;
+    touch-action: manipulation;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tool:active:not(:disabled) { filter: brightness(1.3); background: var(--panel); }
+  .tool:disabled { opacity: 0.35; }
+  .sound-btn[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
+  button:focus-visible, a:focus-visible, .dial:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ===== ステージ選択 ===== */
+  .select {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    /* 画面に収まらないときは縦にスクロールできる */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+  .select .lead { margin: 0; color: var(--muted); font: 13px/1.6 var(--font-text); }
+  .stage-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding-bottom: 4px;
+  }
+  @media (min-width: 520px) { .stage-list { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+  .stage {
+    box-sizing: border-box;
+    min-height: 72px;
+    min-width: 0;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    padding: 6px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    touch-action: manipulation;
+    font: 700 13px var(--font-display);
+  }
+  .stage .no { font: 700 20px var(--font-mono); font-variant-numeric: tabular-nums; line-height: 1; }
+  .stage .nm { font: 500 11px/1.3 var(--font-text); color: var(--muted); max-width: 100%; text-align: center; overflow-wrap: anywhere; }
+  .stage:active:not(:disabled) { filter: brightness(1.25); }
+  .stage:disabled { opacity: 0.4; background: transparent; border-style: dashed; }
+  .stage:disabled .nm { display: none; }
+  .stage .lock { font: 500 11px var(--font-text); color: var(--muted); }
+  /* ★は塗り（★）と白抜き（☆）の形で区別する（色だけに頼らない） */
+  .stars { font-size: 14px; letter-spacing: 0.06em; line-height: 1; white-space: nowrap; color: var(--accent); }
+  .stars .off { color: var(--muted); }
+
+  /* ===== プレイ画面 ===== */
+  .play {
+    min-height: 0;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    grid-template-areas: "info" "canvas" "hint" "ctrl";
+    gap: 8px;
+  }
+  .info { grid-area: info; display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .info .sno { font: 700 14px var(--font-mono); color: var(--accent); white-space: nowrap; }
+  .info .sname { font: 700 15px var(--font-text); min-width: 0; overflow-wrap: anywhere; }
+  .info .stars { margin-left: auto; }
+  .canvas-wrap {
+    grid-area: canvas;
+    position: relative;
+    min-width: 0;
+    background: var(--well);
+    border-radius: 12px;
+    box-shadow: 0 0 0 2px var(--line);
+    overflow: hidden;
+    aspect-ratio: 2 / 1;
+    max-height: 42vh;
+    touch-action: none;
+  }
+  canvas#stage { display: block; width: 100%; height: 100%; touch-action: none; }
+  .hint { grid-area: hint; margin: 0; color: var(--muted); font: 12px/1.5 var(--font-text); min-height: 1.5em; }
+  .ctrl {
+    grid-area: ctrl;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(44px, 1fr) auto minmax(44px, 1fr);
+    grid-template-rows: auto auto auto;
+    grid-template-areas: "minus dial plus" "meter meter meter" "go go go";
+    align-items: center;
+    justify-items: center;
+    gap: 8px 10px;
+    align-content: start;
+  }
+  .wbtn {
+    box-sizing: border-box;
+    min-width: 56px;
+    min-height: 56px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    font: 700 24px var(--font-mono);
+    touch-action: manipulation;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    gap: 2px;
+  }
+  .wbtn small { font: 500 9px var(--font-text); color: var(--muted); white-space: nowrap; }
+  .wbtn:active:not(:disabled) { filter: brightness(1.3); }
+  .wbtn:disabled, .go:disabled { opacity: 0.35; }
+  #windMinus { grid-area: minus; justify-self: end; }
+  #windPlus { grid-area: plus; justify-self: start; }
+
+  /* ネジ（ダイヤル）：外側の輪が巻いた量、内側の面が回る。限界が近いと黄＋しま模様＋「!」、超えると赤＋「✕」 */
+  .dial {
+    grid-area: dial;
+    position: relative;
+    width: var(--dial);
+    height: var(--dial);
+    border-radius: 50%;
+    touch-action: none;
+    cursor: grab;
+    --frac: 0;
+    --warnFrac: 0.95;
+    --gauge: var(--accent);
+    background:
+      conic-gradient(var(--gauge) 0 calc(var(--frac) * 1turn), transparent 0),
+      conic-gradient(transparent 0 calc(var(--warnFrac) * 1turn), rgba(237, 95, 91, 0.35) 0),
+      var(--line);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  }
+  .dial.warn { --gauge: var(--warn); }
+  .dial.over { --gauge: var(--danger); }
+  .dial-face {
+    position: absolute;
+    inset: 12px;
+    border-radius: 50%;
+    background:
+      repeating-conic-gradient(rgba(255, 255, 255, 0.07) 0 10deg, transparent 10deg 30deg),
+      radial-gradient(circle at 35% 30%, #3a4361, #20263a 70%);
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.08);
+  }
+  /* 回っていることが分かる目印（取っ手） */
+  .dial-face::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 7%;
+    width: 18%;
+    height: 18%;
+    margin-left: -9%;
+    border-radius: 50%;
+    background: var(--ink);
+    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+  }
+  .dial-mark {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    font: 700 calc(var(--dial) * 0.2) var(--font-display);
+    color: var(--muted);
+    line-height: 1;
+  }
+  .dial-mark small { font: 500 10px var(--font-text); margin-top: 4px; }
+  .dial.warn .dial-face { background: repeating-linear-gradient(45deg, rgba(242, 203, 50, 0.22) 0 8px, transparent 8px 16px), radial-gradient(circle at 35% 30%, #3a4361, #20263a 70%); }
+  .dial.warn .dial-mark { color: var(--warn); }
+  .dial.over .dial-face { background: repeating-linear-gradient(-45deg, rgba(237, 95, 91, 0.35) 0 6px, transparent 6px 12px), radial-gradient(circle at 35% 30%, #4a2b33, #241820 70%); }
+  .dial.over .dial-mark { color: var(--danger); }
+  .dial.locked { cursor: default; opacity: 0.75; }
+
+  .meter { grid-area: meter; display: flex; align-items: baseline; gap: 8px; justify-content: center; flex-wrap: wrap; min-width: 0; }
+  .meter .label { font-size: 10px; letter-spacing: 0.14em; color: var(--muted); }
+  #turns { font: 700 26px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--accent); }
+  .meter .unit { font: 500 12px var(--font-text); color: var(--muted); }
+  .meter .warnmsg { font: 700 13px var(--font-text); white-space: nowrap; }
+  .meter .warnmsg.warn { color: var(--warn); }
+  .meter .warnmsg.over { color: var(--danger); }
+  .go {
+    grid-area: go;
+    box-sizing: border-box;
+    width: min(100%, 360px);
+    min-height: 50px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font: 700 16px var(--font-display);
+    touch-action: manipulation;
+  }
+  .go:active:not(:disabled) { filter: brightness(1.15); }
+
+  /* 横持ち：左に舞台、右に操作 */
+  @media (orientation: landscape) {
+    :root { --dial: min(150px, 34vh); }
+    .play {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      grid-template-areas: "info ctrl" "canvas ctrl" "hint ctrl";
+      column-gap: 16px;
+    }
+    /* 横持ちは高さが足りないので、舞台は残りの高さに合わせる（縦横比は描画側が吸収する） */
+    .canvas-wrap { aspect-ratio: 2 / 1; width: 100%; max-height: 100%; min-height: 0; align-self: start; }
+    .ctrl { align-content: center; }
+    .go { width: 100%; }
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    :root { --dial: min(130px, 36vh); }
+    .app { gap: 6px; padding-top: max(6px, env(safe-area-inset-top, 0px)); padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)); }
+    h1.title { font-size: 17px; }
+    .play { gap: 4px; }
+    .ctrl { gap: 4px 8px; }
+    .wbtn { min-width: 48px; min-height: 48px; font-size: 20px; }
+    .wbtn small { display: none; }
+    #turns { font-size: 20px; }
+    .go { min-height: 44px; }
+  }
+  @media (orientation: portrait) {
+    :root { --dial: clamp(120px, min(40vw, 24vh), 200px); }
+  }
+  /* 背の低い縦画面（iPhone SE の Safari など）：舞台とネジを少し小さくして「歩かせる」まで画面に収める */
+  @media (orientation: portrait) and (max-height: 600px) {
+    :root { --dial: clamp(92px, 21vh, 120px); }
+    .app { gap: 6px; padding-top: max(6px, env(safe-area-inset-top, 0px)); padding-bottom: max(8px, env(safe-area-inset-bottom, 0px)); }
+    .play { gap: 4px; }
+    .canvas-wrap { max-height: 30vh; }
+    .hint { font-size: 11px; line-height: 1.4; }
+    .ctrl { gap: 4px 10px; }
+    .wbtn { min-width: 50px; min-height: 50px; }
+    #turns { font-size: 22px; }
+    .go { min-height: 44px; }
+  }
+  /* 幅の狭い画面では見出しを2段目に回し、省略せずに全部見せる */
+  @media (max-width: 480px) {
+    .head { flex-wrap: wrap; row-gap: 4px; }
+    h1.title { order: 3; flex: 1 0 100%; font-size: 18px; }
+  }
+  /* iPhone SE など幅の狭い縦画面 */
+  @media (orientation: portrait) and (max-width: 360px) {
+    #turns { font-size: 22px; }
+  }
+
+  /* ===== オーバーレイ（遊び方・一時停止・結果カード） ===== */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    box-sizing: border-box;
+    display: flex;
+    /* カードが画面より高いときは縦にスクロールできるようにする（中央寄せは .card の margin:auto） */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    padding-top: max(12px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background: rgba(13, 17, 29, 0.78);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+  /* 結果カードは背景を薄く・ぼかさず、人形の止まった位置が見えるようにする */
+  .overlay.soft { background: rgba(13, 17, 29, 0.45); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  @media (orientation: portrait) { .overlay.soft .card { margin-bottom: 0; } }
+  .card {
+    width: min(360px, 100%);
+    box-sizing: border-box;
+    margin: auto;
+    flex: 0 0 auto;
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 20px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+    box-shadow: 0 0 0 1px var(--line), 0 20px 50px rgba(0, 0, 0, 0.5);
+  }
+  .card h2 { margin: 0; font-size: 26px; letter-spacing: 0.04em; text-wrap: balance; }
+  .card p { margin: 0; color: var(--muted); font: 13px/1.6 var(--font-text); }
+  .card p.res { color: var(--ink); }
+  .card .stars { font-size: 34px; letter-spacing: 0.1em; }
+  .card .btns { display: flex; flex-direction: column; gap: 10px; }
+  .card .row { display: flex; gap: 10px; }
+  .card .howto { margin: 0; text-align: left; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; font: 13px/1.5 var(--font-text); }
+  .card .howto dt { font-weight: 700; color: var(--accent); white-space: nowrap; }
+  .card .howto dd { margin: 0; color: var(--ink); }
+  .cta {
+    flex: 1;
+    min-width: 0;
+    min-height: 50px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--ink);
+    font: 700 16px var(--font-display);
+    touch-action: manipulation;
+  }
+  .cta.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .cta:active { filter: brightness(1.2); }
+  @media (orientation: landscape) and (max-height: 500px) {
+    .card { padding: 12px 16px; gap: 8px; }
+    .card h2 { font-size: 20px; }
+    .card .stars { font-size: 26px; }
+    .cta { min-height: 44px; }
+  }
+  .card .stars .s { display: inline-block; }
+  .card .stars .s.pop { animation: pop 260ms ease-out both; }
+  @keyframes pop { 0% { transform: scale(0.3); opacity: 0; } 70% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) {
+    .card .stars .s.pop { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <header class="head">
+    <a class="back" id="back" href="../../" aria-label="メニューへ戻る">← メニュー</a>
+    <h1 class="title">ゼンマイさんぽ</h1>
+    <div class="tools">
+      <button class="tool" id="helpBtn" type="button" aria-label="遊び方">？</button>
+      <button class="tool sound-btn" id="soundBtn" type="button" aria-label="効果音" aria-pressed="true">♪</button>
+      <button class="tool" id="pauseBtn" type="button" aria-label="一時停止" hidden>II</button>
+    </div>
+  </header>
+
+  <section class="select" id="selectView" aria-label="ステージ選択">
+    <p class="lead">ネジを巻いて、人形を目標の帯でぴたりと止めよう。中心に近いほど ★ が増えます。</p>
+    <div class="stage-list" id="stageList"></div>
+  </section>
+
+  <section class="play" id="playView" aria-label="プレイ" hidden>
+    <div class="info">
+      <span class="sno" id="stageNo"></span>
+      <span class="sname" id="stageName"></span>
+      <span class="stars" id="stageStars" data-stars="0"></span>
+    </div>
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="stage" role="img" aria-label="舞台"></canvas>
+    </div>
+    <p class="hint" id="hint"></p>
+    <div class="ctrl">
+      <button class="wbtn" id="windMinus" type="button" aria-label="1/4回転戻す">－<small>1/4戻す</small></button>
+      <div class="dial" id="dial" role="slider" tabindex="0" aria-label="ネジ（指で時計回りに回すと巻く。離すと歩く）" aria-valuemin="0" aria-valuenow="0">
+        <div class="dial-face" id="dialFace"></div>
+        <div class="dial-mark" id="dialMark" aria-hidden="true"><span id="dialIcon">⟳</span><small id="dialSub">まわす</small></div>
+      </div>
+      <button class="wbtn" id="windPlus" type="button" aria-label="1/4回転巻く">＋<small>1/4巻く</small></button>
+      <div class="meter" aria-live="polite">
+        <span class="label">巻き数</span><b id="turns">0</b><span class="unit">回転</span><span class="warnmsg" id="warnMsg"></span>
+      </div>
+      <button class="go" id="go" type="button">歩かせる</button>
+    </div>
+  </section>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="card" id="card" role="dialog" aria-modal="true"></div>
+</div>
+
+<script src="../../common/sfx.js"></script>
+<script src="stages.js"></script>
+<script src="logic.js"></script>
+<script src="render.js"></script>
+<script src="input.js"></script>
+<script>
+(() => {
+  "use strict";
+
+  const STAGES = Array.isArray(window.ZenmaiStages) ? window.ZenmaiStages : [];
+  const L = window.ZenmaiLogic;
+  const KEY_PROGRESS = "zenmai.progress";
+  const KEY_HELP = "zenmai.help";     // 遊び方を一度見たか（初回だけ自動で出す）
+  const WARN_MARGIN = 0.5;            // 限界のこの回転数手前から「そろそろ限界」
+  const BTN_STEP = 0.25;              // ＋/－ボタン1回の巻き数
+
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    selectView: $("selectView"), playView: $("playView"), stageList: $("stageList"),
+    canvas: $("stage"), canvasWrap: $("canvasWrap"), hint: $("hint"),
+    stageNo: $("stageNo"), stageName: $("stageName"), stageStars: $("stageStars"),
+    dial: $("dial"), dialFace: $("dialFace"), dialIcon: $("dialIcon"), dialSub: $("dialSub"),
+    turns: $("turns"), warnMsg: $("warnMsg"),
+    plus: $("windPlus"), minus: $("windMinus"), go: $("go"),
+    pauseBtn: $("pauseBtn"), helpBtn: $("helpBtn"), soundBtn: $("soundBtn"),
+    overlay: $("overlay"), card: $("card")
+  };
+  const reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
+
+  // ===== 効果音（common/sfx.js が読めなくても遊べるようにする） =====
+  const sfx = window.YubiSfx ? window.YubiSfx.create("zenmai")
+    : { on: false, unlock() {}, toggle() { return false; }, play() {}, buzz() {} };
+  document.addEventListener("pointerdown", () => sfx.unlock(), { capture: true });
+  document.addEventListener("touchend", () => sfx.unlock(), { capture: true });
+  function renderSoundBtn() {
+    el.soundBtn.setAttribute("aria-pressed", String(!!sfx.on));
+    el.soundBtn.setAttribute("aria-label", sfx.on ? "効果音：オン" : "効果音：オフ");
+  }
+  el.soundBtn.addEventListener("click", () => { sfx.toggle(); renderSoundBtn(); });
+  renderSoundBtn();
+
+  // ===== 保存 =====
+  function initialProgress() { return { stars: {}, unlocked: 1 }; }
+  function loadProgress() {
+    try {
+      const raw = localStorage.getItem(KEY_PROGRESS);
+      if (raw === null) return initialProgress();
+      let obj = null;
+      try { obj = JSON.parse(raw); } catch (e) { obj = null; }
+      return L.validateProgress(obj);
+    } catch (e) { return initialProgress(); }
+  }
+  function saveProgress() {
+    try { localStorage.setItem(KEY_PROGRESS, JSON.stringify(progress)); } catch (e) { /* 保存できなくても遊べる */ }
+  }
+  function helpSeen() { try { return localStorage.getItem(KEY_HELP) === "1"; } catch (e) { return false; } }
+  function markHelpSeen() { try { localStorage.setItem(KEY_HELP, "1"); } catch (e) { /* 無視 */ } }
+
+  // ===== 状態 =====
+  let progress = loadProgress();
+  let screen = "select";       // select | play
+  let idx = 0;                 // いまのステージ番号（0 始まり）
+  let turns = 0;               // 巻いた量（回転）
+  let phase = "ready";         // ready（巻く）| walking | falling | broken | done（結果カード）
+  let paused = false;
+  let overlayKind = null;      // null | help | pause | result
+  let result = null;           // simulate の結果
+  let lastResult = null;       // 結果カードの内容（遊び方から戻るとき用）
+  let dollX = 0;
+  let clock = 0;               // ゲーム内の時計（秒）。一時停止中は進まない
+  let walkT0 = 0, endT = 0;    // 歩き始めた時刻・結果カードを出す時刻
+  let nextStepSfx = 0;
+  let warnLevel = 0;           // 0: ふつう / 1: そろそろ限界 / 2: 超えている
+  let gestureWound = false;    // いまのダイヤル操作で巻き数が変わったか
+
+  const stage = () => STAGES[idx];
+  const isOver = () => turns > stage().maxTurns + 1e-9;
+  const fmt = (n) => { const v = Math.round(n * 1000) / 1000; return (Object.is(v, -0) ? 0 : v).toString(); };
+  function starsHtml(n) {
+    let s = "";
+    for (let i = 1; i <= 3; i++) s += i <= n ? `<span class="s on">★</span>` : `<span class="s off">☆</span>`;
+    return s;
+  }
+  function setStars(node, n) {
+    node.dataset.stars = String(n);
+    node.innerHTML = starsHtml(n);
+    node.setAttribute("aria-label", `★ 3つ中 ${n}つ`);
+  }
+
+  // ===== 描画 =====
+  const renderer = window.ZenmaiRender ? window.ZenmaiRender.create(el.canvas) : { resize() {}, draw() {} };
+  function frac() { return phase === "walking" && result && result.path.length > 1 ? walkFraction() : 1; }
+  function walkFraction() {
+    const x0 = result.path[0].x, x1 = result.path[result.path.length - 1].x;
+    return x1 > x0 ? Math.min(1, Math.max(0, (dollX - x0) / (x1 - x0))) : 1;
+  }
+  // 人形が歩く間はネジがほどけていく（表示上の残り）
+  function shownTurns() {
+    if (phase === "walking") return turns * (1 - frac());
+    if (phase === "falling" || phase === "done") return result && result.result !== "break" ? 0 : turns;
+    return turns;
+  }
+  function draw() {
+    if (screen !== "play" || !stage()) return;
+    renderer.draw(stage(), {
+      dollX, walking: phase === "walking", falling: phase === "falling" || (phase === "done" && result && result.result === "fall"),
+      broken: phase === "broken" || (phase === "done" && result && result.result === "break"),
+      turns: shownTurns(), maxTurns: stage().maxTurns, t: clock
+    });
+  }
+  function renderDial() {
+    const s = stage();
+    if (!s) return;
+    const t = shownTurns();
+    const level = isOver() ? 2 : turns > s.maxTurns - WARN_MARGIN + 1e-9 ? 1 : 0;
+    el.dial.classList.toggle("warn", level === 1);
+    el.dial.classList.toggle("over", level === 2);
+    el.dial.classList.toggle("locked", phase !== "ready" || paused);
+    el.dial.style.setProperty("--frac", String(Math.min(1, Math.max(0, t / s.maxTurns))));
+    el.dial.style.setProperty("--warnFrac", String(Math.max(0, (s.maxTurns - WARN_MARGIN) / s.maxTurns)));
+    el.dialFace.style.transform = `rotate(${(t % 1) * 360}deg)`;
+    el.dialIcon.textContent = level === 2 ? "✕" : level === 1 ? "!" : "⟳";
+    el.dialSub.textContent = level === 2 ? "切れる！" : level === 1 ? "限界ちかい" : "まわす";
+    el.turns.textContent = fmt(turns);
+    el.warnMsg.textContent = level === 2 ? "巻きすぎ！ バネが切れる" : level === 1 ? "そろそろ限界" : "";
+    el.warnMsg.className = "warnmsg" + (level === 2 ? " over" : level === 1 ? " warn" : "");
+    el.dial.setAttribute("aria-valuemax", String(s.maxTurns));
+    el.dial.setAttribute("aria-valuenow", String(fmt(turns)));
+    el.dial.setAttribute("aria-valuetext", `${fmt(turns)}回転${level === 2 ? "（巻きすぎ）" : level === 1 ? "（そろそろ限界）" : ""}`);
+    const ready = phase === "ready" && !paused;
+    el.plus.disabled = !ready;
+    el.minus.disabled = !ready || turns <= 0;
+    el.go.disabled = !ready || turns <= 0;
+    // 限界に近づいた・超えた瞬間に音で知らせる（上がるときだけ）
+    if (phase === "ready" && level > warnLevel) sfx.play("limit");
+    if (phase === "ready") warnLevel = level;
+  }
+  function resize() { if (screen === "play") { renderer.resize(); draw(); } }
+
+  // ===== ゲームループ =====
+  let raf = 0, lastNow = 0;
+  function loop(now) {
+    raf = 0;
+    if (screen !== "play") return;
+    const dt = lastNow ? Math.min(0.05, Math.max(0, (now - lastNow) / 1000)) : 0;
+    lastNow = now;
+    if (!paused && !overlayKind) { clock += dt; tick(); }
+    draw();
+    raf = requestAnimationFrame(loop);
+  }
+  function startLoop() { if (!raf) { lastNow = 0; raf = requestAnimationFrame(loop); } }
+  function stopLoop() { if (raf) cancelAnimationFrame(raf); raf = 0; }
+
+  function posAt(path, t) {
+    if (t <= path[0].t) return path[0].x;
+    const last = path[path.length - 1];
+    if (t >= last.t) return last.x;
+    let lo = 0, hi = path.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (path[m].t <= t) lo = m; else hi = m; }
+    const a = path[lo], b = path[hi];
+    return b.t > a.t ? a.x + (b.x - a.x) * (t - a.t) / (b.t - a.t) : b.x;
+  }
+  function tick() {
+    if (phase === "walking") {
+      const e = clock - walkT0;
+      const path = result.path;
+      dollX = posAt(path, e);
+      if (e >= nextStepSfx) { sfx.play("step"); nextStepSfx += 0.32; }
+      if (e >= path[path.length - 1].t) {
+        dollX = path[path.length - 1].x;
+        if (result.result === "fall") { phase = "falling"; sfx.play("fall"); sfx.buzz([60, 40, 120]); endT = clock + (reduceMotion.matches ? 0.5 : 1.1); }
+        else { phase = "stopped"; sfx.play("stop"); endT = clock + (reduceMotion.matches ? 0.2 : 0.45); }
+      }
+      renderDial();
+    } else if ((phase === "falling" || phase === "broken" || phase === "stopped") && clock >= endT) {
+      finish();
+    }
+  }
+
+  // ===== 画面 =====
+  function renderStageList() {
+    el.stageList.innerHTML = "";
+    STAGES.forEach((s, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "stage";
+      b.dataset.id = s.id;
+      const locked = i >= progress.unlocked;
+      b.disabled = locked;
+      const n = progress.stars[s.id] || 0;
+      const no = document.createElement("span"); no.className = "no"; no.textContent = String(i + 1);
+      const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = s.name;
+      const st = document.createElement("span"); st.className = "stars"; setStars(st, n);
+      b.append(no, nm, st);
+      if (locked) {
+        const lk = document.createElement("span"); lk.className = "lock"; lk.textContent = "まだ";
+        st.replaceWith(lk);
+        // テストや支援技術が★の欄を探せるよう、解放前も .stars は残す（0）
+        st.hidden = true; b.append(st);
+      }
+      b.setAttribute("aria-label", locked ? `ステージ ${i + 1}（まだ開いていません）` : `ステージ ${i + 1} ${s.name}、★ ${n}`);
+      b.addEventListener("click", () => startStage(i));
+      el.stageList.appendChild(b);
+    });
+  }
+  function showSelect() {
+    stopLoop();
+    if (input) input.reset();
+    screen = "select";
+    paused = false;
+    phase = "ready";
+    hideOverlay();
+    el.playView.hidden = true;
+    el.selectView.hidden = false;
+    el.pauseBtn.hidden = true;
+    renderStageList();
+    // 最後に開いたステージ（の次）が見えるように
+    const target = el.stageList.querySelector(`[data-id="${STAGES[Math.min(idx, STAGES.length - 1)]?.id}"]`);
+    if (target && target.scrollIntoView) { try { target.scrollIntoView({ block: "nearest" }); } catch (e) { /* 無視 */ } }
+  }
+  function startStage(i) {
+    if (i < 0 || i >= STAGES.length || i >= progress.unlocked) return;
+    idx = i;
+    const s = stage();
+    screen = "play";
+    hideOverlay();
+    paused = false;
+    phase = "ready";
+    turns = 0; warnLevel = 0; result = null; lastResult = null;
+    dollX = s.startX;
+    if (input) input.reset();
+    el.selectView.hidden = true;
+    el.playView.hidden = false;
+    el.pauseBtn.hidden = false;
+    el.pauseBtn.disabled = false;
+    el.stageNo.textContent = `${i + 1} / ${STAGES.length}`;
+    el.stageName.textContent = s.name;
+    setStars(el.stageStars, progress.stars[s.id] || 0);
+    el.hint.textContent = s.hint || "";
+    renderer.resize();
+    renderDial();
+    draw();
+    startLoop();
+    sfx.play("start");
+  }
+
+  // ===== 巻く・歩かせる =====
+  function wind(delta) {
+    if (screen !== "play" || phase !== "ready" || paused || overlayKind) return false;
+    const before = turns;
+    turns = Math.max(0, Math.round((turns + delta) * 1000) / 1000);
+    if (turns === before) return false;
+    sfx.play(turns > before ? "tick" : "unwind");
+    renderDial();
+    return true;
+  }
+  function go() {
+    if (screen !== "play" || phase !== "ready" || paused || overlayKind || turns <= 0) return false;
+    if (input) input.reset();
+    result = L.simulate(stage(), turns);
+    sfx.play("release");
+    if (result.result === "break") {
+      phase = "broken";
+      sfx.play("break");
+      sfx.buzz([60, 40, 120]);
+      endT = clock + (reduceMotion.matches ? 0.5 : 1.0);
+    } else {
+      phase = "walking";
+      walkT0 = clock;
+      nextStepSfx = 0.1;
+    }
+    renderDial();
+    return true;
+  }
+  function finish() {
+    phase = "done";
+    const s = stage();
+    const r = result;
+    const prevStars = progress.stars[s.id] || 0;
+    let stars = r.result === "stop" ? (Number.isInteger(r.stars) ? r.stars : L.starsFor(s, r.x)) : 0;
+    stars = Math.max(0, Math.min(3, stars | 0));
+    const improved = stars > prevStars;
+    if (stars > 0) {
+      if (improved) progress.stars[s.id] = stars;
+      progress.unlocked = Math.max(progress.unlocked, Math.min(STAGES.length, idx + 2));
+      saveProgress();
+      setStars(el.stageStars, progress.stars[s.id] || 0);
+    }
+    lastResult = { stars, prevStars, improved, kind: r.result, x: r.x, turns };
+    showResult(lastResult, true);
+    renderDial();
+  }
+  function resultText(res) {
+    const s = stage();
+    const c = s.target.x + s.target.w / 2;
+    if (res.kind === "break") return { h: "バネが切れた", p: `巻きすぎです。この舞台の限界は ${fmt(s.maxTurns)} 回転。ネジが黄色（!）になったら注意。` };
+    if (res.kind === "fall") return { h: "落ちちゃった", p: "崖を越えてしまいました。少なめに巻いてみよう。" };
+    if (res.stars === 0) {
+      return res.x < s.target.x
+        ? { h: "とどかなかった", p: "帯の手前で止まりました。もう少し多く巻いてみよう。" }
+        : { h: "行きすぎ", p: "帯を通り過ぎました。少なめに巻いてみよう。" };
+    }
+    if (res.stars === 3) return { h: "ぴたり！", p: "帯のまん中で止まりました。" };
+    return { h: "クリア！", p: res.x < c ? "中心の少し手前。ほんの少し多めに巻くと ★ が増えます。" : "中心の少し先。ほんの少し少なめに巻くと ★ が増えます。" };
+  }
+  function showResult(res, withSound) {
+    const t = resultText(res);
+    const cleared = res.stars > 0;
+    const hasNext = idx + 1 < STAGES.length && idx + 1 < progress.unlocked;
+    const last = cleared && idx + 1 >= STAGES.length;
+    const retryRow = `<div class="row"><button class="cta${cleared && hasNext ? "" : " primary"}" type="button" data-cmd="retry">もう一度</button></div>`;
+    const nextRow = hasNext ? `<div class="row"><button class="cta${cleared ? " primary" : ""}" type="button" data-cmd="next">次へ</button></div>` : "";
+    showCard(`
+      <h2 data-f="h"></h2>
+      <div class="stars" data-stars="${res.stars}" aria-label="★ 3つ中 ${res.stars}つ">${starsHtml(res.stars)}</div>
+      <p class="res"><span data-f="p"></span></p>
+      <p data-f="sub"></p>
+      <div class="btns">
+        ${cleared ? nextRow + retryRow : retryRow + nextRow}
+        <div class="row">
+          <button class="cta" type="button" data-cmd="stages">ステージ選択</button>
+          <button class="cta" type="button" data-cmd="menu">メニューへ</button>
+        </div>
+      </div>`, {
+      h: t.h, p: t.p,
+      sub: `${fmt(res.turns)} 回転巻きました。` + (res.improved && res.prevStars > 0 ? "　このステージの記録を更新！" : "") + (last ? "　全ステージクリア！" : "")
+    }, { soft: true, kind: "result" });
+    if (withSound) {
+      if (cleared) {
+        sfx.play("clear");
+        const pops = el.card.querySelectorAll(".stars .s.on");
+        pops.forEach((node, i) => {
+          if (!reduceMotion.matches) node.style.animationDelay = `${120 + i * 180}ms`;
+          node.classList.add("pop");
+          setTimeout(() => sfx.play("star", i + 1), 120 + i * 180);
+        });
+        if (res.improved && res.prevStars > 0) setTimeout(() => sfx.play("best"), 120 + res.stars * 180 + 80);
+      }
+    }
+  }
+  function retry() { startStage(idx); }
+  function nextStage() { if (idx + 1 < STAGES.length && idx + 1 < progress.unlocked) startStage(idx + 1); }
+
+  // ===== 一時停止 =====
+  function pause() {
+    if (screen !== "play" || phase === "done" || overlayKind) return;
+    paused = true;
+    if (input) input.reset();
+    showPauseCard();
+    renderDial();
+  }
+  function showPauseCard() {
+    showCard(`
+      <h2>一時停止</h2>
+      <div class="btns">
+        <div class="row"><button class="cta primary" type="button" data-cmd="resume">再開</button></div>
+        <div class="row">
+          <button class="cta" type="button" data-cmd="retry">やり直す</button>
+          <button class="cta" type="button" data-cmd="stages">ステージ選択</button>
+        </div>
+        <div class="row"><button class="cta" type="button" data-cmd="menu">メニューへ</button></div>
+      </div>`, {}, { kind: "pause" });
+  }
+  function resume() {
+    if (!paused) return;
+    paused = false;
+    hideOverlay();
+    lastNow = 0;
+    renderDial();
+  }
+
+  // ===== 遊び方 =====
+  let helpReturn = null;   // 遊び方を閉じたあとに戻す画面
+  function showHelp() {
+    if (overlayKind === "help") return;
+    const prevKind = overlayKind;
+    if (screen === "play" && !prevKind && phase !== "done") { paused = true; if (input) input.reset(); }
+    helpReturn = prevKind === "pause" ? "pause" : prevKind === "result" ? "result" : (screen === "play" && phase !== "done" ? "resume" : "none");
+    showCard(`
+      <h2>遊び方</h2>
+      <p>ネジを巻いて、ゼンマイ人形を目標の帯でぴたりと止めよう。</p>
+      <dl class="howto">
+        <dt>⟳ まわす</dt><dd>ネジに指をのせて、時計回りに円を描くと巻けます（反時計回りで戻す）。</dd>
+        <dt>指を離す</dt><dd>巻いた分だけ人形が歩きます。</dd>
+        <dt>＋ ／ －</dt><dd>回すのが難しいときは、1/4回転ずつ巻く・戻す。「歩かせる」で出発。</dd>
+        <dt>★</dt><dd>帯のまん中に近いほど ★ が増えます。★1つ以上で次のステージが開きます。</dd>
+        <dt>注意</dt><dd>崖を越えると落ちます。巻きすぎるとバネが切れます（ネジが黄色の「!」で知らせます）。</dd>
+        <dt>坂・風</dt><dd>上り坂と向かい風は進みにくく、下り坂と追い風は進みやすくなります。</dd>
+        <dt>♪</dt><dd>効果音のオン / オフ（iPhone は消音モード中は鳴りません）。</dd>
+      </dl>
+      <div class="btns"><div class="row"><button class="cta primary" type="button" data-cmd="closeHelp">わかった</button></div></div>`, {}, { kind: "help" });
+  }
+  function closeHelp() {
+    markHelpSeen();
+    const back = helpReturn; helpReturn = null;
+    if (back === "pause") { showPauseCard(); return; }
+    if (back === "result" && lastResult) { showResult(lastResult, false); return; }
+    hideOverlay();
+    if (back === "resume") resume();
+  }
+
+  // ===== カード =====
+  // カードは HTML の骨組みだけを書き、文言は data-f の要素に textContent で入れる
+  function showCard(html, fields = {}, { soft = false, kind = null } = {}) {
+    el.card.innerHTML = html;
+    el.card.querySelectorAll("[data-f]").forEach((n) => { n.textContent = fields[n.dataset.f] ?? ""; });
+    el.overlay.classList.toggle("soft", soft);
+    el.overlay.hidden = false;
+    overlayKind = kind;
+    const primary = el.card.querySelector(".primary");
+    if (primary) primary.focus({ preventScroll: true });
+  }
+  function hideOverlay() { el.overlay.hidden = true; el.overlay.classList.remove("soft"); overlayKind = null; }
+  el.overlay.addEventListener("click", (e) => {
+    const cmd = e.target.closest?.("[data-cmd]")?.dataset.cmd;
+    if (!cmd) return;
+    if (cmd === "retry") retry();
+    else if (cmd === "next") nextStage();
+    else if (cmd === "stages") showSelect();
+    else if (cmd === "menu") { saveProgress(); location.href = "../../"; }
+    else if (cmd === "resume") resume();
+    else if (cmd === "closeHelp") closeHelp();
+  });
+
+  // ===== 入力 =====
+  let input = null;
+  if (window.ZenmaiInput) {
+    input = window.ZenmaiInput.attach(el.dial, {
+      onStart() { gestureWound = false; },
+      onWind(d) { if (wind(d)) gestureWound = true; },
+      onRelease(info) {
+        const wound = gestureWound; gestureWound = false;
+        if (info && info.cancelled) return;      // OS のジェスチャなどで中断されたときは歩かせない
+        if (wound && turns > 0) go();
+      }
+    });
+  }
+  // ＋/－ボタン：長押しで続けて巻ける（最初は 1 回、400ms 後から 150ms ごと）
+  function holdRepeat(btn, delta) {
+    let t1 = 0, t2 = 0, fired = false;
+    const stop = () => { clearTimeout(t1); clearInterval(t2); t1 = t2 = 0; };
+    btn.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      fired = true;
+      wind(delta);
+      stop();
+      t1 = setTimeout(() => { t2 = setInterval(() => { if (!wind(delta)) stop(); }, 150); }, 400);
+    });
+    ["pointerup", "pointercancel", "pointerleave"].forEach((t) => btn.addEventListener(t, () => { stop(); setTimeout(() => { fired = false; }, 600); }));
+    // キーボード（Enter / Space）や支援技術の click では pointerdown が来ないので click で巻く
+    btn.addEventListener("click", () => { if (fired) { fired = false; return; } wind(delta); });
+  }
+  holdRepeat(el.plus, BTN_STEP);
+  holdRepeat(el.minus, -BTN_STEP);
+  el.go.addEventListener("click", () => go());
+  el.pauseBtn.addEventListener("click", () => (paused ? resume() : pause()));
+  el.helpBtn.addEventListener("click", showHelp);
+
+  // アプリを隠す・切り替えると一時停止（遊び方・結果カードはそのまま）
+  document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
+  window.addEventListener("pagehide", () => { pause(); saveProgress(); });
+
+  // ===== キーボード =====
+  window.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "m" || e.key === "M") { sfx.unlock(); sfx.toggle(); renderSoundBtn(); return; }
+    if (e.key === "Escape") {
+      if (overlayKind === "help") { closeHelp(); return; }
+      if (screen === "play") { paused ? resume() : pause(); }
+      return;
+    }
+    if (screen !== "play" || overlayKind) return;
+    const onBtn = e.target.closest?.("button, a");
+    if (e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "+") { e.preventDefault(); sfx.unlock(); wind(BTN_STEP); }
+    else if (e.key === "ArrowLeft" || e.key === "ArrowDown" || e.key === "-") { e.preventDefault(); sfx.unlock(); wind(-BTN_STEP); }
+    else if ((e.key === "Enter" || e.key === " ") && !onBtn) { e.preventDefault(); sfx.unlock(); go(); }
+  });
+
+  // ===== 拡大・長押しメニュー・文字選択を止める（既存ゲームと同じ方式） =====
+  document.addEventListener("contextmenu", (e) => e.preventDefault());
+  ["gesturestart", "gesturechange", "gestureend"].forEach((type) => document.addEventListener(type, (e) => e.preventDefault(), { passive: false }));
+  // カード（.overlay）とステージ一覧（.select）は、画面に収まらないとき縦スクロールできるようにする
+  document.addEventListener("touchmove", (e) => { if (e.cancelable && !e.target.closest?.(".overlay, .select")) e.preventDefault(); }, { passive: false });
+  document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: false });
+  // ・舞台・ネジ・＋/－（pointer イベントだけで動く）は touchend を常に止める（＋/－の click はキーボード用）
+  // ・それ以外（click で動くボタン・リンク）は、350ms 以内の2回目のタップだけ止め、click は自分で送る
+  // ・カード（.overlay）は止めない（ボタンの click と縦スクロールを保つ）
+  let lastTapEnd = 0, tapStart = null;
+  document.addEventListener("touchstart", (e) => {
+    const t = e.touches[0];
+    tapStart = e.touches.length === 1 && t ? { x: t.clientX, y: t.clientY } : null;
+  }, { passive: true, capture: true });
+  document.addEventListener("touchend", (e) => {
+    const target = e.target;
+    if (!target.closest || target.closest(".overlay")) return;
+    const t = e.changedTouches[0];
+    const isTap = tapStart && t && e.touches.length === 0 && Math.hypot(t.clientX - tapStart.x, t.clientY - tapStart.y) < 12;
+    const now = performance.now();
+    const quick = isTap && now - lastTapEnd < 350;
+    if (isTap) lastTapEnd = now;
+    if (!e.cancelable) return;
+    if (target.closest(".canvas-wrap, .dial, .wbtn")) { e.preventDefault(); return; }
+    if (quick) {
+      e.preventDefault(); // 2回目の click は送られなくなるので、ボタンなら自分で押す
+      const btn = target.closest("button, a");
+      if (btn && !btn.disabled) btn.click();
+    }
+  }, { passive: false });
+
+  // ===== テスト用（読み取りと操作のみ） =====
+  window.ZenmaiGame = Object.freeze({
+    getState() {
+      return {
+        screen, stageId: stage() ? stage().id : null, stageIndex: idx, turns, phase, paused,
+        overlay: overlayKind, dollX,
+        result: result ? { result: result.result, x: result.x, stars: lastResult ? lastResult.stars : result.stars } : null,
+        progress: JSON.parse(JSON.stringify(progress))
+      };
+    },
+    setTurns(n) {
+      if (screen !== "play" || phase !== "ready" || typeof n !== "number" || !isFinite(n)) return false;
+      turns = Math.max(0, n);
+      renderDial();
+      return true;
+    },
+    go
+  });
+
+  // ===== 起動 =====
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(el.canvasWrap);
+  window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", () => setTimeout(resize, 200));
+  showSelect();
+  if (!helpSeen()) showHelp();
+})();
+
+// オフラインでも遊べるようにする（https か localhost のときだけ有効）
+if ("serviceWorker" in navigator && window.isSecureContext && location.protocol !== "file:") {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("../../sw.js").catch(() => { /* 登録できなくてもゲームは遊べる */ });
+  });
+}
+</script>
+</body>
+</html>
