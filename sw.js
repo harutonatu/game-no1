@@ -1,6 +1,6 @@
 // オフラインでも遊べるようにするための Service Worker
 // ファイルを更新したら CACHE_VERSION を上げる（古いキャッシュを削除させるため）
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const APP_CACHE = `blockpuzzle-app-${CACHE_VERSION}`;
 const FONT_CACHE = "blockpuzzle-fonts";
 const APP_FILES = [
@@ -9,7 +9,9 @@ const APP_FILES = [
   "./manifest.webmanifest",
   "./icons/apple-touch-icon.png",
   "./icons/icon-192.png",
-  "./icons/icon-512.png"
+  "./icons/icon-512.png",
+  "./games/2048/",
+  "./games/2048/index.html"
 ];
 
 self.addEventListener("install", (e) => {
