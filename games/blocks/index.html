@@ -30,7 +30,8 @@
   }
   [hidden] { display: none !important; }
   html, body { height: 100%; }
-  html { overscroll-behavior: none; }
+  /* ダブルタップ拡大・ピンチ拡大を止める（iOS Safari は user-scalable=no を無視するため CSS と JS の両方で防ぐ） */
+  html { overscroll-behavior: none; touch-action: none; }
   body {
     margin: 0;
     font-size: 14px;
@@ -160,6 +161,7 @@
     box-shadow: 0 0 0 3px var(--line), 0 12px 30px rgba(0, 0, 0, 0.35);
     touch-action: none;
   }
+  .stage, .dpad, .actions, .sys { touch-action: none; }
   .dpad {
     grid-area: pad;
     justify-self: start;
@@ -796,6 +798,37 @@
   };
   boardCv.addEventListener("pointerup", endGesture);
   boardCv.addEventListener("pointercancel", (e) => { if (gesture && e.pointerId === gesture.id) gesture = null; });
+
+  // ===== iOS のダブルタップ拡大・ピンチ拡大を止める =====
+  // iOS Safari は user-scalable=no を無視し、touch-action だけでは素早い連続タップの拡大を止めきれないことがある。
+  // ・盤面とその周り（.stage）と操作ボタン（.dpad / .actions）は pointer イベントだけで動くので、touchend を常に止める
+  // ・それ以外（右上のボタン列など click で動くもの）は、350ms 以内の2回目のタップだけ止め、click は自分で送る
+  // ・カードやオーバーレイ（.overlay）は止めない（ボタンの click と縦スクロールを保つ）
+  let lastTapEnd = 0, tapStart = null;
+  document.addEventListener("touchstart", (e) => {
+    const t = e.touches[0];
+    tapStart = e.touches.length === 1 && t ? { x: t.clientX, y: t.clientY } : null;
+  }, { passive: true, capture: true });
+  document.addEventListener("touchend", (e) => {
+    const target = e.target;
+    if (!target.closest || target.closest(".overlay")) return;
+    const t = e.changedTouches[0];
+    const isTap = tapStart && t && e.touches.length === 0 && Math.hypot(t.clientX - tapStart.x, t.clientY - tapStart.y) < 12;
+    const now = performance.now();
+    const quick = isTap && now - lastTapEnd < 350;
+    if (isTap) lastTapEnd = now;
+    if (!e.cancelable) return;
+    if (target.closest(".stage, .dpad, .actions")) { e.preventDefault(); return; }
+    if (quick) {
+      e.preventDefault(); // 2回目の click は送られなくなるので、ボタンなら自分で押す
+      const btn = target.closest("button, a");
+      if (btn && !btn.disabled) btn.click();
+    }
+  }, { passive: false });
+  document.addEventListener("touchmove", (e) => { if (e.cancelable && !e.target.closest?.(".overlay")) e.preventDefault(); }, { passive: false });
+  document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: false });
+  ["gesturestart", "gesturechange", "gestureend"].forEach((type) => document.addEventListener(type, (e) => e.preventDefault(), { passive: false }));
+  document.addEventListener("contextmenu", (e) => { if (!e.target.closest?.(".overlay")) e.preventDefault(); });
 
   // ===== 描画 =====
   function setupCanvas(cv, w, h) {
