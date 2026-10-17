@@ -63,17 +63,28 @@
     max-width: 760px;
     margin: 0 auto;
   }
-  .head { grid-area: head; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .head { grid-area: head; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  /* 「← メニュー」：ブロックパズルと同じ表記・同じ見た目（枠つき、44×44px 以上） */
   .back {
     align-self: flex-start;
-    color: var(--muted);
-    font-size: 12px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    font: 700 14px "Hiragino Sans", system-ui, sans-serif;
     text-decoration: none;
-    padding: 4px 6px 4px 0;
-    font-family: "Hiragino Sans", system-ui, sans-serif;
+    white-space: nowrap;
+    touch-action: manipulation;
     -webkit-touch-callout: none;
   }
-  .back:active { color: var(--ink); }
+  .back:active { filter: brightness(1.3); }
   h1.title { margin: 0; font-size: 24px; letter-spacing: 0.04em; line-height: 1.2; }
   .bar {
     grid-area: bar;
@@ -108,6 +119,13 @@
     text-overflow: ellipsis;
   }
   .box.score b { color: var(--accent); }
+  /* プレイ中にベストを上回った瞬間に1回だけ光らせる */
+  .box.best.flash { animation: bestflash 900ms ease-out 1; }
+  @keyframes bestflash {
+    0% { box-shadow: 0 0 0 0 rgba(240, 164, 58, 0); }
+    25% { box-shadow: 0 0 0 2px var(--accent), 0 0 16px rgba(240, 164, 58, 0.55); }
+    100% { box-shadow: 0 0 0 0 rgba(240, 164, 58, 0); }
+  }
   .tools { display: flex; gap: 6px; flex: 0 0 auto; }
   .tool {
     min-width: 44px;
@@ -127,6 +145,8 @@
     line-height: 1.1;
   }
   .tool .ico { font-size: 17px; }
+  /* 「最初から」は「1手戻す」と離して置く（間に ♪ を挟み、さらに間隔をあける） */
+  .tool.restart { margin-left: 10px; }
   .tool small { font-size: 9px; letter-spacing: 0.04em; font-weight: 500; color: var(--muted); white-space: nowrap; }
   .tool:disabled { opacity: 0.35; }
   .tool:active:not(:disabled) { filter: brightness(1.3); background: var(--panel); }
@@ -188,24 +208,50 @@
   .tile-in.d5 { font-size: calc(var(--cell) * 0.24); }
   .tile-in.d6 { font-size: calc(var(--cell) * 0.20); }
   .tile-in.d7 { font-size: calc(var(--cell) * 0.17); }
-  /* タイルの色：値が大きくなるほど ブロックパズルの7色 をたどってアクセント色（2048）へ */
-  .v2    { background: #3a4260; color: #ece6d6; }
-  .v4    { background: #4d5679; color: #ece6d6; }
-  .v8    { background: #5b84f0; color: #0d111d; }
-  .v16   { background: #4cc9e0; color: #0d111d; }
-  .v32   { background: #6cd17a; color: #0d111d; }
-  .v64   { background: #f2cc4b; color: #0d111d; }
-  .v128  { background: #f29a4b; color: #0d111d; }
-  .v256  { background: #ef6464; color: #0d111d; }
-  .v512  { background: #a77bf0; color: #0d111d; }
-  .v1024 { background: #e57cc4; color: #0d111d; }
-  .v2048 { background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 2px #ffd68a, 0 0 18px rgba(240, 164, 58, 0.6); }
-  .vbig  { background: var(--ink); color: var(--well); }
+  /* タイルの色：値が大きくなるほど明るくなる（相対輝度が値の順に単調に増える）。
+     色の見分けが苦手な人でも明るさの順で大小が分かるようにし、色相の変化は残す。
+     文字色は、暗いタイル（2〜8）は白、明るいタイル（16 以上）は濃紺で、どの値もコントラスト 4.5:1 以上 */
+  .v2     { background: #32374e; color: #ffffff; }
+  .v4     { background: #3b4c82; color: #ffffff; }
+  .v8     { background: #265ad5; color: #ffffff; }
+  .v16    { background: #9365e4; color: #0d111d; }
+  .v32    { background: #ed5f5b; color: #0d111d; }
+  .v64    { background: #e873bd; color: #0d111d; }
+  .v128   { background: #f39247; color: #0d111d; }
+  .v256   { background: #4acf64; color: #0d111d; }
+  .v512   { background: #60d2e3; color: #0d111d; }
+  .v1024  { background: #f2cb32; color: #0d111d; }
+  .v2048  { background: #fcd590; color: #0d111d; box-shadow: 0 0 0 2px var(--accent), 0 0 18px rgba(240, 164, 58, 0.6); }
+  .v4096  { background: #fae840; color: #0d111d; }
+  .v8192  { background: #cff6e9; color: #0d111d; }
+  .v16384 { background: #eef6fd; color: #0d111d; }
+  .vbig   { background: #fcfaf5; color: #0d111d; }
   .tile-in.appear { animation: appear 140ms ease-out both; }
   .tile-in.pop { animation: pop 160ms ease-out both; }
   @keyframes appear { from { transform: scale(0.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.16); } 100% { transform: scale(1); } }
+  /* 合体したときの「+N」（盤面の上に一瞬だけ） */
+  .gain {
+    position: absolute;
+    left: 50%;
+    top: 18%;
+    z-index: 5;
+    pointer-events: none;
+    font: 700 22px var(--font-mono);
+    color: var(--accent);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6), 0 0 10px rgba(13, 17, 29, 0.9);
+    white-space: nowrap;
+    animation: gain 650ms ease-out both;
+  }
+  @keyframes gain {
+    0% { transform: translate(-50%, 6px); opacity: 0; }
+    20% { transform: translate(-50%, 0); opacity: 1; }
+    100% { transform: translate(-50%, -18px); opacity: 0; }
+  }
 
+  /* キー操作の説明は、キーボードとマウスのある環境だけに出す */
+  .hint .kbd { display: none; }
+  @media (hover: hover) and (pointer: fine) { .hint .kbd { display: inline; } }
   .hint {
     grid-area: hint;
     margin: 0;
@@ -244,10 +290,11 @@
     .bar { flex-wrap: wrap; }
     .tools { flex: 1 0 100%; }
     .tool { flex: 1 1 0; }
+    /* 盤面は操作欄のすぐ下に寄せ、余った高さは盤面の下へ回す */
+    .stage { align-items: flex-start; }
   }
-  /* iPhone SE など幅の狭い縦画面ではボタンの文字を省く */
+  /* iPhone SE など幅の狭い縦画面では数字を少し小さく（ボタンの文字は消さない） */
   @media (orientation: portrait) and (max-width: 360px) {
-    .tool small { display: none; }
     .box b { font-size: 17px; }
   }
 
@@ -288,6 +335,21 @@
   .card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; font-family: "Hiragino Sans", system-ui, sans-serif; }
   .card .big { font-family: var(--font-mono); font-size: 28px; color: var(--accent); font-variant-numeric: tabular-nums; }
   .card .row { display: flex; gap: 10px; }
+  /* 3つ並べる段（結果カードの［1手戻す］［メニューへ］［もう一度］） */
+  .card .row.three { gap: 8px; }
+  .card .row.three .cta { font-size: 14px; padding: 0 2px; min-width: 0; white-space: nowrap; }
+  /* iPhone SE など幅の狭い画面では、カードの余白を詰めて3つのボタンの文字を1行に収める */
+  @media (max-width: 360px) {
+    .card { padding-left: 14px; padding-right: 14px; }
+    .card .row.three { gap: 6px; }
+    .card .row.three .cta { font-size: 13px; }
+  }
+  .cta:disabled { opacity: 0.35; }
+  .card .reach { color: var(--ink); }
+  .card .reach b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  /* 結果カード（ゲームオーバー）は背景を薄く・ぼかさず、最後の盤面が見えるようにする。縦持ちはカードを下に寄せる */
+  .overlay.soft { background: rgba(13, 17, 29, 0.42); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  @media (orientation: portrait) { .overlay.soft .card { margin-bottom: 0; } }
   .cta {
     flex: 1;
     min-height: 50px;
@@ -310,6 +372,8 @@
     :root { --slide: 0ms; }
     .tile { transition: none; }
     .tile-in.appear, .tile-in.pop { animation: none; }
+    .box.best.flash { animation: none; }
+    .gain { display: none; }
   }
 </style>
 </head>
@@ -317,7 +381,7 @@
 
 <div class="app" id="app">
   <header class="head">
-    <a class="back" href="../../">← メニュー</a>
+    <a class="back" id="backLink" href="../../" aria-label="メニューへ戻る">← メニュー</a>
     <h1 class="title">ばいばいタイル</h1>
   </header>
 
@@ -325,9 +389,9 @@
     <section class="box score" aria-label="スコア"><span class="label">Score</span><b id="score">0</b></section>
     <section class="box best" aria-label="ベスト"><span class="label">Best</span><b id="best">0</b></section>
     <div class="tools">
-      <button class="tool" id="undoBtn" type="button" aria-label="1手戻す" disabled><span class="ico">↶</span><small>1手戻す</small></button>
-      <button class="tool" id="newBtn" type="button" aria-label="新しいゲーム"><span class="ico">⟳</span><small>新しく</small></button>
-      <button class="tool sound-btn" id="soundBtn" type="button" aria-label="効果音" aria-pressed="true">♪</button>
+      <button class="tool" id="undoBtn" type="button" aria-label="1手戻す" disabled><span class="ico" aria-hidden="true">↶</span><small>1手戻す</small></button>
+      <button class="tool sound-btn" id="soundBtn" type="button" aria-label="効果音" aria-pressed="true"><span class="ico" aria-hidden="true">♪</span><small>効果音</small></button>
+      <button class="tool restart" id="newBtn" type="button" aria-label="最初から"><span class="ico" aria-hidden="true">⇤</span><small>最初から</small></button>
     </div>
   </div>
 
@@ -335,7 +399,7 @@
     <div class="board" id="board" role="img" aria-label="ゲーム盤面"></div>
   </div>
 
-  <p class="hint">スワイプ・矢印キー・WASD で動かす。同じ数字がぶつかると合体します。</p>
+  <p class="hint">上下左右にスワイプして動かす。同じ数字がぶつかると合体。<span class="kbd">矢印キー・WASD でも動かせます。</span></p>
 </div>
 
 <div class="overlay" id="overlay" hidden>
@@ -427,12 +491,44 @@
     if (!e.length) return null;
     return { at: e[Math.floor(rnd() * e.length)], v: rnd() < 0.9 ? 2 : 4 };
   }
+  // 出現に使う乱数は種（seed）つきの擬似乱数（mulberry32）。種は盤面の状態の一部として保存し、
+  // 1手ごとに進め、1手戻すときは種も戻す。→ 同じ盤面から同じ方向に動かすと、必ず同じ場所に同じ数字が出る
+  function seededRandom(seed) {
+    let a = seed >>> 0;
+    const rnd = () => {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    rnd.seed = () => a;
+    return rnd;
+  }
+  function newSeed() {
+    try {
+      const u = new Uint32Array(1);
+      crypto.getRandomValues(u);
+      return u[0];
+    } catch (e) {
+      return (Math.random() * 4294967296) >>> 0;
+    }
+  }
+  const isSeed = (x) => Number.isInteger(x) && x >= 0 && x <= 0xFFFFFFFF;
+  const isCount = (x) => Number.isSafeInteger(x) && x >= 0;
+  // タイルは 2〜2^20 の2のべき乗、0 は空き
+  const isTile = (v) => v === 0 || (typeof v === "number" && v >= 2 && v <= 2 ** 20 && Number.isInteger(Math.log2(v)));
   function validGrid(g) {
-    return Array.isArray(g) && g.length === SIZE * SIZE &&
-      g.every((v) => v === 0 || (Number.isInteger(v) && v >= 2 && (v & (v - 1)) === 0));
+    return Array.isArray(g) && g.length === SIZE * SIZE && g.every(isTile);
+  }
+  // 最大タイルと、次の段までの距離（結果カード用）
+  function reachInfo(g) {
+    const vals = g.filter(Boolean).sort((a, b) => b - a);
+    const top = vals[0] || 0;
+    return { top, next: top * 2, oneMerge: vals.length > 1 && vals[1] === top };
   }
   // 検証用に計算部分だけ公開する（ゲームの状態には触れない）
-  window.Tile2048Logic = Object.freeze({ slideLine, computeMove, canMove, hasWon, lineCells });
+  window.Tile2048Logic = Object.freeze({ slideLine, computeMove, canMove, hasWon, lineCells, seededRandom, reachInfo, validGrid });
 
   // ===== 要素 =====
   const $ = (id) => document.getElementById(id);
@@ -444,31 +540,57 @@
   let grid = Array(SIZE * SIZE).fill(0);
   let ids = Array(SIZE * SIZE).fill(0); // 各マスに表示中のタイル番号（画面用）
   let score = 0, best = loadBest();
-  let prev = null;           // 1手戻す用 { grid, score }
+  let prev = null;           // 1手戻す用 { grid, score, seed }
   let keepPlaying = false;   // 2048 達成後に「続ける」を選んだか
   let moves = 0;
+  let seed = newSeed();      // 次に出るタイルを決める乱数の種
+  let bestAtStart = best;    // このゲームを始めた（または保存データから再開した）時点のベスト
+  let bestFlashed = false;   // このゲームで「ベスト超え」の演出をしたか（1ゲームに1回）
+  let topTile = 0;           // このゲームで届いた最大タイル（新記録の音を鳴らす判定用）
   let state = "play";        // play | win | over | confirm
+  let confirmFrom = "play";  // 確認画面を「やめる」で閉じたときに戻る画面（play | win）
   let nextId = 1;
   const tiles = new Map();   // タイル番号 → 要素
   let pending = null;        // アニメーション後に行う処理
+  let overTimer = 0;         // 詰んでから結果カードを出すまでの待ち
 
   function loadBest() {
-    try { return Number(localStorage.getItem(KEY_BEST)) || 0; } catch (e) { return 0; }
+    try {
+      const raw = localStorage.getItem(KEY_BEST);
+      const n = raw === null ? 0 : Number(raw);
+      return isCount(n) ? n : 0;
+    } catch (e) { return 0; }
   }
   function saveBest() {
     try { localStorage.setItem(KEY_BEST, String(best)); } catch (e) { /* 保存できない環境では無視 */ }
   }
   function saveState() {
     try {
-      localStorage.setItem(KEY_STATE, JSON.stringify({ v: 1, grid, score, prev, keepPlaying, moves }));
+      localStorage.setItem(KEY_STATE, JSON.stringify({ v: 1, grid, score, prev, keepPlaying, moves, seed, bestFlashed, topTile }));
     } catch (e) { /* 保存できなくても遊べる */ }
   }
+  // 保存データを読む。どこか1つでも不正なら全体を捨てる（新しいゲームになる）
   function loadState() {
     try {
       const s = JSON.parse(localStorage.getItem(KEY_STATE) || "null");
-      if (!s || s.v !== 1 || !validGrid(s.grid) || emptyCells(s.grid).length === SIZE * SIZE) return null;
-      const p = s.prev && validGrid(s.prev.grid) && Number.isFinite(s.prev.score) ? { grid: s.prev.grid, score: s.prev.score } : null;
-      return { grid: s.grid, score: Number.isFinite(s.score) ? s.score : 0, prev: p, keepPlaying: !!s.keepPlaying, moves: Number(s.moves) || 0 };
+      if (!s || typeof s !== "object" || s.v !== 1 || !validGrid(s.grid) || emptyCells(s.grid).length === SIZE * SIZE) return null;
+      if (!isCount(s.score)) return null;
+      if (s.moves !== undefined && !isCount(s.moves)) return null;
+      if (s.seed !== undefined && !isSeed(s.seed)) return null;
+      if (s.topTile !== undefined && !isTile(s.topTile)) return null;
+      let p = null;
+      if (s.prev !== null && s.prev !== undefined) {
+        if (typeof s.prev !== "object" || !validGrid(s.prev.grid) || !isCount(s.prev.score)) return null;
+        if (s.prev.seed !== undefined && !isSeed(s.prev.seed)) return null;
+        p = { grid: s.prev.grid, score: s.prev.score, seed: s.prev.seed };
+      }
+      // 旧形式（種がない）なら新しい種を作って続行する
+      const sd = s.seed !== undefined ? s.seed : newSeed();
+      if (p && p.seed === undefined) p.seed = sd;
+      return {
+        grid: s.grid, score: s.score, prev: p, keepPlaying: !!s.keepPlaying, moves: s.moves || 0, seed: sd,
+        bestFlashed: !!s.bestFlashed, topTile: Math.max(s.topTile || 0, ...s.grid)
+      };
     } catch (e) { return null; }
   }
 
@@ -515,6 +637,11 @@
       win:   () => [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.14, { type: "triangle", vol: 0.08, delay: i * 0.09 })),
       start: () => [392, 523].forEach((f, i) => tone(f, 0.1, { type: "triangle", vol: 0.07, delay: i * 0.09 })),
       undo:  () => tone(440, 0.08, { type: "triangle", vol: 0.05, slide: 0.6 }),
+      // そのゲームで初めて届いた最大タイル（128 以上）のときの、少し特別な短い音
+      milestone: (v) => {
+        const f = 262 * Math.pow(2, (Math.log2(v) - 1) / 4);
+        [1, 1.25, 1.5, 2].forEach((m, i) => tone(f * m, 0.08, { type: "triangle", vol: 0.06, delay: i * 0.055 }));
+      },
       on:    () => tone(440, 0.05, { type: "triangle", slide: 1.3 }),
       over:  () => [392, 330, 262, 196].forEach((f, i) => tone(f, 0.22, { type: "triangle", vol: 0.08, delay: i * 0.18 }))
     };
@@ -556,7 +683,8 @@
   }
   function tileClass(v) {
     const digits = String(v).length;
-    return `tile-in ${v > GOAL ? "vbig" : "v" + v}${digits >= 3 ? " d" + Math.min(7, digits) : ""}`;
+    // 2〜16384 は値ごとの色、32768 以上は共通の色（いちばん明るい）
+    return `tile-in ${v <= 16384 ? "v" + v : "vbig"}${digits >= 3 ? " d" + Math.min(7, digits) : ""}`;
   }
   function makeTile(i, v, anim) {
     const id = nextId++;
@@ -585,11 +713,52 @@
     grid.forEach((v, i) => { if (v) ids[i] = makeTile(i, v, anim); });
     renderStats();
   }
-  function renderStats() {
-    ui.score.textContent = score.toLocaleString();
+  // スコアの数字は約200msでカウントアップする（動きを減らす設定では即時）
+  let shownScore = 0, countAnim = 0;
+  function showScore(animate) {
+    cancelAnimationFrame(countAnim);
+    const to = score, from = shownScore;
+    if (!animate || reduceMotion.matches || to <= from) {
+      shownScore = to;
+      ui.score.textContent = to.toLocaleString();
+      return;
+    }
+    const t0 = performance.now(), DUR = 200;
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / DUR);
+      shownScore = k >= 1 ? to : Math.round(from + (to - from) * (1 - (1 - k) * (1 - k)));
+      ui.score.textContent = shownScore.toLocaleString();
+      if (k < 1) countAnim = requestAnimationFrame(step);
+    };
+    countAnim = requestAnimationFrame(step);
+  }
+  function renderStats(animate = false) {
+    showScore(animate);
     ui.best.textContent = Math.max(best, score).toLocaleString();
     ui.undo.disabled = !prev || state !== "play";
     boardEl.setAttribute("aria-label", "ゲーム盤面：" + grid.map((v) => v || "・").join(" "));
+  }
+  // 合体した得点の「+N」を盤面の上に一瞬表示する
+  function showGain(n) {
+    if (!n || reduceMotion.matches) return;
+    boardEl.querySelectorAll(".gain").forEach((e) => e.remove());
+    const el = document.createElement("div");
+    el.className = "gain";
+    el.setAttribute("aria-hidden", "true");
+    el.textContent = "+" + n.toLocaleString();
+    el.addEventListener("animationend", () => el.remove());
+    boardEl.appendChild(el);
+    setTimeout(() => el.remove(), 1000);
+  }
+  // プレイ中にベストを上回った瞬間、BEST 欄を1回だけ光らせる
+  function flashBest() {
+    bestFlashed = true;
+    if (reduceMotion.matches) return;
+    const box = ui.best.parentElement;
+    box.classList.remove("flash");
+    void box.offsetWidth;
+    box.classList.add("flash");
+    box.addEventListener("animationend", () => box.classList.remove("flash"), { once: true });
   }
   function layout() {
     const w = stage.clientWidth, h = stage.clientHeight;
@@ -625,12 +794,14 @@
     const res = computeMove(grid, dir);
     if (!res.moved) return false;
 
-    prev = { grid: grid.slice(), score };
+    prev = { grid: grid.slice(), score, seed };
     const before = grid;
     grid = res.grid;
     score += res.gained;
     moves++;
     if (score > best) { best = score; saveBest(); }
+    // 過去のベスト（ゲーム開始時点）を初めて上回った瞬間（初めて遊ぶとき＝ベスト0 は除く）
+    const beatBest = !bestFlashed && bestAtStart > 0 && score > bestAtStart;
 
     // タイルを行き先へ滑らせる
     const newIds = Array(SIZE * SIZE).fill(0);
@@ -646,34 +817,48 @@
       else newIds[m.to] = id;
     }
     ids = newIds;
-    const spawn = randomSpawn(grid);
+    const rnd = seededRandom(seed);
+    const spawn = randomSpawn(grid, rnd);
     if (spawn) grid[spawn.at] = spawn.v;
+    seed = rnd.seed();
 
     let topMerge = 0;
     mergedAt.forEach((i) => { topMerge = Math.max(topMerge, res.grid[i]); });
-    if (topMerge) sfx.play("merge", topMerge); else sfx.play("move");
-
     const justWon = !keepPlaying && hasWon(grid) && !hasWon(before);
+    const newTop = topMerge > topTile && topMerge >= 128 && !justWon;
+    if (topMerge > topTile) topTile = topMerge;
+    if (newTop) sfx.play("milestone", topMerge);
+    else if (topMerge) sfx.play("merge", topMerge);
+    else sfx.play("move");
+
     const over = !canMove(grid);
     if (justWon || over) state = over && !justWon ? "over" : "win";
+    if (beatBest) flashBest();
     saveState();
-    renderStats();
+    renderStats(true);
+    showGain(res.gained);
 
     const run = () => {
       dying.forEach((id) => { tiles.get(id)?.remove(); tiles.delete(id); });
       mergedAt.forEach((i) => { ids[i] = makeTile(i, res.grid[i], "pop"); });
       if (spawn) ids[spawn.at] = makeTile(spawn.at, spawn.v, "appear");
       if (state === "win") showWin(true);
-      else if (state === "over") showOver(true);
+      else if (state === "over") scheduleOver();
     };
     if (reduceMotion.matches) run();
     else pending = { run, timer: setTimeout(finishPending, 100) };
     return true;
   }
+  // 1手戻す：盤面・スコアと一緒に乱数の種も戻す（同じ方向に打ち直すと同じ出目になる）。
+  // 詰んだ直後（結果カード）からも戻して続けられる
   function undo() {
-    if (state !== "play" || !prev) return;
+    if ((state !== "play" && state !== "over") || !prev) return;
+    cancelOver();
+    hideOverlay();
+    state = "play";
     grid = prev.grid.slice();
     score = prev.score;
+    seed = prev.seed;
     prev = null;                 // 戻せるのは直前の1手だけ
     moves = Math.max(0, moves - 1);
     sfx.play("undo");
@@ -683,28 +868,41 @@
 
   // ===== 画面遷移 =====
   function newGame() {
+    cancelOver();
     hideOverlay();
     grid = Array(SIZE * SIZE).fill(0);
     score = 0; prev = null; keepPlaying = false; moves = 0;
+    seed = newSeed();            // 毎ゲーム違う展開にする
+    bestAtStart = best; bestFlashed = false; topTile = 0;
     state = "play";
-    for (let n = 0; n < 2; n++) { const s = randomSpawn(grid); grid[s.at] = s.v; }
+    const rnd = seededRandom(seed);
+    for (let n = 0; n < 2; n++) { const s = randomSpawn(grid, rnd); grid[s.at] = s.v; }
+    seed = rnd.seed();
+    topTile = Math.max(...grid);
     saveState();
     rebuild("appear");
     sfx.play("start");
   }
-  function inProgress() { return state === "play" && (moves > 0 || score > 0); }
+  function inProgress() { return (state === "play" || state === "win") && (moves > 0 || score > 0); }
+  // 「最初から」とクリア画面の「新しいゲーム」は、ページ内で確認してから
   function askNewGame() {
-    if (state === "confirm") return;
+    if (state === "confirm" || state === "over") return;
     if (!inProgress()) { newGame(); return; }
+    confirmFrom = state === "win" ? "win" : "play";
     state = "confirm";
     renderStats();
     showCard(`
       <h2>新しいゲーム？</h2>
-      <p>いまの盤面（スコア ${score.toLocaleString()}）は消えます。</p>
+      <p>いまの盤面（スコア <span data-f="score"></span>）は消えます。</p>
       <div class="row">
         <button class="cta" type="button" data-cmd="cancel">やめる</button>
         <button class="cta primary" type="button" data-cmd="restart">新しいゲーム</button>
-      </div>`);
+      </div>`, { score: score.toLocaleString() });
+  }
+  function cancelConfirm() {
+    if (state !== "confirm") return;
+    if (confirmFrom === "win") { showWin(false); return; }
+    state = "play"; hideOverlay(); renderStats();
   }
   function showWin(withSound) {
     state = "win";
@@ -712,45 +910,82 @@
     renderStats();
     showCard(`
       <h2>クリア！</h2>
-      <p>${GOAL} のタイルができました。</p>
-      <div><div class="label">Score</div><div class="big">${score.toLocaleString()}</div></div>
+      <p><span data-f="goal"></span> のタイルができました。</p>
+      <div><div class="label">Score</div><div class="big" data-f="score"></div></div>
       <div class="row">
         <button class="cta" type="button" data-cmd="menu">メニューへ</button>
         <button class="cta primary" type="button" data-cmd="continue">続ける</button>
       </div>
-      <div class="row"><button class="cta" type="button" data-cmd="restart">新しいゲーム</button></div>`);
+      <div class="row"><button class="cta" type="button" data-cmd="askRestart">新しいゲーム</button></div>`,
+      { goal: String(GOAL), score: score.toLocaleString() });
+  }
+  // 詰んだら、最後の盤面を約0.8秒見せてから結果カードを出す（その間に画面に触れたらすぐ出す）
+  let revealedByTap = 0;
+  function scheduleOver() {
+    cancelOver();
+    overTimer = setTimeout(() => { overTimer = 0; showOver(true); }, 800);
+  }
+  function cancelOver() { if (overTimer) { clearTimeout(overTimer); overTimer = 0; } }
+  function revealOverNow() {
+    if (!overTimer) return false;
+    cancelOver();
+    revealedByTap = performance.now();
+    showOver(true);
+    return true;
   }
   function showOver(withSound) {
     state = "over";
+    cancelOver();
     if (withSound) { sfx.play("over"); sfx.buzz([60, 40, 120]); }
-    const isBest = score > 0 && score >= best;
+    const isBest = score > bestAtStart;
+    const r = reachInfo(grid);
     renderStats();
     showCard(`
       <h2>ゲームオーバー</h2>
-      <div><div class="label">Score</div><div class="big">${score.toLocaleString()}</div></div>
-      <p>${isBest ? "自己ベスト更新！" : `ベスト ${best.toLocaleString()}`}</p>
-      <div class="row">
+      <div><div class="label">Score</div><div class="big" data-f="score"></div></div>
+      <p class="reach">最大タイル <b data-f="top"></b> ／ <span data-f="nextLabel"></span> <b data-f="next"></b></p>
+      <p data-f="bestLine"></p>
+      <div class="row three">
+        <button class="cta" type="button" data-cmd="undo">1手戻す</button>
         <button class="cta" type="button" data-cmd="menu">メニューへ</button>
         <button class="cta primary" type="button" data-cmd="restart">もう一度</button>
-      </div>`);
+      </div>`, {
+      score: score.toLocaleString(),
+      top: r.top.toLocaleString(),
+      nextLabel: r.oneMerge ? "あと1回の合体で" : "次は",
+      next: r.next.toLocaleString(),
+      bestLine: isBest ? "自己ベスト更新！" : `ベスト ${best.toLocaleString()}`
+    }, { soft: true });
+    const u = card.querySelector('[data-cmd="undo"]');
+    u.disabled = !prev;
+    if (!prev) u.setAttribute("aria-label", "1手戻す（戻せる手がありません）");
   }
-  function showCard(html) {
+  // カードは HTML の骨組みだけを書き、数値などは data-f の要素に textContent で入れる
+  function showCard(html, fields = {}, { soft = false } = {}) {
     card.innerHTML = html;
+    card.querySelectorAll("[data-f]").forEach((el) => { el.textContent = fields[el.dataset.f] ?? ""; });
+    overlay.classList.toggle("soft", soft);
     overlay.hidden = false;
     const primary = card.querySelector(".primary");
     if (primary) primary.focus({ preventScroll: true });
   }
-  function hideOverlay() { overlay.hidden = true; }
+  function hideOverlay() { overlay.hidden = true; overlay.classList.remove("soft"); }
   overlay.addEventListener("click", (e) => {
+    // 結果カードを「画面に触れて」出した直後は、同じ指の操作でボタンが押されないようにする
+    if (revealedByTap && performance.now() - revealedByTap < 350) return;
     const cmd = e.target.closest("[data-cmd]")?.dataset.cmd;
     if (cmd === "restart") newGame();
+    if (cmd === "askRestart") askNewGame();
+    if (cmd === "undo") undo();
     if (cmd === "menu") { finishPending(); saveState(); location.href = "../../"; }
-    if (cmd === "cancel") { state = "play"; hideOverlay(); renderStats(); }
+    if (cmd === "cancel") cancelConfirm();
     if (cmd === "continue") {
       keepPlaying = true; state = "play"; saveState(); hideOverlay(); renderStats();
       if (!canMove(grid)) showOver(true); // 2048 と同時に詰んでいた場合
     }
   });
+  // 詰んで結果カードを待っている間に画面に触れたら、すぐに出す
+  document.addEventListener("pointerdown", () => { revealOverNow(); }, { capture: true });
   ui.undo.addEventListener("click", undo);
   ui.newGame.addEventListener("click", askNewGame);
   // アプリを閉じる・切り替える直前にも保存しておく
@@ -765,8 +1000,9 @@
   window.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === "m" || e.key === "M") { sfx.unlock(); sfx.toggle(); renderSoundBtn(); return; }
-    if (e.key === "Escape" && state === "confirm") { state = "play"; hideOverlay(); renderStats(); return; }
-    if ((e.key === "u" || e.key === "U") && state === "play") { undo(); return; }
+    if (e.key === "Escape" && state === "confirm") { cancelConfirm(); return; }
+    if ((e.key === "u" || e.key === "U") && (state === "play" || state === "over")) { undo(); return; }
+    if (revealOverNow()) return;
     const dir = KEYMAP[e.key];
     if (!dir) return;
     e.preventDefault();
@@ -809,12 +1045,16 @@
   layout();
   const saved = loadState();
   if (saved) {
-    ({ grid, score, prev, keepPlaying, moves } = saved);
+    ({ grid, score, prev, keepPlaying, moves, seed, bestFlashed, topTile } = saved);
+    bestAtStart = best;          // 再開した時点のベスト
     if (score > best) { best = score; saveBest(); }
+    saveState();                 // 旧形式なら種を足して保存し直す
     rebuild(null);
     if (!keepPlaying && hasWon(grid)) showWin(false);
     else if (!canMove(grid)) showOver(false);
   } else {
+    // 保存データがない・不正なとき：不正なデータは消して新しいゲームにする
+    try { if (localStorage.getItem(KEY_STATE) !== null) localStorage.removeItem(KEY_STATE); } catch (e) { /* 使えない環境 */ }
     newGame();
   }
 })();
