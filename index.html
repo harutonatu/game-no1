@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ブロック">
+<meta name="theme-color" content="#1b1f2e">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style id="standalone">
   /* 単体で開いたとき用（Artifact公開時はこのブロックを除去する） */
   :root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
@@ -806,6 +810,13 @@
   showTitle();
   requestAnimationFrame(frame);
 })();
+
+// ホーム画面から起動したときにオフラインでも遊べるようにする（https か localhost のときだけ有効）
+if ("serviceWorker" in navigator && window.isSecureContext && location.protocol !== "file:") {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => { /* 登録できなくてもゲームは遊べる */ });
+  });
+}
 </script>
 </body>
 </html>
