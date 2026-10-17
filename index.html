@@ -158,7 +158,8 @@
   //   art: 下の ART にある絵の名前（省略すると頭文字のタイル）
   const GAMES = [
     { name: "ブロックパズル", desc: "落ちてくるブロックで横一列をそろえて消す", url: "games/blocks/", best: "blockpuzzle.best", art: "blocks" },
-    { name: "ばいばいタイル", desc: "同じ数字をぶつけて合体、2048 を目指す", url: "games/2048/", best: "tile2048.best", art: "tiles" }
+    { name: "ばいばいタイル", desc: "同じ数字をぶつけて合体、2048 を目指す", url: "games/2048/", best: "tile2048.best", art: "tiles" },
+    { name: "キリトリ道場", desc: "飛んでくる的を指でなぞって切る。爆弾に注意", url: "games/kiritori/", best: "kiritori.best", art: "kiritori" }
   ];
 
   // ===== 小さな絵（Canvas で描く。画像ファイルは使わない） =====
@@ -231,6 +232,46 @@
         ctx.textBaseline = "middle";
         ctx.fillText(String(v), x + s / 2, y + s / 2 + 1);
       });
+    },
+    // 斜めに切られた巻藁と紙風船、光る切り筋（キリトリ道場の的と同じ色）
+    kiritori(ctx, w, h) {
+      const s = Math.min(w, h);
+      // 紙風船（右上）
+      const bx = w * 0.7, by = h * 0.3, br = s * 0.17;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.clip();
+      ["#e8574f", "#f3eee2", "#f2c14b", "#4f86d8", "#f3eee2", "#e8574f"].forEach((c, i) => {
+        const a0 = -Math.PI / 2 + (i * Math.PI) / 6, a1 = a0 + Math.PI / 6;
+        ctx.fillStyle = c;
+        ctx.fillRect(bx + br * Math.sin(a0), by - br, br * (Math.sin(a1) - Math.sin(a0)) + 0.6, br * 2);
+      });
+      ctx.restore();
+      // 巻藁（左下）：切り筋で上下にずれた2つ
+      const ww = s * 0.26, hh = s * 0.52, x = w * 0.36 - ww / 2, y = h * 0.6 - hh / 2;
+      const straw = (dy, top) => {
+        ctx.save();
+        ctx.beginPath();
+        if (top) { ctx.moveTo(x - 4, y - 4); ctx.lineTo(x + ww + 4, y - 4); ctx.lineTo(x + ww + 4, y + hh * 0.38); ctx.lineTo(x - 4, y + hh * 0.58); }
+        else { ctx.moveTo(x - 4, y + hh * 0.58); ctx.lineTo(x + ww + 4, y + hh * 0.38); ctx.lineTo(x + ww + 4, y + hh + 4); ctx.lineTo(x - 4, y + hh + 4); }
+        ctx.closePath(); ctx.clip();
+        ctx.translate(top ? -2 : 2, dy);
+        const g = ctx.createLinearGradient(x, 0, x + ww, 0);
+        g.addColorStop(0, "#b8893e"); g.addColorStop(0.45, "#e6c477"); g.addColorStop(1, "#a97b35");
+        ctx.fillStyle = g; roundRect(ctx, x, y, ww, hh, ww * 0.3); ctx.fill();
+        ctx.fillStyle = "#6b4626";
+        ctx.fillRect(x, y + hh * 0.22, ww, hh * 0.07); ctx.fillRect(x, y + hh * 0.72, ww, hh * 0.07);
+        ctx.restore();
+      };
+      straw(-3, true); straw(2, false);
+      // 光る切り筋
+      ctx.save();
+      ctx.strokeStyle = "rgba(235,248,255,0.95)";
+      ctx.lineCap = "round";
+      ctx.shadowColor = "rgba(150,220,255,0.9)";
+      ctx.shadowBlur = 6 * (ctx.getTransform ? ctx.getTransform().a : 1);
+      ctx.lineWidth = Math.max(2, s * 0.035);
+      ctx.beginPath(); ctx.moveTo(w * 0.1, h * 0.66); ctx.lineTo(w * 0.9, h * 0.38); ctx.stroke();
+      ctx.restore();
     },
     // 絵が用意されていないゲーム用：頭文字のタイル
     fallback(ctx, w, h, game) {

@@ -4,6 +4,7 @@
  * 使い方（今の sfx と同じ呼び出し方のまま差し替えられる）
  *   const sfx = YubiSfx.create("blocks");   // ブロックパズル
  *   const sfx = YubiSfx.create("tiles");    // ばいばいタイル（"2048" でも可）
+ *   const sfx = YubiSfx.create("kiritori"); // キリトリ道場
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -16,7 +17,7 @@
   const PENTA = [0, 2, 4, 7, 9];        // ド・レ・ミ・ソ・ラ（どの順に鳴っても濁らない音階）
   const MAX_VOICES = 36;                // 同時に鳴らす部品の上限（連打で濁らないように）
   // 同じ音を続けて鳴らす最短の間隔（秒）。長押しの連続移動（45ms 間隔）は通す
-  const GAP = { move: 0.03, rotate: 0.03, hold: 0.05, merge: 0.03, tap: 0.04, undo: 0.06 };
+  const GAP = { move: 0.03, rotate: 0.03, hold: 0.05, merge: 0.03, tap: 0.04, undo: 0.06, slice: 0.018, launch: 0.07, miss: 0.08 };
 
   function create(game, opts) {
     opts = opts || {};
@@ -211,8 +212,42 @@
       undo: () => { const t = N(); noise(t, 0.07, { freq: 700, to: 1800, q: 0.7, vol: 0.04, a: 0.04 }); mallet(A5, t + 0.02, { vol: 0.08, decay: 0.06, bright: 0.3 }); mallet(E5, t + 0.065, { vol: 0.08, decay: 0.08, bright: 0.3 }); }
     };
 
+    // 切った数 n → 五音音階の高さ（1つ目がド、切るほど上がる。重なっても濁らない）
+    function sliceFreq(n) {
+      const i = Math.max(0, Math.min(9, (n || 1) - 1));
+      return C5 * Math.pow(2, (12 * Math.floor(i / 5) + PENTA[i % 5]) / 12);
+    }
+    const KIRI = {
+      // 刃が空を切る「シュッ」と、木琴の小さな「コン」。1回のスワイプで切るほど高くなる
+      slice: (n) => {
+        const t = N(), f = sliceFreq(n);
+        noise(t, 0.06, { freq: 3400 * jit(80), to: 1300, q: 0.9, vol: 0.055, a: 0.005 });
+        mallet(f, t + 0.012, { vol: 0.11, decay: 0.13, bright: 0.5, jit: 4 });
+        wood(f / 2, t + 0.01, { vol: 0.035, dur: 0.03, jit: 20 });
+      },
+      // コンボ：切った数ぶんのかけ上がり（3〜8音）をベルで締める
+      combo: (n) => {
+        n = Math.max(3, Math.min(8, n || 3));
+        const t = N() + 0.04;
+        for (let i = 0; i < n; i++) mallet(sliceFreq(i + 1) * 1.0, t + i * 0.045, { vol: 0.08 + i * 0.008, decay: i === n - 1 ? 0.3 : 0.12, bright: 0.45 });
+        bell(sliceFreq(n) * 2, t + n * 0.045, { vol: 0.045, decay: 0.4 });
+      },
+      // 爆弾：おどかさない「ぽふっ」。低い木の音と、こもった煙の音
+      bomb: () => {
+        const t = N();
+        wood(130, t, { vol: 0.16, dur: 0.11, jit: 15 });
+        noise(t, 0.22, { type: "lowpass", freq: 900, to: 220, vol: 0.09, a: 0.01 });
+        mallet(E5, t + 0.08, { vol: 0.06, decay: 0.12, bright: 0.2 });
+        mallet(C5, t + 0.16, { vol: 0.06, decay: 0.18, bright: 0.2 });
+      },
+      // 的を落とした：小さく下がる2音（責める感じにしない）
+      miss: () => { const t = N(); mallet(G5 / 2, t, { vol: 0.07, decay: 0.1, bright: 0.2 }); mallet(E5 / 2, t + 0.07, { vol: 0.065, decay: 0.16, bright: 0.2 }); },
+      // 的を投げ上げる：ごく小さい「ヒュッ」
+      launch: () => noise(N(), 0.09, { freq: 700, to: 1500, q: 0.7, vol: 0.018, a: 0.03 })
+    };
+
     const table = Object.assign({}, COMMON,
-      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : {});
+      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : {});
 
     return {
       get on() { return on; },
