@@ -1,0 +1,924 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ゆびあそび">
+<meta name="theme-color" content="#1b1f2e">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<title>いろコード</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+  /* Layout: 縦持ちは「上部 / モード / 履歴（伸び縮み・スクロール） / 入力欄 / パレット / 決定」。
+     横持ちは左に上部・モード・履歴、右に入力欄・パレット・決定 */
+  :root {
+    --bg: #1b1f2e;
+    --panel: #252c41;
+    --well: #0d111d;
+    --line: #2f3750;
+    --ink: #ece6d6;
+    --muted: #8a91a8;
+    --accent: #f0a43a;
+    --accent-ink: #231705;
+    --font-display: "Chakra Petch", "Hiragino Sans", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --font-jp: "Hiragino Sans", system-ui, sans-serif;
+    --peg: 50px;
+    --pal: 48px;
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  /* ダブルタップ拡大・ピンチ拡大を止める（iOS Safari は user-scalable=no を無視するため CSS と JS の両方で防ぐ） */
+  html { overscroll-behavior: none; touch-action: none; }
+  body {
+    margin: 0;
+    font-size: 14px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-display);
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+  .app {
+    box-sizing: border-box;
+    height: 100%;
+    /* ノッチ・ホームバーに重ならないよう safe-area 分を空ける */
+    padding-top: max(10px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-areas: "head" "modes" "hist" "input";
+    gap: 8px;
+    max-width: 520px;
+    margin: 0 auto;
+  }
+  .head { grid-area: head; display: flex; align-items: center; gap: 6px; min-width: 0; }
+  /* 「← メニュー」：ほかのゲームと同じ表記・同じ見た目（枠つき、44×44px 以上） */
+  .back {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 10px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    font: 700 14px var(--font-jp);
+    text-decoration: none;
+    white-space: nowrap;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+  }
+  .back:active { filter: brightness(1.3); }
+  h1.title {
+    margin: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: center;
+    font-size: 20px;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .tool {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink);
+    font: 700 17px var(--font-display);
+    padding: 0 8px;
+    touch-action: manipulation;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+  .tool:disabled { opacity: 0.35; }
+  .tool:active:not(:disabled) { filter: brightness(1.3); background: var(--panel); }
+  .sound-btn[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* モード切り替え：今日の1問 / れんしゅう / むずかしい（れんしゅうの切り替え） */
+  .modes { grid-area: modes; display: flex; gap: 6px; min-width: 0; }
+  .seg {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    box-sizing: border-box;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--muted);
+    font: 700 13px var(--font-jp);
+    padding: 0 4px;
+    white-space: nowrap;
+    touch-action: manipulation;
+  }
+  .seg[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: inset 0 -3px 0 var(--accent); }
+  .seg.hard[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
+  .seg:active { filter: brightness(1.3); }
+  .seg:disabled { opacity: 0.35; }
+
+  /* 履歴：余った高さを使い、はみ出したら縦にスクロール（最新の行が見えるよう自動で下端へ） */
+  .hist { grid-area: hist; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
+  .status {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+    color: var(--muted);
+    font: 500 11px var(--font-jp);
+  }
+  .status b { color: var(--ink); font-family: var(--font-mono); font-size: 13px; }
+  .legend { white-space: nowrap; }
+  .rows {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    background: var(--well);
+    border-radius: 10px;
+    box-shadow: 0 0 0 1px var(--line);
+    padding: 4px 8px;
+    box-sizing: border-box;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    border-bottom: 1px solid rgba(138, 145, 168, 0.12);
+  }
+  .row:last-child { border-bottom: 0; }
+  .row.fresh { animation: rowin 220ms ease-out both; }
+  @keyframes rowin { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .row .no { width: 20px; flex: 0 0 auto; color: var(--muted); font: 500 12px var(--font-mono); text-align: right; }
+  .row .pegs { display: flex; gap: 4px; }
+  .mini {
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; line-height: 1;
+    box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+  }
+  /* ●（位置も色も）は塗りつぶし、○（色だけ）は輪。形でも区別できる */
+  .row .keys { display: grid; grid-template-columns: repeat(2, 10px); gap: 3px; margin-left: 4px; }
+  .key { width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid rgba(138, 145, 168, 0.25); }
+  .key.hit { background: var(--ink); border-color: var(--ink); }
+  .key.blow { border: 2px solid var(--ink); background: transparent; }
+  .row .score { margin-left: auto; white-space: nowrap; font: 700 13px var(--font-mono); color: var(--ink); }
+  .row .score span + span { margin-left: 8px; }
+  .row .score .z { color: var(--muted); }
+  .empty { color: var(--muted); font: 500 12px/1.7 var(--font-jp); padding: 8px 4px; }
+
+  /* 入力欄・パレット・決定 */
+  .input { grid-area: input; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .slots { display: flex; justify-content: center; gap: 10px; }
+  .slot {
+    box-sizing: border-box;
+    width: var(--peg); height: var(--peg);
+    border-radius: 50%;
+    border: 2px dashed rgba(138, 145, 168, 0.5);
+    background: transparent;
+    padding: 0;
+    color: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    font-size: calc(var(--peg) * 0.42); line-height: 1;
+    touch-action: manipulation;
+  }
+  .slot.next { border-color: var(--accent); }
+  .slot[data-color] { border: 0; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25), inset 0 2px 0 rgba(255, 255, 255, 0.18); }
+  .slot.pop { animation: pop 140ms ease-out both; }
+  @keyframes pop { 0% { transform: scale(0.7); } 60% { transform: scale(1.08); } 100% { transform: scale(1); } }
+  .palette { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+  .pal {
+    box-sizing: border-box;
+    min-width: 44px;
+    height: var(--pal);
+    border-radius: 12px;
+    border: 0;
+    padding: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    font-size: 18px; line-height: 1;
+    box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25), inset 0 2px 0 rgba(255, 255, 255, 0.18);
+    touch-action: manipulation;
+  }
+  .pal small { font: 700 9px var(--font-jp); letter-spacing: 0; white-space: nowrap; }
+  .pal:active:not(:disabled) { filter: brightness(1.15); transform: translateY(1px); }
+  .pal:disabled { opacity: 0.35; }
+  .actions { display: flex; gap: 8px; }
+  .cta {
+    flex: 1;
+    min-height: 48px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--ink);
+    font: 700 16px var(--font-jp);
+    touch-action: manipulation;
+  }
+  .cta.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .cta:disabled { opacity: 0.35; }
+  .cta:active:not(:disabled) { filter: brightness(1.15); }
+  .actions .del { flex: 0 0 auto; min-width: 84px; padding: 0 8px; font-size: 14px; }
+  /* 「やり直す」は確認つき。決定と見分けやすいよう控えめに */
+  .actions .restart { flex: 0 0 auto; min-width: 72px; padding: 0 8px; font-size: 13px; background: transparent; color: var(--muted); }
+
+  @media (orientation: landscape) {
+    .app {
+      max-width: 900px;
+      grid-template-columns: minmax(0, 1fr) minmax(240px, 340px);
+      grid-template-rows: auto auto minmax(0, 1fr);
+      grid-template-areas:
+        "head  input"
+        "modes input"
+        "hist  input";
+      column-gap: 20px;
+    }
+    .input { justify-content: center; }
+  }
+  /* 高さの低い横持ち（iPhone の横）：入力側を詰める */
+  @media (orientation: landscape) and (max-height: 500px) {
+    :root { --peg: 44px; --pal: 44px; }
+    .app { gap: 6px; padding-top: max(6px, env(safe-area-inset-top, 0px)); padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)); }
+    .app { grid-template-columns: minmax(0, 1fr) 240px; column-gap: 14px; }
+    h1.title { font-size: 15px; letter-spacing: 0; }
+    .seg { font-size: 12px; }
+    .input { gap: 6px; }
+    .palette { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .cta { min-height: 44px; }
+    .row { height: 30px; }
+  }
+  /* iPhone SE など幅の狭い縦画面 */
+  @media (orientation: portrait) and (max-width: 360px) {
+    :root { --peg: 46px; --pal: 46px; }
+    h1.title { font-size: 16px; letter-spacing: 0.02em; }
+    .seg { font-size: 12px; }
+    .app { gap: 6px; }
+  }
+  /* 低い縦画面（iPhone SE 320×568 など）：入力欄は小さくしすぎず、履歴の高さを確保する */
+  @media (orientation: portrait) and (max-height: 600px) {
+    .input { gap: 6px; }
+    .row { height: 28px; }
+    .mini { width: 22px; height: 22px; font-size: 11px; }
+  }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    box-sizing: border-box;
+    display: flex;
+    /* カードが画面より高いときは縦にスクロールできるようにする */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    padding-top: max(12px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background: rgba(13, 17, 29, 0.78);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+  /* 結果カードは背景を薄く・ぼかさず、履歴が見えるようにする。縦持ちはカードを下に寄せる */
+  .overlay.soft { background: rgba(13, 17, 29, 0.5); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  @media (orientation: portrait) { .overlay.soft .card { margin-bottom: 0; } }
+  .card {
+    width: min(340px, 100%);
+    box-sizing: border-box;
+    margin: auto;
+    flex: 0 0 auto;
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 20px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+    box-shadow: 0 0 0 1px var(--line), 0 20px 50px rgba(0, 0, 0, 0.5);
+  }
+  .card h2 { margin: 0; font-size: 24px; letter-spacing: 0.04em; text-wrap: balance; font-family: var(--font-jp); }
+  .card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; font-family: var(--font-jp); }
+  .card p.lead { color: var(--ink); font-size: 14px; }
+  .card p.note { font-size: 12px; }
+  .card .stats b { color: var(--ink); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .card .stats > span { display: inline; }
+  .card .stats b { white-space: nowrap; }
+  .card .brow { display: flex; gap: 10px; }
+  /* ボタンの段：1段目は主ボタンを横幅いっぱい、2段目に残りを並べる */
+  .card .btns { display: flex; flex-direction: column; gap: 10px; }
+  .card .cta { min-height: 50px; }
+  .card .cta small { display: block; font-size: 11px; font-weight: 500; opacity: 0.8; }
+  .answer { display: flex; justify-content: center; gap: 8px; }
+  .answer .slot { --peg: 40px; }
+  .answer-label { font: 500 11px var(--font-jp); color: var(--muted); letter-spacing: 0.1em; }
+  .help { text-align: left; display: flex; flex-direction: column; gap: 8px; }
+  .help p { color: var(--ink); }
+  .help .demo { display: flex; align-items: center; gap: 6px; }
+  .help .demo .key { width: 12px; height: 12px; }
+  .help .sw { display: flex; flex-wrap: wrap; gap: 6px; }
+  .help .sw span { display: inline-flex; align-items: center; gap: 3px; font: 500 12px var(--font-jp); color: var(--ink); white-space: nowrap; }
+  .help .sw .mini { width: 20px; height: 20px; font-size: 10px; }
+  @media (orientation: landscape) and (max-height: 500px) {
+    .card { padding: 12px 16px; gap: 8px; }
+    .card h2 { font-size: 20px; }
+    .card .cta { min-height: 44px; }
+  }
+  @media (max-height: 600px) {
+    .card { padding: 14px 16px; gap: 8px; }
+    .card h2 { font-size: 20px; }
+    .card .cta { min-height: 46px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .row.fresh, .slot.pop { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <header class="head">
+    <a class="back" id="back" href="../../" aria-label="メニューへ戻る">← メニュー</a>
+    <h1 class="title">いろコード</h1>
+    <button class="tool sound-btn" id="soundBtn" type="button" aria-label="効果音" aria-pressed="true">♪</button>
+    <button class="tool" id="helpBtn" type="button" aria-label="遊び方">？</button>
+  </header>
+
+  <div class="modes" role="group" aria-label="モード">
+    <button class="seg" id="modeDaily" type="button" aria-pressed="false">今日の1問</button>
+    <button class="seg" id="modePractice" type="button" aria-pressed="false">れんしゅう</button>
+    <button class="seg hard" id="hardToggle" type="button" aria-pressed="false" aria-label="むずかしい（れんしゅう）">むずかしい</button>
+  </div>
+
+  <section class="hist" aria-label="これまでの答え">
+    <div class="status">
+      <span>のこり <b id="triesLeft">10</b> 回 <span id="modeNote"></span></span>
+      <span class="legend">●＝位置も色も ／ ○＝色だけ</span>
+    </div>
+    <div class="rows" id="rows" role="list"></div>
+  </section>
+
+  <section class="input" aria-label="答えを入れる">
+    <div class="slots" id="slots">
+      <button class="slot" type="button" data-i="0"></button>
+      <button class="slot" type="button" data-i="1"></button>
+      <button class="slot" type="button" data-i="2"></button>
+      <button class="slot" type="button" data-i="3"></button>
+    </div>
+    <div class="palette" id="palette"></div>
+    <div class="actions">
+      <button class="cta del" id="delBtn" type="button" aria-label="1つ消す">⌫ 消す</button>
+      <button class="cta primary" id="submit" type="button" disabled>決定</button>
+      <button class="cta restart" id="restartBtn" type="button" data-cmd="restart" aria-label="やり直す">やり直す</button>
+    </div>
+  </section>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="card" id="card" role="dialog" aria-modal="true"></div>
+</div>
+
+<script src="../../common/sfx.js"></script>
+<script src="logic.js"></script>
+<script>
+(() => {
+  "use strict";
+  const L = window.IroCodeLogic;
+  const KEY_STATE = "irocode.state";
+  const KEY_STATS = "irocode.stats";
+  const KEY_DAILY = "irocode.daily";
+  const STATS_LIMIT = 1e9;
+  const COLORS = L.COLORS;
+  const $ = (id) => document.getElementById(id);
+  const ui = {
+    rows: $("rows"), slots: $("slots"), palette: $("palette"), submit: $("submit"), del: $("delBtn"),
+    restart: $("restartBtn"), tries: $("triesLeft"), modeNote: $("modeNote"),
+    daily: $("modeDaily"), practice: $("modePractice"), hard: $("hardToggle"),
+    overlay: $("overlay"), card: $("card")
+  };
+  const reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
+
+  // ===== 保存 =====
+  function readJSON(key) {
+    try { const raw = localStorage.getItem(key); return raw === null ? undefined : JSON.parse(raw); } catch (e) { return null; }
+  }
+  function writeJSON(key, v) {
+    try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) { /* 保存できなくても遊べる */ }
+  }
+  function removeKey(key) { try { localStorage.removeItem(key); } catch (e) { /* 使えない環境 */ } }
+
+  const rawState = readJSON(KEY_STATE);
+  const rawStats = readJSON(KEY_STATS);
+  const firstVisit = rawState === undefined && rawStats === undefined;
+  let stats = L.validateStats(rawStats === undefined ? null : rawStats);
+  let daily = L.validateDaily(readJSON(KEY_DAILY) ?? null);
+  let state = null;
+  let hardPref = false;           // れんしゅうの「むずかしい」（いまのゲームから引き継ぐ）
+  let view = "play";              // play | result | locked | help | confirm
+  let resultTimer = 0;
+  let lastAdded = -1;             // 直前に置いたスロット（演出用）
+
+  function saveState() { if (state) writeJSON(KEY_STATE, state); }
+  function today() { return L.todayStr(new Date()); }
+  function maxTries(s = state) { return s.hard ? L.MAX_TRIES.hard : L.MAX_TRIES.normal; }
+  function dailyDone(date) { return !!(daily && daily.date === date && daily.done); }
+  // 今日の1問をすでに遊び終えているのに、手元の盤面がその途中ではない（別の端末操作で記録だけある等）
+  function isLocked() { return state.mode === "daily" && !state.done && dailyDone(state.date); }
+  function inProgress() { return !state.done && !isLocked() && state.rows.length > 0; }
+
+  // ===== 効果音 =====
+  // 共通の効果音（common/sfx.js、案A「木のおもちゃ箱」）。読み込めなかったときは音なしで遊べる
+  const sfx = window.YubiSfx ? window.YubiSfx.create("irocode")
+    : { on: false, play() {}, unlock() {}, toggle() {}, buzz() {} };
+  document.addEventListener("pointerdown", () => sfx.unlock(), { capture: true });
+  document.addEventListener("touchend", () => sfx.unlock(), { capture: true });
+  const soundBtn = $("soundBtn");
+  function renderSoundBtn() {
+    soundBtn.setAttribute("aria-pressed", String(!!sfx.on));
+    soundBtn.setAttribute("aria-label", sfx.on ? "効果音：オン" : "効果音：オフ");
+  }
+  soundBtn.addEventListener("click", () => { sfx.toggle(); renderSoundBtn(); });
+  renderSoundBtn();
+
+  // ===== 色の部品 =====
+  // 記号の色は背景の明るさで白か濃紺を選ぶ（どの色でも読める）
+  function inkFor(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+    const lum = 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+    return lum > 0.22 ? "#0d111d" : "#ffffff";
+  }
+  function paint(el, c) {
+    if (c === undefined || c === null) {
+      el.removeAttribute("data-color");
+      el.style.background = ""; el.style.color = "";
+      return;
+    }
+    const col = COLORS[c];
+    el.dataset.color = String(c);
+    el.style.background = col.hex;
+    el.style.color = inkFor(col.hex);
+  }
+  function peg(c, cls) {
+    const el = document.createElement("span");
+    el.className = cls;
+    paint(el, c);
+    el.textContent = COLORS[c].symbol;
+    el.setAttribute("aria-hidden", "true");
+    return el;
+  }
+  // パレット（6色すべてに記号と名前）
+  COLORS.forEach((col, c) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "pal";
+    paint(b, c);
+    b.setAttribute("aria-label", col.name);
+    b.innerHTML = `<span aria-hidden="true"></span><small aria-hidden="true"></small>`;
+    b.firstChild.textContent = col.symbol;
+    b.lastChild.textContent = col.name;
+    ui.palette.appendChild(b);
+  });
+  const slotEls = Array.from(ui.slots.querySelectorAll(".slot"));
+
+  // ===== 描画 =====
+  function rowEl(r, i, fresh) {
+    const el = document.createElement("div");
+    el.className = "row" + (fresh && !reduceMotion.matches ? " fresh" : "");
+    el.setAttribute("role", "listitem");
+    el.dataset.hit = String(r.hit);
+    el.dataset.blow = String(r.blow);
+    el.setAttribute("aria-label", `${i + 1}回目：${r.g.map((c) => COLORS[c].name).join("・")}、位置も色も ${r.hit}、色だけ ${r.blow}`);
+    const no = document.createElement("span"); no.className = "no"; no.textContent = String(i + 1); no.setAttribute("aria-hidden", "true");
+    const pegs = document.createElement("span"); pegs.className = "pegs";
+    r.g.forEach((c) => pegs.appendChild(peg(c, "mini")));
+    const keys = document.createElement("span"); keys.className = "keys"; keys.setAttribute("aria-hidden", "true");
+    for (let k = 0; k < 4; k++) {
+      const d = document.createElement("span");
+      d.className = "key" + (k < r.hit ? " hit" : k < r.hit + r.blow ? " blow" : "");
+      keys.appendChild(d);
+    }
+    const sc = document.createElement("span"); sc.className = "score"; sc.setAttribute("aria-hidden", "true");
+    sc.innerHTML = `<span></span><span></span>`;
+    sc.children[0].textContent = "●" + r.hit;
+    sc.children[1].textContent = "○" + r.blow;
+    if (!r.hit) sc.children[0].className = "z";
+    if (!r.blow) sc.children[1].className = "z";
+    el.append(no, pegs, keys, sc);
+    return el;
+  }
+  function renderRows(freshLast) {
+    ui.rows.textContent = "";
+    if (!state.rows.length) {
+      const p = document.createElement("div");
+      p.className = "empty";
+      p.textContent = state.hard
+        ? "色を4つえらんで「決定」。むずかしい：同じ色が入っていることもあります。"
+        : "色を4つえらんで「決定」。同じ色は2回使われていません。";
+      ui.rows.appendChild(p);
+    }
+    state.rows.forEach((r, i) => ui.rows.appendChild(rowEl(r, i, freshLast && i === state.rows.length - 1)));
+    // 最新の行が見えるよう下端へ
+    ui.rows.scrollTop = ui.rows.scrollHeight;
+  }
+  function renderInput() {
+    const locked = isLocked();
+    const playing = !state.done && !locked;
+    slotEls.forEach((el, i) => {
+      const c = state.cur[i];
+      paint(el, c);
+      el.textContent = c === undefined ? "" : COLORS[c].symbol;
+      el.classList.toggle("next", playing && i === state.cur.length);
+      el.classList.toggle("pop", i === lastAdded && !reduceMotion.matches);
+      el.setAttribute("aria-label", c === undefined ? `${i + 1}つ目：空き` : `${i + 1}つ目：${COLORS[c].name}（タップで消す）`);
+      el.disabled = !playing || c === undefined;
+    });
+    lastAdded = -1;
+    ui.palette.querySelectorAll(".pal").forEach((b) => {
+      const c = Number(b.dataset.color);
+      // ふつうは同じ色を2回入れられない（入れてある色は押せない）
+      b.disabled = !playing || state.cur.length >= 4 || (!state.hard && state.cur.includes(c));
+    });
+    ui.submit.disabled = !playing || state.cur.length !== 4;
+    ui.del.disabled = !playing || state.cur.length === 0;
+    ui.restart.disabled = !playing || (state.rows.length === 0 && state.cur.length === 0);
+  }
+  function renderTop() {
+    const left = maxTries() - state.rows.length;
+    ui.tries.textContent = String(Math.max(0, left));
+    ui.modeNote.textContent = state.mode === "daily" ? "（今日の1問）" : state.hard ? "（むずかしい）" : "（ふつう）";
+    ui.daily.setAttribute("aria-pressed", String(state.mode === "daily"));
+    ui.practice.setAttribute("aria-pressed", String(state.mode === "practice"));
+    ui.hard.setAttribute("aria-pressed", String(state.mode === "practice" && state.hard));
+  }
+  function render(freshLast = false) {
+    renderTop();
+    renderRows(freshLast);
+    renderInput();
+  }
+
+  // ===== 操作 =====
+  function place(c) {
+    if (view !== "play" || state.done || isLocked() || state.cur.length >= 4) return;
+    if (!state.hard && state.cur.includes(c)) return;
+    state.cur.push(c);
+    lastAdded = state.cur.length - 1;
+    sfx.play("place", state.cur.length);
+    saveState();
+    renderInput();
+  }
+  function removeAt(i) {
+    if (view !== "play" || state.done || isLocked() || i < 0 || i >= state.cur.length) return;
+    state.cur.splice(i, 1);
+    sfx.play("remove");
+    saveState();
+    renderInput();
+  }
+  function submit() {
+    if (view !== "play" || state.done || isLocked() || state.cur.length !== 4) return;
+    const g = state.cur.slice();
+    const r = L.score(g, state.secret);
+    state.rows.push({ g, hit: r.hit, blow: r.blow });
+    state.cur = [];
+    if (r.hit === 4) state.done = "win";
+    else if (state.rows.length >= maxTries()) state.done = "lose";
+    let newBest = false;
+    if (state.done) newBest = record();
+    saveState();
+    render(true);
+    sfx.play("submit");
+    if (!state.done) {
+      setTimeout(() => sfx.play("hint", r.hit), 160);
+      return;
+    }
+    // 最後の行を少し見せてから結果カードを出す
+    clearTimeout(resultTimer);
+    resultTimer = setTimeout(() => {
+      resultTimer = 0;
+      showResult(true, newBest);
+    }, reduceMotion.matches ? 250 : 650);
+  }
+  // 成績を記録（今日の1問は1日1回だけ）。ベスト更新なら true
+  function record() {
+    const win = state.done === "win";
+    const tries = state.rows.length;
+    if (state.mode === "daily") {
+      if (dailyDone(state.date)) return false;
+      daily = { date: state.date, done: true, win, tries };
+      writeJSON(KEY_DAILY, daily);
+    }
+    const prevBest = stats.best;
+    // 回数は10億で止める（それ以上は保存データの検証に通らない）
+    const room = stats.played < STATS_LIMIT;
+    if (room) stats.played++;
+    let newBest = false;
+    if (win) {
+      if (room) {
+        stats.wins++;
+        const k = String(tries);
+        stats.dist[k] = (stats.dist[k] || 0) + 1;
+      }
+      if (prevBest === null || tries < prevBest) { stats.best = tries; newBest = prevBest !== null; }
+    }
+    writeJSON(KEY_STATS, stats);
+    return newBest;
+  }
+
+  // ===== ゲームの開始 =====
+  function start(mode, hard) {
+    clearTimeout(resultTimer); resultTimer = 0;
+    if (mode === "daily") state = L.newGame({ mode: "daily", hard: false, date: today() });
+    else { hardPref = !!hard; state = L.newGame({ mode: "practice", hard: hardPref }); }
+    saveState();
+    hideOverlay();
+    render();
+    if (isLocked()) showLocked();
+    else sfx.play("start");
+  }
+  // 途中なら確認してから実行する
+  function guard(msg, okLabel, fn) {
+    if (!inProgress()) { fn(); return; }
+    showConfirm(msg, okLabel, fn);
+  }
+  ui.daily.addEventListener("click", () => {
+    if (view !== "play" || state.mode === "daily") return;
+    sfx.play("toggle");
+    guard("いまのれんしゅうをやめて、今日の1問にしますか？", "今日の1問へ", () => start("daily"));
+  });
+  ui.practice.addEventListener("click", () => {
+    if (view !== "play" || state.mode === "practice") return;
+    sfx.play("toggle");
+    guard("今日の1問を途中でやめて、れんしゅうにしますか？（今日の1問は、次に開いたとき最初からになります）", "れんしゅうへ", () => start("practice", hardPref));
+  });
+  ui.hard.addEventListener("click", () => {
+    if (view !== "play") return;
+    const next = state.mode === "practice" ? !state.hard : true;
+    sfx.play("toggle");
+    guard(next ? "むずかしい（同じ色あり・8回まで）で、新しい問題にしますか？" : "ふつう（同じ色なし・10回まで）で、新しい問題にしますか？",
+      next ? "むずかしくする" : "ふつうにする", () => start("practice", next));
+  });
+  function askRestart() {
+    if (view !== "play" || state.done || isLocked()) return;
+    if (!state.rows.length && !state.cur.length) return;
+    const again = () => {
+      if (state.mode === "daily") { state = L.newGame({ mode: "daily", hard: false, date: state.date }); saveState(); render(); sfx.play("start"); hideOverlay(); }
+      else start("practice", state.hard);
+    };
+    if (!state.rows.length) { again(); return; }
+    showConfirm(state.mode === "daily" ? "今日の1問を、最初からやり直しますか？（問題は同じです）" : "いまの問題をやめて、新しい問題でやり直しますか？",
+      "やり直す", again, "やり直す？");
+  }
+
+  // ===== カード =====
+  let confirmFn = null, confirmBack = null;
+  function showCard(html, { soft = false } = {}) {
+    ui.card.innerHTML = html;
+    ui.overlay.classList.toggle("soft", soft);
+    ui.overlay.hidden = false;
+    ui.overlay.scrollTop = 0;
+    const primary = ui.card.querySelector(".primary");
+    if (primary) primary.focus({ preventScroll: true });
+  }
+  function hideOverlay() { ui.overlay.hidden = true; ui.overlay.classList.remove("soft"); view = "play"; confirmFn = null; confirmBack = null; }
+  function setText(sel, text) { const el = ui.card.querySelector(sel); if (el) el.textContent = text; }
+  function showConfirm(msg, okLabel, fn, title = "やめて切り替える？") {
+    confirmFn = fn;
+    view = "confirm";
+    showCard(`
+      <h2 data-f="t"></h2>
+      <p class="lead" data-f="m"></p>
+      <div class="brow">
+        <button class="cta" type="button" data-cmd="cancel">やめる</button>
+        <button class="cta primary" type="button" data-cmd="confirm" data-f="ok"></button>
+      </div>`);
+    setText('[data-f="t"]', title);
+    setText('[data-f="m"]', msg);
+    setText('[data-f="ok"]', okLabel);
+  }
+  function swatches() {
+    return COLORS.map((c, i) => `<span><span class="mini" data-sw="${i}"></span><span data-swn="${i}"></span></span>`).join("");
+  }
+  function fillSwatches() {
+    ui.card.querySelectorAll("[data-sw]").forEach((el) => { const c = Number(el.dataset.sw); paint(el, c); el.textContent = COLORS[c].symbol; });
+    ui.card.querySelectorAll("[data-swn]").forEach((el) => { el.textContent = COLORS[Number(el.dataset.swn)].name; });
+  }
+  function showHelp() {
+    const back = view;
+    if (back === "result" || back === "locked" || back === "confirm") return;
+    view = "help";
+    showCard(`
+      <h2>遊び方</h2>
+      <div class="help">
+        <p>6色のうち4つが、決まった順に隠れています。色をえらんで4つ並べ、「決定」で答えます。</p>
+        <p class="demo"><span class="key hit"></span>●＝位置も色も合っている数</p>
+        <p class="demo"><span class="key blow"></span>○＝色は合っているが位置がちがう数</p>
+        <p>ふつうは同じ色なし・10回まで。「むずかしい」は同じ色あり・8回まで（れんしゅうだけ）。</p>
+        <p>「今日の1問」は日付ごとに決まった問題で、記録は1日1回。「れんしゅう」は何度でも。</p>
+        <p>入れた色はタップで消せます。</p>
+        <div class="sw">${swatches()}</div>
+      </div>
+      <div class="btns">
+        <div class="brow"><button class="cta primary" type="button" data-cmd="close">はじめる</button></div>
+        <div class="brow"><button class="cta" type="button" data-cmd="menu">メニューへ</button></div>
+      </div>`);
+    fillSwatches();
+  }
+  function answerHTML() {
+    return `<div><div class="answer-label">こたえ</div><div class="answer">${[0, 1, 2, 3].map((i) => `<span class="slot" data-a="${i}"></span>`).join("")}</div></div>`;
+  }
+  function fillAnswer() {
+    ui.card.querySelectorAll("[data-a]").forEach((el) => {
+      const c = state.secret[Number(el.dataset.a)];
+      paint(el, c);
+      el.textContent = COLORS[c].symbol;
+      el.setAttribute("aria-label", COLORS[c].name);
+    });
+    const ans = ui.card.querySelector(".answer");
+    if (ans) ans.setAttribute("aria-label", "こたえ：" + state.secret.map((c) => COLORS[c].name).join("・"));
+  }
+  function statsHTML() {
+    return `<p class="stats"><span>これまで <b data-f="played"></b> 回・正解 <b data-f="wins"></b> 回</span> <span>／ ベスト <b data-f="best"></b></span></p>`;
+  }
+  function fillStats() {
+    setText('[data-f="played"]', stats.played.toLocaleString());
+    setText('[data-f="wins"]', stats.wins.toLocaleString());
+    setText('[data-f="best"]', stats.best === null ? "—" : stats.best + " 回");
+  }
+  function showResult(withSound, newBest = false) {
+    view = "result";
+    const win = state.done === "win";
+    const tries = state.rows.length;
+    const isDaily = state.mode === "daily";
+    if (withSound) {
+      if (win) { sfx.play("win"); sfx.buzz([40, 30, 60]); if (newBest) setTimeout(() => sfx.play("best"), 700); }
+      else { sfx.play("lose"); sfx.buzz([60, 40, 120]); }
+    }
+    showCard(`
+      <h2 data-f="t"></h2>
+      <p class="lead" data-f="m"></p>
+      ${answerHTML()}
+      ${statsHTML()}
+      ${isDaily ? `<p class="note" data-f="daily"></p>` : ""}
+      <div class="btns">
+        <div class="brow"><button class="cta primary" type="button" data-cmd="again">もう一度${isDaily ? "<small>（れんしゅう）</small>" : ""}</button></div>
+        <div class="brow"><button class="cta" type="button" data-cmd="menu">メニューへ</button></div>
+      </div>`, { soft: true });
+    setText('[data-f="t"]', win ? "せいかい！" : "ざんねん");
+    setText('[data-f="m"]', win ? `${tries}回目で当てました。${newBest ? "ベスト更新！" : ""}` : `${maxTries()}回で当てられませんでした。`);
+    setText('[data-f="daily"]', win ? "今日はクリア済み・次は明日" : "今日の1問はここまで・次は明日");
+    fillAnswer();
+    fillStats();
+  }
+  // 今日の1問をすでに遊んだ（盤面は残っていない）
+  function showLocked() {
+    view = "locked";
+    showCard(`
+      <h2>今日の1問</h2>
+      <p class="lead" data-f="m"></p>
+      ${answerHTML()}
+      ${statsHTML()}
+      <p class="note">次は明日</p>
+      <div class="btns">
+        <div class="brow"><button class="cta primary" type="button" data-cmd="again">もう一度<small>（れんしゅう）</small></button></div>
+        <div class="brow"><button class="cta" type="button" data-cmd="menu">メニューへ</button></div>
+      </div>`, { soft: true });
+    setText('[data-f="m"]', daily.win ? `今日はクリア済み（${daily.tries}回目で正解）` : "今日の1問は遊び終わりました");
+    fillAnswer();
+    fillStats();
+  }
+
+  ui.overlay.addEventListener("click", (e) => {
+    const cmd = e.target.closest("[data-cmd]")?.dataset.cmd;
+    if (!cmd) return;
+    if (cmd === "again") start("practice", state.mode === "practice" ? state.hard : hardPref);
+    else if (cmd === "menu") { saveState(); location.href = "../../"; }
+    else if (cmd === "close") { hideOverlay(); renderInput(); }
+    else if (cmd === "cancel") { hideOverlay(); renderInput(); }
+    else if (cmd === "confirm") { const fn = confirmFn; hideOverlay(); if (fn) fn(); }
+  });
+  $("helpBtn").addEventListener("click", showHelp);
+  ui.restart.addEventListener("click", askRestart);
+  ui.palette.addEventListener("click", (e) => {
+    const b = e.target.closest(".pal");
+    if (b && !b.disabled) place(Number(b.dataset.color));
+  });
+  ui.slots.addEventListener("click", (e) => {
+    const s = e.target.closest(".slot");
+    if (s) removeAt(Number(s.dataset.i));
+  });
+  ui.del.addEventListener("click", () => removeAt(state.cur.length - 1));
+  ui.submit.addEventListener("click", submit);
+  $("back").addEventListener("click", () => saveState());
+
+  // アプリを隠す・閉じる直前にも保存しておく。戻ってきたとき日付が変わっていれば今日の1問を差し替える
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { saveState(); return; }
+    if (state && state.mode === "daily" && state.date !== today() && view !== "confirm" && view !== "help") start("daily");
+  });
+  window.addEventListener("pagehide", saveState);
+
+  // ===== キーボード（あれば） =====
+  window.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "m" || e.key === "M") { sfx.unlock(); sfx.toggle(); renderSoundBtn(); return; }
+    if (e.key === "Escape" && (view === "help" || view === "confirm")) { hideOverlay(); renderInput(); return; }
+    if (view !== "play") return;
+    sfx.unlock();
+    if (e.key >= "1" && e.key <= "6") { place(Number(e.key) - 1); return; }
+    if (e.key === "Backspace") { e.preventDefault(); removeAt(state.cur.length - 1); return; }
+    if (e.key === "Enter" && document.activeElement === document.body) { e.preventDefault(); submit(); }
+  });
+
+  // ===== iOS：長押しメニュー・ピンチ拡大・ダブルタップ拡大・引っ張り更新を止める（ほかのゲームと同じ方式） =====
+  document.addEventListener("contextmenu", (e) => e.preventDefault());
+  ["gesturestart", "gesturechange", "gestureend"].forEach((type) => document.addEventListener(type, (e) => e.preventDefault(), { passive: false }));
+  // 履歴（.rows）とカード（.overlay）は、はみ出したとき縦スクロールできるようにする
+  document.addEventListener("touchmove", (e) => { if (e.cancelable && !e.target.closest?.(".overlay, .rows")) e.preventDefault(); }, { passive: false });
+  document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: false });
+  // 350ms 以内の2回目のタップは touchend を止め（拡大を防ぐ）、click は自分で送る（色を素早く続けて押せる）
+  let lastTapEnd = 0, tapStart = null, lastTapCard = false;
+  document.addEventListener("touchstart", (e) => {
+    const t = e.touches[0];
+    tapStart = e.touches.length === 1 && t ? { x: t.clientX, y: t.clientY } : null;
+  }, { passive: true, capture: true });
+  document.addEventListener("touchend", (e) => {
+    const target = e.target;
+    if (!target.closest) return;
+    const t = e.changedTouches[0];
+    const isTap = tapStart && t && e.touches.length === 0 && Math.hypot(t.clientX - tapStart.x, t.clientY - tapStart.y) < 12;
+    const now = performance.now();
+    const quick = isTap && now - lastTapEnd < 350;
+    const prevCard = lastTapCard;
+    if (isTap) { lastTapEnd = now; lastTapCard = !!target.closest(".overlay"); }
+    if (target.closest(".overlay")) return;
+    if (!e.cancelable) return;
+    if (quick) {
+      e.preventDefault();
+      // カードのボタン（もう一度など）の直後の2回目は、下に出てきた画面のボタンを押したことにしない
+      if (prevCard) return;
+      const btn = target.closest("button, a");
+      if (btn && !btn.disabled) btn.click();
+    }
+  }, { passive: false });
+
+  // ===== テスト用（読み取り専用） =====
+  window.IroCodeGame = Object.freeze({ getState: () => (state ? JSON.parse(JSON.stringify(state)) : null) });
+
+  // ===== 起動 =====
+  state = L.validateState(rawState === undefined ? null : rawState);
+  if (rawState !== undefined && !state) removeKey(KEY_STATE);      // 不正な保存データは消す
+  if (rawStats !== undefined && rawStats !== null && JSON.stringify(stats) !== JSON.stringify(rawStats)) writeJSON(KEY_STATS, stats);
+  // 前の日の「今日の1問」は持ち越さない（今日の問題にする）
+  if (state && state.mode === "daily" && state.date !== today()) state = null;
+  if (state) {
+    if (state.mode === "practice") hardPref = state.hard;
+    saveState();
+    render();
+    if (state.done) showResult(false);
+    else if (isLocked()) showLocked();
+  } else {
+    state = L.newGame({ mode: "daily", hard: false, date: today() });
+    saveState();
+    render();
+    if (isLocked()) showLocked();
+  }
+  // 初めて開いたときは遊び方を出す（2回目からは ？ ボタンで）
+  if (firstVisit && view === "play") showHelp();
+})();
+
+// オフラインでも遊べるようにする（https か localhost のときだけ有効）
+if ("serviceWorker" in navigator && window.isSecureContext && location.protocol !== "file:") {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("../../sw.js").catch(() => { /* 登録できなくてもゲームは遊べる */ });
+  });
+}
+</script>
+</body>
+</html>
