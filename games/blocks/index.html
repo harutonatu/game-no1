@@ -104,6 +104,19 @@
   }
   .stat.score { grid-column: 1 / -1; }
   .stat.score b { font-size: 22px; color: var(--accent); }
+  /* 縦持ちはスコア欄の幅が狭い（幅375で約107px）ため、SCORE を1段目、LEVEL・LINES を2段目、
+     BEST を3段目（見出しと数字を1行）に並べ、SCORE と BEST に横幅いっぱいを使わせる。
+     それでも入りきらない桁数のときは fitStat()（下のスクリプト）が数字の文字を縮める */
+  @media (orientation: portrait) {
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px 8px; }
+    .stats .label { line-height: 1.1; }
+    .stats .stat.score .label { line-height: 12px; }
+    .stat b { font-size: 16px; line-height: 1.1; }
+    .stat.score b { font-size: 21px; line-height: 22px; }
+    .stats .stat.best { grid-column: 1 / -1; flex-direction: row; align-items: baseline; gap: 6px; height: 15px; }
+    .stat.best .label { flex: none; }
+    .stat.best b { flex: 1 1 auto; font-size: 13px; line-height: 15px; }
+  }
   /* メニュー・一時停止・効果音ボタン。縦持ちは盤面の右上の余白、横持ちはスコア欄の上に置く。
      縦持ちで盤面と重ならないよう、resize() でこの列の幅と間隔を盤面から差し引く */
   .sys {
@@ -977,6 +990,31 @@
     ui.level.textContent = level || 1;
     ui.lines.textContent = lines || 0;
     ui.best.textContent = Math.max(best, score || 0).toLocaleString();
+  }
+  // スコア欄の数字が欄の幅に入りきらないときは、ばいばいタイルのタイルと同じく文字を縮めて「…」で省略されないようにする。
+  // 数字が変わったとき（MutationObserver）・画面の大きさが変わったとき・Web フォントの読み込み後に測り直す
+  const statEls = [...document.querySelectorAll(".stat b")];
+  function fitStat(el) {
+    el.style.fontSize = "";
+    el.style.lineHeight = "";
+    if (!el.offsetParent || el.scrollWidth <= el.clientWidth) return;
+    const cs = getComputedStyle(el);
+    const lh = cs.lineHeight;
+    let fs = parseFloat(cs.fontSize);
+    // 行の高さは元のまま保ち、縮めても欄の高さが変わらないようにする
+    if (lh.endsWith("px")) el.style.lineHeight = lh;
+    fs = Math.max(8, Math.floor(fs * el.clientWidth / el.scrollWidth * 2) / 2);
+    el.style.fontSize = fs + "px";
+    while (fs > 8 && el.scrollWidth > el.clientWidth) {
+      fs -= 0.5;
+      el.style.fontSize = fs + "px";
+    }
+  }
+  function fitStats() { statEls.forEach(fitStat); }
+  if (window.MutationObserver) new MutationObserver(fitStats).observe(document.querySelector(".stats"), { childList: true, characterData: true, subtree: true });
+  if (document.fonts) {
+    document.fonts.ready.then(fitStats).catch(() => {});
+    if (document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", fitStats);
   }
 
   // ===== メインループ =====
