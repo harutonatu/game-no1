@@ -4,6 +4,7 @@
  * 使い方（今の sfx と同じ呼び出し方のまま差し替えられる）
  *   const sfx = YubiSfx.create("blocks");   // ブロックパズル
  *   const sfx = YubiSfx.create("tiles");    // ばいばいタイル（"2048" でも可）
+ *   const sfx = YubiSfx.create("zenmai");   // ゼンマイさんぽ
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -16,7 +17,7 @@
   const PENTA = [0, 2, 4, 7, 9];        // ド・レ・ミ・ソ・ラ（どの順に鳴っても濁らない音階）
   const MAX_VOICES = 36;                // 同時に鳴らす部品の上限（連打で濁らないように）
   // 同じ音を続けて鳴らす最短の間隔（秒）。長押しの連続移動（45ms 間隔）は通す
-  const GAP = { move: 0.03, rotate: 0.03, hold: 0.05, merge: 0.03, tap: 0.04, undo: 0.06 };
+  const GAP = { move: 0.03, rotate: 0.03, hold: 0.05, merge: 0.03, tap: 0.04, undo: 0.06, tick: 0.045, unwind: 0.045, limit: 0.25, step: 0.08 };
 
   function create(game, opts) {
     opts = opts || {};
@@ -211,8 +212,31 @@
       undo: () => { const t = N(); noise(t, 0.07, { freq: 700, to: 1800, q: 0.7, vol: 0.04, a: 0.04 }); mallet(A5, t + 0.02, { vol: 0.08, decay: 0.06, bright: 0.3 }); mallet(E5, t + 0.065, { vol: 0.08, decay: 0.08, bright: 0.3 }); }
     };
 
+    // ゼンマイさんぽ：start・best・toggle は共通の音を使う
+    const ZENMAI = {
+      // 巻く1/8回転ごと。極小の「カチ」。高さを少しずつ変えて、続いても単調で耳障りにならない
+      tick: () => wood(1500 * jit(90), N(), { vol: 0.022, dur: 0.02, jit: 60 }),
+      // 戻す：少し低く、さらに小さい「コト」
+      unwind: () => wood(1050 * jit(90), N(), { vol: 0.02, dur: 0.022, jit: 60 }),
+      // そろそろ限界：低めの木の音を2つ。控えめで、責めない
+      limit: () => { const t = N(); mallet(E5, t, { vol: 0.07, decay: 0.09, bright: 0.2 }); mallet(392, t + 0.12, { vol: 0.07, decay: 0.12, bright: 0.2 }); },
+      // 手を離す：ゼンマイが解ける「ジー」＋小さな木の音
+      release: () => { const t = N(); noise(t, 0.12, { freq: 1800, to: 2600, q: 1.6, vol: 0.035, a: 0.02 }); wood(660, t + 0.01, { vol: 0.06, dur: 0.04 }); },
+      // 歩く1歩：小さなトコッ
+      step: () => wood(430 * jit(60), N(), { vol: 0.05, dur: 0.035, jit: 40 }),
+      // ぴたっと止まる：やさしい2音
+      stop: () => { const t = N(); wood(330, t, { vol: 0.09, dur: 0.06 }); mallet(C5, t + 0.05, { vol: 0.1, decay: 0.18, bright: 0.3 }); },
+      // 崖から落ちる：すべり落ちる音（最後は小さくポトン）
+      fall: () => { const t = N(); partial(520, t, 0.4, { vol: 0.06, type: "triangle", from: 760, fromT: 0.02, to: 150, toT: 0.38 }); wood(150, t + 0.42, { vol: 0.09, dur: 0.07, jit: 20 }); },
+      // バネが切れる：ビヨンと伸びる音
+      break: () => { const t = N(); wood(300, t, { vol: 0.1, dur: 0.05 }); partial(900, t + 0.02, 0.3, { vol: 0.05, type: "triangle", from: 400, fromT: 0.12, to: 220, toT: 0.28 }); noise(t, 0.05, { freq: 3000, q: 1, vol: 0.04 }); },
+      // 星が1つずつ灯る（n=1〜3）。下がる前に明るく
+      star: (n) => { n = Math.max(1, Math.min(3, n || 1)); const f = [C5, E5, G5][n - 1]; const t = N(); mallet(f, t, { vol: 0.11, decay: 0.2 }); bell(f * 2, t + 0.03, { vol: 0.035, decay: 0.3 }); },
+      clear: () => { const t = N(); [C5, E5, G5, C6].forEach((f, i) => mallet(f, t + i * 0.07, { vol: 0.1, decay: i === 3 ? 0.4 : 0.16 })); bell(G6, t + 0.3, { vol: 0.04, decay: 0.4 }); }
+    };
+
     const table = Object.assign({}, COMMON,
-      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : {});
+      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "zenmai" ? ZENMAI : {});
 
     return {
       get on() { return on; },
