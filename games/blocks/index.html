@@ -152,7 +152,8 @@
     justify-self: start;
     display: grid;
     grid-template-columns: repeat(3, var(--btn));
-    grid-template-rows: repeat(2, calc(var(--btn) * 0.82));
+    /* 高さは 44px 以上（iPhone SE 縦では --btn*0.82 が 43px になるため） */
+    grid-template-rows: repeat(2, max(44px, calc(var(--btn) * 0.82)));
     /* DROP（一気に落とす）と ▼（ゆっくり落とす）は 18px 離し、色も変えて押し間違えにくくする */
     gap: 18px 6px;
     align-self: end;
@@ -289,7 +290,10 @@
   }
   /* iPhone SE など幅の狭い縦画面では BEST を省く（ゲームオーバー画面には表示される） */
   @media (orientation: portrait) and (max-width: 360px) {
+    /* 「LEVEL」「LINES」の見出しがくっつかないよう、スコア欄の幅を少し広げ（左右の間隔 12→8px）、文字間を詰める */
+    .app { column-gap: 8px; }
     .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stats .label { letter-spacing: 0.02em; }
     .stat.best { display: none; }
   }
   @media (prefers-reduced-motion: reduce) { .key { transition: none; } }

@@ -203,12 +203,23 @@
         if (t !== ".") drawBlock(ctx, ox + x * s, oy + y * s, s, COLORS[t]);
       }));
     },
-    // 2×2 の数字タイル（ばいばいタイルと同じ配色）
+    // 2×2 の数字タイル（ばいばいタイルの .v2・.v8・.v64・.v2048 と同じ配色。2048 は光彩つき）
     tiles(ctx, w, h) {
-      const tiles = [[2, "#3a4260", "#ece6d6"], [8, "#5b84f0", "#0d111d"], [64, "#f2cc4b", "#0d111d"], [2048, "#f0a43a", "#231705"]];
+      const tiles = [[2, "#32374e", "#ffffff"], [8, "#265ad5", "#ffffff"], [64, "#e873bd", "#0d111d"], [2048, "#fcd590", "#0d111d", true]];
       const gap = Math.round(w * 0.07), s = (Math.min(w, h) - gap * 3) / 2;
-      tiles.forEach(([v, bg, fg], i) => {
+      tiles.forEach(([v, bg, fg, glow], i) => {
         const x = gap + (i % 2) * (s + gap), y = gap + Math.floor(i / 2) * (s + gap);
+        if (glow) {
+          // ゲーム内の box-shadow: 0 0 0 2px var(--accent), 0 0 18px rgba(240,164,58,0.6) を、絵の大きさに合わせて描く
+          ctx.save();
+          ctx.shadowColor = "rgba(240, 164, 58, 0.6)";
+          // shadowBlur は拡大率（devicePixelRatio）の影響を受けないため、拡大率を掛ける
+          ctx.shadowBlur = Math.max(6, gap * 0.9) * (ctx.getTransform ? ctx.getTransform().a : 1);
+          ctx.fillStyle = "#f0a43a";
+          roundRect(ctx, x - 2, y - 2, s + 4, s + 4, s * 0.16 + 2);
+          ctx.fill();
+          ctx.restore();
+        }
         ctx.fillStyle = bg;
         roundRect(ctx, x, y, s, s, s * 0.16);
         ctx.fill();

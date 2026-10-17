@@ -1,6 +1,6 @@
 // オフラインでも遊べるようにするための Service Worker（ゲーム集「ゆびあそび」全体で1つ）
 // ファイルを更新したら CACHE_VERSION を上げる（古いキャッシュを削除させるため）
-const CACHE_VERSION = "v6";
+const CACHE_VERSION = "v7";
 const APP_PREFIX = "yubiasobi-app-";
 const APP_CACHE = `${APP_PREFIX}${CACHE_VERSION}`;
 const FONT_CACHE = "yubiasobi-fonts";

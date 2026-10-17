@@ -335,14 +335,25 @@
   .card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; font-family: "Hiragino Sans", system-ui, sans-serif; }
   .card .big { font-family: var(--font-mono); font-size: 28px; color: var(--accent); font-variant-numeric: tabular-nums; }
   .card .row { display: flex; gap: 10px; }
-  /* 3つ並べる段（結果カードの［1手戻す］［メニューへ］［もう一度］） */
-  .card .row.three { gap: 8px; }
-  .card .row.three .cta { font-size: 14px; padding: 0 2px; min-width: 0; white-space: nowrap; }
-  /* iPhone SE など幅の狭い画面では、カードの余白を詰めて3つのボタンの文字を1行に収める */
+  /* ボタンの段：1段目は主ボタンを横幅いっぱい、2段目に残りを並べる（ブロックパズルの一時停止画面と同じ形）。
+     段の間は 10px（カードの gap が詰まる横持ちでも変わらない） */
+  .card .btns { display: flex; flex-direction: column; gap: 10px; }
+  /* 結果カード（ゲームオーバー）：見出しとスコアを1行、最大タイルとベストを1行にまとめて低くし、
+     縦持ちの小さい画面でも盤面の上から2段以上が隠れないようにする */
+  .card.compact { padding: 12px 16px; gap: 8px; }
+  .card.compact .ohead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 10px; }
+  .card.compact h2 { font-size: 18px; line-height: 1.2; }
+  .card.compact .oscore { display: flex; align-items: baseline; gap: 6px; margin-left: auto; }
+  .card.compact .big { font-size: 22px; line-height: 1.1; }
+  .card.compact .reach { font-size: 12px; line-height: 1.4; }
+  .card.compact .reach > span { display: inline-block; white-space: nowrap; }
+  .card.compact .cta { min-height: 44px; }
+  /* iPhone SE など幅の狭い画面：余白と文字をさらに詰め、6桁のスコアでも見出しと1行に収める */
   @media (max-width: 360px) {
-    .card { padding-left: 14px; padding-right: 14px; }
-    .card .row.three { gap: 6px; }
-    .card .row.three .cta { font-size: 13px; }
+    .card.compact { padding: 10px 12px; gap: 6px; }
+    .card.compact h2 { font-size: 17px; }
+    .card.compact .big { font-size: 20px; }
+    .card.compact .oscore .label { letter-spacing: 0.06em; }
   }
   .cta:disabled { opacity: 0.35; }
   .card .reach { color: var(--ink); }
@@ -544,7 +555,7 @@
   let keepPlaying = false;   // 2048 達成後に「続ける」を選んだか
   let moves = 0;
   let seed = newSeed();      // 次に出るタイルを決める乱数の種
-  let bestAtStart = best;    // このゲームを始めた（または保存データから再開した）時点のベスト
+  let bestAtStart = best;    // このゲームを始めた時点のベスト（再読み込み後も使えるよう保存データに入れる）
   let bestFlashed = false;   // このゲームで「ベスト超え」の演出をしたか（1ゲームに1回）
   let topTile = 0;           // このゲームで届いた最大タイル（新記録の音を鳴らす判定用）
   let state = "play";        // play | win | over | confirm
@@ -566,7 +577,7 @@
   }
   function saveState() {
     try {
-      localStorage.setItem(KEY_STATE, JSON.stringify({ v: 1, grid, score, prev, keepPlaying, moves, seed, bestFlashed, topTile }));
+      localStorage.setItem(KEY_STATE, JSON.stringify({ v: 1, grid, score, prev, keepPlaying, moves, seed, bestAtStart, bestFlashed, topTile }));
     } catch (e) { /* 保存できなくても遊べる */ }
   }
   // 保存データを読む。どこか1つでも不正なら全体を捨てる（新しいゲームになる）
@@ -578,6 +589,7 @@
       if (s.moves !== undefined && !isCount(s.moves)) return null;
       if (s.seed !== undefined && !isSeed(s.seed)) return null;
       if (s.topTile !== undefined && !isTile(s.topTile)) return null;
+      if (s.bestAtStart !== undefined && !isCount(s.bestAtStart)) return null;
       let p = null;
       if (s.prev !== null && s.prev !== undefined) {
         if (typeof s.prev !== "object" || !validGrid(s.prev.grid) || !isCount(s.prev.score)) return null;
@@ -588,7 +600,7 @@
       const sd = s.seed !== undefined ? s.seed : newSeed();
       if (p && p.seed === undefined) p.seed = sd;
       return {
-        grid: s.grid, score: s.score, prev: p, keepPlaying: !!s.keepPlaying, moves: s.moves || 0, seed: sd,
+        grid: s.grid, score: s.score, prev: p, keepPlaying: !!s.keepPlaying, moves: s.moves || 0, seed: sd, bestAtStart: s.bestAtStart,
         bestFlashed: !!s.bestFlashed, topTile: Math.max(s.topTile || 0, ...s.grid)
       };
     } catch (e) { return null; }
@@ -735,7 +747,8 @@
   function renderStats(animate = false) {
     showScore(animate);
     ui.best.textContent = Math.max(best, score).toLocaleString();
-    ui.undo.disabled = !prev || state !== "play";
+    // 詰んで結果カードを待っている間（約0.8秒）も、上の「1手戻す」ですぐに戻せる
+    ui.undo.disabled = !prev || !(state === "play" || waitingOver());
     boardEl.setAttribute("aria-label", "ゲーム盤面：" + grid.map((v) => v || "・").join(" "));
   }
   // 合体した得点の「+N」を盤面の上に一瞬表示する
@@ -884,7 +897,7 @@
     sfx.play("start");
   }
   function inProgress() { return (state === "play" || state === "win") && (moves > 0 || score > 0); }
-  // 「最初から」とクリア画面の「新しいゲーム」は、ページ内で確認してから
+  // 「最初から」（上のボタン・クリア画面）は、ページ内で確認してから（ブロックパズルの「やり直す？」と同じ調子）
   function askNewGame() {
     if (state === "confirm" || state === "over") return;
     if (!inProgress()) { newGame(); return; }
@@ -892,11 +905,11 @@
     state = "confirm";
     renderStats();
     showCard(`
-      <h2>新しいゲーム？</h2>
-      <p>いまの盤面（スコア <span data-f="score"></span>）は消えます。</p>
+      <h2>最初からやり直す？</h2>
+      <p>いまのゲーム（スコア <span data-f="score"></span>）を終えて、最初からやり直しますか？</p>
       <div class="row">
         <button class="cta" type="button" data-cmd="cancel">やめる</button>
-        <button class="cta primary" type="button" data-cmd="restart">新しいゲーム</button>
+        <button class="cta primary" type="button" data-cmd="restart">最初から</button>
       </div>`, { score: score.toLocaleString() });
   }
   function cancelConfirm() {
@@ -912,11 +925,13 @@
       <h2>クリア！</h2>
       <p><span data-f="goal"></span> のタイルができました。</p>
       <div><div class="label">Score</div><div class="big" data-f="score"></div></div>
-      <div class="row">
-        <button class="cta" type="button" data-cmd="menu">メニューへ</button>
-        <button class="cta primary" type="button" data-cmd="continue">続ける</button>
-      </div>
-      <div class="row"><button class="cta" type="button" data-cmd="askRestart">新しいゲーム</button></div>`,
+      <div class="btns">
+        <div class="row"><button class="cta primary" type="button" data-cmd="continue">続ける</button></div>
+        <div class="row">
+          <button class="cta" type="button" data-cmd="askRestart">最初から</button>
+          <button class="cta" type="button" data-cmd="menu">メニューへ</button>
+        </div>
+      </div>`,
       { goal: String(GOAL), score: score.toLocaleString() });
   }
   // 詰んだら、最後の盤面を約0.8秒見せてから結果カードを出す（その間に画面に触れたらすぐ出す）
@@ -925,6 +940,7 @@
     cancelOver();
     overTimer = setTimeout(() => { overTimer = 0; showOver(true); }, 800);
   }
+  function waitingOver() { return state === "over" && overlay.hidden; }
   function cancelOver() { if (overTimer) { clearTimeout(overTimer); overTimer = 0; } }
   function revealOverNow() {
     if (!overTimer) return false;
@@ -939,29 +955,33 @@
     if (withSound) { sfx.play("over"); sfx.buzz([60, 40, 120]); }
     const isBest = score > bestAtStart;
     const r = reachInfo(grid);
-    renderStats();
     showCard(`
-      <h2>ゲームオーバー</h2>
-      <div><div class="label">Score</div><div class="big" data-f="score"></div></div>
-      <p class="reach">最大タイル <b data-f="top"></b> ／ <span data-f="nextLabel"></span> <b data-f="next"></b></p>
-      <p data-f="bestLine"></p>
-      <div class="row three">
-        <button class="cta" type="button" data-cmd="undo">1手戻す</button>
-        <button class="cta" type="button" data-cmd="menu">メニューへ</button>
-        <button class="cta primary" type="button" data-cmd="restart">もう一度</button>
+      <div class="ohead">
+        <h2>ゲームオーバー</h2>
+        <div class="oscore"><span class="label">Score</span><b class="big" data-f="score"></b></div>
+      </div>
+      <p class="reach"><span>最大タイル <b data-f="top"></b> ／ <span data-f="nextLabel"></span> <b data-f="next"></b></span> <span>／ <span data-f="bestLine"></span></span></p>
+      <div class="btns">
+        <div class="row"><button class="cta primary" type="button" data-cmd="restart">もう一度</button></div>
+        <div class="row">
+          <button class="cta" type="button" data-cmd="undo">1手戻す</button>
+          <button class="cta" type="button" data-cmd="menu">メニューへ</button>
+        </div>
       </div>`, {
       score: score.toLocaleString(),
       top: r.top.toLocaleString(),
       nextLabel: r.oneMerge ? "あと1回の合体で" : "次は",
       next: r.next.toLocaleString(),
       bestLine: isBest ? "自己ベスト更新！" : `ベスト ${best.toLocaleString()}`
-    }, { soft: true });
+    }, { soft: true, cls: "compact" });
+    renderStats();               // カードを出した後に（待ち中だけ上の「1手戻す」を有効にするため）
     const u = card.querySelector('[data-cmd="undo"]');
     u.disabled = !prev;
     if (!prev) u.setAttribute("aria-label", "1手戻す（戻せる手がありません）");
   }
   // カードは HTML の骨組みだけを書き、数値などは data-f の要素に textContent で入れる
-  function showCard(html, fields = {}, { soft = false } = {}) {
+  function showCard(html, fields = {}, { soft = false, cls = "" } = {}) {
+    card.className = "card" + (cls ? " " + cls : "");
     card.innerHTML = html;
     card.querySelectorAll("[data-f]").forEach((el) => { el.textContent = fields[el.dataset.f] ?? ""; });
     overlay.classList.toggle("soft", soft);
@@ -985,7 +1005,11 @@
     }
   });
   // 詰んで結果カードを待っている間に画面に触れたら、すぐに出す
-  document.addEventListener("pointerdown", () => { revealOverNow(); }, { capture: true });
+  // ただし上の「1手戻す」を押したときは、カードを出さずにそのまま戻す（U キーと同じ）
+  document.addEventListener("pointerdown", (e) => {
+    if (e.target.closest?.("#undoBtn") && !ui.undo.disabled) return;
+    revealOverNow();
+  }, { capture: true });
   ui.undo.addEventListener("click", undo);
   ui.newGame.addEventListener("click", askNewGame);
   // アプリを閉じる・切り替える直前にも保存しておく
@@ -1046,7 +1070,9 @@
   const saved = loadState();
   if (saved) {
     ({ grid, score, prev, keepPlaying, moves, seed, bestFlashed, topTile } = saved);
-    bestAtStart = best;          // 再開した時点のベスト
+    // ゲーム開始時のベストは保存データから戻す（旧形式で項目がないときは、いまのベスト）。
+    // 保存されたベストより大きい値は使わない（ベストが消された場合など）
+    bestAtStart = saved.bestAtStart !== undefined ? Math.min(saved.bestAtStart, best) : best;
     if (score > best) { best = score; saveBest(); }
     saveState();                 // 旧形式なら種を足して保存し直す
     rebuild(null);
