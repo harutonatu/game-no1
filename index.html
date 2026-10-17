@@ -147,6 +147,7 @@
   <p class="foot">ホーム画面に追加すると、オフラインでも遊べます。</p>
 </main>
 
+<script src="common/sfx.js"></script>
 <script>
 (() => {
   "use strict";
@@ -265,6 +266,12 @@
     } catch (e) { return 0; }
   }
 
+  // ===== 効果音（common/sfx.js、案A「木のおもちゃ箱」。設定はゲームと共通、メニューに切り替えボタンはない） =====
+  let sfx = YubiSfx.create("menu");
+  function soundOff() {
+    try { return localStorage.getItem("blockpuzzle.sound") === "off"; } catch (e) { return false; }
+  }
+
   // ===== 組み立て =====
   const list = document.getElementById("games");
   const rows = GAMES.map((game) => {
@@ -299,6 +306,12 @@
     a.append(cv, info, go);
     li.appendChild(a);
     list.appendChild(li);
+    // 押した瞬間に「コッ」と鳴らす（音は待たずにそのまま移動する）
+    a.addEventListener("pointerdown", () => {
+      if (soundOff() === sfx.on) sfx = YubiSfx.create("menu"); // ゲーム側で切り替えて戻ってきたとき
+      sfx.unlock();
+      sfx.play("tap");
+    });
     return { game, a, cv, val };
   });
 
