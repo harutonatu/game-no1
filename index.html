@@ -158,7 +158,8 @@
   //   art: 下の ART にある絵の名前（省略すると頭文字のタイル）
   const GAMES = [
     { name: "ブロックパズル", desc: "落ちてくるブロックで横一列をそろえて消す", url: "games/blocks/", best: "blockpuzzle.best", art: "blocks" },
-    { name: "ばいばいタイル", desc: "同じ数字をぶつけて合体、2048 を目指す", url: "games/2048/", best: "tile2048.best", art: "tiles" }
+    { name: "ばいばいタイル", desc: "同じ数字をぶつけて合体、2048 を目指す", url: "games/2048/", best: "tile2048.best", art: "tiles" },
+    { name: "いろコード", desc: "4つの色の並びを推理する", url: "games/irocode/", stats: "irocode.stats", art: "code" }
   ];
 
   // ===== 小さな絵（Canvas で描く。画像ファイルは使わない） =====
@@ -232,6 +233,24 @@
         ctx.fillText(String(v), x + s / 2, y + s / 2 + 1);
       });
     },
+    // 色玉の並び（ゲームの6色）と、ヒントの ● ○
+    code(ctx, w, h) {
+      const cols = ["#e0524d", "#f2cc4b", "#4cae6a", "#4a86e8"];
+      const r = Math.min(w, h) * 0.09, gap = r * 0.5;   // 4つ並べても枠からはみ出さない（幅の約 83%）
+      const total = r * 2 * 4 + gap * 3, x0 = (w - total) / 2 + r, cy = h * 0.4;
+      cols.forEach((c, i) => {
+        ctx.beginPath(); ctx.arc(x0 + i * (r * 2 + gap), cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = c; ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.beginPath(); ctx.arc(x0 + i * (r * 2 + gap) - r * 0.3, cy - r * 0.3, r * 0.3, 0, Math.PI * 2); ctx.fill();
+      });
+      const hr = r * 0.5, hy = h * 0.72, hx = w / 2 - hr * 3.6;   // ヒント4つを中央にそろえる
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath(); ctx.arc(hx + i * hr * 2.4, hy, hr, 0, Math.PI * 2);
+        if (i < 2) { ctx.fillStyle = "#f0a43a"; ctx.fill(); }
+        else { ctx.lineWidth = 2; ctx.strokeStyle = "#f0a43a"; ctx.stroke(); }
+      }
+    },
     // 絵が用意されていないゲーム用：頭文字のタイル
     fallback(ctx, w, h, game) {
       const m = Math.round(w * 0.12);
@@ -263,6 +282,17 @@
       const raw = localStorage.getItem(key);
       const n = raw === null ? 0 : Number(raw);
       return Number.isSafeInteger(n) && n >= 0 ? n : 0;
+    } catch (e) { return 0; }
+  }
+
+  // いろコードの最少回数：irocode.stats（JSON）の best が 1〜10 の整数のときだけ有効。それ以外は 0（記録なし）
+  function readIroBest(key) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw === null) return 0;
+      const o = JSON.parse(raw);
+      const n = o && typeof o === "object" ? o.best : null;
+      return Number.isInteger(n) && n >= 1 && n <= 10 ? n : 0;
     } catch (e) { return 0; }
   }
 
@@ -317,10 +347,11 @@
 
   function renderBest() {
     rows.forEach(({ game, a, val }) => {
-      const n = game.best ? readBest(game.best) : 0;
+      const n = game.stats ? readIroBest(game.stats) : game.best ? readBest(game.best) : 0;
+      const text = n ? (game.stats ? `最少 ${n} 回` : n.toLocaleString()) : "まだ記録なし";
       val.classList.toggle("none", !n);
-      val.textContent = n ? n.toLocaleString() : "まだ記録なし";
-      a.setAttribute("aria-label", `${game.name}：${game.desc}。ベスト ${n ? n.toLocaleString() : "まだ記録なし"}`);
+      val.textContent = text;
+      a.setAttribute("aria-label", `${game.name}：${game.desc}。${game.stats ? "" : "ベスト "}${text}`);
     });
   }
   function paintAll() { rows.forEach(({ game, cv }) => paint(cv, game)); }
