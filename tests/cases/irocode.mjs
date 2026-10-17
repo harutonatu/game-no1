@@ -504,6 +504,53 @@ export const tests = [
         check(`ベスト 4 回のとき ${name} で勝つと best は ${tries}`, sx.best === tries && sx.dist[String(tries)] === (tries === 4 ? 3 : 1), sx);
         await o.ctx.close();
       }
+      // 「やり直す」（#restartBtn・data-cmd=restart）
+      const rs = (page) => page.locator('#restartBtn');
+      // (3) cur だけ：確認なしで消える
+      o = await open(browser, 'I10r1', { state: makeState(L, { mode: 'practice', seed: 6001 }, [], [0, 1]) });
+      const rsOn = await rs(o.page).isDisabled();
+      const before = await getState(o.page);
+      await rs(o.page).tap(); await wait(o.page, 500);
+      let g = await getState(o.page);
+      check('やり直す(3)：置きかけ(cur)だけのときは押せて、確認カードなしで枠が空になる', !rsOn && !(await overlayShown(o.page)) && g.cur.length === 0 && g.rows.length === 0, { rsOn, shown: await overlayShown(o.page), cur: g.cur });
+      check('やり直す(3)：新しい問題になるわけではない（rows 0・done null・れんしゅうのまま）', g.mode === 'practice' && g.done === null && before.mode === 'practice', g);
+      // 何もない状態では押せない
+      check('やり直す：rows も cur も空のときは押せない（disabled）', await rs(o.page).isDisabled());
+      await o.ctx.close();
+      // (1) れんしゅう：rows があると確認カード→やり直すで新しい問題
+      const rsSt = makeState(L, { mode: 'practice', seed: 6002 }, [[0, 1, 2, 3], [1, 2, 3, 4]]);
+      o = await open(browser, 'I10r2', { state: rsSt });
+      await rs(o.page).tap(); await wait(o.page, 400);
+      let card = await cardInfo(o.page);
+      check('やり直す(1)：れんしゅうで rows があると確認カード（confirm・cancel）が出て、まだ問題は変わらない', await overlayShown(o.page) && card.cmds.includes('confirm') && card.cmds.includes('cancel') && (await getState(o.page)).rows.length === 2 && eq((await getState(o.page)).secret, rsSt.secret), card);
+      await o.page.locator('#overlay [data-cmd=cancel]').tap(); await wait(o.page, 400);
+      check('やり直す：やめる(cancel)で閉じ、履歴2行のまま', !(await overlayShown(o.page)) && (await getState(o.page)).rows.length === 2);
+      await rs(o.page).tap(); await wait(o.page, 400);
+      await o.page.locator('#overlay [data-cmd=confirm]').tap(); await wait(o.page, 500);
+      g = await getState(o.page);
+      check('やり直す(1)：確定するとれんしゅうは新しい問題（rows 0・cur 空・done null・seed がちがう）', !(await overlayShown(o.page)) && g.mode === 'practice' && g.rows.length === 0 && g.cur.length === 0 && g.done === null && g.seed !== rsSt.seed, { seed: g.seed, old: rsSt.seed, rows: g.rows.length });
+      check('やり直す(1)：保存も新しい問題になっている（irocode.state の seed が一致・検証を通る）', await (async () => { const sv = await lsGet(o.page, 'irocode.state'); return sv && sv.seed === g.seed && sv.rows.length === 0 && eq(L.validateState(sv), sv); })());
+      await o.ctx.close();
+      // (2) 今日の1問：rows が1つ以上あるとやり直せない（記録の改ざん防止）。cur だけなら消せる
+      const dsd = L.newGame({ mode: 'daily', date: '2026-10-17' });
+      const dst = makeState(L, { mode: 'daily', date: '2026-10-17' }, [wrong(dsd.secret, 0), wrong(dsd.secret, 1)]);
+      o = await open(browser, 'I10r3', { state: dst });
+      const gd0 = await getState(o.page);
+      if (gd0.mode === 'daily' && gd0.date === dst.date) {
+        check('やり直す(2)：今日の1問で rows が1つ以上あるとき「やり直す」は押せない（disabled）', await rs(o.page).isDisabled(), gd0.rows.length);
+        await rs(o.page).dispatchEvent('click').catch(() => {}); await wait(o.page, 400);
+        const gd = await getState(o.page), dl = await lsGet(o.page, 'irocode.daily');
+        check('やり直す(2)：無理に click しても履歴は消えず（rows 2・同じ答え）、確認カードも出ず、daily の記録も書かれない', gd.rows.length === 2 && eq(gd.secret, dst.secret) && !(await overlayShown(o.page)) && (dl === null || dl.done !== true), { rows: gd.rows.length, dl });
+      } else {
+        check('やり直す(2)：今日の1問の状態を注入できる（端末の日付が 2026-10-17 でないと前日扱いで捨てられる）', false, gd0);
+      }
+      await o.ctx.close();
+      // 終わったあとはやり直せない（結果カードを閉じても disabled）
+      const wst = makeState(L, { mode: 'practice', seed: 6003 }, [], []);
+      o = await open(browser, 'I10r4', { state: wst });
+      await guess(o.page, wst.secret);
+      check('やり直す：勝って終わった問題では押せない（disabled）、記録が増えない', await rs(o.page).isDisabled() && (await lsGet(o.page, 'irocode.stats')).played === 1);
+      await o.ctx.close();
     },
   },
   {
@@ -696,9 +743,18 @@ export const tests = [
       await page.locator('#modeDaily').tap(); await tick(page, 450);
       s = await getState(page);
       check('0時をまたいで戻り、今日の1問を選び直すと 2026-10-18 の問題になる（昨日の問題のまま遊べてしまわない）', s.mode === 'daily' && s.date === '2026-10-18' && s.seed === L.dailySeed('2026-10-18'), { date: s.date, mode: s.mode });
-      await page.reload(); await tick(page, 400);
+      await ctx.close();
+      // 昨日(10-17)の今日の1問が途中のまま保存 → 翌日(10-18)の0:00:10に開く → 昨日の分は捨てられ、今日の新しい問題になる
+      const yd = L.newGame({ mode: 'daily', date: '2026-10-17' });
+      const ySt = makeState(L, { mode: 'daily', date: '2026-10-17' }, [wrong(yd.secret, 0), wrong(yd.secret, 1)]);
+      ({ ctx, page } = await mkPage(T(2026, 10, 17, 23, 59, 50), { 'irocode.state': ySt }));
       s = await getState(page);
-      check('0時をまたいだあとに再読み込みすると、保存された昨日の問題でなく今日の問題（date 2026-10-18）', s.mode === 'practice' || s.date === '2026-10-18', { date: s.date, mode: s.mode });
+      check('前提：23:59:50 に開くと昨日分でなく当日(10-17)の途中の問題が復元される（rows 2）', s.mode === 'daily' && s.date === '2026-10-17' && s.rows.length === 2, { date: s.date, rows: s.rows.length });
+      await page.clock.setSystemTime(T(2026, 10, 18, 0, 0, 10));
+      await page.reload(); await tick(page, 400);
+      if (await page.locator('#overlay:not([hidden]) [data-cmd="close"]').count()) { await page.locator('#overlay [data-cmd="close"]').click(); await tick(page, 200); }
+      s = await getState(page);
+      check('0時をまたいだあとに再読み込み：保存された昨日の途中の問題は捨てられ、今日の問題（mode daily・date 2026-10-18・rows 0・seed は今日のもの）', s.mode === 'daily' && s.date === '2026-10-18' && s.rows.length === 0 && s.seed === L.dailySeed('2026-10-18') && !eq(s.secret, ySt.secret), { date: s.date, mode: s.mode, rows: s.rows.length });
       await ctx.close();
       // 昨日クリア済みの記録 → 今日は遊べる
       ({ ctx, page } = await mkPage(T(2026, 10, 18, 0, 0, 5), { 'irocode.daily': { date: '2026-10-17', done: true, win: true, tries: 3 } }));

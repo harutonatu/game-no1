@@ -153,7 +153,7 @@
     font: 500 11px var(--font-jp);
   }
   .status b { color: var(--ink); font-family: var(--font-mono); font-size: 13px; }
-  .legend { white-space: nowrap; }
+  .legend { white-space: normal; font-size: 12px; }
   .rows {
     flex: 1 1 auto;
     min-height: 0;
@@ -177,7 +177,7 @@
   .row:last-child { border-bottom: 0; }
   .row.fresh { animation: rowin 220ms ease-out both; }
   @keyframes rowin { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
-  .row .no { width: 20px; flex: 0 0 auto; color: var(--muted); font: 500 12px var(--font-mono); text-align: right; }
+  .row .no { width: 20px; flex: 0 0 auto; color: var(--muted); font: 500 13px var(--font-mono); text-align: right; }
   .row .pegs { display: flex; gap: 4px; }
   .mini {
     width: 24px; height: 24px; border-radius: 50%;
@@ -227,7 +227,7 @@
     box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25), inset 0 2px 0 rgba(255, 255, 255, 0.18);
     touch-action: manipulation;
   }
-  .pal small { font: 700 9px var(--font-jp); letter-spacing: 0; white-space: nowrap; }
+  .pal small { font: 700 10px var(--font-jp); letter-spacing: 0; white-space: nowrap; }
   .pal:active:not(:disabled) { filter: brightness(1.15); transform: translateY(1px); }
   .pal:disabled { opacity: 0.35; }
   .actions { display: flex; gap: 8px; }
@@ -246,7 +246,7 @@
   .cta:active:not(:disabled) { filter: brightness(1.15); }
   .actions .del { flex: 0 0 auto; min-width: 84px; padding: 0 8px; font-size: 14px; }
   /* 「やり直す」は確認つき。決定と見分けやすいよう控えめに */
-  .actions .restart { flex: 0 0 auto; min-width: 72px; padding: 0 8px; font-size: 13px; background: transparent; color: var(--muted); }
+  .actions .restart { flex: 0 0 auto; margin-left: 10px; min-width: 72px; padding: 0 8px; font-size: 13px; background: transparent; color: var(--muted); }
 
   @media (orientation: landscape) {
     .app {
@@ -541,7 +541,7 @@
       p.className = "empty";
       p.textContent = state.hard
         ? "色を4つえらんで「決定」。むずかしい：同じ色が入っていることもあります。"
-        : "色を4つえらんで「決定」。同じ色は2回使われていません。";
+        : "色を4つえらんで「決定」。同じ色は2回使われていません（使った色は暗くなります）。";
       ui.rows.appendChild(p);
     }
     state.rows.forEach((r, i) => ui.rows.appendChild(rowEl(r, i, freshLast && i === state.rows.length - 1)));
@@ -568,7 +568,7 @@
     });
     ui.submit.disabled = !playing || state.cur.length !== 4;
     ui.del.disabled = !playing || state.cur.length === 0;
-    ui.restart.disabled = !playing || (state.rows.length === 0 && state.cur.length === 0);
+    ui.restart.disabled = !playing || (state.rows.length === 0 && state.cur.length === 0) || (state.mode === "daily" && state.rows.length > 0);
   }
   function renderTop() {
     const left = maxTries() - state.rows.length;
@@ -577,6 +577,7 @@
     ui.daily.setAttribute("aria-pressed", String(state.mode === "daily"));
     ui.practice.setAttribute("aria-pressed", String(state.mode === "practice"));
     ui.hard.setAttribute("aria-pressed", String(state.mode === "practice" && state.hard));
+    ui.hard.textContent = "むずかしい：" + (state.mode === "practice" && state.hard ? "オン" : "オフ");
   }
   function render(freshLast = false) {
     renderTop();
@@ -652,7 +653,16 @@
   }
 
   // ===== ゲームの開始 =====
+  // 今日の1問を途中でやめたら、負けとして1回だけ記録する（やり直しで記録を書き換えさせない）
+  function abandonDaily() {
+    if (state.mode !== "daily" || state.done || isLocked() || state.rows.length === 0 || dailyDone(state.date)) return;
+    daily = { date: state.date, done: true, win: false, tries: L.MAX_TRIES.normal };
+    writeJSON(KEY_DAILY, daily);
+    if (stats.played < STATS_LIMIT) stats.played++;
+    writeJSON(KEY_STATS, stats);
+  }
   function start(mode, hard) {
+    if (mode === "practice") abandonDaily();
     clearTimeout(resultTimer); resultTimer = 0;
     if (mode === "daily") state = L.newGame({ mode: "daily", hard: false, date: today() });
     else { hardPref = !!hard; state = L.newGame({ mode: "practice", hard: hardPref }); }
@@ -675,25 +685,26 @@
   ui.practice.addEventListener("click", () => {
     if (view !== "play" || state.mode === "practice") return;
     sfx.play("toggle");
-    guard("今日の1問を途中でやめて、れんしゅうにしますか？（今日の1問は、次に開いたとき最初からになります）", "れんしゅうへ", () => start("practice", hardPref));
+    guard("今日の1問を途中でやめて、れんしゅうにしますか？（今日の1問は、負けとして記録され、終わりになります）", "れんしゅうへ", () => start("practice", hardPref));
   });
   ui.hard.addEventListener("click", () => {
     if (view !== "play") return;
     const next = state.mode === "practice" ? !state.hard : true;
     sfx.play("toggle");
-    guard(next ? "むずかしい（同じ色あり・8回まで）で、新しい問題にしますか？" : "ふつう（同じ色なし・10回まで）で、新しい問題にしますか？",
+    guard(next ? (state.mode === "daily" ? "今日の1問は終わりになります（負けとして記録）。" : "") + "むずかしい（同じ色あり・8回まで）で、新しい問題にしますか？" : "ふつう（同じ色なし・10回まで）で、新しい問題にしますか？",
       next ? "むずかしくする" : "ふつうにする", () => start("practice", next));
   });
   function askRestart() {
     if (view !== "play" || state.done || isLocked()) return;
     if (!state.rows.length && !state.cur.length) return;
-    const again = () => {
-      if (state.mode === "daily") { state = L.newGame({ mode: "daily", hard: false, date: state.date }); saveState(); render(); sfx.play("start"); hideOverlay(); }
-      else start("practice", state.hard);
-    };
+    // 今日の1問は、ヒントを見たあとのやり直しはできない（cur の消去だけ可）
+    if (state.mode === "daily") {
+      if (!state.rows.length) { state.cur = []; saveState(); render(); sfx.play("remove"); }
+      return;
+    }
+    const again = () => start("practice", state.hard);
     if (!state.rows.length) { again(); return; }
-    showConfirm(state.mode === "daily" ? "今日の1問を、最初からやり直しますか？（問題は同じです）" : "いまの問題をやめて、新しい問題でやり直しますか？",
-      "やり直す", again, "やり直す？");
+    showConfirm("いまの問題をやめて、新しい問題でやり直しますか？", "やり直す", again, "やり直す？");
   }
 
   // ===== カード =====
@@ -729,26 +740,30 @@
     ui.card.querySelectorAll("[data-sw]").forEach((el) => { const c = Number(el.dataset.sw); paint(el, c); el.textContent = COLORS[c].symbol; });
     ui.card.querySelectorAll("[data-swn]").forEach((el) => { el.textContent = COLORS[Number(el.dataset.swn)].name; });
   }
+  let helpSeen = false;
   function showHelp() {
     const back = view;
+    const first = firstVisit && !helpSeen;
+    helpSeen = true;
     if (back === "result" || back === "locked" || back === "confirm") return;
     view = "help";
     showCard(`
       <h2>遊び方</h2>
       <div class="help">
         <p>6色のうち4つが、決まった順に隠れています。色をえらんで4つ並べ、「決定」で答えます。</p>
-        <p class="demo"><span class="key hit"></span>●＝位置も色も合っている数</p>
-        <p class="demo"><span class="key blow"></span>○＝色は合っているが位置がちがう数</p>
-        <p>ふつうは同じ色なし・10回まで。「むずかしい」は同じ色あり・8回まで（れんしゅうだけ）。</p>
-        <p>「今日の1問」は日付ごとに決まった問題で、記録は1日1回。「れんしゅう」は何度でも。</p>
+        <p class="demo"><span class="key hit"></span>位置も色も合っている数</p>
+        <p class="demo"><span class="key blow"></span>色は合っているが位置がちがう数</p>
+        <p>ふつうは同じ色を2回使えません（使った色は暗くなります）。10回まで。「むずかしい」は同じ色あり・8回まで（れんしゅうだけ）。</p>
+        <p>「今日の1問」は日付ごとに決まった問題で、記録は1日1回。途中でやり直すことはできず、れんしゅうに切り替えると負けになります。「れんしゅう」は何度でも。</p>
         <p>入れた色はタップで消せます。</p>
         <div class="sw">${swatches()}</div>
       </div>
       <div class="btns">
-        <div class="brow"><button class="cta primary" type="button" data-cmd="close">はじめる</button></div>
+        <div class="brow"><button class="cta primary" type="button" data-cmd="close" data-f="cl"></button></div>
         <div class="brow"><button class="cta" type="button" data-cmd="menu">メニューへ</button></div>
       </div>`);
     fillSwatches();
+    setText('[data-f="cl"]', first ? "はじめる" : "ゲームにもどる");
   }
   function answerHTML() {
     return `<div><div class="answer-label">こたえ</div><div class="answer">${[0, 1, 2, 3].map((i) => `<span class="slot" data-a="${i}"></span>`).join("")}</div></div>`;
