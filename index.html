@@ -29,7 +29,7 @@
     color-scheme: dark;
   }
   [hidden] { display: none !important; }
-  html { overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
+  html { overscroll-behavior: none; -webkit-text-size-adjust: 100%; touch-action: pan-y; }
   body {
     margin: 0;
     min-height: 100vh;
@@ -322,8 +322,27 @@
 
   // 長押しメニュー・iOS のピンチ拡大・ダブルタップ拡大を止める
   document.addEventListener("contextmenu", (e) => e.preventDefault());
-  document.addEventListener("gesturestart", (e) => e.preventDefault());
-  document.addEventListener("dblclick", (e) => e.preventDefault());
+  ["gesturestart", "gesturechange", "gestureend"].forEach((type) => document.addEventListener(type, (e) => e.preventDefault(), { passive: false }));
+  document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: false });
+  // iOS Safari は user-scalable=no を無視するため、350ms 以内の2回目のタップ（スクロールではないもの）の touchend を止める。
+  // 止めると click が送られないので、ゲームのカード（リンク）なら自分で押す。縦スクロールはそのまま
+  let lastTapEnd = 0, tapStart = null;
+  document.addEventListener("touchstart", (e) => {
+    const t = e.touches[0];
+    tapStart = e.touches.length === 1 && t ? { x: t.clientX, y: t.clientY } : null;
+  }, { passive: true, capture: true });
+  document.addEventListener("touchend", (e) => {
+    const t = e.changedTouches[0];
+    const isTap = tapStart && t && e.touches.length === 0 && Math.hypot(t.clientX - tapStart.x, t.clientY - tapStart.y) < 12;
+    if (!isTap) return;
+    const now = performance.now();
+    const quick = now - lastTapEnd < 350;
+    lastTapEnd = now;
+    if (!quick || !e.cancelable) return;
+    e.preventDefault();
+    const link = e.target.closest?.("a, button");
+    if (link) link.click();
+  }, { passive: false });
 })();
 
 // ホーム画面から起動したときにオフラインでも遊べるようにする（https か localhost のときだけ有効）
