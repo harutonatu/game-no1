@@ -20,7 +20,8 @@
     --well: #0d111d;
     --line: #2f3750;
     --ink: #ece6d6;
-    --muted: #8a91a8;
+    --muted: #9aa1b8;
+    --hint: #c9cee0;
     --accent: #f0a43a;
     --accent-ink: #231705;
     --warn: #f2cb32;
@@ -121,7 +122,7 @@
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y;
   }
-  .select .lead { margin: 0; color: var(--muted); font: 13px/1.6 var(--font-text); }
+  .select .lead { margin: 0; color: var(--muted); font: 14px/1.6 var(--font-text); }
   .stage-list {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -147,11 +148,13 @@
     font: 700 13px var(--font-display);
   }
   .stage .no { font: 700 20px var(--font-mono); font-variant-numeric: tabular-nums; line-height: 1; }
-  .stage .nm { font: 500 11px/1.3 var(--font-text); color: var(--muted); max-width: 100%; text-align: center; overflow-wrap: anywhere; }
+  .stage .nm { font: 500 12px/1.3 var(--font-text); color: var(--muted); max-width: 100%; text-align: center; overflow-wrap: anywhere; }
+  .stage.next { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .stage .tag { font: 700 12px var(--font-text); color: var(--accent); line-height: 1; }
   .stage:active:not(:disabled) { filter: brightness(1.25); }
   .stage:disabled { opacity: 0.4; background: transparent; border-style: dashed; }
   .stage:disabled .nm { display: none; }
-  .stage .lock { font: 500 11px var(--font-text); color: var(--muted); }
+  .stage .lock { font: 500 12px var(--font-text); color: var(--muted); }
   /* ★は塗り（★）と白抜き（☆）の形で区別する（色だけに頼らない） */
   .stars { font-size: 14px; letter-spacing: 0.06em; line-height: 1; white-space: nowrap; color: var(--accent); }
   .stars .off { color: var(--muted); }
@@ -183,7 +186,7 @@
     touch-action: none;
   }
   canvas#stage { display: block; width: 100%; height: 100%; touch-action: none; }
-  .hint { grid-area: hint; margin: 0; color: var(--muted); font: 12px/1.5 var(--font-text); min-height: 1.5em; }
+  .hint { grid-area: hint; margin: 0; color: var(--hint); font: 13px/1.5 var(--font-text); min-height: 1.5em; }
   .ctrl {
     grid-area: ctrl;
     min-height: 0;
@@ -213,7 +216,7 @@
     line-height: 1;
     gap: 2px;
   }
-  .wbtn small { font: 500 9px var(--font-text); color: var(--muted); white-space: nowrap; }
+  .wbtn small { font: 500 12px var(--font-text); color: var(--muted); white-space: nowrap; }
   .wbtn:active:not(:disabled) { filter: brightness(1.3); }
   .wbtn:disabled, .go:disabled { opacity: 0.35; }
   #windMinus { grid-area: minus; justify-self: end; }
@@ -273,7 +276,7 @@
     color: var(--muted);
     line-height: 1;
   }
-  .dial-mark small { font: 500 10px var(--font-text); margin-top: 4px; }
+  .dial-mark small { font: 500 12px var(--font-text); margin-top: 4px; }
   .dial.warn .dial-face { background: repeating-linear-gradient(45deg, rgba(242, 203, 50, 0.22) 0 8px, transparent 8px 16px), radial-gradient(circle at 35% 30%, #3a4361, #20263a 70%); }
   .dial.warn .dial-mark { color: var(--warn); }
   .dial.over .dial-face { background: repeating-linear-gradient(-45deg, rgba(237, 95, 91, 0.35) 0 6px, transparent 6px 12px), radial-gradient(circle at 35% 30%, #4a2b33, #241820 70%); }
@@ -281,7 +284,7 @@
   .dial.locked { cursor: default; opacity: 0.75; }
 
   .meter { grid-area: meter; display: flex; align-items: baseline; gap: 8px; justify-content: center; flex-wrap: wrap; min-width: 0; }
-  .meter .label { font-size: 10px; letter-spacing: 0.14em; color: var(--muted); }
+  .meter .label { font-size: 12px; letter-spacing: 0.14em; color: var(--muted); }
   #turns { font: 700 26px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--accent); }
   .meter .unit { font: 500 12px var(--font-text); color: var(--muted); }
   .meter .warnmsg { font: 700 13px var(--font-text); white-space: nowrap; }
@@ -315,6 +318,15 @@
     .ctrl { align-content: center; }
     .go { width: 100%; }
   }
+  /* 横長で背が十分ある画面（iPad など）：ヒントを舞台の直下に詰め、全体を縦中央に寄せる */
+  @media (orientation: landscape) and (min-height: 501px) {
+    .play {
+      grid-template-rows: auto auto auto;
+      grid-template-areas: "info ctrl" "canvas ctrl" "hint ctrl";
+      align-content: center;
+    }
+    .canvas-wrap { max-height: none; }
+  }
   @media (orientation: landscape) and (max-height: 500px) {
     :root { --dial: min(130px, 36vh); }
     .app { gap: 6px; padding-top: max(6px, env(safe-area-inset-top, 0px)); padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)); }
@@ -329,13 +341,18 @@
   @media (orientation: portrait) {
     :root { --dial: clamp(120px, min(40vw, 24vh), 200px); }
   }
+  /* 背の高い縦画面：余った高さを舞台とネジに回す */
+  @media (orientation: portrait) and (min-height: 720px) {
+    :root { --dial: clamp(150px, min(46vw, 26vh), 240px); }
+    .canvas-wrap { aspect-ratio: 3 / 2; max-height: 48vh; }
+  }
   /* 背の低い縦画面（iPhone SE の Safari など）：舞台とネジを少し小さくして「歩かせる」まで画面に収める */
   @media (orientation: portrait) and (max-height: 600px) {
     :root { --dial: clamp(92px, 21vh, 120px); }
     .app { gap: 6px; padding-top: max(6px, env(safe-area-inset-top, 0px)); padding-bottom: max(8px, env(safe-area-inset-bottom, 0px)); }
     .play { gap: 4px; }
     .canvas-wrap { max-height: 30vh; }
-    .hint { font-size: 11px; line-height: 1.4; }
+    .hint { font-size: 12px; line-height: 1.4; }
     .ctrl { gap: 4px 10px; }
     .wbtn { min-width: 50px; min-height: 50px; }
     #turns { font-size: 22px; }
@@ -484,7 +501,10 @@
   const L = window.ZenmaiLogic;
   const KEY_PROGRESS = "zenmai.progress";
   const KEY_HELP = "zenmai.help";     // 遊び方を一度見たか（初回だけ自動で出す）
-  const WARN_MARGIN = 0.5;            // 限界のこの回転数手前から「そろそろ限界」
+  // 限界のこの回転数手前から「そろそろ限界」。舞台上部のバー（80%）と揃え、最低でも1回転
+  // 限界の1回転手前から警告（舞台のゲージと共通）。全ステージで ★3・帯の上端より後ろ、崖（maxTurns−0.75以下）より手前
+  const WARN_MARGIN = 1;
+  const warnMargin = () => WARN_MARGIN;
   const BTN_STEP = 0.25;              // ＋/－ボタン1回の巻き数
 
   const $ = (id) => document.getElementById(id);
@@ -570,7 +590,7 @@
   // 人形が歩く間はネジがほどけていく（表示上の残り）
   function shownTurns() {
     if (phase === "walking") return turns * (1 - frac());
-    if (phase === "falling" || phase === "done") return result && result.result !== "break" ? 0 : turns;
+    if (phase === "stopped" || phase === "falling" || phase === "done") return result && result.result !== "break" ? 0 : turns;
     return turns;
   }
   function draw() {
@@ -578,50 +598,64 @@
     renderer.draw(stage(), {
       dollX, walking: phase === "walking", falling: phase === "falling" || (phase === "done" && result && result.result === "fall"),
       broken: phase === "broken" || (phase === "done" && result && result.result === "break"),
-      turns: shownTurns(), maxTurns: stage().maxTurns, t: clock
+      turns: shownTurns(), maxTurns: stage().maxTurns, warnMargin: WARN_MARGIN, t: clock
     });
   }
+  // 前回と同じ値なら DOM を触らない（歩行中は毎フレーム呼ばれるため）
+  const dc = {};
+  function cset(key, val, fn) { if (dc[key] !== val) { dc[key] = val; fn(val); } }
   function renderDial() {
     const s = stage();
     if (!s) return;
+    dirty = true;
+    startLoop();
     const t = shownTurns();
-    const level = isOver() ? 2 : turns > s.maxTurns - WARN_MARGIN + 1e-9 ? 1 : 0;
-    el.dial.classList.toggle("warn", level === 1);
-    el.dial.classList.toggle("over", level === 2);
-    el.dial.classList.toggle("locked", phase !== "ready" || paused);
-    el.dial.style.setProperty("--frac", String(Math.min(1, Math.max(0, t / s.maxTurns))));
-    el.dial.style.setProperty("--warnFrac", String(Math.max(0, (s.maxTurns - WARN_MARGIN) / s.maxTurns)));
+    // 警告は巻いている最中（ready）と、切れた結果のときだけ。歩行・停止・落下中は出さない
+    const broke = result && result.result === "break";
+    const level = (phase === "ready" || broke) ? (isOver() ? 2 : turns > s.maxTurns - warnMargin(s) + 1e-9 ? 1 : 0) : 0;
+    cset("warn", level === 1, (v) => el.dial.classList.toggle("warn", v));
+    cset("over", level === 2, (v) => el.dial.classList.toggle("over", v));
+    cset("locked", phase !== "ready" || paused, (v) => el.dial.classList.toggle("locked", v));
+    cset("frac", Math.round(Math.min(1, Math.max(0, t / s.maxTurns)) * 1000) / 1000, (v) => el.dial.style.setProperty("--frac", String(v)));
+    cset("warnFrac", Math.max(0, (s.maxTurns - warnMargin(s)) / s.maxTurns), (v) => el.dial.style.setProperty("--warnFrac", String(v)));
     el.dialFace.style.transform = `rotate(${(t % 1) * 360}deg)`;
-    el.dialIcon.textContent = level === 2 ? "✕" : level === 1 ? "!" : "⟳";
-    el.dialSub.textContent = level === 2 ? "切れる！" : level === 1 ? "限界ちかい" : "まわす";
-    el.turns.textContent = fmt(turns);
-    el.warnMsg.textContent = level === 2 ? "巻きすぎ！ バネが切れる" : level === 1 ? "そろそろ限界" : "";
-    el.warnMsg.className = "warnmsg" + (level === 2 ? " over" : level === 1 ? " warn" : "");
-    el.dial.setAttribute("aria-valuemax", String(s.maxTurns));
-    el.dial.setAttribute("aria-valuenow", String(fmt(turns)));
-    el.dial.setAttribute("aria-valuetext", `${fmt(turns)}回転${level === 2 ? "（巻きすぎ）" : level === 1 ? "（そろそろ限界）" : ""}`);
+    cset("icon", level === 2 ? "✕" : level === 1 ? "!" : "⟳", (v) => { el.dialIcon.textContent = v; });
+    cset("sub", level === 2 ? "切れる！" : level === 1 ? "限界ちかい" : "まわす", (v) => { el.dialSub.textContent = v; });
+    cset("turns", fmt(turns), (v) => { el.turns.textContent = v; });
+    cset("warnMsg", level, (v) => {
+      el.warnMsg.textContent = v === 2 ? "巻きすぎ！ バネが切れる" : v === 1 ? "そろそろ限界" : "";
+      el.warnMsg.className = "warnmsg" + (v === 2 ? " over" : v === 1 ? " warn" : "");
+    });
+    cset("vmax", s.maxTurns, (v) => el.dial.setAttribute("aria-valuemax", String(v)));
+    cset("vnow", fmt(turns), (v) => el.dial.setAttribute("aria-valuenow", String(v)));
+    cset("vtext", `${fmt(turns)}回転${level === 2 ? "（巻きすぎ）" : level === 1 ? "（そろそろ限界）" : ""}`, (v) => el.dial.setAttribute("aria-valuetext", v));
     const ready = phase === "ready" && !paused;
-    el.plus.disabled = !ready;
-    el.minus.disabled = !ready || turns <= 0;
-    el.go.disabled = !ready || turns <= 0;
+    cset("plus", !ready, (v) => { el.plus.disabled = v; });
+    cset("minus", !ready || turns <= 0, (v) => { el.minus.disabled = v; });
+    cset("go", !ready || turns <= 0, (v) => { el.go.disabled = v; });
     // 限界に近づいた・超えた瞬間に音で知らせる（上がるときだけ）
     if (phase === "ready" && level > warnLevel) sfx.play("limit");
     if (phase === "ready") warnLevel = level;
   }
-  function resize() { if (screen === "play") { renderer.resize(); draw(); } }
+  function resize() { if (screen === "play") { renderer.resize(); dirty = true; startLoop(); } }
 
   // ===== ゲームループ =====
-  let raf = 0, lastNow = 0;
+  // 変化があるときだけ描く。止まっている間（巻く待ち・一時停止・カード表示中）は rAF も止める
+  let raf = 0, lastNow = 0, dirty = true;
+  const windy = () => { const s = stage(); return !!(s && s.segments && s.segments.some((g) => g.type === "wind")); };
   function loop(now) {
     raf = 0;
     if (screen !== "play") return;
     const dt = lastNow ? Math.min(0.05, Math.max(0, (now - lastNow) / 1000)) : 0;
     lastNow = now;
-    if (!paused && !overlayKind) { clock += dt; tick(); }
-    draw();
-    raf = requestAnimationFrame(loop);
+    const live = !paused && !overlayKind;
+    if (live) { clock += dt; tick(); }
+    const animating = live && (phase === "walking" || phase === "falling" || phase === "broken" || phase === "stopped" || (phase === "ready" && windy() && !reduceMotion.matches));
+    if (dirty || animating) { dirty = false; draw(); }
+    if (animating && !raf) raf = requestAnimationFrame(loop);
+    else if (!animating) lastNow = 0;
   }
-  function startLoop() { if (!raf) { lastNow = 0; raf = requestAnimationFrame(loop); } }
+  function startLoop() { if (!raf && screen === "play") { raf = requestAnimationFrame(loop); } }
   function stopLoop() { if (raf) cancelAnimationFrame(raf); raf = 0; }
 
   function posAt(path, t) {
@@ -653,6 +687,8 @@
   // ===== 画面 =====
   function renderStageList() {
     el.stageList.innerHTML = "";
+    // 解放済みで最初の未クリアステージ（次に遊ぶ目印）
+    const nextIdx = STAGES.findIndex((g, k) => k < progress.unlocked && !(progress.stars[g.id] > 0));
     STAGES.forEach((s, i) => {
       const b = document.createElement("button");
       b.type = "button";
@@ -665,13 +701,17 @@
       const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = s.name;
       const st = document.createElement("span"); st.className = "stars"; setStars(st, n);
       b.append(no, nm, st);
+      if (!locked && n === 0 && i === nextIdx) {
+        b.classList.add("next");
+        const tg = document.createElement("span"); tg.className = "tag"; tg.textContent = "つぎ"; b.append(tg);
+      }
       if (locked) {
         const lk = document.createElement("span"); lk.className = "lock"; lk.textContent = "まだ";
         st.replaceWith(lk);
         // テストや支援技術が★の欄を探せるよう、解放前も .stars は残す（0）
         st.hidden = true; b.append(st);
       }
-      b.setAttribute("aria-label", locked ? `ステージ ${i + 1}（まだ開いていません）` : `ステージ ${i + 1} ${s.name}、★ ${n}`);
+      b.setAttribute("aria-label", locked ? `ステージ ${i + 1}（まだ開いていません）` : `ステージ ${i + 1} ${s.name}、★ ${n}${b.classList.contains("next") ? "、つぎに遊ぶステージ" : ""}`);
       b.addEventListener("click", () => startStage(i));
       el.stageList.appendChild(b);
     });
@@ -688,7 +728,7 @@
     el.pauseBtn.hidden = true;
     renderStageList();
     // 最後に開いたステージ（の次）が見えるように
-    const target = el.stageList.querySelector(`[data-id="${STAGES[Math.min(idx, STAGES.length - 1)]?.id}"]`);
+    const target = el.stageList.querySelector(".stage.next") || el.stageList.querySelector(`[data-id="${STAGES[Math.min(idx, STAGES.length - 1)]?.id}"]`);
     if (target && target.scrollIntoView) { try { target.scrollIntoView({ block: "nearest" }); } catch (e) { /* 無視 */ } }
   }
   function startStage(i) {
@@ -710,6 +750,7 @@
     el.stageName.textContent = s.name;
     setStars(el.stageStars, progress.stars[s.id] || 0);
     el.hint.textContent = s.hint || "";
+    sfx.unlock();   // 効果音の準備を、ネジに触れる前に済ませる
     renderer.resize();
     renderDial();
     draw();
@@ -844,7 +885,8 @@
 
   // ===== 遊び方 =====
   let helpReturn = null;   // 遊び方を閉じたあとに戻す画面
-  function showHelp() {
+  function showHelp(brief) {
+    brief = brief === true;   // 初回の自動表示だけ短くする（？ボタンは全項目）
     if (overlayKind === "help") return;
     const prevKind = overlayKind;
     if (screen === "play" && !prevKind && phase !== "done") { paused = true; if (input) input.reset(); }
@@ -855,12 +897,13 @@
       <dl class="howto">
         <dt>⟳ まわす</dt><dd>ネジに指をのせて、時計回りに円を描くと巻けます（反時計回りで戻す）。</dd>
         <dt>指を離す</dt><dd>巻いた分だけ人形が歩きます。</dd>
-        <dt>＋ ／ －</dt><dd>回すのが難しいときは、1/4回転ずつ巻く・戻す。「歩かせる」で出発。</dd>
+        ${brief ? `        <dt>注意</dt><dd>崖を越えると落ちます。巻きすぎるとバネが切れます（ネジが黄色の「!」で知らせます）。</dd>` : `        <dt>＋ ／ －</dt><dd>回すのが難しいときは、1/4回転ずつ巻く・戻す。「歩かせる」で出発。</dd>
         <dt>★</dt><dd>帯のまん中に近いほど ★ が増えます。★1つ以上で次のステージが開きます。</dd>
         <dt>注意</dt><dd>崖を越えると落ちます。巻きすぎるとバネが切れます（ネジが黄色の「!」で知らせます）。</dd>
         <dt>坂・風</dt><dd>上り坂と向かい風は進みにくく、下り坂と追い風は進みやすくなります。</dd>
-        <dt>♪</dt><dd>効果音のオン / オフ（iPhone は消音モード中は鳴りません）。</dd>
+        <dt>♪</dt><dd>効果音のオン / オフ（iPhone は消音モード中は鳴りません）。</dd>`}
       </dl>
+      ${brief ? `<p>くわしい遊び方は、上の「？」からいつでも見られます。</p>` : ""}
       <div class="btns"><div class="row"><button class="cta primary" type="button" data-cmd="closeHelp">わかった</button></div></div>`, {}, { kind: "help" });
   }
   function closeHelp() {
@@ -883,7 +926,7 @@
     const primary = el.card.querySelector(".primary");
     if (primary) primary.focus({ preventScroll: true });
   }
-  function hideOverlay() { el.overlay.hidden = true; el.overlay.classList.remove("soft"); overlayKind = null; }
+  function hideOverlay() { el.overlay.hidden = true; el.overlay.classList.remove("soft"); overlayKind = null; dirty = true; startLoop(); }
   el.overlay.addEventListener("click", (e) => {
     const cmd = e.target.closest?.("[data-cmd]")?.dataset.cmd;
     if (!cmd) return;
@@ -1004,7 +1047,7 @@
   window.addEventListener("resize", resize);
   window.addEventListener("orientationchange", () => setTimeout(resize, 200));
   showSelect();
-  if (!helpSeen()) showHelp();
+  if (!helpSeen()) showHelp(true);
 })();
 
 // オフラインでも遊べるようにする（https か localhost のときだけ有効）

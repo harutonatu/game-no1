@@ -14,21 +14,42 @@
     bg: "#1b1f2e", panel: "#252c41", well: "#0d111d", line: "#2f3750",
     ink: "#ece6d6", muted: "#8a91a8", accent: "#f0a43a", accentInk: "#231705",
     ground: "#3a4466", groundTop: "#56638f", void: "#080b14",
-    s3: "#f0a43a", s2: "#c98f3f", s1: "#8a6a3a", warn: "#e8604c",
+    s3: "#ffc861", s2: "#c98f3f", s1: "#7a5c32", warn: "#e8604c", warnNear: "#f2cb32",
     doll: "#e9d9b0", dollDark: "#b79f6a"
   };
 
   function num(v, d) { return typeof v === "number" && isFinite(v) ? v : d; }
+
+  var WARN_MARGIN = 1; // 限界のこの回転数手前から警告（ネジと同じ。view.warnMargin で上書き可）
+
+  // 警告の段階（0: ふつう / 1: そろそろ限界 / 2: 超えている）。ネジ（index.html）と同じ基準
+  function warnLevel(turns, maxTurns, margin) {
+    var t = Math.abs(num(turns, 0)), mt = num(maxTurns, 1), m = num(margin, WARN_MARGIN);
+    return t > mt + 1e-9 ? 2 : t > mt - m + 1e-9 ? 1 : 0;
+  }
 
   function reduced() {
     try { return !!(typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches); }
     catch (e) { return false; }
   }
 
+  function starRanges() {
+    var L = (typeof ZenmaiLogic !== "undefined" && ZenmaiLogic) || (typeof globalThis !== "undefined" && globalThis.ZenmaiLogic) || {};
+    return { s3: num(L.STAR3, 0.25), s2: num(L.STAR2, 0.6) };
+  }
+
   function create(canvas) {
     var ctx = canvas.getContext("2d");
     var W = 300, H = 180, dpr = 1;
     var calm = reduced();
+    try {
+      var mq = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
+      if (mq) {
+        var onMq = function (e) { calm = !!e.matches; };
+        if (mq.addEventListener) mq.addEventListener("change", onMq);
+        else if (mq.addListener) mq.addListener(onMq);
+      }
+    } catch (e) { /* 追従できなくても動く */ }
     var fallT0 = null, breakT0 = null, lastT = 0;
     var geoKey = null, geo = null;
 
@@ -102,6 +123,10 @@
       }
 
       var cliffX = num(stage.cliffX, len);
+      var fs = Math.max(12, Math.round(W / 28));       // キャンバス幅に比例（最小12px）
+      var fsSym = Math.max(14, Math.round(W / 24));    // 記号は少し大きく
+      var FONT = "ui-monospace, Menlo, monospace";
+      var SR = starRanges();
 
       // 背景
       ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
@@ -140,19 +165,42 @@
       ctx.lineTo(X(cliffX), Y(cliffX));
       ctx.strokeStyle = C.groundTop; ctx.lineWidth = 4; ctx.lineJoin = "round"; ctx.stroke();
 
+      // 坂の縞模様（上り＝右上がり ／、下り＝右下がり ＼）。色に頼らず形で区別
+      for (i = 0; i < segs.length; i++) {
+        s = segs[i];
+        if (s.type !== "up" && s.type !== "down") continue;
+        var hx0 = Math.max(0, s.x0), hx1 = Math.min(cliffX, s.x1);
+        if (hx1 <= hx0) continue;
+        ctx.save();
+        ctx.beginPath(); ctx.moveTo(X(hx0), Y(hx0) + 2);
+        for (x = hx0; x <= hx1; x += step) ctx.lineTo(X(x), Y(x) + 2);
+        ctx.lineTo(X(hx1), Y(hx1) + 2);
+        for (x = hx1; x >= hx0; x -= step) ctx.lineTo(X(x), Y(x) + 18);
+        ctx.lineTo(X(hx0), Y(hx0) + 18); ctx.closePath(); ctx.clip();
+        ctx.strokeStyle = "rgba(236,230,214,0.28)"; ctx.lineWidth = 2;
+        var lx0 = X(hx0) - 24, lx1 = X(hx1) + 24, topY = Math.min(Y(hx0), Y(hx1)) - 4;
+        for (var lx = lx0; lx < lx1; lx += 9) {
+          ctx.beginPath();
+          if (s.type === "up") { ctx.moveTo(lx, topY + 26); ctx.lineTo(lx + 22, topY); }
+          else { ctx.moveTo(lx, topY); ctx.lineTo(lx + 22, topY + 26); }
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
       // 地形の目印（形でも区別）：上り＝▲、下り＝▼ を地面の中に
-      ctx.font = "700 11px ui-monospace, Menlo, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillStyle = "rgba(236,230,214,0.45)";
+      ctx.font = "700 " + fsSym + "px " + FONT; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillStyle = "rgba(236,230,214,0.8)";
       for (i = 0; i < segs.length; i++) {
         s = segs[i];
         if (s.type === "up" || s.type === "down") {
           var mx = (s.x0 + s.x1) / 2;
           if (mx > cliffX) continue;
-          ctx.fillText(s.type === "up" ? "▲" : "▼", X(mx), Y(mx) + 18);
+          ctx.fillText(s.type === "up" ? "▲" : "▼", X(mx), Y(mx) + 12 + fsSym * 0.6);
         } else if (s.type === "wind" && s.k) {
           var wx = (s.x0 + s.x1) / 2;
           if (wx > cliffX) continue;
-          ctx.fillText(s.k > 0 ? "→" : "←", X(wx), Y(wx) + 18);
+          ctx.fillText(s.k > 0 ? "→" : "←", X(wx), Y(wx) + 12 + fsSym * 0.6);
         }
       }
 
@@ -167,40 +215,67 @@
         var zx = cx + 6 + i * 11, zy = H - 4;
         ctx.beginPath(); ctx.moveTo(zx, zy); ctx.lineTo(zx + 5, zy - 9); ctx.lineTo(zx + 10, zy); ctx.closePath(); ctx.fill();
       }
-      ctx.fillStyle = C.warn; ctx.font = "700 11px ui-monospace, Menlo, monospace";
-      ctx.textAlign = "left"; ctx.fillText("がけ", Math.min(cx + 4, W - 30), Y(cliffX) - 30);
+      ctx.fillStyle = C.warn; ctx.font = "700 " + fs + "px " + FONT;
+      ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; ctx.fillText("がけ", Math.min(cx + 4, W - fs * 2.4), Y(cliffX) - 30);
 
-      // 目標の帯（★の範囲）
+      // 目標の帯（★の範囲）。中央ほど明るく、外側ほど暗い。境目に細い線
       var tg = stage.target || { x: 0, w: 0 };
       var half = tg.w / 2, c = tg.x + half;
+      var BH = 20; // 帯の高さ(px)
       function band(frac, color) {
         var x0 = c - half * frac, x1 = c + half * frac;
         ctx.fillStyle = color;
         ctx.beginPath(); ctx.moveTo(X(x0), Y(x0) + 2);
         for (var xx = x0; xx <= x1; xx += 4) ctx.lineTo(X(xx), Y(xx) + 2);
         ctx.lineTo(X(x1), Y(x1) + 2);
-        for (xx = x1; xx >= x0; xx -= 4) ctx.lineTo(X(xx), Y(xx) + 12);
-        ctx.lineTo(X(x0), Y(x0) + 12); ctx.closePath(); ctx.fill();
+        for (xx = x1; xx >= x0; xx -= 4) ctx.lineTo(X(xx), Y(xx) + 2 + BH);
+        ctx.lineTo(X(x0), Y(x0) + 2 + BH); ctx.closePath(); ctx.fill();
       }
-      band(1, "rgba(138,106,58,0.9)");
-      band(0.6, "rgba(201,143,63,0.95)");
-      band(0.25, C.s3);
-      // 旗と中心線
+      band(1, "rgba(122,92,50,0.95)");
+      band(SR.s2, "rgba(201,143,63,0.98)");
+      band(SR.s3, C.s3);
+      // ★3 の範囲に半透明の柱（旗まで）
       var fy = Y(c);
+      var p0 = X(c - half * SR.s3), p1 = X(c + half * SR.s3);
+      ctx.fillStyle = "rgba(255,200,97,0.16)";
+      ctx.fillRect(p0, fy - 34, Math.max(2, p1 - p0), 36);
+      ctx.strokeStyle = "rgba(255,200,97,0.7)"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(p0, fy - 34); ctx.lineTo(p0, fy + 2); ctx.moveTo(p1, fy - 34); ctx.lineTo(p1, fy + 2); ctx.stroke();
+      // ★2・★1 の境目の細い線
+      ctx.strokeStyle = "rgba(35,23,5,0.85)"; ctx.lineWidth = 1.5;
+      var bds = [SR.s3, SR.s2], bi, sg;
+      for (bi = 0; bi < bds.length; bi++) {
+        for (sg = -1; sg <= 1; sg += 2) {
+          var bx0 = c + sg * half * bds[bi];
+          ctx.beginPath(); ctx.moveTo(X(bx0), Y(bx0) + 2); ctx.lineTo(X(bx0), Y(bx0) + 2 + BH); ctx.stroke();
+        }
+      }
+      // 旗と中心線
       ctx.strokeStyle = C.ink; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(X(c), fy); ctx.lineTo(X(c), fy - 34); ctx.stroke();
       ctx.fillStyle = C.accent;
       ctx.beginPath(); ctx.moveTo(X(c), fy - 34); ctx.lineTo(X(c) + 14, fy - 28); ctx.lineTo(X(c), fy - 22); ctx.closePath(); ctx.fill();
-      // ★の範囲ラベル
-      ctx.font = "700 10px ui-monospace, Menlo, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
-      ctx.fillStyle = C.accentInk;
-      ctx.fillText("★", X(c), fy + 11);
-      ctx.fillStyle = C.ink;
-      var yb = fy + 25;
-      if (yb < H - 4) {
-        ctx.fillText("★★", X(c - half * 0.8), yb - 0);
-        ctx.fillText("★★", X(c + half * 0.8), yb - 0);
+      // ★の範囲ラベル（各帯の中央に。幅が足りなければ省く）
+      var lf = Math.max(11, Math.round(fs * 0.95));
+      ctx.font = "700 " + lf + "px " + FONT; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      var ly = fy + 2 + BH / 2 + 1;
+      if (ly + lf / 2 < H - 2) {
+        var w3 = (p1 - p0), w2 = half * (SR.s2 - SR.s3) * sx, w1 = half * (1 - SR.s2) * sx;
+        var tw = lf * 2.2;
+        if (w3 >= tw) { ctx.fillStyle = C.accentInk; ctx.fillText("★3", X(c), ly); }
+        else if (w3 >= lf * 1.2) { ctx.fillStyle = C.accentInk; ctx.fillText("★", X(c), ly); }
+        if (w2 >= tw) {
+          ctx.fillStyle = C.accentInk;
+          ctx.fillText("★2", X(c - half * (SR.s3 + SR.s2) / 2), ly);
+          ctx.fillText("★2", X(c + half * (SR.s3 + SR.s2) / 2), ly);
+        }
+        if (w1 >= tw * 0.8) {
+          ctx.fillStyle = C.ink;
+          ctx.fillText("★1", X(c - half * (SR.s2 + 1) / 2), ly);
+          ctx.fillText("★1", X(c + half * (SR.s2 + 1) / 2), ly);
+        }
       }
+      ctx.textBaseline = "alphabetic";
 
       // 人形
       var dx = num(view.dollX, 0);
@@ -265,21 +340,27 @@
         ctx.moveTo(bx - 8 * u, py0);
         for (var q = 0; q < 6; q++) ctx.lineTo(bx + (q % 2 ? 8 : -8) * u, py0 - q * 3.5 * u);
         ctx.stroke();
-        ctx.fillStyle = C.warn; ctx.font = "700 12px ui-monospace, Menlo, monospace";
+        ctx.fillStyle = C.warn; ctx.font = "700 " + fs + "px " + FONT;
         ctx.textAlign = "center"; ctx.fillText("ぷつん!", bx + 6 * u, py0 - 26 * u);
       }
 
-      // 巻き量の細いゲージ（上部）。限界が近いと色と形（!）で知らせる
-      var ratio = Math.max(0, Math.min(1.2, Math.abs(turns) / mt));
+      // 巻き量の細いゲージ（上部）。ネジと同じ基準：限界の warnMargin 回転手前から警告、超えたら切れる
+      var margin = num(view.warnMargin, WARN_MARGIN);
+      var absT = Math.abs(turns);
+      var level = typeof view.warn === "number" ? view.warn : warnLevel(absT, mt, margin);
+      var ratio = Math.max(0, Math.min(1.2, absT / mt));
       var gx = padX, gy = 8, gw = W - padX * 2, gh = 6;
       ctx.fillStyle = C.panel; ctx.fillRect(gx, gy, gw, gh);
-      var near = ratio > 0.8;
-      ctx.fillStyle = near ? C.warn : C.accent;
+      ctx.fillStyle = level === 2 ? C.warn : level === 1 ? C.warnNear : C.accent;
       ctx.fillRect(gx, gy, gw * Math.min(1, ratio), gh);
-      if (near) {
-        ctx.fillStyle = C.warn; ctx.font = "700 11px ui-monospace, Menlo, monospace";
+      // 警告の開始位置の目盛り
+      var wf = Math.max(0, (mt - margin) / mt);
+      ctx.fillStyle = C.ink; ctx.fillRect(gx + gw * wf - 0.5, gy - 2, 1.5, gh + 4);
+      if (level > 0) {
+        ctx.fillStyle = level === 2 ? C.warn : C.warnNear;
+        ctx.font = "700 " + fs + "px " + FONT;
         ctx.textAlign = "right"; ctx.textBaseline = "top";
-        ctx.fillText("! そろそろ限界", W - padX, gy + gh + 3);
+        ctx.fillText(level === 2 ? "!! 切れる" : "! そろそろ限界", W - padX, gy + gh + 3);
         ctx.textBaseline = "alphabetic";
       }
     }
@@ -297,5 +378,5 @@
     return { resize: resize, draw: draw };
   }
 
-  return { create: create };
+  return { create: create, warnLevel: warnLevel, WARN_MARGIN: WARN_MARGIN };
 });

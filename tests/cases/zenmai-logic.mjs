@@ -35,6 +35,17 @@ export const tests = [
       check('全15ステージで bestTurns の幅が0.15回転以上', narrow.length === 0, narrow);
       check('bestTurns の中央で simulate すると stop・★3、上端は maxTurns 未満', bad.length === 0, bad);
       check('★3範囲に1/4回転の倍数が含まれる（＋/－ボタンだけでも★3）', notQuarter.length === 0, notQuarter);
+      // 崖：どのステージでも巻きすぎる前に崖へ届く（崖に届く巻き数 ≦ maxTurns − 0.75）、maxTurns ちょうどは落下、帯は崖より手前
+      const cliffBad = S.filter((s) => !(L.turnsToReach(s, s.cliffX) <= s.maxTurns - 0.75 + 1e-9 && L.simulate(s, s.maxTurns).result === 'fall' && s.target.x + s.target.w < s.cliffX))
+        .map((s) => ({ id: s.id, reach: L.turnsToReach(s, s.cliffX), max: s.maxTurns, r: L.simulate(s, s.maxTurns).result }));
+      check('全15ステージで崖に届く（届く巻き数 ≦ maxTurns−0.75、maxTurns ちょうどは fall、帯の右端 < 崖）', cliffBad.length === 0, cliffBad);
+      // 警告（限界の1回転手前から）は ★3・帯の上端より後ろ、崖より手前
+      const WM = 1;
+      const warnBad = S.filter((s) => { const b = L.bestTurns(s); return !(b.max < s.maxTurns - WM && L.turnsToReach(s, s.target.x + s.target.w) < s.maxTurns - WM && L.turnsToReach(s, s.cliffX) > s.maxTurns - WM); })
+        .map((s) => s.id);
+      check('限界の1回転手前（警告の出始め）は ★3・帯の上端より大きく、崖に届く巻き数より小さい（正解では警告が出ず、落ちる前に出る）', warnBad.length === 0, warnBad);
+      const widths = S.map((s) => { const b = L.bestTurns(s); return +(b.max - b.min).toFixed(3); });
+      check(`★3の幅は最後の z15 が最小（${widths[14]}）`, widths[14] === Math.min(...widths), widths);
       const ranges = S.map((s) => L.bestTurns(s)).map((b) => b && b.min);
       check('後のステージほど遠い（最初の3つは平ら、最後は最初より巻く）', S.slice(0, 3).every((s) => s.segments.every((g) => g.type === 'flat')) && ranges[14] > ranges[0], ranges);
     },
@@ -54,6 +65,8 @@ export const tests = [
       const fall = L.simulate(wide, L.turnsToReach(wide, wide.cliffX) + 0.5);
       check('崖を越える巻き数は fall・★0', fall.result === 'fall' && fall.stars === 0, { r: fall.result, x: fall.x });
       check('崖ちょうどは落ちない（stop）', L.simulate(wide, L.turnsToReach(wide, wide.cliffX)).result === 'stop');
+      const realFall = S.filter((st) => { const r = L.simulate(st, Math.min(st.maxTurns, L.turnsToReach(st, st.cliffX) + 0.25)); return !(r.result === 'fall' && r.stars === 0); }).map((st) => st.id);
+      check('実ステージ（崖を広げない）でも、崖を越える巻き数は fall・★0', realFall.length === 0, realFall);
       const br = L.simulate(s, s.maxTurns + 0.01), mx = L.simulate(s, s.maxTurns);
       check('maxTurns 超えは break（歩かない・★0）、maxTurns ちょうどは break でない', br.result === 'break' && br.stars === 0 && br.x === s.startX && mx.result !== 'break', { br: br.result, mx: mx.result });
       check('NaN・負の巻き数は0扱いで例外なし', L.simulate(s, NaN).x === s.startX && L.simulate(s, -3).x === s.startX);
@@ -128,6 +141,67 @@ export const tests = [
         check('recordResult：★0では次は開かない、★1以上で開く', L.recordResult(INIT, 'z03', 0).unlocked === 1 && L.recordResult(INIT, 'z03', 1).unlocked === 4 && L.recordResult(INIT, 'z15', 3).unlocked === 15);
         check('recordResult：不正な id・★は無視', JSON.stringify(L.recordResult(INIT, 'z99', 3)) === INIT && JSON.stringify(L.recordResult(INIT, 'z01', 7)) === INIT);
       }
+    },
+  },
+  {
+    id: 'ZL7', tier: 'smoke', node: true, title: 'ゼンマイ：ネジの入力 input.js（指の持ち替え・pointercancel・速い回転・中心付近）',
+    run({ check, root }) {
+      load(root);
+      const I = createRequire(path.join(root, 'games/zenmai/'))(path.join(root, 'games/zenmai/input.js'));
+      const R = 40, DEG = Math.PI / 180;
+      const xy = (deg, r = R) => ({ clientX: 100 + r * Math.cos(deg * DEG), clientY: 100 + r * Math.sin(deg * DEG) });
+      const fake = () => {
+        const h = {};
+        return {
+          h, style: {},
+          addEventListener(t, f) { h[t] = f; }, removeEventListener(t) { delete h[t]; },
+          getBoundingClientRect: () => ({ left: 50, top: 50, width: 100, height: 100 }),
+          setPointerCapture() {}, releasePointerCapture() {},
+          fire(t, id, deg, r) { h[t] && h[t]({ type: t, pointerId: id, pointerType: 'touch', button: 0, cancelable: true, preventDefault() {}, ...xy(deg, r) }); },
+        };
+      };
+      const rig = () => {
+        const el = fake(), log = { wind: 0, releases: [], starts: 0 };
+        const api = I.attach(el, { onWind: (d) => { log.wind += d; }, onRelease: (i) => log.releases.push(i), onStart: () => { log.starts++; } });
+        return { el, log, api };
+      };
+      const sweep = (el, id, from, to, step) => { const n = Math.round(Math.abs(to - from) / step), d = (to - from) / n; for (let i = 1; i <= n; i++) el.fire('pointermove', id, from + d * i); };
+
+      // (a) 持ち替え: 指1で0.5回転 → 指2（別の位置）が触れて指1が離れる → 指2でさらに0.5回転 → 合計1回転・onRelease は1回
+      const a = rig();
+      a.el.fire('pointerdown', 1, 0); sweep(a.el, 1, 0, 180, 30);
+      a.el.fire('pointerdown', 2, 270);
+      a.el.fire('pointerup', 1, 180);
+      check('持ち替え直後はまだ離していない（onRelease 0回）', a.log.releases.length === 0, a.log);
+      sweep(a.el, 2, 270, 450, 30);
+      a.el.fire('pointerup', 2, 450);
+      check('持ち替えても合計は1回転、onRelease は1回で歩く（cancelled でない）', Math.abs(a.log.wind - 1) < 1e-9 && a.log.releases.length === 1 && a.log.releases[0].cancelled === false && Math.abs(a.log.releases[0].turns - 1) < 1e-9 && a.log.starts === 1, a.log);
+
+      // (b) pointercancel: cancelled:true で1回だけ。その後の move は数えない
+      const b = rig();
+      b.el.fire('pointerdown', 1, 0); sweep(b.el, 1, 0, 90, 30);
+      b.el.fire('pointercancel', 1, 90);
+      const w = b.log.wind;
+      sweep(b.el, 1, 90, 270, 30);
+      check('pointercancel は cancelled:true で onRelease 1回、その後は数えない', b.log.releases.length === 1 && b.log.releases[0].cancelled === true && b.log.wind === w, b.log);
+
+      // (c) 速い回転: 1回の move で150°ずつ → 5回転を正しく数える（逆向きにならない）。反時計回りは負
+      const got = { v: 0 };
+      const c = I.createCore({ onWind: (d) => { got.v += d; } });
+      c.point(...[R, 0], 50);
+      for (let i = 1; i <= 12; i++) c.point(R * Math.cos(150 * i * DEG), R * Math.sin(150 * i * DEG), 50);
+      check('150°ずつの速い回転でも5回転（時計回り＝正）', Math.abs(got.v - 5) < 1e-9, got.v);
+      const g2 = { v: 0 }, c2 = I.createCore({ onWind: (d) => { g2.v += d; } });
+      c2.point(R, 0, 50);
+      for (let i = 1; i <= 12; i++) c2.point(R * Math.cos(-150 * i * DEG), R * Math.sin(-150 * i * DEG), 50);
+      check('反時計回りは負（-5回転）', Math.abs(g2.v + 5) < 1e-9, g2.v);
+
+      // (d) 中心付近（半径 DEAD_MIN 未満）は数えない。出たところから数え直す
+      const g3 = { v: 0 }, c3 = I.createCore({ onWind: (d) => { g3.v += d; } });
+      for (let i = 0; i <= 24; i++) c3.point(3 * Math.cos(30 * i * DEG), 3 * Math.sin(30 * i * DEG), 50);
+      check('中心付近でぐるぐる回しても数えない', g3.v === 0, g3.v);
+      c3.point(R, 0, 50); c3.point(0, R, 50);
+      check('外へ出てからは数える（90°＝0.25回転）', Math.abs(g3.v - 0.25) < 1e-9, g3.v);
     },
   },
 ];

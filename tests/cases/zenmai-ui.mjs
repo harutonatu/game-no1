@@ -15,6 +15,16 @@ const TE_SPY = () => {
   window.addEventListener('touchend', (e) => window.__te.push({ p: e.defaultPrevented, t: e.target.id || e.target.className || e.target.tagName }));
 };
 
+// 舞台（canvas）に渡した view を記録する（ZenmaiRender.create の draw を包む）
+const RENDER_SPY = () => {
+  let v;
+  Object.defineProperty(window, 'ZenmaiRender', { configurable: true, get: () => v, set(x) {
+    const oc = x.create;
+    x.create = function (...a) { const r = oc.apply(this, a); const od = r.draw; r.draw = function (st, view) { window.__zrView = view; return od.apply(this, arguments); }; return r; };
+    v = x;
+  } });
+};
+
 // ---------- 共通の操作 ----------
 const HK = 'zenmai.help';                 // 遊び方を一度見たか（初回だけ自動で出る）。ほかの確認では見たことにして始める
 async function openZ(page, items = {}) {
@@ -476,7 +486,10 @@ export const tests = [
       const pc = await plays(page);
       const seen = [...new Set(pc.map((p) => p.n))];
       check(`クリアで ${seen.join(', ')} が鳴り、release・step・stop・star・clear を含む`, ['release', 'step', 'stop', 'star', 'clear'].every((n) => seen.includes(n)), seen);
-      check('どの呼び出しも既知の音名で、音の部品が実際に start した', pc.length > 0 && pc.every((p) => p.known && p.d > 0), pc.filter((p) => !(p.known && p.d > 0)));
+      // step は sfx.js の間引き（GAP 0.08 秒・音の時計で測る）がある。早送り中はゲームの時間だけ進み音の時計は進まないので、
+      // 2歩目以降が間引かれることがある。step は「1回以上実際に鳴った」ことを見て、ほかの音はすべて start したことを見る
+      const notStarted = pc.filter((p) => !p.known || (p.n !== 'step' && !(p.d > 0)));
+      check('どの呼び出しも既知の音名で、音の部品が実際に start した（step は1回以上）', pc.length > 0 && !notStarted.length && pc.some((p) => p.n === 'step' && p.d > 0), notStarted);
       check(`star は ★の数（3）だけ、1・2・3 の順に鳴る（${pc.filter((p) => p.n === 'star').map((p) => p.a).join(',')}）`, JSON.stringify(pc.filter((p) => p.n === 'star').map((p) => p.a)) === '[1,2,3]', pc.filter((p) => p.n === 'star'));
       // 巻きすぎ → break、崖 → fall
       await page.click('#overlay [data-cmd=retry]'); await wait(page, 300); await clear();
@@ -521,6 +534,52 @@ export const tests = [
       const ticks = before.filter((n) => n === 'tick').length;
       check(`円ドラッグ1周で tick が鳴る（${ticks} 回、1/8 回転ごと＝約8）、指を離す前は release が鳴らない`, ticks >= 6 && ticks <= 9 && !before.includes('release'), before);
       check('指を離すと release が鳴り、どの呼び出しも既知の音名で部品が start した', all.some((p) => p.n === 'release') && all.every((p) => p.known && p.d > 0), all.filter((p) => !(p.known && p.d > 0)));
+      await ctx.close();
+    },
+  },
+  {
+    id: 'ZU14', tier: 'full', title: '警告の基準がネジと舞台でそろう：★3の中央ではどちらも警告なし、限界の1回転手前から両方が警告。止まった後のゲージは0、「つぎ」の目印は1つ、初回の遊び方は短い',
+    async run({ browser, check }) {
+      const { ctx, page } = await newPage(browser, view('i13', 'p', 'app'), 'ZU14', { clock: true, initScript: RENDER_SPY });
+      const both = () => page.evaluate(() => {
+        const d = document.querySelector('#dial'), v = window.__zrView || {};
+        const st = typeof v.warn === 'number' ? v.warn : window.ZenmaiRender.warnLevel(v.turns, v.maxTurns, v.warnMargin);
+        return { dial: d.classList.contains('over') ? 2 : d.classList.contains('warn') ? 1 : 0, stage: st, turns: v.turns, frac: d.style.getPropertyValue('--frac').trim() };
+      });
+      const bad = [];
+      await openZ(page, { [PK]: prog({}, 15) });
+      const ids = await page.evaluate(() => ZenmaiStages.map((s) => s.id));
+      for (const id of ids) {
+        await openZ(page, { [PK]: prog({}, 15) }); await startStage(page, id);
+        const c = await calc(page, id);
+        await page.evaluate((t) => window.ZenmaiGame.setTurns(t), c.mid); await wait(page, 100);
+        const w = await both();
+        if (w.dial !== 0 || w.stage !== 0) bad.push({ id, mid: c.mid, w });
+      }
+      check('全15ステージで ★3 の中央の巻き数では、ネジにも舞台にも警告が出ない', bad.length === 0, bad);
+      await openZ(page, { [PK]: prog({}, 15) }); await startStage(page, 'z05');
+      const lv = [];
+      for (const t of [8.75, 9, 9.25, 10, 10.25]) { await page.evaluate((t) => window.ZenmaiGame.setTurns(t), t); await wait(page, 100); lv.push({ t, ...(await both()) }); }
+      const exp = [0, 0, 1, 1, 2];
+      check(`z05（限界10）：8.75・9回転は警告なし、9.25・10回転で「そろそろ限界」、10.25回転で超過。ネジと舞台が同じ段階（${lv.map((x) => x.dial + '/' + x.stage).join(' ')}）`, lv.every((x, i) => x.dial === exp[i] && x.stage === exp[i]), lv);
+      // 止まった後：ネジのゲージは 0 に戻ったまま（満タンに戻らない）
+      await openZ(page, { [PK]: prog({}, 15) }); await startStage(page, 'z01');
+      const c1 = await calc(page, 'z01');
+      await play(page, c1.mid);
+      let sawStopped = false;
+      for (let i = 0; i < 160; i++) { await wait(page, 50); const ph = await phaseOf(page); if (ph === 'stopped' || ph === 'done') { sawStopped = true; break; } }
+      const f1 = await both(); await waitOverlay(page); const f2 = await both();
+      check(`止まった直後と結果の表示中、ネジのゲージ（--frac）は 0（${f1.frac} → ${f2.frac}）`, sawStopped && Number(f1.frac) === 0 && Number(f2.frac) === 0 && f1.dial === 0, { f1, f2 });
+      // ステージ選択の「つぎ」は1つだけで、最初の未クリアの解放済みステージ
+      await openZ(page, { [PK]: prog({ z01: 3, z02: 1 }, 3) });
+      const nx = await page.evaluate(() => [...document.querySelectorAll('#stageList .stage.next')].map((b) => b.dataset.id));
+      check(`ステージ選択の .stage.next は1つだけ（${nx.join(',')}）で z03`, nx.length === 1 && nx[0] === 'z03', nx);
+      // 初回の遊び方は3項目、？ボタンからは全項目
+      await seed(page, {}); await page.goto(ZEN); await wait(page, 300);
+      const first = await page.evaluate(() => ({ kind: window.ZenmaiGame.getState().overlay, n: document.querySelectorAll('#overlay .howto dt').length }));
+      await openZ(page); await page.click('#helpBtn'); await wait(page, 200);
+      const full = await page.evaluate(() => document.querySelectorAll('#overlay .howto dt').length);
+      check(`初回の自動表示の遊び方は短い（${first.n} 項目）、？ボタンからは全項目（${full} 項目）`, first.kind === 'help' && first.n === 3 && full === 7, { first, full });
       await ctx.close();
     },
   },

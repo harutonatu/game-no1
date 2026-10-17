@@ -52,7 +52,7 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | 保存データ（localStorage）・2048 のロジック | smoke ＋ `ONLY=D1,D2,D3,D4,D5,D6,D7,D8,D9 node tests/run.mjs full` |
 | 効果音（common/sfx.js）・♪ボタン | smoke ＋ `ONLY=A1,A2,A3,A4,A5,T1,T4,P5 node tests/run.mjs full` |
 | タッチ操作・ダブルタップ抑止 | smoke ＋ `ONLY=T1,T2,T3,T4,T5,P7,E5 node tests/run.mjs full`（WebKit でも `BROWSER=webkit … smoke`） |
-| ゼンマイさんぽ（games/zenmai/）の変更 | smoke ＋ `ONLY=ZL1,ZL2,ZL3,ZL4,ZL5,ZL6,ZU6,ZU7,ZU8,ZU9,ZU10,ZU11,ZU12,ZU13 node tests/run.mjs full`（ステージの数値は ZL、画面は ZU） |
+| ゼンマイさんぽ（games/zenmai/）の変更 | smoke ＋ `ONLY=ZL1,ZL2,ZL3,ZL4,ZL5,ZL6,ZL7,ZU6,ZU7,ZU8,ZU9,ZU10,ZU11,ZU12,ZU13,ZU14 node tests/run.mjs full`（ステージの数値は ZL、画面は ZU） |
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
 | テストを変えたとき・月 1 回 | `node tests/mutants/mutate.mjs both`（テストがわざと入れた不具合を見つけられるか） |
 
@@ -71,8 +71,8 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | P | 遊べること | キー・ボタン・スワイプ、0.8 秒の待ち、クリア、演出 |
 | A | 効果音 | 音名の一致、操作で鳴る、オフなら鳴らない、メニューの tap |
 | T | タッチ操作 | ダブルタップ拡大の抑止、タッチでの音の準備（unlock）、操作一式 |
-| ZL | ゼンマイさんぽ 計算ロジック（Node） | `games/zenmai/logic.js`・`stages.js` を直接呼ぶ：15 ステージの形と★3 が取れること、simulate・starsFor・bestTurns・validateProgress の境界値（zenmai-logic.mjs） |
-| Z | ゼンマイさんぽ 画面 | ZU0 静的（DOM・読み込み順・sw.js・音名）／ZU1 データが消えない・壊れた保存／ZU2 メニューへ戻れる・遊び方／ZU3・ZU11 ボタンが画面内・44px／ZU4 オフライン／ZU5 1 ステージクリア／ZU6 境界値／ZU7 ＋/－/歩かせる だけで遊べる／ZU8・ZU13 円ドラッグ（CDP）／ZU9 効果音／ZU10 ダブルタップ抑止（CDP）／ZU12 最後のステージ・全 15 ステージ・動きを減らす設定（zenmai-ui.mjs） |
+| ZL | ゼンマイさんぽ 計算ロジック（Node） | `games/zenmai/logic.js`・`stages.js` を直接呼ぶ：15 ステージの形と★3 が取れること、simulate・starsFor・bestTurns・validateProgress の境界値、ZL7 はネジの入力 input.js（持ち替え・cancel・速い回転・中心付近）（zenmai-logic.mjs） |
+| Z | ゼンマイさんぽ 画面 | ZU0 静的（DOM・読み込み順・sw.js・音名）／ZU1 データが消えない・壊れた保存／ZU2 メニューへ戻れる・遊び方／ZU3・ZU11 ボタンが画面内・44px／ZU4 オフライン／ZU5 1 ステージクリア／ZU6 境界値／ZU7 ＋/－/歩かせる だけで遊べる／ZU8・ZU13 円ドラッグ（CDP）／ZU9 効果音／ZU10 ダブルタップ抑止（CDP）／ZU12 最後のステージ・全 15 ステージ・動きを減らす設定／ZU14 警告の基準（ネジと舞台・限界の1回転手前）・止まった後のゲージ・「つぎ」の目印・初回の遊び方（zenmai-ui.mjs） |
 | X1 | 共通 | 全ページでコンソールエラー 0（最後に 1 回） |
 
 ## 構成
