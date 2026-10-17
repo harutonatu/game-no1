@@ -1,17 +1,23 @@
-// オフラインでも遊べるようにするための Service Worker
+// オフラインでも遊べるようにするための Service Worker（ゲーム集「ゆびあそび」全体で1つ）
 // ファイルを更新したら CACHE_VERSION を上げる（古いキャッシュを削除させるため）
-const CACHE_VERSION = "v3";
-const APP_CACHE = `blockpuzzle-app-${CACHE_VERSION}`;
-const FONT_CACHE = "blockpuzzle-fonts";
+const CACHE_VERSION = "v4";
+const APP_PREFIX = "yubiasobi-app-";
+const APP_CACHE = `${APP_PREFIX}${CACHE_VERSION}`;
+const FONT_CACHE = "yubiasobi-fonts";
+// 以前の名前（ブロックパズル単体だったころ）のキャッシュ。activate で削除する
+const OLD_APP_PREFIX = "blockpuzzle-app-";
+const OLD_FONT_CACHE = "blockpuzzle-fonts";
 const APP_FILES = [
   "./",
   "./index.html",
+  "./games/blocks/",
+  "./games/blocks/index.html",
+  "./games/2048/",
+  "./games/2048/index.html",
   "./manifest.webmanifest",
   "./icons/apple-touch-icon.png",
   "./icons/icon-192.png",
-  "./icons/icon-512.png",
-  "./games/2048/",
-  "./games/2048/index.html"
+  "./icons/icon-512.png"
 ];
 
 self.addEventListener("install", (e) => {
@@ -21,7 +27,11 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith("blockpuzzle-app-") && k !== APP_CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) =>
+        k.startsWith(OLD_APP_PREFIX) ||
+        k === OLD_FONT_CACHE ||
+        (k.startsWith(APP_PREFIX) && k !== APP_CACHE)
+      ).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
