@@ -1,5 +1,5 @@
 // P: 遊べること（操作・0.8秒の待ち・クリア・演出）。端末は iPhone 13 ホーム画面の1種類（同値分割：操作の結果は画面サイズに依存しない）
-import { BASE, T48, BLK, view, newPage, seed, open2048, ST, stateOf, overlayShown, cardText, sleep, wait, touch, SFX_SPY, plays } from '../lib.mjs';
+import { BASE, T48, BLK, KIRI, view, newPage, seed, open2048, ST, stateOf, overlayShown, cardText, sleep, wait, touch, SFX_SPY, plays, fixedRandom, frozen, kiriSnap, kiriStart, kiriWaitObj, kiriSlash, kiriSwipe, kiriAutoplay } from '../lib.mjs';
 const V = () => view('i13', 'p', 'app');
 const NEAR_OVER = [2, 4, 2, 4, 4, 2, 4, 2, 2, 4, 2, 8, 64, 64, 8, 16];
 const NEAR_OVER2 = [128, 4, 2, 4, 4, 2, 4, 2, 2, 4, 2, 8, 64, 64, 8, 16];
@@ -181,6 +181,90 @@ export const tests = [
       await wait(r.page, 250);
       const fl = await r.page.evaluate(() => ({ n: window.__flash, anim: [...document.querySelectorAll('.tile-in')].map((e) => getComputedStyle(e).animationName).filter((a) => a !== 'none').length, tr: getComputedStyle(document.querySelector('#board .tile')).transitionDuration }));
       check('動きを減らす設定：スコアは即時、「+N」・光り・タイルの動きなし', imm.s === '1,028' && !imm.gain && fl.n === 0 && fl.anim === 0 && fl.tr === '0s', { imm, fl });
+      await r.ctx.close();
+    },
+  },
+  {
+    id: 'P8', tier: 'smoke', title: 'キリトリ道場：スワイプで的が切れて 1 点・割れる・軌跡が約 0.2 秒残る、止めた指では切れない、落とすとライフ −1、ライフ 0 で結果カード',
+    async run({ browser, check }) {
+      const { ctx, page } = await newPage(browser, V(), 'P8', { clock: true, initScript: SFX_SPY });
+      await seed(page, {});
+      await page.goto(KIRI); await wait(page, 150);
+      await kiriStart(page);
+      const f = await kiriWaitObj(page);
+      check('始めると下から的が飛んでくる（道場の中に全体が見える）', !!f, f && f.s);
+      // 指を的の上に置いただけ（動かさない）では切れない
+      await kiriSwipe(page, (s) => { const o = s.objs[0]; return o && [[o.x, o.y]]; });
+      const still = await kiriSnap(page);
+      // 切って、軌跡の残り方を見る。ページの時間を止めたまま切り、そこから 0.1 秒・0.25 秒だけ進める（負荷で実時間が流れても変わらない）
+      let s1, tr1, tr2;
+      await frozen(page, async () => {
+        const s = await kiriSnap(page);
+        const o = s.objs.filter((x) => x.kind !== 'bomb').sort((a, b) => Math.hypot(a.x - f.o.x, a.y - f.o.y) - Math.hypot(b.x - f.o.x, b.y - f.o.y))[0];
+        await page.mouse.move(o.x - o.r - 16, o.y + 2); await page.mouse.down();
+        await page.mouse.move(o.x + o.r + 16, o.y - 2, { steps: 5 }); await page.mouse.up();
+        s1 = await kiriSnap(page);
+        await page.clock.runFor(100); tr1 = (await kiriSnap(page)).trail;
+        await page.clock.runFor(150); tr2 = (await kiriSnap(page)).trail;
+      });
+      const ps = (await plays(page)).map((p) => p.n);
+      check(`的の上で指を止めただけでは切れず（${still.score} 点）、横になぞると切れて 1 個 1 点（${s1.score} 点）・1 個が 2つに割れて破片が出る・slice の音`, still.score === 0 && s1.score >= 1 && s1.pieces === 2 * s1.score && s1.cutCount === s1.score && s1.bits > 0 && ps.includes('slice') && ps.includes('start'), { still: still.score, s1, ps });
+      check(`切った軌跡は 0.1 秒後も残り（${tr1} 点）、0.25 秒後には消える（${tr2} 点）`, tr1 > 0 && tr2 === 0, { tr1, tr2 });
+      // 次の的は切らずに落とす → ライフ −1、miss の音
+      let s2 = s1;
+      const miss0 = (await plays(page)).filter((p) => p.n === 'miss').length;
+      for (let i = 0; i < 60 && s2.lives === 3; i++) { await wait(page, 100); s2 = await kiriSnap(page); }
+      const missN = (await plays(page)).filter((p) => p.n === 'miss').length - miss0;
+      check(`的を切らずに下へ落とすと 1 個につきライフ −1（落とした ${missN} 個 → ライフ ${s2.lives}）、miss の音、ゲームは続く`, s2.lives === 3 - missN && missN >= 1 && missN <= 2 && s2.state === 'play' && (await plays(page)).some((p) => p.n === 'miss'), s2);
+      for (let i = 0; i < 80 && (await kiriSnap(page)).state === 'play'; i++) await wait(page, 250);
+      const over = await kiriSnap(page);
+      const early = await overlayShown(page);
+      await wait(page, 1000);
+      const t = await cardText(page);
+      check('ライフ 0 で終わり、最後の様子を少し見せてから結果カード（スコア・自己ベスト更新）、over の音', over.state === 'over' && over.lives === 0 && !early && /ゲームオーバー/.test(t) && /自己ベスト更新/.test(t) && new RegExp(`SCORE ?${over.score}\\b`, 'i').test(t) && (await plays(page)).some((p) => p.n === 'over'), { t, early });
+      await ctx.close();
+    },
+  },
+  {
+    id: 'P9', tier: 'full', title: 'キリトリ道場：ひと振りで 3 つ以上切るとコンボ加点、爆弾を切るとライフ −1（すぐには終わらない）、的は上〜中央を飛ぶ、動きを減らす設定',
+    async run({ browser, check }) {
+      const { ctx, page } = await newPage(browser, view('SE', 'p', 'app'), 'P9', { clock: true, initScript: SFX_SPY });   // 長く遊ぶので、描く面積の小さい SE で
+      await ctx.addInitScript(fixedRandom);   // 出てくる的の順番を毎回同じにする（爆弾・3つ同時がいつ来るかを安定させる）
+      await seed(page, {});
+      await page.goto(KIRI); await wait(page, 150);
+      await kiriStart(page);
+      // 飛んでいる的の頂点の高さ（いまの位置・速さ・重力から y − vy²/2g）を記録（道場の上端からの割合）
+      const apex = [];
+      const note = (s) => { for (const o of s.objs) apex.push((o.y - (o.vy * o.vy) / (2 * o.g) - s.stage.y) / s.stage.h); };
+      // 的が 3 つ以上同時に飛ぶまで切り続け（爆弾はよける）、3 つを 1 回のスワイプでなぞる
+      const s0 = await kiriAutoplay(page, (s) => note(s) || s.objs.filter((o) => o.kind !== 'bomb' && o.y - o.r > s.stage.y && o.y + o.r < s.stage.y + s.stage.h).length >= 3 && s.objs.every((o) => o.kind !== 'bomb'), { maxMs: 120000, step: 300, lazy: true });
+      const before = s0.score;
+      const done = await kiriSwipe(page, (s) => {
+        const ts = s.objs.filter((o) => o.kind !== 'bomb' && o.y - o.r > s.stage.y && o.y + o.r < s.stage.y + s.stage.h).sort((a, b) => a.x - b.x);
+        if (ts.length < 3 || s.objs.some((o) => o.kind === 'bomb')) return null;
+        return [[ts[0].x - ts[0].r - 10, ts[0].y], ...ts.map((o) => [o.x, o.y]), [ts.at(-1).x + ts.at(-1).r + 10, ts.at(-1).y]];
+      }, 8);
+      const s1 = await kiriSnap(page);
+      const n = s1.cutCount - s0.cutCount;
+      const comboPlays = (await plays(page)).filter((p) => p.n === 'combo');
+      check(`ひと振りで ${n} 個切ると ${n} 点＋コンボ加点 ${2 * n - 3}（${before}→${s1.score}）、最大コンボ ${s1.maxCombo}、combo の音`, done && n >= 3 && s1.score - before === n + 2 * n - 3 && s1.maxCombo === n && comboPlays.some((p) => p.a === n), { done, n, before, after: s1.score, s0: s0.objs.length });
+      // 爆弾が来るまで切り続け、爆弾を切る → ライフ −1、点は増えない、ゲームは続く
+      const s2 = await kiriAutoplay(page, (s) => note(s) || s.objs.some((o) => o.kind === 'bomb' && o.y - o.r > s.stage.y && o.y + o.r < s.stage.y + s.stage.h) && s.lives >= 2, { maxMs: 120000, step: 200 });
+      const bomb = s2.objs.find((o) => o.kind === 'bomb');
+      if (bomb) await kiriSwipe(page, (s) => { const b = s.objs.filter((o) => o.kind === 'bomb').sort((a, c) => Math.hypot(a.x - bomb.x, a.y - bomb.y) - Math.hypot(c.x - bomb.x, c.y - bomb.y))[0]; return b && [[b.x, b.y - b.r - 4], [b.x, b.y + b.r + 4]]; }, 3);
+      const s3 = await kiriSnap(page);
+      check(`爆弾を切るとライフ −1（${s2.lives}→${s3.lives}）、爆弾は点にならず（増えたのは一緒に切った的の分だけ）、すぐには終わらない（家族向け）、bomb の音`, !!bomb && s3.lives === s2.lives - 1 && s3.score - s2.score === s3.cutCount - s2.cutCount && s3.state === 'play' && (await plays(page)).some((p) => p.n === 'bomb'), { bomb: !!bomb, s2: { l: s2.lives, sc: s2.score, c: s2.cutCount }, s3: { l: s3.lives, sc: s3.score, c: s3.cutCount, st: s3.state } });
+      const ap = apex;
+      check(`的の頂点はすべて道場の上端から 12〜45%（上〜中央。${ap.length} 回、${Math.round(Math.min(...ap) * 100)}〜${Math.round(Math.max(...ap) * 100)}%）`, ap.length >= 5 && ap.every((y) => y >= 0.115 && y <= 0.455), { max: Math.max(...ap), n: ap.length });
+      await ctx.close();
+      // 動きを減らす設定：割れはするが破片は出ず、軌跡の光（影）なし
+      const r = await newPage(browser, V(), 'P9 reduce', { clock: true, reducedMotion: 'reduce' });
+      await seed(r.page, {});
+      await r.page.goto(KIRI); await wait(r.page, 150); await kiriStart(r.page);
+      const f = await kiriWaitObj(r.page);
+      if (f) await kiriSlash(r.page, f.o);
+      const rs = await kiriSnap(r.page);
+      check('動きを減らす設定：切れて 1 点・2つに割れるが、破片は出さない', !!f && rs.score === 1 && rs.pieces === 2 && rs.bits === 0, rs);
       await r.ctx.close();
     },
   },
