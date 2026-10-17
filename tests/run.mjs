@@ -19,6 +19,7 @@ const SELF = fileURLToPath(import.meta.url);
 // weight は並列実行の割り振り用の目安（秒）。長いものから先に始める
 export const GROUPS = [
   { key: 'L', title: 'L 計算ロジック・静的検査(Node)', file: 'logic.mjs', weight: { smoke: 0, full: 0 } },
+  { key: 'ZL', title: 'ZL ゼンマイさんぽ 計算ロジック(Node)', file: 'zenmai-logic.mjs', weight: { smoke: 0, full: 0 } },
   { key: 'D', title: 'D データ保護・互換', file: 'data.mjs', weight: { smoke: 8, full: 24 } },
   { key: 'E', title: 'E 閉じ込めなし', file: 'escape.mjs', weight: { smoke: 5, full: 17 } },
   { key: 'S', title: 'S オフライン・更新', file: 'sw.mjs', weight: { smoke: 5, full: 29 } },
@@ -26,6 +27,7 @@ export const GROUPS = [
   { key: 'P', title: 'P 遊べること', file: 'play.mjs', weight: { smoke: 4, full: 21 } },
   { key: 'A', title: 'A 効果音', file: 'sound.mjs', weight: { smoke: 4, full: 16 } },
   { key: 'T', title: 'T タッチ操作（ダブルタップ拡大の抑止・音の準備）', file: 'touch.mjs', weight: { smoke: 5, full: 28 } },
+  { key: 'Z', title: 'Z ゼンマイさんぽ 画面（データ・戻る・ボタン・オフライン・クリア・円ドラッグ・音）', file: 'zenmai-ui.mjs', weight: { smoke: 10, full: 45 } },
 ];
 
 const args = process.argv.slice(2);
@@ -132,7 +134,7 @@ async function main() {
     errors.push(...r.errors);
   }
   // 全ページ共通の確認は最後に1回だけ（各グループで集めたコンソールエラーをまとめる）
-  if (plan.some((g) => g.key !== 'L')) {
+  if (plan.some((g) => !['L', 'ZL'].includes(g.key))) {
     const ok = errors.length === 0;
     items.push({ id: 'X1', title: '全ページでコンソールエラー・ページエラー 0', ok, ms: 0, checks: [{ name: `コンソールエラー・ページエラー ${errors.length} 件`, ok, detail: ok ? undefined : errors.slice(0, 20) }] });
     console.log(`■ 共通\n  ${ok ? 'PASS' : 'FAIL'}  X1  全ページでコンソールエラー・ページエラー 0${ok ? '' : '\n        ' + JSON.stringify(errors.slice(0, 10))}`);

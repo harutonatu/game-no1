@@ -172,7 +172,7 @@ export const tests = [
       await page.goto(BLK); await wait(page, 150);
       await page.click('#card [data-cmd=restart]'); await page.keyboard.press('Space'); await wait(page, 80);
       const sc = await page.evaluate(() => Number(document.querySelector('#score').textContent.replace(/,/g, '')));
-      check('メニュー表示・2048 で手が進む・ブロックで得点、ページエラーなし', cards === 2 && tiles >= 2 && sc > 0 && errors.length === before, { cards, tiles, sc, errs: errors.slice(before) });
+      check('メニュー表示・2048 で手が進む・ブロックで得点、ページエラーなし', cards >= 2 && tiles >= 2 && sc > 0 && errors.length === before, { cards, tiles, sc, errs: errors.slice(before) });
       await ctx.close();
     },
   },

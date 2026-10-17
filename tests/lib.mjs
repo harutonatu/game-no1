@@ -181,6 +181,7 @@ export async function seed(page, items, { clear = true } = {}) {
 export const ST = (grid, o = {}) => ({ v: 1, grid, score: 1000, prev: null, keepPlaying: false, moves: 30, seed: 12345, ...o });
 export const T48 = BASE + 'games/2048/';
 export const BLK = BASE + 'games/blocks/';
+export const ZEN = BASE + 'games/zenmai/';
 export async function open2048(page, state, extra = {}) {
   await seed(page, { ...(state === undefined ? {} : { 'tile2048.state': state }), ...extra });
   await page.goto(T48); await wait(page, 200);

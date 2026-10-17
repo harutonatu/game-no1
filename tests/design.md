@@ -168,7 +168,25 @@ smoke/full の L・D・E・S・V・P はそのまま移した。変えたのは�
 
 ## 10. 変異テスト
 
-`node tests/mutants/mutate.mjs both`：アプリを一時フォルダにコピーし、不具合を 1 つずつ入れて smoke・full を流す（M1〜M13）。テストを変えたとき・月 1 回。結果は README の表。
+`node tests/mutants/mutate.mjs both`：アプリを一時フォルダにコピーし、不具合を 1 つずつ入れて smoke・full を流す（M1〜M16、ゼンマイさんぽは MZ1〜MZ3）。テストを変えたとき・月 1 回。結果は README の表。
+
+## 10.5 ゼンマイさんぽ（games/zenmai/）
+
+ロジックと画面を分けて確かめる。計算は Node で直接（ZL、`zenmai-logic.mjs`）、画面は契約の DOM と `window.ZenmaiGame`（`getState()`・`setTurns(n)`・`go()`）で（Z、`zenmai-ui.mjs`）。画面側は「期待値の計算機」として、ページの中の `ZenmaiLogic.simulate`・`bestTurns` を使う（ステージの数値を決め打ちしない）。
+
+| リスク | 確認 | tier |
+|---|---|---|
+| データ消失（★・解放） | ZU1：失敗・再読み込みで下がらない、壊れた保存（JSON でない・範囲外の★・解放数）は `validateProgress` と同じ表示になり開ける、ほかのゲームの保存に触らない／ZU6：★は最高を残す／ZU12：全クリア後の保存 | smoke／full |
+| 閉じ込め | ZU2：ステージ選択・プレイ・歩行・一時停止・結果カードのどこからでもメニューかステージ選択へ出られる。遊び方カードが閉じられる／ZU6：失敗後も続けられる | smoke |
+| ボタン画面外・44px | ZU3（SE ホーム画面縦）／ZU11（代表 10 画面：ステージ選択 15 個・プレイ中・結果カード） | smoke／full |
+| オフライン | ZU4：インストール後に接続を切り、15 ステージが出て、部品 5 つが SW から返り、プレイできる／ZU0：sw.js の APP_FILES 6 件と版数 | smoke |
+| 遊べること | ZU5：巻く→歩く→止まる→★→保存→次が開く→「次へ」／ZU7：＋/－/歩かせるだけで★3、歩行中は無効、何度でも挑戦／ZU12：15 ステージすべて | smoke／full |
+| 境界値 | ZU6：巻き数 0・★3 範囲の両端・最大・最大＋1/4・崖。画面の結果が simulate と一致。限界の手前で warn・超過で over（色と文字） | full |
+| 円ドラッグ | ZU8（CDP）：時計回り 1 周≒1、反時計回りで戻る、速い回転、中心付近は無視、0 未満にならない、離すと歩く | full（Chromium） |
+| 効果音 | ZU9：limit・tick・unwind・release・step・stop・star(1,2,3)・clear・fall・break が実際に鳴る、オフなら鳴らない／ZU13（CDP）：円ドラッグ 1 周で tick 約 8 回／ZU0：音名が "zenmai" にある | full |
+| ダブルタップ拡大 | ZU10（CDP）：ネジ・舞台・＋の連続タップで 2 回目の touchend を止め、拡大せず、＋は 2 回効く。dblclick・gesture・contextmenu・文字選択 | full（Chromium） |
+
+観察した不具合（テストは不合格のまま。画面担当へ）：SE Safari 縦（320×454）でプレイ中の「歩かせる」が画面下にはみ出す／iPhone 13・15 Pro Max の Safari 横（高さ 340・380）で舞台が画面下にはみ出す（body が overflow hidden でスクロールもできない）。
 
 ## 11. 減らしたことで見落とす可能性があるもの
 

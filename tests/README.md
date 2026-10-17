@@ -1,6 +1,6 @@
 # ゆびあそび 統合テスト（tests/）
 
-ゲーム集「ゆびあそび」（メニュー・ブロックパズル・ばいばいタイル）を、本物のブラウザで動かして確かめるテストです。
+ゲーム集「ゆびあそび」（メニュー・ブロックパズル・ばいばいタイル・ゼンマイさんぽ）を、本物のブラウザで動かして確かめるテストです。
 アプリのファイル（index.html・games/・common/・sw.js・manifest.webmanifest・icons/）には触れず、読むだけです。
 設計・項目の対応表は [design.md](design.md) にあります。
 
@@ -52,6 +52,7 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | 保存データ（localStorage）・2048 のロジック | smoke ＋ `ONLY=D1,D2,D3,D4,D5,D6,D7,D8,D9 node tests/run.mjs full` |
 | 効果音（common/sfx.js）・♪ボタン | smoke ＋ `ONLY=A1,A2,A3,A4,A5,T1,T4,P5 node tests/run.mjs full` |
 | タッチ操作・ダブルタップ抑止 | smoke ＋ `ONLY=T1,T2,T3,T4,T5,P7,E5 node tests/run.mjs full`（WebKit でも `BROWSER=webkit … smoke`） |
+| ゼンマイさんぽ（games/zenmai/）の変更 | smoke ＋ `ONLY=ZL1,ZL2,ZL3,ZL4,ZL5,ZL6,ZU6,ZU7,ZU8,ZU9,ZU10,ZU11,ZU12,ZU13 node tests/run.mjs full`（ステージの数値は ZL、画面は ZU） |
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
 | テストを変えたとき・月 1 回 | `node tests/mutants/mutate.mjs both`（テストがわざと入れた不具合を見つけられるか） |
 
@@ -70,6 +71,8 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | P | 遊べること | キー・ボタン・スワイプ、0.8 秒の待ち、クリア、演出 |
 | A | 効果音 | 音名の一致、操作で鳴る、オフなら鳴らない、メニューの tap |
 | T | タッチ操作 | ダブルタップ拡大の抑止、タッチでの音の準備（unlock）、操作一式 |
+| ZL | ゼンマイさんぽ 計算ロジック（Node） | `games/zenmai/logic.js`・`stages.js` を直接呼ぶ：15 ステージの形と★3 が取れること、simulate・starsFor・bestTurns・validateProgress の境界値（zenmai-logic.mjs） |
+| Z | ゼンマイさんぽ 画面 | ZU0 静的（DOM・読み込み順・sw.js・音名）／ZU1 データが消えない・壊れた保存／ZU2 メニューへ戻れる・遊び方／ZU3・ZU11 ボタンが画面内・44px／ZU4 オフライン／ZU5 1 ステージクリア／ZU6 境界値／ZU7 ＋/－/歩かせる だけで遊べる／ZU8・ZU13 円ドラッグ（CDP）／ZU9 効果音／ZU10 ダブルタップ抑止（CDP）／ZU12 最後のステージ・全 15 ステージ・動きを減らす設定（zenmai-ui.mjs） |
 | X1 | 共通 | 全ページでコンソールエラー 0（最後に 1 回） |
 
 ## 構成
@@ -79,7 +82,7 @@ tests/
   run.mjs          実行（グループの並列・結果の表示）
   lib.mjs          共通部品：Playwright の読み込み、サーバー、端末と safe-area、待ち時間の早送り、タッチ操作、
                    画面の共通確認（layoutProbe）、合否の記録、既知の不具合（KNOWN_ISSUES）
-  cases/           グループごとのテスト（logic, data, escape, sw, layout, play, sound, touch）
+  cases/           グループごとのテスト（logic, data, escape, sw, layout, play, sound, touch, zenmai-logic, zenmai-ui）
   mutants/         変異テスト（mutate.mjs）
   design.md        設計と対応表
 ```
@@ -163,7 +166,8 @@ WebKit（Playwright 1.56.1 の WebKit 26.0、Linux）での結果（2026-10）�
 4. 効果音が鳴る（最初のタップから）。♪でオフにすると鳴らない。消音スイッチで鳴らない。音楽アプリの再生が止まらない。メニューのカードを押してからゲームに移るまでが遅く感じない。
 5. ホーム画面に追加して起動 → 全画面・アイコン・名前が正しい。機内モードにして起動しても遊べる。
 6. 更新を出した後：一度開き直すと新しい版になる（ベスト・途中経過は残っている）。
-7. 既知の不具合（K1）が変わっていないか（直したならその確認）。K2 の修正（v11）後は、電波の弱い所でもゲームが約 3 秒で開き、音が鳴る。
+7. ゼンマイさんぽ：ネジを指で円を描くように回して巻ける（指が速くても数えられ、片手の親指でも回せる）。そろそろ限界で色と音が変わる。＋/－と「歩かせる」だけでも遊べる。ステージ選択に★が出て、クリアで次が開く。機内モードでも遊べ、アプリを一度閉じても★が残る。効果音のカチカチが耳障りでない。（円ドラッグのテストは CDP の合成タッチなので、実際の指での回しやすさは実機で）
+8. 既知の不具合（K1）が変わっていないか（直したならその確認）。K2 の修正（v11）後は、電波の弱い所でもゲームが約 3 秒で開き、音が鳴る。
 
 ## 変異テスト
 
@@ -172,6 +176,8 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 ```
 
 アプリを一時フォルダにコピーし、わざと不具合を 1 つずつ入れて smoke・full を流し、検出できるかを表で出します。アプリが変わって置換前の文字列が見つからないときは「!! 置換対象なし」と出るので、`mutate.mjs` の文字列を直します。結果（`mutants/result*.json`）はコミットしません。
+
+ゼンマイさんぽの変異（MZ1〜MZ3）は下の表の最後。
 
 2026-10 の結果（Chromium）：smoke 12/16・full 16/16 を検出（M14〜M16 は hotfix/k2 で追加。遅い回線・版の食い違いは full だけで確かめる）。
 
@@ -193,5 +199,8 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | M14 sfx.js などをネットワーク優先・打ち切りなしに戻す（K2） | 見逃し（遅い回線は full のみ） | 検出（S4, S6） |
 | M15 新しい版が出ていても古い sfx.js をキャッシュから返す | 見逃し（full のみ） | 検出（S7） |
 | M16 中身の違う新しい版のファイルを旧キャッシュに混ぜる | 見逃し（full のみ） | 検出（S7） |
+| MZ1 ゼンマイの render.js を事前キャッシュから外す | 検出（ZU0, ZU4, S1, E1） | （smoke と同じ。full は未計測） |
+| MZ2 ゼンマイの保存データで範囲外の★（9など）を受け入れる | 検出（ZL6, ZU1） | （smoke と同じ。full は未計測） |
+| MZ3 ゼンマイの結果カードから「メニューへ」が消える | 検出（ZU1, ZU2） | （smoke と同じ。full は未計測） |
 
 M10 は最初、どのテストも見逃した（2 回目のタップは別の仕組みでも止まるため）。盤面は「1 回目から常に止める」作りなので、T5 にその確認を足して検出できるようにした。
