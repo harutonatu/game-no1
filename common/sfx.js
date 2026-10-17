@@ -4,6 +4,7 @@
  * 使い方（今の sfx と同じ呼び出し方のまま差し替えられる）
  *   const sfx = YubiSfx.create("blocks");   // ブロックパズル
  *   const sfx = YubiSfx.create("tiles");    // ばいばいタイル（"2048" でも可）
+ *   const sfx = YubiSfx.create("irocode");  // いろコード（place/remove/submit/hint(hit)/win/lose。start/best/toggle は共通）
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -211,8 +212,36 @@
       undo: () => { const t = N(); noise(t, 0.07, { freq: 700, to: 1800, q: 0.7, vol: 0.04, a: 0.04 }); mallet(A5, t + 0.02, { vol: 0.08, decay: 0.06, bright: 0.3 }); mallet(E5, t + 0.065, { vol: 0.08, decay: 0.08, bright: 0.3 }); }
     };
 
+    // いろコード：操作音は小（place/remove）、手応えは中（submit/hint）、ご褒美は大（win）
+    const IROCODE = {
+      place: () => wood(660, N(), { vol: 0.07, dur: 0.04, jit: 25 }),
+      remove: () => wood(470, N(), { vol: 0.05, dur: 0.035, jit: 25 }),
+      submit: () => { const t = N(); wood(330, t, { vol: 0.1, dur: 0.06, jit: 15 }); mallet(G5, t + 0.04, { vol: 0.09, decay: 0.12, bright: 0.4 }); },
+      // ヒント：●(hit) の数だけ明るく。0 は低めの1音、4 は和音とベルまで
+      hint: (hit) => {
+        const h = Math.max(0, Math.min(4, Math.floor(Number(hit)) || 0));
+        const t = N() + 0.12;
+        const base = [C5, E5, G5, A5, C6][h];
+        mallet(base, t, { vol: 0.09 + h * 0.01, decay: 0.16 + h * 0.03, bright: 0.3 + h * 0.12 });
+        if (h >= 2) mallet(base * 1.5, t + 0.05, { vol: 0.06 + h * 0.008, decay: 0.2, bright: 0.4 });
+        if (h >= 3) bell(base * 2, t + 0.09, { vol: 0.02 + h * 0.008, decay: 0.3 });
+      },
+      win: () => {
+        const t = N();
+        [C5, E5, G5, C6].forEach((f, i) => mallet(f, t + i * 0.07, { vol: 0.11, decay: 0.2 }));
+        [C5, E5, G5, C6].forEach((f) => mallet(f, t + 0.3, { vol: 0.07, decay: 0.45, bright: 0.3 }));
+        bell(G6, t + 0.32, { vol: 0.05, decay: 0.5 });
+      },
+      // 責めない終わり方：ゆっくり下がって、やさしい和音で止まる
+      lose: () => {
+        const t = N();
+        [G5, E5, C5].forEach((f, i) => mallet(f, t + i * 0.14, { vol: 0.1, decay: 0.25, bright: 0.3 }));
+        [C5, E5].forEach((f) => mallet(f / 2, t + 0.42, { vol: 0.06, decay: 0.4, bright: 0.2 }));
+      }
+    };
+
     const table = Object.assign({}, COMMON,
-      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : {});
+      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "irocode" ? IROCODE : {});
 
     return {
       get on() { return on; },
