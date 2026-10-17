@@ -287,6 +287,8 @@
   const KEY_BEST = "kiritori.best";
   const LIVES = 3;
   const TRAIL_MS = 200;        // 切った軌跡の残像を見せる時間
+  const GRACE = 10;            // はじめの 10 秒は、的を落としてもライフを減らさない（印は出す）。遊び方をつかむ時間
+  const MISS_MS = 1.0;          // 落とした印を見せる時間（秒）
   const OVER_DELAY = 900;      // ライフが 0 になってから結果カードを出すまで（最後の様子を見せる）
   const KINDS = ["wara", "take", "fusen"];   // 巻藁・竹・紙風船（爆弾は "bomb"）
 
@@ -312,7 +314,7 @@
     t = Math.max(0, t || 0);
     return {
       interval: Math.max(0.8, 1.7 - t * 0.012),        // 次の組を投げるまで（秒）
-      maxCount: Math.min(4, 1 + Math.floor(t / 18)),     // 1組の最大数
+      maxCount: Math.min(4, 1 + Math.floor((t + 6) / 18)),   // 1組の最大数（12 秒で 2 個から）
       bombRate: t < 8 ? 0 : Math.min(0.2, 0.08 + (t - 8) * 0.002),
       flight: Math.max(0.85, 1.25 - t * 0.004),         // 投げてから頂点までの時間（秒）。短いほど速い
     };
@@ -336,6 +338,8 @@
     if (o.vr) o.rot = (o.rot || 0) + o.vr * dt;
     return o;
   }
+  // 的を落としたときにライフを減らすか（はじめの GRACE 秒は減らさない）
+  function dropCostsLife(t) { return (t || 0) >= GRACE; }
   // 保存されたベストの検証：安全な非負の整数だけ（壊れた値・Infinity・小数・文字列は 0）
   function parseBest(raw) {
     if (raw === null || raw === undefined || raw === "") return 0;
@@ -343,7 +347,7 @@
     return Number.isSafeInteger(n) && n >= 0 ? n : 0;
   }
   // 検証用に計算部分だけ公開する（ゲームの状態には触れない）
-  window.KiritoriLogic = Object.freeze({ segCircle, comboBonus, swipePoints, loseLife, isOver, difficulty, launch, step, parseBest, LIVES, KINDS });
+  window.KiritoriLogic = Object.freeze({ segCircle, comboBonus, swipePoints, loseLife, isOver, difficulty, launch, step, parseBest, dropCostsLife, LIVES, GRACE, KINDS });
 
   // ===== 要素 =====
   const $ = (id) => document.getElementById(id);
@@ -363,7 +367,7 @@
   let trail = [];             // 指の軌跡 {x, y, t}
   let swipe = null;           // いまのスワイプ {id, x, y, cuts}
   let overTimer = 0, confirming = false;
-  let W = 300, H = 300, R = 30, flashT = 0;
+  let W = 300, H = 300, R = 30, flashT = 0, edgeT = 0;
 
   function loadBest() {
     try { return parseBest(localStorage.getItem(KEY_BEST)); } catch (e) { return 0; }
@@ -438,6 +442,7 @@
     lives = loseLife(lives);
     renderStats();
     bump(ui.lives, "hit");
+    if (!calm()) edgeT = 0.45;   // 道場の縁を一瞬赤く光らせる（ライフが減ったと分かるように）
     if (isOver(lives)) gameOver();
   }
 
@@ -468,7 +473,7 @@
     if (len < 2) return;                       // 指を止めているだけでは切れない
     const ang = Math.atan2(by - ay, bx - ax);
     for (const o of objs) {
-      if (o.cut || !segCircle(ax, ay, bx, by, o.x, o.y, o.r + 4)) continue;
+      if (o.cut || !segCircle(ax, ay, bx, by, o.x, o.y, o.r + (o.kind === "bomb" ? 1 : 4))) continue;
       o.cut = true;
       if (o.kind === "bomb") {
         sfx.play("bomb"); sfx.buzz([50, 30, 50]);
@@ -549,6 +554,7 @@
     bestAtStart = best; bestFlashed = false;
     score = 0; lives = LIVES; maxCombo = 0; cutCount = 0;
     elapsed = 0; spawnT = 0.6;
+    flashT = 0; edgeT = 0;
     objs = []; queue = []; pieces = []; bits = []; marks = []; puffs = []; trail = []; swipe = null;
     state = "play";
     confirming = false;
@@ -613,6 +619,7 @@
         <span data-f="bestLine"></span>
         <span>最大コンボ <b data-f="combo"></b></span>
         <span>切った数 <b data-f="cuts"></b></span>
+        <span>生きた時間 <b data-f="secs"></b></span>
       </div>
       <div class="btns">
         <div class="row"><button class="cta primary" type="button" data-cmd="restart">もう一度</button></div>
@@ -622,6 +629,7 @@
       bestLine: isBest ? "自己ベスト更新！" : `ベスト ${best.toLocaleString()}`,
       combo: maxCombo >= 3 ? String(maxCombo) : "なし",
       cuts: cutCount.toLocaleString(),
+      secs: `${Math.floor(elapsed)}秒`,
     }, { soft: true });
     const bl = card.querySelector('[data-f="bestLine"]');
     if (isBest) bl.classList.add("newbest");
@@ -634,7 +642,7 @@
       <dl class="howto">
         <dt>巻藁・竹・紙風船</dt><dd>切ると 1 点</dd>
         <dt>黒い爆弾</dt><dd>切るとライフ −1</dd>
-        <dt>落とす</dt><dd>的を切らずに落とすとライフ −1。0 でおしまい</dd>
+        <dt>落とす</dt><dd>的を切らずに落とすとライフ −1。0 でおしまい（はじめの 10 秒は減りません）</dd>
         <dt>コンボ</dt><dd>ひと振りで 3 つ以上切ると加点（3つ +3、4つ +5…）</dd>
         <dt>II / ♪</dt><dd>一時停止 / 効果音のオン・オフ（iPhone は消音モード中は鳴りません）</dd>
       </dl>
@@ -724,7 +732,8 @@
       trail = [];
     }
     W = w; H = h;
-    R = Math.round(Math.max(22, Math.min(50, Math.min(W, H) * 0.075)));
+    const minR = W > H && H < 330 ? 25 : 22;   // 低い横画面では的を少し大きく
+    R = Math.round(Math.max(minR, Math.min(50, Math.min(W, H) * 0.075)));
     dpr = Math.min(3, window.devicePixelRatio || 1);
     cv.width = Math.round(W * dpr);
     cv.height = Math.round(H * dpr);
@@ -820,7 +829,7 @@
       c.fillStyle = "#2a2d36"; c.fillRect(rr * 0.12, -rr * 1.02, rr * 0.42, rr * 0.28);
       c.strokeStyle = "rgba(239,100,100,0.9)"; c.lineWidth = Math.max(2, r * 0.09); c.lineCap = "round";
       c.beginPath(); c.moveTo(-rr * 0.32, -rr * 0.32); c.lineTo(rr * 0.32, rr * 0.32); c.moveTo(rr * 0.32, -rr * 0.32); c.lineTo(-rr * 0.32, rr * 0.32); c.stroke();
-      const flick = calm() ? 1 : 0.7 + 0.3 * Math.sin(now / 45);
+      const flick = calm() ? 1 : 0.7 + 0.3 * Math.sin(now / 24);
       c.fillStyle = "#ffd36b"; ell(c, rr * 0.97, -rr * 1.07, r * 0.13 * flick, r * 0.13 * flick); c.fill();
       c.fillStyle = "#ff8a3a"; ell(c, rr * 0.97, -rr * 1.07, r * 0.07, r * 0.07); c.fill();
     },
@@ -848,21 +857,24 @@
     ctx.restore();
     ctx.restore();
   }
+  // 軌跡：影（shadowBlur）は iPhone で重いので使わず、太い半透明の線を下に重ねて光らせる
   function drawTrail(now) {
     const pts = trail;
     if (pts.length < 2) return;
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    if (!calm()) { ctx.shadowColor = "rgba(150,220,255,0.9)"; ctx.shadowBlur = 14; }
+    const glow = !calm();
     for (let i = 1; i < pts.length; i++) {
       const a = pts[i - 1], b = pts[i];
       if (b.start) continue;
       const k = 1 - (now - b.t) / TRAIL_MS;
       if (k <= 0) continue;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+      if (glow) { ctx.strokeStyle = `rgba(150,220,255,${(0.28 * k).toFixed(3)})`; ctx.lineWidth = 8 + 12 * k; ctx.stroke(); }
       ctx.strokeStyle = `rgba(235,248,255,${(0.35 + 0.65 * k).toFixed(3)})`;
       ctx.lineWidth = 1.5 + 6 * k;
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.stroke();
     }
     ctx.restore();
   }
@@ -884,7 +896,7 @@
     // 落とした印・コンボの表示
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (const m of marks) {
-      const k = m.t / (m.combo ? 0.9 : 0.7);
+      const k = m.t / (m.combo ? 0.9 : MISS_MS);
       ctx.globalAlpha = Math.max(0, 1 - k);
       if (m.combo) {
         ctx.font = `700 ${Math.round(Math.max(16, R * 0.6))}px "Hiragino Sans", system-ui, sans-serif`;
@@ -893,13 +905,29 @@
         ctx.lineWidth = 4; ctx.strokeStyle = "rgba(13,17,29,0.85)"; ctx.strokeText(m.text, x, y);
         ctx.fillStyle = "#f0a43a"; ctx.fillText(m.text, x, y);
       } else {
-        ctx.strokeStyle = "rgba(239,100,100,0.9)"; ctx.lineWidth = 4; ctx.lineCap = "round";
-        const s = 9; ctx.beginPath(); ctx.moveTo(m.x - s, m.y - s); ctx.lineTo(m.x + s, m.y + s); ctx.moveTo(m.x + s, m.y - s); ctx.lineTo(m.x - s, m.y + s); ctx.stroke();
+        ctx.strokeStyle = m.safe ? "rgba(240,164,58,0.9)" : "rgba(239,100,100,0.95)"; ctx.lineWidth = 6; ctx.lineCap = "round";
+        const s = Math.max(14, R * 0.7); ctx.beginPath(); ctx.moveTo(m.x - s, m.y - s); ctx.lineTo(m.x + s, m.y + s); ctx.moveTo(m.x + s, m.y - s); ctx.lineTo(m.x - s, m.y + s); ctx.stroke();
       }
     }
     ctx.globalAlpha = 1;
     // 軌跡はいちばん手前に描く（的や破片に隠れない）
     drawTrail(now);
+    // ひと振りで切っている個数を指の近くに（2つ目から。3つ以上でコンボ）
+    if (state === "play" && swipe && swipe.cuts >= 2) {
+      const n = swipe.cuts, x = Math.max(16, Math.min(W - 16, swipe.x)), y = Math.max(20, swipe.y - R - 14);
+      ctx.font = `700 ${Math.round(Math.max(18, R * 0.75))}px "JetBrains Mono", ui-monospace, monospace`;
+      ctx.lineWidth = 4; ctx.strokeStyle = "rgba(13,17,29,0.85)"; ctx.strokeText(String(n), x, y);
+      ctx.fillStyle = n >= 3 ? "#f0a43a" : "#ece6d6"; ctx.fillText(String(n), x, y);
+    }
+    // はじめの数秒、まだ 1 つも切っていないときだけ遊び方のヒント
+    if (state === "play" && cutCount === 0 && elapsed < GRACE) {
+      ctx.globalAlpha = 0.85;
+      ctx.font = `700 ${Math.round(Math.max(14, Math.min(20, W * 0.045)))}px "Hiragino Sans", system-ui, sans-serif`;
+      ctx.lineWidth = 4; ctx.strokeStyle = "rgba(13,17,29,0.85)";
+      ctx.strokeText("的を指でなぞって切ろう", W / 2, H * 0.62); ctx.fillStyle = "#ece6d6"; ctx.fillText("的を指でなぞって切ろう", W / 2, H * 0.62);
+      ctx.globalAlpha = 1;
+    }
+    if (edgeT > 0) { ctx.strokeStyle = `rgba(239,100,100,${Math.min(1, edgeT * 2.2).toFixed(3)})`; ctx.lineWidth = 8; ctx.strokeRect(0, 0, W, H); }
     if (flashT > 0) { ctx.fillStyle = `rgba(239,100,100,${(flashT * 1.2).toFixed(3)})`; ctx.fillRect(0, 0, W, H); }
   }
 
@@ -918,7 +946,9 @@
       objs = objs.filter((o) => !gone.includes(o));
       for (const o of gone) {
         if (o.kind === "bomb") continue;
-        marks.push({ x: Math.max(14, Math.min(W - 14, o.x)), y: H - 16, t: 0 });
+        const safe = !dropCostsLife(elapsed);
+        marks.push({ x: Math.max(18, Math.min(W - 18, o.x)), y: H - Math.max(22, R * 0.8), t: 0, safe });
+        if (safe) continue;   // はじめの数秒は印だけ（ライフは減らない）
         sfx.play("miss");
         hurt();
         if (state !== "play") break;
@@ -931,10 +961,11 @@
     for (const b of bits) { step(b, dt); b.t += dt; }
     bits = bits.filter((b) => b.t < b.life);
     for (const m of marks) m.t += dt;
-    marks = marks.filter((m) => m.t < (m.combo ? 0.9 : 0.7));
+    marks = marks.filter((m) => m.t < (m.combo ? 0.9 : MISS_MS));
     for (const p of puffs) p.t += dt;
     puffs = puffs.filter((p) => p.t < 0.6);
     flashT = Math.max(0, flashT - dt);
+    edgeT = Math.max(0, edgeT - dt);
     if (trail.length) {
       trail = trail.filter((p) => now - p.t < TRAIL_MS);
     }
@@ -958,7 +989,7 @@
         state, score, best, lives, maxCombo, cutCount, elapsed, overlay: !overlay.hidden,
         stage: { x: b.left, y: b.top, w: b.width, h: b.height },
         objs: objs.map((o) => ({ kind: o.kind, x: b.left + o.x, y: b.top + o.y, r: o.r, vy: o.vy, g: o.g })),
-        pieces: pieces.length, bits: bits.length, trail: trail.length,
+        pieces: pieces.length, bits: bits.length, trail: trail.length, marks: marks.length, edge: edgeT > 0,
       };
     },
   });

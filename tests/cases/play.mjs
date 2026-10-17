@@ -210,18 +210,24 @@ export const tests = [
       const ps = (await plays(page)).map((p) => p.n);
       check(`的の上で指を止めただけでは切れず（${still.score} 点）、横になぞると切れて 1 個 1 点（${s1.score} 点）・1 個が 2つに割れて破片が出る・slice の音`, still.score === 0 && s1.score >= 1 && s1.pieces === 2 * s1.score && s1.cutCount === s1.score && s1.bits > 0 && ps.includes('slice') && ps.includes('start'), { still: still.score, s1, ps });
       check(`切った軌跡は 0.1 秒後も残り（${tr1} 点）、0.25 秒後には消える（${tr2} 点）`, tr1 > 0 && tr2 === 0, { tr1, tr2 });
-      // 次の的は切らずに落とす → ライフ −1、miss の音
-      let s2 = s1;
+      // はじめの 10 秒は、的を落としても印が出るだけでライフは減らない（はじめて遊ぶ人が遊び方をつかむ前に終わらないように）
+      let sg = s1;
+      for (let i = 0; i < 100 && !(sg.marks > 0 && sg.elapsed < 10) && sg.elapsed < 9.5; i++) { await wait(page, 100); sg = await kiriSnap(page); }
+      const missGrace = (await plays(page)).filter((p) => p.n === 'miss').length;
+      check(`はじめの 10 秒（${sg.elapsed.toFixed(1)} 秒時点）は、的を落とすと印が出る（${sg.marks} 個）がライフは減らず（${sg.lives}）、miss の音も鳴らない（${missGrace}）、ヒントが出ている間は縁も光らない`, sg.marks > 0 && sg.lives === 3 && missGrace === 0 && !sg.edge && sg.state === 'play', sg);
+      // その後は、次の的を切らずに落とす → ライフ −1、miss の音、縁が光る
+      let s2 = sg;
       const miss0 = (await plays(page)).filter((p) => p.n === 'miss').length;
-      for (let i = 0; i < 60 && s2.lives === 3; i++) { await wait(page, 100); s2 = await kiriSnap(page); }
+      let edgeSeen = false;
+      for (let i = 0; i < 400 && s2.lives === 3; i++) { await wait(page, 100); s2 = await kiriSnap(page); edgeSeen = edgeSeen || s2.edge; }
       const missN = (await plays(page)).filter((p) => p.n === 'miss').length - miss0;
-      check(`的を切らずに下へ落とすと 1 個につきライフ −1（落とした ${missN} 個 → ライフ ${s2.lives}）、miss の音、ゲームは続く`, s2.lives === 3 - missN && missN >= 1 && missN <= 2 && s2.state === 'play' && (await plays(page)).some((p) => p.n === 'miss'), s2);
-      for (let i = 0; i < 80 && (await kiriSnap(page)).state === 'play'; i++) await wait(page, 250);
+      check(`10 秒をすぎて的を切らずに下へ落とすと 1 個につきライフ −1（落とした ${missN} 個 → ライフ ${s2.lives}、${s2.elapsed.toFixed(1)} 秒時点）、miss の音、縁が赤く光る（${edgeSeen}）、ゲームは続く`, s2.elapsed >= 10 && s2.lives === 3 - missN && missN >= 1 && missN <= 2 && s2.state === 'play' && edgeSeen && (await plays(page)).some((p) => p.n === 'miss'), s2);
+      for (let i = 0; i < 240 && (await kiriSnap(page)).state === 'play'; i++) await wait(page, 250);
       const over = await kiriSnap(page);
       const early = await overlayShown(page);
       await wait(page, 1000);
       const t = await cardText(page);
-      check('ライフ 0 で終わり、最後の様子を少し見せてから結果カード（スコア・自己ベスト更新）、over の音', over.state === 'over' && over.lives === 0 && !early && /ゲームオーバー/.test(t) && /自己ベスト更新/.test(t) && new RegExp(`SCORE ?${over.score}\\b`, 'i').test(t) && (await plays(page)).some((p) => p.n === 'over'), { t, early });
+      check('ライフ 0 で終わり、最後の様子を少し見せてから結果カード（スコア・自己ベスト更新）、over の音', over.state === 'over' && over.lives === 0 && !early && /ゲームオーバー/.test(t) && /自己ベスト更新/.test(t) && /生きた時間 ?\d+秒/.test(t) && new RegExp(`SCORE ?${over.score}\\b`, 'i').test(t) && (await plays(page)).some((p) => p.n === 'over'), { t, early });
       await ctx.close();
     },
   },

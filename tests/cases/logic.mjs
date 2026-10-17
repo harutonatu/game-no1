@@ -178,6 +178,7 @@ export const tests = [
       check(`1回のスワイプの合計点：1→1、2→2、3→6、4→9（${pts}）`, JSON.stringify(pts) === JSON.stringify([1, 2, 6, 9]), pts);
       check('不正な個数（負・小数・文字列）でコンボ加点しない', L.comboBonus(-3) === 0 && L.comboBonus(3.5) === 0 && L.comboBonus('4') === 0 && L.swipePoints(-1) === 0);
       check(`ライフは ${L.LIVES}、1つずつ減り 0 で終わり、0 より下にならない`, L.LIVES === 3 && L.loseLife(3) === 2 && L.loseLife(1) === 0 && L.loseLife(0) === 0 && L.isOver(0) && !L.isOver(1));
+      check('落としてライフが減るのは 10 秒から（9.99 秒までは減らない・負や欠損も減らない側）', L.GRACE === 10 && !L.dropCostsLife(0) && !L.dropCostsLife(9.99) && L.dropCostsLife(10) && L.dropCostsLife(600) && !L.dropCostsLife(-1) && !L.dropCostsLife(undefined));
       const okB = ['0', '7', '9007199254740991'].map(L.parseBest), ngB = [null, '', 'abc', '-5', '1.5', 'Infinity', '9007199254740992', '1e400', '<b>'].map(L.parseBest);
       check('ベストの検証：0・7・2^53-1 は有効、空・文字・負・小数・∞・2^53・1e400・HTML 片は 0', JSON.stringify(okB) === JSON.stringify([0, 7, 9007199254740991]) && ngB.every((x) => x === 0), { okB, ngB });
     },
@@ -211,6 +212,7 @@ export const tests = [
       const ts = Array.from({ length: 121 }, (_, i) => i * 5), D = ts.map(L.difficulty);
       const mono = D.every((d, i) => i === 0 || (d.interval <= D[i - 1].interval && d.flight <= D[i - 1].flight && d.maxCount >= D[i - 1].maxCount && d.bombRate >= D[i - 1].bombRate));
       const first = L.difficulty(0), late = L.difficulty(100000);
+      check('立ち上がり：1 組の最大数は 11.9 秒まで 1 個、12 秒から 2 個、30 秒から 3 個', L.difficulty(11.9).maxCount === 1 && L.difficulty(12).maxCount === 2 && L.difficulty(29.9).maxCount === 2 && L.difficulty(30).maxCount === 3);
       check('難しさは単調にゆるやかに上がり、上限で止まる（間隔 ≥0.8 秒・最大 4 個・爆弾 ≤20%・頂点まで ≥0.85 秒）、7.9 秒までは爆弾なし',
         mono && first.maxCount === 1 && first.bombRate === 0 && L.difficulty(7.9).bombRate === 0 && L.difficulty(8).bombRate > 0 && late.interval >= 0.8 && late.maxCount === 4 && late.bombRate <= 0.2 && late.flight >= 0.85, { first, late });
     },

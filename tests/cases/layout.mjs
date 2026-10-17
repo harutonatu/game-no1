@@ -1,5 +1,5 @@
 // V: ボタンが画面外に出ない・押せる（同値分割・境界値・ペアワイズ）。見た目の細部は V7 の1画面だけ
-import { BASE, T48, BLK, KIRI, view, custom, newPage, seed, open2048, ST, layoutProbe, cardReach, sleep, wait, KNOWN_ISSUES, kiriStart } from '../lib.mjs';
+import { BASE, T48, BLK, KIRI, view, custom, newPage, seed, open2048, ST, layoutProbe, cardReach, sleep, wait, KNOWN_ISSUES, kiriStart, kiriSnap } from '../lib.mjs';
 
 // ---- 画面ごとの共通確認（1関数） ----
 const SCREENS = {
@@ -284,6 +284,29 @@ export const tests = [
         await ctx.close();
       }
       check(`${cases.length - 1} 画面すべてで数字が省略されず、重なり・safe-area 外・横スクロールなし、ボタン 44px 以上`, bad.length === 0, bad);
+    },
+  },
+  {
+    id: 'V9', tier: 'full', title: 'キリトリ道場：プレイ中に向きを変えても、的が道場の中に置き直され、落とした扱いにならない・ライフが減らない。低い横画面では的が大きい（半径 25 以上）',
+    async run({ browser, check }) {
+      const { ctx, page } = await newPage(browser, custom(358, 540, null, 'iPhone 13 縦'), 'V9', { clock: true });
+      await seed(page, {});
+      await page.goto(KIRI); await wait(page, 150); await kiriStart(page);
+      let s = await kiriSnap(page);
+      for (let i = 0; i < 60 && !s.objs.some((o) => o.y - o.r > s.stage.y); i++) { await wait(page, 100); s = await kiriSnap(page); }
+      const inside = (q) => q.objs.every((o) => o.x >= q.stage.x - o.r && o.x <= q.stage.x + q.stage.w + o.r && o.y <= q.stage.y + q.stage.h + o.r * 3);
+      const rows = [];
+      for (const [w, h] of [[812, 278], [358, 540], [568, 320]]) {
+        await page.setViewportSize({ width: w, height: h }); await wait(page, 300);
+        const q = await kiriSnap(page);
+        rows.push({ w, h, n: q.objs.length, lives: q.lives, marks: q.marks, state: q.state, ok: inside(q), r: Math.max(0, ...q.objs.map((o) => o.r)), stageH: Math.round(q.stage.h) });
+      }
+      check('縦→横→縦→SE 横と向きを変えても、的は道場の中に置き直され、ライフ 3・落とした印 0・遊び続けている', rows.every((r) => r.ok && r.lives === 3 && r.marks === 0 && r.state === 'play'), rows);
+      // 低い横画面（568×320 → 道場の高さ約 260）では的の半径の下限が 25
+      let big = rows[2].r;
+      for (let i = 0; i < 40 && big < 20; i++) { await wait(page, 100); big = Math.max(...(await kiriSnap(page)).objs.map((o) => o.r)); }
+      check(`低い横画面（道場の高さ ${rows[2].stageH}px）の的の半径は 25 以上（${big}）`, big >= 25 * 0.88, { big, rows });
+      await ctx.close();
     },
   },
 ];

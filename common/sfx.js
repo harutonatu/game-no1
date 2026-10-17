@@ -17,14 +17,17 @@
   const PENTA = [0, 2, 4, 7, 9];        // ド・レ・ミ・ソ・ラ（どの順に鳴っても濁らない音階）
   const MAX_VOICES = 36;                // 同時に鳴らす部品の上限（連打で濁らないように）
   // 同じ音を続けて鳴らす最短の間隔（秒）。長押しの連続移動（45ms 間隔）は通す
-  const GAP = { move: 0.03, rotate: 0.03, hold: 0.05, merge: 0.03, tap: 0.04, undo: 0.06, slice: 0.018, launch: 0.07, miss: 0.08 };
+  // 同じ処理の中で続けて鳴らすとき、鳴らす時刻をこの秒数ずつずらす（currentTime は1つの処理の中では進まないため、間引かずに順に鳴らす）
+  const STAGGER = { slice: 0.03 };
+  const STAGGER_MAX = 0.24;
+  const GAP = { move: 0.03, rotate: 0.03, hold: 0.05, merge: 0.03, tap: 0.04, undo: 0.06, launch: 0.07, miss: 0.08 };
 
   function create(game, opts) {
     opts = opts || {};
     let ctx = null, out = null, noiseBuf = null;
     let on = true;
     if (!opts.ignoreSetting) { try { on = localStorage.getItem(KEY) !== "off"; } catch (e) { /* 読めなければオン */ } }
-    const last = {};
+    const last = {}, nextAt = {};
     let voices = [];
 
     function ensure() {
@@ -219,8 +222,8 @@
     }
     const KIRI = {
       // 刃が空を切る「シュッ」と、木琴の小さな「コン」。1回のスワイプで切るほど高くなる
-      slice: (n) => {
-        const t = N(), f = sliceFreq(n);
+      slice: (n, off) => {
+        const t = N() + (off || 0), f = sliceFreq(n);
         noise(t, 0.06, { freq: 3400 * jit(80), to: 1300, q: 0.9, vol: 0.055, a: 0.005 });
         mallet(f, t + 0.012, { vol: 0.11, decay: 0.13, bright: 0.5, jit: 4 });
         wood(f / 2, t + 0.01, { vol: 0.035, dur: 0.03, jit: 20 });
@@ -265,7 +268,13 @@
           const now = ctx.currentTime;
           if (GAP[name] && last[name] != null && now - last[name] < GAP[name]) return; // 連打の間引き
           last[name] = now;
-          table[name](arg);
+          let off = 0;
+          if (STAGGER[name]) {
+            const base = now + 0.005;
+            off = Math.min(STAGGER_MAX, Math.max(0, (nextAt[name] || 0) - base));
+            nextAt[name] = base + off + STAGGER[name];
+          }
+          table[name](arg, off);
         } catch (e) { /* 音が出なくてもゲームは続ける */ }
       },
       // 振動は Android のみ（iPhone の Safari には振動の機能がない）
