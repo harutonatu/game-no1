@@ -158,7 +158,8 @@
   //   art: 下の ART にある絵の名前（省略すると頭文字のタイル）
   const GAMES = [
     { name: "ブロックパズル", desc: "落ちてくるブロックで横一列をそろえて消す", url: "games/blocks/", best: "blockpuzzle.best", art: "blocks" },
-    { name: "ばいばいタイル", desc: "同じ数字をぶつけて合体、2048 を目指す", url: "games/2048/", best: "tile2048.best", art: "tiles" }
+    { name: "ばいばいタイル", desc: "同じ数字をぶつけて合体、2048 を目指す", url: "games/2048/", best: "tile2048.best", art: "tiles" },
+    { name: "ゼンマイさんぽ", desc: "ネジを巻いて、崖の手前でぴたりと止める", url: "games/zenmai/", bestText: () => zenmaiBest(), art: "zenmai" }
   ];
 
   // ===== 小さな絵（Canvas で描く。画像ファイルは使わない） =====
@@ -232,6 +233,33 @@
         ctx.fillText(String(v), x + s / 2, y + s / 2 + 1);
       });
     },
+    // ネジ（ダイヤル）とゼンマイ人形
+    zenmai(ctx, w, h) {
+      const u = Math.min(w, h);
+      // 地面
+      ctx.fillStyle = "#32374e";
+      ctx.fillRect(u * 0.06, u * 0.84, u * 0.88, u * 0.06);
+      // ネジ
+      const cx = u * 0.3, cy = u * 0.4, r = u * 0.24;
+      ctx.fillStyle = "#f0a43a";
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#231705"; ctx.lineWidth = Math.max(2, u * 0.05); ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(cx - r * 0.6, cy - r * 0.35); ctx.lineTo(cx + r * 0.6, cy + r * 0.35); ctx.stroke();
+      // 人形
+      const dx = u * 0.68, dy = u * 0.84;
+      ctx.fillStyle = "#4cc9e0";
+      roundRect(ctx, dx - u * 0.1, dy - u * 0.3, u * 0.2, u * 0.22, u * 0.04); ctx.fill();
+      ctx.fillStyle = "#f2cc4b";
+      ctx.beginPath(); ctx.arc(dx, dy - u * 0.4, u * 0.1, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#231705";
+      ctx.beginPath(); ctx.arc(dx + u * 0.03, dy - u * 0.41, u * 0.017, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#4cc9e0";
+      ctx.fillRect(dx - u * 0.08, dy - u * 0.08, u * 0.06, u * 0.08);
+      ctx.fillRect(dx + u * 0.02, dy - u * 0.08, u * 0.06, u * 0.08);
+      // 背中の小さなゼンマイ
+      ctx.strokeStyle = "#f0a43a"; ctx.lineWidth = Math.max(2, u * 0.03);
+      ctx.beginPath(); ctx.arc(dx - u * 0.14, dy - u * 0.2, u * 0.04, 0, Math.PI * 2); ctx.stroke();
+    },
     // 絵が用意されていないゲーム用：頭文字のタイル
     fallback(ctx, w, h, game) {
       const m = Math.round(w * 0.12);
@@ -264,6 +292,22 @@
       const n = raw === null ? 0 : Number(raw);
       return Number.isSafeInteger(n) && n >= 0 ? n : 0;
     } catch (e) { return 0; }
+  }
+
+  // ゼンマイさんぽ：zenmai.progress（{stars:{id:0..3}, unlocked}）を検証して「★合計 N / 45」にする
+  function zenmaiBest() {
+    try {
+      const raw = localStorage.getItem("zenmai.progress");
+      if (raw === null) return "";
+      const p = JSON.parse(raw);
+      if (!p || typeof p !== "object" || !p.stars || typeof p.stars !== "object" || Array.isArray(p.stars)) return "";
+      let sum = 0;
+      for (let i = 1; i <= 15; i++) {
+        const v = p.stars["z" + String(i).padStart(2, "0")];
+        if (Number.isInteger(v) && v >= 1 && v <= 3) sum += v;
+      }
+      return sum > 0 ? "★合計 " + sum + " / 45" : "";
+    } catch (e) { return ""; }
   }
 
   // ===== 効果音（common/sfx.js、案A「木のおもちゃ箱」。設定はゲームと共通、メニューに切り替えボタンはない） =====
@@ -317,10 +361,10 @@
 
   function renderBest() {
     rows.forEach(({ game, a, val }) => {
-      const n = game.best ? readBest(game.best) : 0;
-      val.classList.toggle("none", !n);
-      val.textContent = n ? n.toLocaleString() : "まだ記録なし";
-      a.setAttribute("aria-label", `${game.name}：${game.desc}。ベスト ${n ? n.toLocaleString() : "まだ記録なし"}`);
+      const text = game.bestText ? game.bestText() : (() => { const n = game.best ? readBest(game.best) : 0; return n ? n.toLocaleString() : ""; })();
+      val.classList.toggle("none", !text);
+      val.textContent = text || "まだ記録なし";
+      a.setAttribute("aria-label", `${game.name}：${game.desc}。${game.bestText ? "" : "ベスト "}${text || "まだ記録なし"}`);
     });
   }
   function paintAll() { rows.forEach(({ game, cv }) => paint(cv, game)); }
