@@ -104,7 +104,8 @@
   }
   .stat.score { grid-column: 1 / -1; }
   .stat.score b { font-size: 22px; color: var(--accent); }
-  /* メニュー・一時停止・効果音ボタン。縦持ちは盤面の右上の余白、横持ちはスコア欄の上に置く */
+  /* メニュー・一時停止・効果音ボタン。縦持ちは盤面の右上の余白、横持ちはスコア欄の上に置く。
+     縦持ちで盤面と重ならないよう、resize() でこの列の幅と間隔を盤面から差し引く */
   .sys {
     grid-area: board;
     justify-self: end;
@@ -115,22 +116,22 @@
     gap: 6px;
   }
   .pause-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
+    box-sizing: border-box;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
     border: 1px solid var(--line);
-    background: transparent;
+    background: var(--panel);
     color: var(--ink);
-    font: 700 13px var(--font-mono);
+    font: 700 14px var(--font-mono);
+    padding: 0;
+    touch-action: manipulation;
   }
-  .sound-btn { font-size: 16px; }
-  /* メニューボタンの「三本線」は文字ではなく線で描く（フォントによって形が変わらないように） */
-  .menu-btn { display: flex; align-items: center; justify-content: center; padding: 0; }
-  .menu-ico, .menu-ico::before, .menu-ico::after { display: block; width: 14px; height: 2px; border-radius: 1px; background: currentColor; }
-  .menu-ico { position: relative; }
-  .menu-ico::before, .menu-ico::after { content: ""; position: absolute; left: 0; }
-  .menu-ico::before { top: -5px; }
-  .menu-ico::after { top: 5px; }
+  .sound-btn { font-size: 17px; }
+  /* 「← メニュー」：ばいばいタイルと同じ表記。幅が狭いので矢印の下に小さく「メニュー」 */
+  .menu-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; line-height: 1.05; }
+  .menu-btn .arr { font: 700 16px "Hiragino Sans", system-ui, sans-serif; }
+  .menu-btn small { font: 700 9px "Hiragino Sans", system-ui, sans-serif; letter-spacing: 0; white-space: nowrap; }
   .sound-btn[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
   .stage {
     grid-area: board;
@@ -152,9 +153,11 @@
     display: grid;
     grid-template-columns: repeat(3, var(--btn));
     grid-template-rows: repeat(2, calc(var(--btn) * 0.82));
-    gap: 6px;
+    /* DROP（一気に落とす）と ▼（ゆっくり落とす）は 18px 離し、色も変えて押し間違えにくくする */
+    gap: 18px 6px;
     align-self: end;
   }
+  .dpad [data-action="drop"] { background: #33260f; border-color: var(--accent); color: var(--accent); }
   .dpad [data-action="drop"]  { grid-column: 2; grid-row: 1; }
   .dpad [data-action="left"]  { grid-column: 1; grid-row: 2; }
   .dpad [data-action="down"]  { grid-column: 2; grid-row: 2; }
@@ -163,7 +166,7 @@
     grid-area: pad;
     display: grid;
     grid-template-columns: repeat(2, var(--btn));
-    grid-template-rows: calc(var(--btn) * 0.6) var(--btn);
+    grid-template-rows: max(44px, calc(var(--btn) * 0.6)) var(--btn);
     gap: 8px 10px;
     align-self: end;
     justify-self: end;
@@ -207,7 +210,7 @@
     .hold canvas { width: 64px; }
     .next canvas { width: 64px; height: 150px; }
     .stats .label { font-size: 10px; letter-spacing: 0.14em; }
-    .stats { grid-template-columns: 1fr; width: 150px; padding-top: 40px; }
+    .stats { grid-template-columns: 1fr; width: 150px; padding-top: 52px; }
     .stats .stat.score { grid-column: auto; }
     .sys { grid-area: stats; flex-direction: row; }
     .dpad { grid-area: dpad; justify-self: end; }
@@ -216,9 +219,15 @@
   @media (orientation: landscape) and (max-height: 500px) {
     :root { --btn: 50px; }
     .app { padding-top: max(6px, env(safe-area-inset-top, 0px)); padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)); gap: 6px 12px; }
-    .stats { padding-top: 38px; gap: 0 8px; }
+    /* 高さの低い横持ちはスコア欄を2列に詰めて、DROP などのボタンと重ならないようにする */
+    .stats { padding-top: 50px; gap: 0 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stats .stat.score, .stats .stat.best { grid-column: 1 / -1; }
     .stat b { font-size: 14px; }
     .stat.score b { font-size: 17px; }
+  }
+  /* iPhone SE 横など、さらに低い横持ちでは BEST を省く（ゲームオーバー画面には表示される） */
+  @media (orientation: landscape) and (max-height: 360px) {
+    .stat.best { display: none; }
   }
 
   .overlay {
@@ -302,7 +311,7 @@
   </section>
 
   <div class="sys">
-    <button class="pause-btn menu-btn" id="menuBtn" type="button" aria-label="メニュー"><span class="menu-ico" aria-hidden="true"></span></button>
+    <button class="pause-btn menu-btn" id="menuBtn" type="button" aria-label="メニューへ戻る"><span class="arr" aria-hidden="true">←</span><small aria-hidden="true">メニュー</small></button>
     <button class="pause-btn" id="pauseBtn" type="button" aria-label="一時停止">II</button>
     <button class="pause-btn sound-btn" id="soundBtn" type="button" aria-label="効果音" aria-pressed="true">♪</button>
   </div>
@@ -408,7 +417,12 @@
   let cell = 20;
 
   function loadBest() {
-    try { return Number(localStorage.getItem("blockpuzzle.best")) || 0; } catch (e) { return 0; }
+    try {
+      // 安全な非負の整数だけを受け付ける（壊れた値・Infinity・文字列は 0 扱い）
+      const raw = localStorage.getItem("blockpuzzle.best");
+      const n = raw === null ? 0 : Number(raw);
+      return Number.isSafeInteger(n) && n >= 0 ? n : 0;
+    } catch (e) { return 0; }
   }
   function saveBest() {
     try { localStorage.setItem("blockpuzzle.best", String(best)); } catch (e) { /* 保存できない環境では無視 */ }
@@ -656,11 +670,11 @@
     confirming = true;
     showCard(`
       <h1>やり直す？</h1>
-      <p>いまのゲーム（スコア ${score.toLocaleString()}）を終えて、最初からやり直しますか？</p>
+      <p>いまのゲーム（スコア <span data-f="score"></span>）を終えて、最初からやり直しますか？</p>
       <div class="row">
         <button class="cta" type="button" data-cmd="cancel">やめる</button>
         <button class="cta primary" type="button" data-cmd="restart">やり直す</button>
-      </div>`);
+      </div>`, { score: score.toLocaleString() });
   }
   function resume() {
     if (state !== "pause") return;
@@ -677,12 +691,15 @@
     drawSide();
     showCard(`
       <h1>ゲームオーバー</h1>
-      <div><div class="label">Score</div><div class="big">${score.toLocaleString()}</div></div>
-      <p>${isBest ? "自己ベスト更新！" : `ベスト ${best.toLocaleString()}`}　/　${lines} ライン・レベル ${level}</p>
+      <div><div class="label">Score</div><div class="big" data-f="score"></div></div>
+      <p data-f="detail"></p>
       <div class="row">
         <button class="cta" type="button" data-cmd="menu">メニューへ</button>
         <button class="cta primary" type="button" data-cmd="restart">もう一度</button>
-      </div>`);
+      </div>`, {
+      score: score.toLocaleString(),
+      detail: `${isBest ? "自己ベスト更新！" : `ベスト ${best.toLocaleString()}`}　/　${lines} ライン・レベル ${level}`
+    });
   }
   function showTitle() {
     showCard(`
@@ -701,8 +718,10 @@
         <button class="cta primary" type="button" data-cmd="restart">スタート</button>
       </div>`);
   }
-  function showCard(html) {
+  // カードは HTML の骨組みだけを書き、数値などは data-f の要素に textContent で入れる
+  function showCard(html, fields = {}) {
     card.innerHTML = html;
+    card.querySelectorAll("[data-f]").forEach((el) => { el.textContent = fields[el.dataset.f] ?? ""; });
     overlay.hidden = false;
     const primary = card.querySelector(".primary");
     if (primary) primary.focus({ preventScroll: true });
@@ -833,10 +852,24 @@
     return ctx;
   }
   let bctx, hctx, nctx;
+  const sysEl = document.querySelector(".sys");
+  const BOARD_RING = 3;   // 盤面の外枠（box-shadow）の太さ
+  const SYS_GAP = 8;      // 盤面と右上のボタン列の間隔
   function resize() {
     const landscape = window.matchMedia("(orientation: landscape)").matches;
     const w = stage.clientWidth, h = stage.clientHeight;
     cell = Math.max(8, Math.floor(Math.min(w / COLS, h / (ROWS - HIDDEN))));
+    // 縦持ちは右上のボタン列（メニュー／一時停止／♪）が盤面と同じ場所にあるため、
+    // 列の幅と間隔を差し引いて重ならないようにする（足りなければ盤面を左へ寄せ、それでも足りなければ小さくする）
+    let shift = 0;
+    if (!landscape && sysEl) {
+      const reserve = sysEl.getBoundingClientRect().width + SYS_GAP + BOARD_RING;
+      cell = Math.max(8, Math.min(cell, Math.floor((w - reserve - BOARD_RING) / COLS)));
+      const bw = cell * COLS;
+      // 中央に置いたときの右端（外枠込み）がボタン列の左端より右なら、その分だけ左へ寄せる
+      shift = Math.max(0, Math.ceil(bw + 2 * reserve - w));
+    }
+    boardCv.style.marginRight = shift ? shift + "px" : "";
     boardCv.style.width = cell * COLS + "px";
     boardCv.style.height = cell * (ROWS - HIDDEN) + "px";
     bctx = setupCanvas(boardCv, cell * COLS, cell * (ROWS - HIDDEN));
