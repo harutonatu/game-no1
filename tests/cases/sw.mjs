@@ -1,11 +1,11 @@
 // S: オフラインで起動できる・更新で古いキャッシュが消える（Service Worker）。
 // オフラインは「サーバーが接続を切る」方式で再現（Playwright の setOffline は SW 自身の fetch に効かないため）。
 // キャッシュ版数は sw.js から読み取り、決め打ちしない。
-import { BASE, T48, BLK, custom, newPage, seed, ST, sleep, swInfo as libSwInfo, known, IS_CHROMIUM } from '../lib.mjs';
+import { BASE, T48, BLK, custom, newPage, seed, ST, sleep, swInfo as libSwInfo, IS_CHROMIUM, SFX_SPY } from '../lib.mjs';
 const V = () => custom(390, 844, null, 'iPhone 13');
 const swInfo = (root) => { const i = libSwInfo(root); return { ...i, files: i.n }; };
-async function installed(browser, label, allowNetErrors = false) {
-  const { ctx, page } = await newPage(browser, V(), label, { sw: true, allowNetErrors });
+async function installed(browser, label, allowNetErrors = false, opts = {}) {
+  const { ctx, page } = await newPage(browser, V(), label, { sw: true, allowNetErrors, ...opts });
   await page.goto(BASE);
   // install に失敗すると ready は永久に解決しないので、8 秒で打ち切って不合格にする（止まらずに先へ進む）
   const ok = await page.evaluate(() => Promise.race([navigator.serviceWorker.ready.then(() => true), new Promise((r) => setTimeout(() => r(false), 8000))]));
@@ -14,6 +14,18 @@ async function installed(browser, label, allowNetErrors = false) {
   return { ctx, page };
 }
 const appKeys = (page, name) => page.evaluate(async (n) => (await (await caches.open(n)).keys()).map((r) => r.url), name);
+// common/sfx.js の応答（Service Worker から返ったか）を記録する
+const sfxWatch = (page) => {
+  const list = [];
+  const on = (r) => { if (r.url().includes('/common/sfx.js')) list.push({ status: r.status(), sw: r.fromServiceWorker() }); };
+  page.on('response', on);
+  return { list, off: () => page.off('response', on) };
+};
+// 効果音が鳴るか：YubiSfx で tap を鳴らし、音の部品が start したか（SFX_SPY を入れたページで）
+const sfxPlays = (page) => page.evaluate(() => {
+  if (typeof window.YubiSfx?.create !== 'function') return 'YubiSfx なし';
+  const b = window.__starts; window.YubiSfx.create('menu', { ignoreSetting: true }).play('tap'); return window.__starts - b;
+}).catch((e) => 'error: ' + e.message);
 const titleAt = async (page, url, sel) => {
   try { await page.goto(url, { timeout: 10000 }); return { t: await page.title(), el: await page.locator(sel).count(), path: new URL(page.url()).pathname }; } catch (e) { return { err: e.message.split('\n')[0] }; }
 };
@@ -117,8 +129,7 @@ export const tests = [
       let t0 = Date.now();
       await page.goto(BLK + '?t=' + t0, { waitUntil: 'domcontentloaded', timeout: 15000 });
       const dt = Date.now() - t0, title = await page.title();
-      const K2 = known('S4|slow');
-      check(`遅い回線：${dt}ms でキャッシュから表示（境界 3 秒の前後：2.8〜4.8 秒）`, dt >= 2800 && dt <= 4800 && title === 'ブロックパズル', { known: K2, dt, title }, K2);
+      check(`遅い回線：${dt}ms でキャッシュから表示（境界 3 秒の前後：2.8〜4.8 秒）`, dt >= 2800 && dt <= 4800 && title === 'ブロックパズル', { dt, title });
       await sleep(3200);
       const after = await stamp();
       check('遅れて届いた応答でキャッシュが新しくなる', before && after && after > before && after >= t0 + 4500, { before, after, t0 });
@@ -129,7 +140,7 @@ export const tests = [
       // 合格なら 4.5 秒未満で開く。それより長く待っても判定は同じなので 6 秒で打ち切る
       t0 = Date.now(); await page.goto(T48, { timeout: 6000 }).catch(() => {});
       const tH = Date.now() - t0;
-      check(`無応答のサーバー：キャッシュ済みページは ${tH}ms で表示（4.5 秒未満）`, tH < 4500 && (await page.title()) === 'ばいばいタイル', { known: K2, tH }, K2);
+      check(`無応答のサーバー：キャッシュ済みページは ${tH}ms で表示（4.5 秒未満）`, tH < 4500 && (await page.title()) === 'ばいばいタイル', { tH });
       await srv.ctl('hang=0');
       await ctx.close();
       void info;
@@ -156,21 +167,72 @@ export const tests = [
     },
   },
   {
-    id: 'S6', tier: 'full', title: '遅い回線（4秒）：メニュー・2048 も約3秒でキャッシュから表示（S4 のブロックと同じ作りの画面）',
+    id: 'S6', tier: 'full', title: '遅い回線（5秒）・無応答：メニュー・ブロック・2048 とも約3秒で表示され、common/sfx.js はキャッシュからすぐ読まれて効果音が鳴る（K2）',
     async run({ browser, check, srv }) {
       srv.reset();
-      const { ctx, page } = await installed(browser, 'S6', true);
-      await srv.ctl('delay=4000');
-      const K2 = known('S4|slow');
-      for (const [name, url] of [['メニュー', BASE], ['2048', T48]]) {
-        const t0 = Date.now();
-        // 合格なら約 3 秒。5 秒で打ち切る（K2 のある版では 3 秒＋4 秒かかる）
-        await page.goto(url + '?t=' + t0, { waitUntil: 'domcontentloaded', timeout: 5000 }).catch(() => {});
-        const dt = Date.now() - t0;
-        check(`遅い回線：${name}が ${dt}ms で表示（2.8〜4.8 秒）`, dt >= 2800 && dt <= 4800, { known: K2, dt }, K2);
-        await srv.ctl('delay=0'); await page.goto('about:blank'); await sleep(300); await srv.ctl('delay=4000');
+      const { ctx, page } = await installed(browser, 'S6', true, { initScript: SFX_SPY });
+      const calm = async () => { await srv.ctl('delay=0&hang=0'); await page.goto('about:blank'); await sleep(300); };
+      // オンライン（遅延なし）：3画面とも 1 秒未満で表示（sfx.js をキャッシュから返しても、通常の表示が遅くならない）。
+      // 並列実行の負荷で 1 回だけ遅れることがあるので、2 回開いて速いほうで判定する
+      const on = {};
+      for (const [name, url] of [['メニュー', BASE], ['ブロック', BLK], ['2048', T48]]) {
+        for (let i = 0; i < 2; i++) { const t0 = Date.now(); await page.goto(url, { waitUntil: 'domcontentloaded' }); on[name] = Math.min(on[name] ?? Infinity, Date.now() - t0); }
       }
-      await srv.ctl('delay=0');
+      check(`オンライン：3画面とも 1 秒未満で表示（${Object.entries(on).map(([k, v]) => `${k} ${v}ms`).join('、')}）`, Object.values(on).every((v) => v < 1000), on);
+      await calm();
+      for (const [mode, q] of [['遅い回線（5秒）', 'delay=5000'], ['無応答', 'hang=1']]) {
+        for (const [name, url] of [['メニュー', BASE], ['ブロック', BLK], ['2048', T48]]) {
+          await srv.ctl(q);
+          const w = sfxWatch(page);
+          const t0 = Date.now();
+          // 合格なら約 3 秒。6 秒で打ち切る（K2 のある版では 3 秒＋5 秒、無応答では表示されない）
+          await page.goto(url + '?t=' + t0, { waitUntil: 'domcontentloaded', timeout: 6000 }).catch(() => {});
+          const dt = Date.now() - t0;
+          w.off();
+          const snd = await sfxPlays(page);
+          check(`${mode}：${name}が ${dt}ms で表示（2.8〜4.8 秒）、sfx.js は Service Worker から 200、効果音が鳴る（部品 ${snd}）`,
+            dt >= 2800 && dt <= 4800 && w.list.length >= 1 && w.list.every((r) => r.sw && r.status === 200) && snd > 0, { dt, sfx: w.list, snd });
+          await calm();
+        }
+      }
+      await ctx.close();
+    },
+  },
+  {
+    id: 'S7', tier: 'full', title: '新しい版がサーバーに出たとき：旧版の SW のままでも HTML と sfx.js の版がそろう（古い sfx.js をキャッシュから混ぜない）、旧キャッシュに新しい版を混ぜない、更新後は新しい版がそろう',
+    async run({ browser, check, srv, root }) {
+      const info = swInfo(root);
+      const OLD = info.ver + '-old-test';
+      srv.reset(); await srv.ctl('swver=' + encodeURIComponent(OLD));
+      const { ctx, page } = await installed(browser, 'S7', true);
+      // 版の印：HTML の末尾の <!--rel:xxx--> と、sfx.js が入れる self.__rel
+      const ver = () => page.evaluate(() => ({
+        html: ([...document.childNodes, ...document.documentElement.childNodes, ...(document.body ? document.body.childNodes : [])].find((n) => n.nodeType === 8 && n.data.startsWith('rel:'))?.data.slice(4)) || null,
+        sfx: window.__rel || null,
+      }));
+      // ① 中身だけ新しくなった（sw.js は旧版のまま＝版数の上げ忘れ、または更新の確認前）：オンラインで開くと HTML も sfx.js も新しい版
+      await srv.ctl('rel=R2');
+      const r1 = {};
+      for (const [name, url] of [['menu', BASE], ['blocks', BLK], ['t2048', T48]]) { await page.goto(url); await sleep(150); r1[name] = await ver(); }
+      check('旧版の SW のまま新しい版を開く：3画面とも HTML と sfx.js がそろって新しい版（R2）', Object.values(r1).every((v) => v.html === 'R2' && v.sfx === 'R2'), r1);
+      // ② そのままオフライン：キャッシュは旧版のままそろっている（新しい HTML・sfx.js を旧キャッシュに混ぜない）
+      await sleep(300);
+      await srv.ctl('offline=1');
+      const r2 = {};
+      for (const [name, url] of [['menu', BASE], ['blocks', BLK], ['t2048', T48]]) { await page.goto(url).catch(() => {}); await sleep(150); r2[name] = await ver().catch((e) => e.message); }
+      check('続けてオフライン：3画面とも旧版の HTML と旧版の sfx.js（混ざらない）', Object.values(r2).every((v) => v.html === null && v.sfx === null), r2);
+      await srv.ctl('offline=0');
+      // ③ 新版の sw.js（版数を上げた）を配る：旧キャッシュが消え、新しいキャッシュは新しい版でそろい、オフラインでも新しい版
+      await srv.ctl('swver=&rel=R3');
+      await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
+      let k = [];
+      for (let i = 0; i < 40; i++) { k = await page.evaluate(() => caches.keys()); if (k.includes(info.app) && !k.includes(info.prefix + OLD)) break; await sleep(250); }
+      check(`更新：旧版のキャッシュが消え、新版 ${info.app} だけ`, k.filter((x) => x.startsWith(info.prefix)).join() === info.app, k);
+      await srv.ctl('offline=1');
+      const r3 = {};
+      for (const [name, url] of [['menu', BASE], ['blocks', BLK], ['t2048', T48]]) { await page.goto(url).catch(() => {}); await sleep(150); r3[name] = await ver().catch((e) => e.message); }
+      check('更新後にオフライン：3画面とも HTML と sfx.js がそろって新しい版（R3）', Object.values(r3).every((v) => v.html === 'R3' && v.sfx === 'R3'), r3);
+      await srv.ctl('offline=0');
       await ctx.close();
     },
   },

@@ -55,13 +55,14 @@ export async function wait(page, ms) {
 
 // ---------- 配信サーバー（GitHub Pages 風） ----------
 // ・/game-no1/ 配下だけを配信。末尾スラッシュなしのディレクトリは 301。Cache-Control: max-age=600
-// ・/__ctl?delay=ms&offline=1&hang=1&swver=xxx&log=1 で、遅い回線・接続断（オフライン）・無応答・
-//   「旧版の sw.js」（CACHE_VERSION だけ書き換えたもの）を再現する
+// ・/__ctl?delay=ms&offline=1&hang=1&swver=xxx&rel=xxx&log=1 で、遅い回線・接続断（オフライン）・無応答・
+//   「旧版の sw.js」（CACHE_VERSION だけ書き換えたもの）・「中身の変わった新しい版」（rel：sw.js 以外の .html と .js の
+//   末尾に印を足す。HTML は <!--rel:xxx-->、JS は self.__rel="xxx"）を再現する
 // 旧版を版数の決め打ちで用意しないため、swver を指定すると配信中の sw.js の CACHE_VERSION をその値に差し替える。
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json' };
 export function startServer(root, opts = {}) {
   root = path.resolve(root);
-  const st = { delay: 0, offline: false, hang: false, swver: null, log: [] };
+  const st = { delay: 0, offline: false, hang: false, swver: null, rel: null, log: [] };
   const srv = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x');
     if (u.pathname === '/__ctl') {
@@ -70,6 +71,7 @@ export function startServer(root, opts = {}) {
       if (q.has('offline')) st.offline = q.get('offline') === '1';
       if (q.has('hang')) st.hang = q.get('hang') === '1';
       if (q.has('swver')) st.swver = q.get('swver') || null;
+      if (q.has('rel')) st.rel = q.get('rel') || null;
       if (q.has('log')) { res.end(JSON.stringify(st.log.splice(0))); return; }
       res.end('ok'); return;
     }
@@ -91,6 +93,8 @@ export function startServer(root, opts = {}) {
       if (st.swver && path.basename(f) === 'sw.js' && u.pathname === '/game-no1/sw.js') {
         body = Buffer.from(body.toString().replace(/CACHE_VERSION\s*=\s*["'][^"']*["']/, `CACHE_VERSION = "${st.swver}"`));
       }
+      if (st.rel && path.extname(f) === '.html') body = Buffer.concat([body, Buffer.from(`\n<!--rel:${st.rel}-->\n`)]);
+      if (st.rel && path.extname(f) === '.js' && path.basename(f) !== 'sw.js') body = Buffer.concat([body, Buffer.from(`\n;self.__rel = ${JSON.stringify(st.rel)};\n`)]);
       res.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream', 'cache-control': 'max-age=600', 'x-served-at': String(Date.now()) });
       res.end(body);
     };
@@ -101,7 +105,7 @@ export function startServer(root, opts = {}) {
     srv.listen(PORT, '127.0.0.1', () => resolve({
       state: st,
       ctl: (q) => fetch(`${ORIGIN}/__ctl?${q}`).then((r) => r.text()),
-      reset: () => { Object.assign(st, { delay: 0, offline: false, hang: false, swver: null }); st.log.length = 0; },
+      reset: () => { Object.assign(st, { delay: 0, offline: false, hang: false, swver: null, rel: null }); st.log.length = 0; },
       close: () => new Promise((r) => { srv.closeAllConnections?.(); srv.close(() => r()); }),
     }));
   });
@@ -297,7 +301,6 @@ export async function cardReach(page) {
 // 既知の不具合の一覧（ここに載せたものだけが「既知」扱い。直ったら行を消す）
 export const KNOWN_ISSUES = {
   'SE横・Safari|blocks': 'K1 iPhone SE(4インチ)を Safari で横持ち（高さ約270〜300px）にすると、ブロックの DROP が LEVEL/LINES に、HOLD が NEXT に重なる。2026-10 のテスト統合で発見。',
-  'S4|slow': 'K2 回線が遅い・サーバーが応答しないとき、ゲーム画面の HTML はキャッシュから約3秒で返るが、続けて読む common/sfx.js（効果音、06a53c7 で追加）は Service Worker がネットワークの応答を待ち続けるため、画面の表示がその分遅れる（遅い回線 5 秒で約 8 秒、無応答では表示されない）。2026-10 の tests/ 整備で発見。',
 };
 // 既知の不具合のキー → 説明（なければ undefined）。check(名前, ok, 詳細, known(キー)) のように使う
 export const known = (key) => KNOWN_ISSUES[key];
