@@ -245,6 +245,19 @@
   @media (orientation: landscape) and (max-height: 360px) {
     .stat.best { display: none; }
   }
+  /* iPhone SE を Safari で横持ち（高さ約 270〜319px。320 以上は従来の配置で重ならない）：左右の列が縦に入りきらず、DROP が LEVEL/LINES に、
+     HOLD が NEXT に重なっていた（K1）。HOLD 欄は見出しと絵を横に並べて低くし、スコア欄は SCORE・LEVEL・LINES を
+     見出しと数字の横並びで詰め、NEXT 欄も低くする（DROP と ▼ の間隔 18px はそのまま） */
+  @media (orientation: landscape) and (max-height: 319px) {
+    .hold { flex-direction: row; align-items: center; gap: 6px; padding: 4px 8px; }
+    .hold canvas { width: 56px; height: 34px; }
+    .next canvas { height: 104px; }
+    .stats { padding-top: 48px; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 0 6px; }
+    .stats .stat { flex-direction: row; align-items: baseline; gap: 4px; }
+    .stats .label { flex: none; font-size: 9px; letter-spacing: 0.02em; }
+    .stat b { font-size: 13px; line-height: 16px; }
+    .stat.score b { font-size: 15px; line-height: 18px; }
+  }
 
   .overlay {
     position: fixed;
