@@ -163,7 +163,7 @@ export const tests = [
     id: 'D6', tier: 'full', title: 'localStorage が使えない環境（プライベートモード等）でも3画面が動く',
     async run({ browser, check, errors }) {
       const before = errors.length;
-      const { ctx, page } = await newPage(browser, V(), 'D6', { initScript: () => { Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('denied', 'SecurityError', { clock: true }); } }); } });
+      const { ctx, page } = await newPage(browser, V(), 'D6', { clock: true, initScript: () => { Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('denied', 'SecurityError'); } }); } });
       await page.goto(BASE);
       const cards = await page.evaluate(() => document.querySelectorAll('a.game').length);
       await page.goto(T48); await wait(page, 150);
@@ -184,7 +184,7 @@ export const tests = [
   {
     id: 'D7', tier: 'full', title: '「自己ベスト更新！」の境界（同点は更新でない、1点上なら更新）',
     async run({ browser, check }) {
-      const { ctx, page } = await newPage(browser, V(), 'D7', { initScript: fixedRandom }, { clock: true });
+      const { ctx, page } = await newPage(browser, V(), 'D7', { initScript: fixedRandom, clock: true });
       // 2048：1000 + 128 = 1128 で詰む
       await open2048(page, ST(NEAR_OVER, { score: 1000 }), { 'tile2048.best': '1128' });
       await page.keyboard.press('ArrowLeft'); await wait(page, 1150);

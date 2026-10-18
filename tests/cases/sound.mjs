@@ -68,7 +68,7 @@ export const tests = [
   {
     id: 'A3', tier: 'full', title: '2048：操作で各音が鳴る（milestone・best・move・undo・merge・win・over・start）、ベスト更新の音は1ゲーム1回（再読み込み後も）',
     async run({ browser, check }) {
-      const { ctx, page } = await newPage(browser, V(), 'A3', { initScript: SFX_SPY }, { clock: true });
+      const { ctx, page } = await newPage(browser, V(), 'A3', { initScript: SFX_SPY, clock: true });
       const all = [];
       const harvest = async () => { all.push(...((await plays(page)) || [])); };
       const z = Array(16).fill(0);

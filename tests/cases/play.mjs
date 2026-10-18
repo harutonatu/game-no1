@@ -148,7 +148,7 @@ export const tests = [
   {
     id: 'P5', tier: 'full', title: '手応えの演出（+N・カウントアップ・ベスト超えの光は1回・128 の特別な音）と動きを減らす設定',
     async run({ browser, check }) {
-      const { ctx, page } = await newPage(browser, V(), 'P5', { initScript: SFX_SPY }, { clock: true });
+      const { ctx, page } = await newPage(browser, V(), 'P5', { initScript: SFX_SPY, clock: true });
       await open2048(page, ST([512, 512, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], { score: 0 }), { 'tile2048.best': '999999' });
       await page.evaluate(() => { window.__vals = []; const el = document.querySelector('#score'); new MutationObserver(() => window.__vals.push([performance.now(), el.textContent])).observe(el, { childList: true, characterData: true, subtree: true }); });
       await page.keyboard.press('ArrowLeft'); await wait(page, 40);
@@ -173,7 +173,7 @@ export const tests = [
       await page.keyboard.press('ArrowRight'); await wait(page, 200); const p2 = (await plays(page)).slice(n0 + p1.length).map((x) => x.n + (x.a ? ':' + x.a : ''));
       check(`初めて 128 に届いた手だけ特別な音（1手目 [${p1}]、次の手 [${p2}]）`, p1.includes('milestone:128') && !p2.some((x) => x.startsWith('milestone')) && p2.length >= 1, { p1, p2 });
       await ctx.close();
-      const r = await newPage(browser, V(), 'P5 reduce', { reducedMotion: 'reduce' }, { clock: true });
+      const r = await newPage(browser, V(), 'P5 reduce', { reducedMotion: 'reduce', clock: true });
       await open2048(r.page, ST([512, 512, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], { score: 0 }), { 'tile2048.best': '100' });
       await r.page.evaluate(() => { window.__flash = 0; const box = document.querySelector('#best').parentElement; new MutationObserver(() => { if (box.classList.contains('flash')) window.__flash++; }).observe(box, { attributes: true, attributeFilter: ['class'] }); });
       await r.page.keyboard.press('ArrowLeft');
