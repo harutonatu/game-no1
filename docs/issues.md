@@ -7,7 +7,8 @@
 
 1. **再テスト**：ワークフローを途中で止めたため、レビュー後の修正を入れた状態のテストがまだ。ブランチ feature/pikatto と feature/hashi のそれぞれで、公開の条件（Chromium smoke・full、WebKit smoke `WORKERS=1`）と、そのゲームの変異テスト（ピカッと MP、ハシわたり MH）を流す。Windows 版 WebKit の A4 は環境の問題（T-01）。Linux のクラウドでは A4 も合格するはず（推測）。
 2. **作業中コミットの整理**：それぞれのブランチの最後のコミットが「作業中」。再テストに合格したら、課題の状態を「済」にする（このファイル）。
-3. **取り込みの順番**（以下は推奨）：feature/pikatto（v17）→ fix/yokotenkai → feature/hashi（v18）の順に master へ merge（rebase しない）。3本とも 6b3df69 から分かれている。common/sfx.js・ルートの index.html・tests/mutants/mutate.mjs・tests/design.md・tests/run.mjs は複数のブランチが追記しているので、merge のときに両方の追記を残す。
+3. **公開の方針（ユーザー決定 2026-10-18）**：3本とも再テストに合格してから、**まとめて**公開する（1本ずつは公開しない）。
+   **取り込みの順番**（以下は推奨）：feature/pikatto（v17）→ fix/yokotenkai → feature/hashi（v18）の順に master へ merge（rebase しない）。3本とも 6b3df69 から分かれている。common/sfx.js・ルートの index.html・tests/mutants/mutate.mjs・tests/design.md・tests/run.mjs は複数のブランチが追記しているので、merge のときに両方の追記を残す。
 4. **版**：公開する版ごとに common/version.js（version と date）と sw.js の CACHE_VERSION を3つそろえる（テスト L10）。fix/yokotenkai は版を上げていない。まとめて公開するなら最後に1つの版（例 v18）にそろえる。
 5. **公開**は、ユーザーの承認を得てから `git push origin <ブランチ>:master`（fast-forward）。公開後、ユーザーが実機で確認（tests/README.md の実機確認リスト。ピカッと早押しは iPad の4本・5本指ジェスチャーの確認 PK-27 も）。
 6. **ユーザーの判断待ち**：X-09（拡大の抑止を外すか）、T-01（Windows の WebKit A4 の扱い）、T-03（.gitattributes の追加）、2048 の方向ボタン（X-05）。
