@@ -3,15 +3,14 @@
 見つかった不具合・改善案の一覧です。直したら「状態」を `済` にし、「対応」にコミットかブランチを書きます。
 優先度：高＝遊べない・不公平・データが消える／中＝分かりにくい・押し間違える／低＝見た目・まれ。
 
-## 次にやること（2026-10-18 の PC 作業の終わりに記録。クラウドで続きをする人へ）
+## 次にやること（2026-10-18 クラウドで統合・再テストした結果。続きをする人へ）
 
-1. **再テスト**：ワークフローを途中で止めたため、レビュー後の修正を入れた状態のテストがまだ。ブランチ feature/pikatto と feature/hashi のそれぞれで、公開の条件（Chromium smoke・full、WebKit smoke `WORKERS=1`）と、そのゲームの変異テスト（ピカッと MP、ハシわたり MH）を流す。Windows 版 WebKit の A4 は環境の問題（T-01）。Linux のクラウドでは A4 も合格するはず（推測）。
-2. **作業中コミットの整理**：それぞれのブランチの最後のコミットが「作業中」。再テストに合格したら、課題の状態を「済」にする（このファイル）。
-3. **公開の方針（ユーザー決定 2026-10-18）**：3本とも再テストに合格してから、**まとめて**公開する（1本ずつは公開しない）。
-   **取り込みの順番**（以下は推奨）：feature/pikatto（v17）→ fix/yokotenkai → feature/hashi（v18）の順に master へ merge（rebase しない）。3本とも 6b3df69 から分かれている。common/sfx.js・ルートの index.html・tests/mutants/mutate.mjs・tests/design.md・tests/run.mjs は複数のブランチが追記しているので、merge のときに両方の追記を残す。
-4. **版**：公開する版ごとに common/version.js（version と date）と sw.js の CACHE_VERSION を3つそろえる（テスト L10）。fix/yokotenkai は版を上げていない。まとめて公開するなら最後に1つの版（例 v18）にそろえる。
-5. **公開**は、ユーザーの承認を得てから `git push origin <ブランチ>:master`（fast-forward）。公開後、ユーザーが実機で確認（tests/README.md の実機確認リスト。ピカッと早押しは iPad の4本・5本指ジェスチャーの確認 PK-27 も）。
-6. **ユーザーの判断待ち**：X-09（拡大の抑止を外すか）、T-01（Windows の WebKit A4 の扱い）、T-03（.gitattributes の追加）、2048 の方向ボタン（X-05）。
+1. **統合**：ブランチ release/v18 に、feature/pikatto（50f4a5c）→ fix/yokotenkai（6f7bc0f）→ feature/hashi（52ce341）の順で merge 済み（rebase なし）。衝突は index.html・tests/README.md・tests/design.md・tests/mutants/mutate.mjs で、どれも両方の追記を残した。GAMES と sw.js の APP_FILES にピカッと早押しとハシわたりの両方が入っている。改行コードが CRLF のファイルはなかった。
+2. **版**：v18・2026-10-18（common/version.js・sw.js の CACHE_VERSION を一致させた。L10 合格）。
+3. **再テスト（release/v18、Linux の Chromium、`WORKERS=2`）**：smoke 74/74 合格（56.2 秒）、full 146/146 合格（213.7 秒）。T-02（A5・P9）は今回出なかった。WebKit smoke（`WORKERS=1`）と変異テスト（MP・MH）は別のクラウド環境で並列に流した（結果はその作業のコミットか報告を見る）。PK-01〜PK-30 は「済」にした。
+4. **公開**：ユーザーの承認を得てから `git push origin release/v18:master`（fast-forward。origin/master 42c80d3 が release/v18 の祖先）。公開後、ユーザーが実機で確認（tests/README.md の実機確認リスト。ピカッと早押しは iPad の4本・5本指ジェスチャーの確認 PK-27 も。メニュー最下部が `v18・2026-10-18` になっていること）。
+5. **ユーザーの判断待ち**：X-09（拡大の抑止を外すか）、T-01（Windows の WebKit A4 の扱い）、T-03（.gitattributes の追加）、2048 の方向ボタン（X-05）。
+6. **未着手の低い指摘**：PK-31〜PK-38、HS-01〜HS-11（HS-11 は中）。今回の公開の範囲外。
 
 ## ピカッと早押し（games/pikatto/）
 
@@ -19,36 +18,36 @@
 
 | 番号 | 優先度 | 内容 | 場所 | 状態 | 対応 |
 |---|---|---|---|---|---|
-| PK-01 | 高 | ラウンド表示が1つ多い（1回目が「2 / 5」、最後が「6 / 5」） | index.html:623 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-02 | 高 | 横向きで上下の隅ボタンが重なり、1P・2P が押せない所がある | index.html:313-320 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-03 | 高 | 2人のとき 1P・2P がどちらも上側（向かい合うと不公平）→ 対角に | index.html:261-262 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-04 | 高 | 裏に回す・プレイ中に「？」を開いても待ち時間が進み、勝手に合図が出る | index.html:788 ほか | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-05 | 高 | 「はじめる」「つぎ」の直後に待ち時間が始まり、準備ができない →「よーい」を約1秒 | index.html:610-627 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-06 | 高 | キーボード・スイッチ操作で押せない（pointerdown のみ） | input.js | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-07 | 高 | 色覚：赤と緑・赤と青の明るさの差がほぼ無い。図形・数字が薄い → Okabe-Ito 系の配色、中央に大きな図形 | index.html:43-46,266-279 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-08 | 高 | 「ピカッ！」の文字が左上に小さく出て見えない。aria-live が二重 | index.html:287-296,432,635 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-09 | 中 | 同時押しが届いた順で決まる（押した時刻で比べていない）→ 30ms の受付の窓 | index.html:639-647, logic.js:142 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-10 | 中 | 合図より前の時刻の押下が「勝ち」になり、反応時間が負になる → フライングに | logic.js:142-144 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-11 | 中 | 結果カードが出た直後の連打で「メニューへ」「さいしょから」を押してしまう → 約0.6秒押せなくする | index.html:701-712 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-12 | 中 | 合図の瞬間にヒントの行数が変わり、ボタンが動く → ヒントの高さを固定 | index.html:309,623,637 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-13 | 中 | 合図の見え方が遅れる（transition 160ms、フラッシュの立ち上がり） | index.html:259,281,296-301 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-14 | 中 | ラウンドの勝ちとゲームの勝ちが同じ見た目。「3点で勝ち」が出ていない。5ラウンド終了でも「3 点先取」と出る | index.html:691,729-731 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-15 | 中 | お試し：ラベル「じぶん」が実はベスト値。ベスト更新の画面表示がない | index.html:570,584,663-667 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-16 | 中 | 文字が小さい（13px）・灰色で、子ども・高齢者に読めない → 本文16px以上 | index.html:141,308,362-364 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-17 | 中 | 読めない言葉（フライング・ラウンド・合図・反応・先取・お試し・ms）→ 文言の全面見直し案あり | index.html 各所 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-18 | 中 | 人数が未選択だと「はじめる」が押せず理由も出ない → 2人を最初から選ぶ | index.html:416,421 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-19 | 中 | 全画面の白いフラッシュが強い。動きを減らす設定では白が残り続ける | index.html:287-301,391-396 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-20 | 中 | 契約書は「同点ならサドンデス」、実装は引き分け → **引き分けのまま、契約書を直す**（ユーザー決定 2026-10-18） | docs/pikatto-contract.md:10 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-21 | 低 | 終了時の setTimeout の id を持っておらず、後から最終結果が重なることがある | index.html:685 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-22 | 低 | 古い Safari で event.timeStamp の基準が違う可能性 | input.js:85-89 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-23 | 低 | 同じボタンを2本指で押すと連打防止が外れる。detach で設定が戻らない | input.js:48-53,139-145 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-24 | 低 | 契約の未実装：seed、.corner の aria-pressed | logic.js, index.html | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-25 | 低 | お試しは片手で押しにくい（左上だけ）→ フィールド全体を押せるように | index.html:261 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-26 | 低 | 向かい側の人から隅の番号が逆さまに見える | index.html:270-276 | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-27 | 低 | iPadOS の4本・5本指ジェスチャーは Web から止められない → 遊び方に設定の案内、実機で確認 | — | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-28 | 中 | テストの空振り：PK3 は保存が無くても合格、PK8 は APP_FILES に無いと skip で合格 | tests/cases/pikatto.mjs | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-29 | 中 | テストの抜け：上の PK-01〜06 をどれも捕まえられない。layout.mjs・sound.mjs に pikatto が無い | tests/ | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
-| PK-30 | 低 | 変異テストの抜け：5ラウンド上限・3点同点・ベスト保存・待ち時間の範囲 | tests/mutants/mutate.mjs | 修正済・再テスト待ち | feature/pikatto（作業中コミット） |
+| PK-01 | 高 | ラウンド表示が1つ多い（1回目が「2 / 5」、最後が「6 / 5」） | index.html:623 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-02 | 高 | 横向きで上下の隅ボタンが重なり、1P・2P が押せない所がある | index.html:313-320 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-03 | 高 | 2人のとき 1P・2P がどちらも上側（向かい合うと不公平）→ 対角に | index.html:261-262 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-04 | 高 | 裏に回す・プレイ中に「？」を開いても待ち時間が進み、勝手に合図が出る | index.html:788 ほか | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-05 | 高 | 「はじめる」「つぎ」の直後に待ち時間が始まり、準備ができない →「よーい」を約1秒 | index.html:610-627 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-06 | 高 | キーボード・スイッチ操作で押せない（pointerdown のみ） | input.js | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-07 | 高 | 色覚：赤と緑・赤と青の明るさの差がほぼ無い。図形・数字が薄い → Okabe-Ito 系の配色、中央に大きな図形 | index.html:43-46,266-279 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-08 | 高 | 「ピカッ！」の文字が左上に小さく出て見えない。aria-live が二重 | index.html:287-296,432,635 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-09 | 中 | 同時押しが届いた順で決まる（押した時刻で比べていない）→ 30ms の受付の窓 | index.html:639-647, logic.js:142 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-10 | 中 | 合図より前の時刻の押下が「勝ち」になり、反応時間が負になる → フライングに | logic.js:142-144 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-11 | 中 | 結果カードが出た直後の連打で「メニューへ」「さいしょから」を押してしまう → 約0.6秒押せなくする | index.html:701-712 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-12 | 中 | 合図の瞬間にヒントの行数が変わり、ボタンが動く → ヒントの高さを固定 | index.html:309,623,637 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-13 | 中 | 合図の見え方が遅れる（transition 160ms、フラッシュの立ち上がり） | index.html:259,281,296-301 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-14 | 中 | ラウンドの勝ちとゲームの勝ちが同じ見た目。「3点で勝ち」が出ていない。5ラウンド終了でも「3 点先取」と出る | index.html:691,729-731 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-15 | 中 | お試し：ラベル「じぶん」が実はベスト値。ベスト更新の画面表示がない | index.html:570,584,663-667 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-16 | 中 | 文字が小さい（13px）・灰色で、子ども・高齢者に読めない → 本文16px以上 | index.html:141,308,362-364 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-17 | 中 | 読めない言葉（フライング・ラウンド・合図・反応・先取・お試し・ms）→ 文言の全面見直し案あり | index.html 各所 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-18 | 中 | 人数が未選択だと「はじめる」が押せず理由も出ない → 2人を最初から選ぶ | index.html:416,421 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-19 | 中 | 全画面の白いフラッシュが強い。動きを減らす設定では白が残り続ける | index.html:287-301,391-396 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-20 | 中 | 契約書は「同点ならサドンデス」、実装は引き分け → **引き分けのまま、契約書を直す**（ユーザー決定 2026-10-18） | docs/pikatto-contract.md:10 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-21 | 低 | 終了時の setTimeout の id を持っておらず、後から最終結果が重なることがある | index.html:685 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-22 | 低 | 古い Safari で event.timeStamp の基準が違う可能性 | input.js:85-89 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-23 | 低 | 同じボタンを2本指で押すと連打防止が外れる。detach で設定が戻らない | input.js:48-53,139-145 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-24 | 低 | 契約の未実装：seed、.corner の aria-pressed | logic.js, index.html | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-25 | 低 | お試しは片手で押しにくい（左上だけ）→ フィールド全体を押せるように | index.html:261 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-26 | 低 | 向かい側の人から隅の番号が逆さまに見える | index.html:270-276 | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-27 | 低 | iPadOS の4本・5本指ジェスチャーは Web から止められない → 遊び方に設定の案内、実機で確認 | — | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-28 | 中 | テストの空振り：PK3 は保存が無くても合格、PK8 は APP_FILES に無いと skip で合格 | tests/cases/pikatto.mjs | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-29 | 中 | テストの抜け：上の PK-01〜06 をどれも捕まえられない。layout.mjs・sound.mjs に pikatto が無い | tests/ | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
+| PK-30 | 低 | 変異テストの抜け：5ラウンド上限・3点同点・ベスト保存・待ち時間の範囲 | tests/mutants/mutate.mjs | 済 | feature/pikatto ff94380、release/v18 50f4a5c で再テスト合格 |
 
 2026-10-18 の修正後レビューで見つかった低い指摘（未着手）：
 
@@ -67,7 +66,7 @@
 
 ## ハシわたり（games/hashi/、ブランチ feature/hashi）
 
-2026-10-18 に作成。関門テスト（1回目）は合格。レビュー（6観点）の高・中の指摘を直した後の再テストは**まだ**（作業中コミット）。以下は低い指摘（未着手）。
+2026-10-18 に作成。関門テスト（1回目）は合格。レビュー（6観点）の高・中の指摘を直した後の再テストは release/v18（52ce341）で合格（Chromium smoke・full）。以下は低い指摘（未着手）。
 
 | 番号 | 優先度 | 内容 | 場所 | 状態 | 対応 |
 |---|---|---|---|---|---|
