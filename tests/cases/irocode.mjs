@@ -532,8 +532,9 @@ export const tests = [
       check('やり直す(1)：保存も新しい問題になっている（irocode.state の seed が一致・検証を通る）', await (async () => { const sv = await lsGet(o.page, 'irocode.state'); return sv && sv.seed === g.seed && sv.rows.length === 0 && eq(L.validateState(sv), sv); })());
       await o.ctx.close();
       // (2) 今日の1問：rows が1つ以上あるとやり直せない（記録の改ざん防止）。cur だけなら消せる
-      const dsd = L.newGame({ mode: 'daily', date: '2026-10-17' });
-      const dst = makeState(L, { mode: 'daily', date: '2026-10-17' }, [wrong(dsd.secret, 0), wrong(dsd.secret, 1)]);
+      const todayS = L.todayStr();      // 端末の「今日」（日付を決め打ちしない）
+      const dsd = L.newGame({ mode: 'daily', date: todayS });
+      const dst = makeState(L, { mode: 'daily', date: todayS }, [wrong(dsd.secret, 0), wrong(dsd.secret, 1)]);
       o = await open(browser, 'I10r3', { state: dst });
       const gd0 = await getState(o.page);
       if (gd0.mode === 'daily' && gd0.date === dst.date) {
@@ -542,7 +543,7 @@ export const tests = [
         const gd = await getState(o.page), dl = await lsGet(o.page, 'irocode.daily');
         check('やり直す(2)：無理に click しても履歴は消えず（rows 2・同じ答え）、確認カードも出ず、daily の記録も書かれない', gd.rows.length === 2 && eq(gd.secret, dst.secret) && !(await overlayShown(o.page)) && (dl === null || dl.done !== true), { rows: gd.rows.length, dl });
       } else {
-        check('やり直す(2)：今日の1問の状態を注入できる（端末の日付が 2026-10-17 でないと前日扱いで捨てられる）', false, gd0);
+        check('やり直す(2)：今日の1問の状態を注入できる（端末の今日の日付でないと前日扱いで捨てられる）', false, gd0);
       }
       await o.ctx.close();
       // 終わったあとはやり直せない（結果カードを閉じても disabled）
@@ -887,7 +888,7 @@ export const tests = [
       const L = loadLogic(root);
       const bb = L.newGame({ mode: 'practice', seed: 8080 });
       const st = makeState(L, { mode: 'practice', seed: 8080 }, Array.from({ length: 9 }, (_, i) => wrong(bb.secret, i)), [1, 2, 3]);
-      const views = [view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('i13', 'p', 'app'), view('i13', 'l', 'app'), view('i13', 'l', 'safari'), view('PM', 'p', 'safari'), view('iPad', 'p', 'app'), view('iPad', 'l', 'safari'), custom(360, 640, null, '360×640'), custom(361, 640, null, '361×640')];
+      const views = [view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('i13', 'p', 'app'), view('i13', 'l', 'app'), view('i13', 'l', 'safari'), view('PM', 'p', 'safari'), view('iPad', 'p', 'app'), view('iPad', 'l', 'safari'), custom(360, 640, null, '360×640'), custom(361, 640, null, '361×640'), custom(320, 568, null, '320×568'), custom(568, 320, null, '568×320'), custom(430, 932, null, '430×932')];
       for (const v of views) {
         const { ctx, page } = await open(browser, 'I18 ' + v.label, { v, state: st });
         const pr = await layoutProbe(page, BTNS + ', #slots .slot', v.safe, { overlapSel: BTNS, minSel: BTNS });
@@ -895,6 +896,12 @@ export const tests = [
         check(`${v.label}：ボタン・枠が画面内で重ならず 44px 以上、横スクロールなし、履歴が横にはみ出さない`, pr.n >= 14 && !pr.outside.length && !pr.overlaps.length && !pr.small.length && !pr.hscroll && rowsFit, pr);
         const reach = await page.evaluate(() => ['#submit', '#palette button[data-color="5"]'].map((s) => { const e = document.querySelector(s); e.scrollIntoView({ block: 'nearest' }); const r = e.getBoundingClientRect(); return r.top >= -0.5 && r.bottom <= innerHeight + 0.5; }));
         check(`${v.label}：「決める」と色ボタンに、画面のスクロールで届く`, reach.every(Boolean), reach);
+        const segFit = () => page.evaluate(() => ['#modeDaily', '#modePractice', '#hardToggle'].map((s) => { const e = document.querySelector(s); return { s, t: e.textContent, sw: e.scrollWidth, cw: e.clientWidth, h: Math.round(e.getBoundingClientRect().height) }; }).filter((b) => b.sw > b.cw || b.h < 44));
+        const fitOff = await segFit();
+        await page.locator('#hardToggle').tap(); await wait(page, 400);
+        if (await overlayShown(page)) { await page.locator('#overlay [data-cmd=confirm]').tap(); await wait(page, 500); }   // 履歴があると確認カードが出る
+        const fitOn = await segFit();
+        check(`${v.label}：モードのボタン3つの文字がはみ出さない（scrollWidth <= clientWidth）・高さ44px以上（むずかしい：オフ／オン）`, fitOff.length === 0 && fitOn.length === 0 && (await page.locator('#hardToggle').getAttribute('aria-pressed')) === 'true', { fitOff, fitOn });
         await ctx.close();
       }
     },

@@ -577,7 +577,7 @@
     ui.daily.setAttribute("aria-pressed", String(state.mode === "daily"));
     ui.practice.setAttribute("aria-pressed", String(state.mode === "practice"));
     ui.hard.setAttribute("aria-pressed", String(state.mode === "practice" && state.hard));
-    ui.hard.textContent = "むずかしい：" + (state.mode === "practice" && state.hard ? "オン" : "オフ");
+    ui.hard.textContent = (state.mode === "practice" && state.hard ? "✔ " : "") + "むずかしい";   // オン／オフは ✔・枠・aria-pressed で示す（文字を短くして狭い幅でもはみ出さない）
   }
   function render(freshLast = false) {
     renderTop();
