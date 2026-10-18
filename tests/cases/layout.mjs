@@ -1,5 +1,5 @@
 // V: ボタンが画面外に出ない・押せる（同値分割・境界値・ペアワイズ）。見た目の細部は V7 の1画面だけ
-import { BASE, T48, BLK, KIRI, view, custom, newPage, seed, open2048, ST, layoutProbe, cardReach, sleep, wait, KNOWN_ISSUES, kiriStart, kiriSnap } from '../lib.mjs';
+import { GAME_URLS, BASE, T48, BLK, KIRI, view, custom, newPage, seed, open2048, ST, layoutProbe, cardReach, sleep, wait, KNOWN_ISSUES, kiriStart, kiriSnap } from '../lib.mjs';
 
 // ---- 画面ごとの共通確認（1関数） ----
 const SCREENS = {
@@ -315,6 +315,45 @@ export const tests = [
       for (let i = 0; i < 40 && big < 20; i++) { await wait(page, 100); big = Math.max(...(await kiriSnap(page)).objs.map((o) => o.r)); }
       check(`低い横画面（道場の高さ ${rows[2].stageH}px）の的の半径は 25 以上（${big}）`, big >= 25 * 0.88, { big, rows });
       await ctx.close();
+    },
+  },
+  {
+    id: 'V11', tier: 'full', title: '文字の大きさ：メニューと全ゲームの画面（最初の画面・遊び方・プレイ中）で、見えている文字（DOM）が 12px 以上（SE 縦 320×568 と横 568×320。canvas に描く文字は対象外）',
+    async run({ browser, check }) {
+      // 見えている文字（テキストノード）の computed font-size が 12px 未満のものを集める
+      const scan = (page) => page.evaluate(() => {
+        const bad = []; let n = 0;
+        const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let t = w.nextNode(); t; t = w.nextNode()) {
+          if (!t.nodeValue.trim()) continue;
+          const e = t.parentElement;
+          if (!e || /^(SCRIPT|STYLE|NOSCRIPT)$/.test(e.tagName)) continue;
+          if (!e.checkVisibility({ checkOpacity: false, checkVisibilityCSS: true })) continue;
+          const r = e.getBoundingClientRect();
+          if (!r.width || !r.height) continue;
+          n++;
+          const fs = parseFloat(getComputedStyle(e).fontSize);
+          if (fs < 12) bad.push(`${e.tagName.toLowerCase()}${e.id ? '#' + e.id : e.className && typeof e.className === 'string' ? '.' + e.className.trim().split(/\s+/)[0] : ''} "${t.nodeValue.trim().slice(0, 12)}" ${fs}px`);
+        }
+        return { n, bad };
+      });
+      const click = async (page, sel) => { const ok = await page.evaluate((q) => { const e = [...document.querySelectorAll(q)].find((x) => x.checkVisibility()); if (e) e.click(); return !!e; }, sel); await wait(page, 150); return ok; };
+      const START = '#card [data-cmd=restart], .setup [data-action=start], [data-cmd=restart]:not(#restartBtn), #startBtn, [data-action=start]';
+      for (const v of [custom(320, 568, null, 'SE 縦'), custom(568, 320, null, 'SE 横')]) {
+        for (const url of ['', ...GAME_URLS]) {
+          const { ctx, page } = await newPage(browser, v, `V11 ${v.label} ${url}`, { clock: true });
+          await seed(page, {});
+          const seen = [];
+          await page.goto(BASE + url); await wait(page, 200);
+          seen.push(['最初の画面', await scan(page)]);
+          if (await click(page, '#helpBtn')) seen.push(['遊び方', await scan(page)]);
+          await page.goto(BASE + url); await wait(page, 200);
+          if (await click(page, START)) { if (await click(page, START)) {} seen.push(['プレイ中', await scan(page)]); }
+          const bad = seen.flatMap(([k, r]) => r.bad.map((b) => `${k}：${b}`));
+          check(`${v.label} ${url || 'メニュー'}：見えている文字 ${seen.map(([, r]) => r.n).join('+')} 個がすべて 12px 以上`, bad.length === 0 && seen[0][1].n > 0, bad.slice(0, 10));
+          await ctx.close();
+        }
+      }
     },
   },
 ];
