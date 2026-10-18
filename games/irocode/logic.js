@@ -207,9 +207,12 @@
     return s;
   }
 
-  function validateDaily(x) {
+  // today（'YYYY-MM-DD'）を渡すと、それより未来の日付は受け付けない（端末の時計を進めて遊んだあと戻した場合など）。
+  // 日付の文字列は桁がそろっているので、文字列のまま大小を比べられる。家族向けのゲームなので、不正対策はここまで。
+  function validateDaily(x, today) {
     try {
       if (!x || typeof x !== "object" || !isDateStr(x.date)) return null;
+      if (isDateStr(today) && x.date > today) return null;
       if (typeof x.done !== "boolean" || typeof x.win !== "boolean") return null;
       if (!Number.isInteger(x.tries) || x.tries < 0 || x.tries > MAX_TRIES.normal) return null;
       if (x.win && (!x.done || x.tries < 1)) return null;

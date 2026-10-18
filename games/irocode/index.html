@@ -438,7 +438,9 @@
   const rawStats = readJSON(KEY_STATS);
   const firstVisit = rawState === undefined && rawStats === undefined;
   let stats = L.validateStats(rawStats === undefined ? null : rawStats);
-  let daily = L.validateDaily(readJSON(KEY_DAILY) ?? null);
+  // 端末の時計が戻って「未来の日付」になった記録は受け付けない（捨てる）
+  const rawDaily = readJSON(KEY_DAILY);
+  let daily = L.validateDaily(rawDaily ?? null, today());
   let state = null;
   let hardPref = false;           // れんしゅうの「むずかしい」（いまのゲームから引き継ぐ）
   let view = "play";              // play | result | locked | help | confirm
@@ -653,16 +655,27 @@
   }
 
   // ===== ゲームの開始 =====
-  // 今日の1問を途中でやめたら、負けとして1回だけ記録する（やり直しで記録を書き換えさせない）
-  function abandonDaily() {
-    if (state.mode !== "daily" || state.done || isLocked() || state.rows.length === 0 || dailyDone(state.date)) return;
-    daily = { date: state.date, done: true, win: false, tries: L.MAX_TRIES.normal };
-    writeJSON(KEY_DAILY, daily);
+  // 「今日の1問」の仕様（日付まわり）
+  //  ・問題は始めた日のもの。0時をまたいで遊び続けても、結果は state.date（始めた日）で irocode.daily に記録する。
+  //    確定（決定ボタン）の時点で日付が変わっていても同じ。その日の問題として最後まで遊べる。
+  //    結果カードの「次は明日」などは、表示する時点の today() と state.date を比べて書く（showResult / showLocked）。
+  //  ・隠して戻ったとき・確認／遊び方カードを閉じたとき・起動時に、日付が今日と違えば今日の問題に差し替える（refreshDay）。
+  //  ・ヒントを1つでも見た（rows が1行以上）問題を、最後まで遊ばずに手放したら、手放した理由によらず「負け1回」
+  //    （played を1つ足す）。れんしゅうへの切り替え・日付が変わっての差し替え・起動時の破棄（時計が戻った場合を含む）を
+  //    すべてこの1つの関数に通す。理由：どれも「その問題を解き切らずに終わった」ことに変わりがなく、扱いが1つなら
+  //    「やり直しで同じ問題のヒントをもう一度見る」ことでも成績が有利にならない。勝ちや best は動かさない。
+  //  ・irocode.daily に書くのは、手放した問題が今日のものだったときだけ（昨日や未来の日付の記録は残さない）。
+  function abandonDaily(s) {
+    if (!s || s.mode !== "daily" || s.done || s.rows.length === 0 || dailyDone(s.date)) return;
+    if (s.date === today()) {
+      daily = { date: s.date, done: true, win: false, tries: L.MAX_TRIES.normal };
+      writeJSON(KEY_DAILY, daily);
+    }
     if (stats.played < STATS_LIMIT) stats.played++;
     writeJSON(KEY_STATS, stats);
   }
   function start(mode, hard) {
-    if (mode === "practice") abandonDaily();
+    abandonDaily(state);
     clearTimeout(resultTimer); resultTimer = 0;
     if (mode === "daily") state = L.newGame({ mode: "daily", hard: false, date: today() });
     else { hardPref = !!hard; state = L.newGame({ mode: "practice", hard: hardPref }); }
@@ -671,6 +684,16 @@
     render();
     if (isLocked()) showLocked();
     else sfx.play("start");
+  }
+  // 日付が変わっていたら今日の問題にする（確認・遊び方カードの表示中は、閉じたときに行う）
+  function refreshDay() {
+    if (state && state.mode === "daily" && state.date !== today() && view !== "confirm" && view !== "help") start("daily");
+  }
+  // 結果カードの注記。始めた日が今日でないとき（0時をまたいで遊んだ）は、今日の1問が別にあることを伝える
+  function dailyNote(win) {
+    const sameDay = state.date === today();
+    if (win) return sameDay ? "今日はクリア済み・次は明日" : "始めた日の1問はクリア・今日の1問が遊べます";
+    return sameDay ? "今日の1問はここまで・次は明日" : "始めた日の1問はここまで・今日の1問が遊べます";
   }
   // 途中なら確認してから実行する
   function guard(msg, okLabel, fn) {
@@ -807,7 +830,7 @@
       </div>`, { soft: true });
     setText('[data-f="t"]', win ? "せいかい！" : "ざんねん");
     setText('[data-f="m"]', win ? `${tries}回目で当てました。${newBest ? "ベスト更新！" : ""}` : `${maxTries()}回で当てられませんでした。`);
-    setText('[data-f="daily"]', win ? "今日はクリア済み・次は明日" : "今日の1問はここまで・次は明日");
+    setText('[data-f="daily"]', dailyNote(win));
     fillAnswer();
     fillStats();
   }
@@ -819,11 +842,12 @@
       <p class="lead" data-f="m"></p>
       ${answerHTML()}
       ${statsHTML()}
-      <p class="note">次は明日</p>
+      <p class="note" data-f="next"></p>
       <div class="btns">
         <div class="brow"><button class="cta primary" type="button" data-cmd="again">もう一度<small>（れんしゅう）</small></button></div>
         <div class="brow"><button class="cta" type="button" data-cmd="menu">メニューへ</button></div>
       </div>`, { soft: true });
+    setText('[data-f="next"]', state.date === today() ? "次は明日" : "今日の1問が遊べます");
     setText('[data-f="m"]', daily.win ? `今日はクリア済み（${daily.tries}回目で正解）` : "今日の1問は遊び終わりました");
     fillAnswer();
     fillStats();
@@ -834,8 +858,8 @@
     if (!cmd) return;
     if (cmd === "again") start("practice", state.mode === "practice" ? state.hard : hardPref);
     else if (cmd === "menu") { saveState(); location.href = "../../"; }
-    else if (cmd === "close") { hideOverlay(); renderInput(); }
-    else if (cmd === "cancel") { hideOverlay(); renderInput(); }
+    else if (cmd === "close") { hideOverlay(); renderInput(); refreshDay(); }
+    else if (cmd === "cancel") { hideOverlay(); renderInput(); refreshDay(); }
     else if (cmd === "confirm") { const fn = confirmFn; hideOverlay(); if (fn) fn(); }
   });
   $("helpBtn").addEventListener("click", showHelp);
@@ -855,7 +879,7 @@
   // アプリを隠す・閉じる直前にも保存しておく。戻ってきたとき日付が変わっていれば今日の1問を差し替える
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) { saveState(); return; }
-    if (state && state.mode === "daily" && state.date !== today() && view !== "confirm" && view !== "help") start("daily");
+    refreshDay();
   });
   window.addEventListener("pagehide", saveState);
 
@@ -863,7 +887,7 @@
   window.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === "m" || e.key === "M") { sfx.unlock(); sfx.toggle(); renderSoundBtn(); return; }
-    if (e.key === "Escape" && (view === "help" || view === "confirm")) { hideOverlay(); renderInput(); return; }
+    if (e.key === "Escape" && (view === "help" || view === "confirm")) { hideOverlay(); renderInput(); refreshDay(); return; }
     if (view !== "play") return;
     sfx.unlock();
     if (e.key >= "1" && e.key <= "6") { place(Number(e.key) - 1); return; }
@@ -911,7 +935,9 @@
   if (rawState !== undefined && !state) removeKey(KEY_STATE);      // 不正な保存データは消す
   if (rawStats !== undefined && rawStats !== null && JSON.stringify(stats) !== JSON.stringify(rawStats)) writeJSON(KEY_STATS, stats);
   // 前の日の「今日の1問」は持ち越さない（今日の問題にする）
-  if (state && state.mode === "daily" && state.date !== today()) state = null;
+  // 日付が違う（昨日以前、または時計が戻って未来）なら、途中だった分は abandonDaily と同じ扱いで捨てる
+  if (state && state.mode === "daily" && state.date !== today()) { abandonDaily(state); state = null; }
+  if (rawDaily !== undefined && rawDaily !== null && !daily) removeKey(KEY_DAILY);
   if (state) {
     if (state.mode === "practice") hardPref = state.hard;
     saveState();
