@@ -1,7 +1,7 @@
 // S: オフラインで起動できる・更新で古いキャッシュが消える（Service Worker）。
 // オフラインは「サーバーが接続を切る」方式で再現（Playwright の setOffline は SW 自身の fetch に効かないため）。
 // キャッシュ版数は sw.js から読み取り、決め打ちしない。
-import { BASE, T48, BLK, custom, newPage, seed, ST, sleep, swInfo as libSwInfo, IS_CHROMIUM, SFX_SPY } from '../lib.mjs';
+import { BASE, ZEN, GAME_COUNT, GAME_URLS, T48, BLK, KIRI, IRO, custom, newPage, seed, ST, sleep, swInfo as libSwInfo, IS_CHROMIUM, SFX_SPY } from '../lib.mjs';
 const V = () => custom(390, 844, null, 'iPhone 13');
 const swInfo = (root) => { const i = libSwInfo(root); return { ...i, files: i.n }; };
 async function installed(browser, label, allowNetErrors = false, opts = {}) {
@@ -32,7 +32,7 @@ const titleAt = async (page, url, sel) => {
 
 export const tests = [
   {
-    id: 'S1', tier: 'smoke', title: 'インストール後、オフラインでメニュー・両ゲームが開き、行き来できる',
+    id: 'S1', tier: 'smoke', title: 'インストール後、オフラインでメニュー・5つのゲームが開き、行き来できる',
     async run({ browser, check, srv, root }) {
       const info = swInfo(root);
       srv.reset();
@@ -49,19 +49,32 @@ export const tests = [
       const onResp = (r) => { if (r.url().endsWith('/common/sfx.js')) sfxResp.push({ status: r.status(), sw: r.fromServiceWorker() }); };
       page.on('response', onResp);
       const res = {};
-      for (const [k, url, sel] of [['menu', BASE, 'a.game'], ['blocks', BLK, '#board'], ['t2048', T48, '#board .tile']]) {
+      for (const [k, url, sel] of [['menu', BASE, 'a.game'], ['blocks', BLK, '#board'], ['t2048', T48, '#board .tile'], ['kiri', KIRI, '#field'], ['iro', IRO, '#slots'], ['zen', ZEN, '#stage']]) {
         res[k] = await titleAt(page, url, sel);
         res[k].sfx = await page.evaluate(() => typeof window.YubiSfx?.create).catch(() => 'error');
       }
       page.off('response', onResp);
-      check('オフライン：メニュー・ブロック・2048 が開く', res.menu.t === 'ゆびあそび' && res.menu.el >= 2 && res.blocks.t === 'ブロックパズル' && res.blocks.el === 1 && res.t2048.t === 'ばいばいタイル' && res.t2048.el >= 2, res);
-      check('オフライン：3画面とも common/sfx.js をキャッシュから読み、効果音（YubiSfx）が使える', Object.values(res).every((r) => r.sfx === 'function') && sfxResp.length === 3 && sfxResp.every((r) => r.sw && r.status === 200), { res, sfxResp });
+      check('オフライン：メニュー・ブロック・2048・キリトリ道場・いろコード・ゼンマイさんぽが開く', res.menu.t === 'ゆびあそび' && res.menu.el === GAME_COUNT && res.blocks.t === 'ブロックパズル' && res.blocks.el === 1 && res.t2048.t === 'ばいばいタイル' && res.t2048.el >= 2 && res.kiri.t === 'キリトリ道場' && res.kiri.el === 1 && res.iro.t === 'いろコード' && res.iro.el === 1 && res.zen.t === 'ゼンマイさんぽ' && res.zen.el === 1, res);
+      check('オフライン：6画面とも common/sfx.js をキャッシュから読み、効果音（YubiSfx）が使える', Object.values(res).every((r) => r.sfx === 'function') && sfxResp.length === 6 && sfxResp.every((r) => r.sw && r.status === 200), { res, sfxResp });
+      // オフラインのままキリトリ道場で遊べる（始めて的が飛ぶ）
+      // 1 フレームで進むのは最大 0.05 秒なので、遅い環境ではゲーム内の時間がゆっくり進む。ゲーム内で 1 秒たつまで待つ（最大 10 秒）
+      await page.goto(KIRI); await page.click('#card [data-cmd=restart]');
+      await page.waitForFunction(() => window.KiritoriGame.snapshot().elapsed > 1, null, { timeout: 10000 }).catch(() => {});
+      const ks = await page.evaluate(() => window.KiritoriGame.snapshot());
+      check('オフライン：キリトリ道場を始めると的が飛んでくる', ks.state === 'play' && ks.elapsed > 1 && (ks.objs.length > 0 || ks.lives < 3), { state: ks.state, n: ks.objs.length, elapsed: ks.elapsed });
       await page.goto(BASE);
       await page.locator('a.game').nth(0).click(); await page.waitForURL(BLK);
       await page.locator('#card [data-cmd=menu]').click(); await page.waitForURL(BASE);
       await page.locator('a.game').nth(1).click(); await page.waitForURL(T48);
       await page.locator('#backLink').click(); await page.waitForURL(BASE);
-      check('オフラインのまま メニュー→ブロック→メニュー→2048→メニュー と行き来できる', page.url() === BASE && await page.locator('a.game').count() >= 2);
+      await page.locator('a.game').nth(2).click(); await page.waitForURL(KIRI);
+      await page.locator('#card [data-cmd=menu]').click(); await page.waitForURL(BASE);
+      await page.locator('a.game').nth(3).click(); await page.waitForURL(IRO);
+      await page.locator('#back').click(); await page.waitForURL(BASE);
+      await page.evaluate(() => localStorage.setItem('zenmai.help', '1'));   // 初回の遊び方カードは見たことにする（カードの閉じ方は ZU2 で確認）
+      await page.locator('a.game').nth(4).click(); await page.waitForURL(ZEN);
+      await page.locator('#back').click(); await page.waitForURL(BASE);
+      check('オフラインのまま メニュー→ブロック→2048→キリトリ→いろコード→ゼンマイ（各回メニューへ戻る）と行き来できる', page.url() === BASE && await page.locator('a.game').count() === GAME_COUNT);
       await srv.ctl('offline=0');
       await ctx.close();
     },
@@ -109,7 +122,7 @@ export const tests = [
       check('オフライン：index.html・クエリ付き・games/2048/index.html も開く', r.idx.t === 'ゆびあそび' && r.q.t === 'ばいばいタイル' && r.i2.t === 'ばいばいタイル', r);
       await page.goto(BASE + 'nope/deep/path/'); await page.waitForLoadState('load');
       const u = await page.evaluate(async () => ({ url: location.href, title: document.title, links: [...document.querySelectorAll('a.game')].map((a) => a.href), img: await fetch(document.querySelector('link[rel=apple-touch-icon]').href).then((x) => x.ok && x.headers.get('content-type')).catch(() => 'error') }));
-      check('オフラインで存在しないパス → メニューへ移り、リンク・画像の URL が壊れない', u.url === BASE && u.title === 'ゆびあそび' && JSON.stringify(u.links.slice(0, 2)) === JSON.stringify([BLK, T48]) && u.links.every((h) => h.startsWith(BASE + 'games/')) && u.img === 'image/png', u);
+      check('オフラインで存在しないパス → メニューへ移り、リンク・画像の URL が壊れない', u.url === BASE && u.title === 'ゆびあそび' && JSON.stringify(u.links) === JSON.stringify(GAME_URLS.map((x) => BASE + x)) && u.img === 'image/png', u);
       const miss = await page.evaluate(async () => fetch('icons/nothing.png').then((x) => 'status ' + x.status + ' ' + x.headers.get('content-type')).catch((e) => 'error:' + e.name));
       await srv.ctl('offline=0');
       const miss2 = await page.evaluate(async () => fetch('icons/nothing.png').then((x) => x.status));
@@ -213,14 +226,14 @@ export const tests = [
       // ① 中身だけ新しくなった（sw.js は旧版のまま＝版数の上げ忘れ、または更新の確認前）：オンラインで開くと HTML も sfx.js も新しい版
       await srv.ctl('rel=R2');
       const r1 = {};
-      for (const [name, url] of [['menu', BASE], ['blocks', BLK], ['t2048', T48]]) { await page.goto(url); await sleep(150); r1[name] = await ver(); }
-      check('旧版の SW のまま新しい版を開く：3画面とも HTML と sfx.js がそろって新しい版（R2）', Object.values(r1).every((v) => v.html === 'R2' && v.sfx === 'R2'), r1);
+      for (const [name, url] of [['menu', BASE], ['blocks', BLK], ['t2048', T48], ['kiri', KIRI]]) { await page.goto(url); await sleep(150); r1[name] = await ver(); }
+      check('旧版の SW のまま新しい版を開く：4画面とも HTML と sfx.js がそろって新しい版（R2）', Object.values(r1).every((v) => v.html === 'R2' && v.sfx === 'R2'), r1);
       // ② そのままオフライン：キャッシュは旧版のままそろっている（新しい HTML・sfx.js を旧キャッシュに混ぜない）
       await sleep(300);
       await srv.ctl('offline=1');
       const r2 = {};
-      for (const [name, url] of [['menu', BASE], ['blocks', BLK], ['t2048', T48]]) { await page.goto(url).catch(() => {}); await sleep(150); r2[name] = await ver().catch((e) => e.message); }
-      check('続けてオフライン：3画面とも旧版の HTML と旧版の sfx.js（混ざらない）', Object.values(r2).every((v) => v.html === null && v.sfx === null), r2);
+      for (const [name, url] of [['menu', BASE], ['blocks', BLK], ['t2048', T48], ['kiri', KIRI]]) { await page.goto(url).catch(() => {}); await sleep(150); r2[name] = await ver().catch((e) => e.message); }
+      check('続けてオフライン：4画面とも旧版の HTML と旧版の sfx.js（混ざらない）', Object.values(r2).every((v) => v.html === null && v.sfx === null), r2);
       await srv.ctl('offline=0');
       // ③ 新版の sw.js（版数を上げた）を配る：旧キャッシュが消え、新しいキャッシュは新しい版でそろい、オフラインでも新しい版
       await srv.ctl('swver=&rel=R3');
@@ -230,8 +243,8 @@ export const tests = [
       check(`更新：旧版のキャッシュが消え、新版 ${info.app} だけ`, k.filter((x) => x.startsWith(info.prefix)).join() === info.app, k);
       await srv.ctl('offline=1');
       const r3 = {};
-      for (const [name, url] of [['menu', BASE], ['blocks', BLK], ['t2048', T48]]) { await page.goto(url).catch(() => {}); await sleep(150); r3[name] = await ver().catch((e) => e.message); }
-      check('更新後にオフライン：3画面とも HTML と sfx.js がそろって新しい版（R3）', Object.values(r3).every((v) => v.html === 'R3' && v.sfx === 'R3'), r3);
+      for (const [name, url] of [['menu', BASE], ['blocks', BLK], ['t2048', T48], ['kiri', KIRI]]) { await page.goto(url).catch(() => {}); await sleep(150); r3[name] = await ver().catch((e) => e.message); }
+      check('更新後にオフライン：4画面とも HTML と sfx.js がそろって新しい版（R3）', Object.values(r3).every((v) => v.html === 'R3' && v.sfx === 'R3'), r3);
       await srv.ctl('offline=0');
       await ctx.close();
     },

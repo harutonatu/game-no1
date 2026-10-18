@@ -1,5 +1,5 @@
 // V: ボタンが画面外に出ない・押せる（同値分割・境界値・ペアワイズ）。見た目の細部は V7 の1画面だけ
-import { BASE, T48, BLK, view, custom, newPage, seed, open2048, ST, layoutProbe, cardReach, sleep, wait, KNOWN_ISSUES } from '../lib.mjs';
+import { BASE, T48, BLK, KIRI, view, custom, newPage, seed, open2048, ST, layoutProbe, cardReach, sleep, wait, KNOWN_ISSUES, kiriStart, kiriSnap } from '../lib.mjs';
 
 // ---- 画面ごとの共通確認（1関数） ----
 const SCREENS = {
@@ -19,7 +19,37 @@ const SCREENS = {
     async open(page) { await open2048(page, ST([2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 0, 2, 0, 4, 0, 0], { score: 123456, keepPlaying: true }), { 'tile2048.best': '234567' }); },
     probe: (page, safe) => layoutProbe(page, '.back, .box, .tool, #board', safe, { overlapSel: '.back, .box, .tool, #board, .hint', minSel: '.back, .tool' }),
   },
+  kiri: {
+    label: 'キリトリ（プレイ中）',
+    async open(page) { await seed(page, { 'kiritori.best': '1234567' }); await page.goto(KIRI); await wait(page, 120); await kiriStart(page); await wait(page, 100); },
+    probe: async (page, safe) => {
+      const r = await layoutProbe(page, '.back, .box, .tool, .stage', safe, { overlapSel: '.back, .box, .tool, .stage', minSel: '.back, .tool' });
+      // 道場が小さくなりすぎない（的の直径の 3 倍以上の高さ）・スコアとベストの数字が「…」で省略されない
+      const d = await page.evaluate(() => { const st = document.querySelector('.stage').getBoundingClientRect(); return { h: st.height, w: st.width, nums: [...document.querySelectorAll('.box b')].map((b) => ({ t: b.textContent, fit: b.scrollWidth <= b.clientWidth })) }; });
+      if (d.h < 150 || d.w < 200) r.outside.push(`道場が小さい ${Math.round(d.w)}x${Math.round(d.h)}`);
+      if (!d.nums.every((x) => x.fit)) r.outside.push('数字が省略 ' + JSON.stringify(d.nums));
+      return r;
+    },
+  },
 };
+// キリトリ道場のスコア欄：SCORE・BEST に 7 桁（1,234,567）を入れても「…」で省略されず、欄の高さ・道場の大きさが変わらない
+async function kiriStatsProbe(page) {
+  await seed(page, { 'kiritori.best': '1234567' });
+  await page.goto(KIRI); await wait(page, 120); await kiriStart(page);
+  await page.click('#pauseBtn'); await wait(page, 60);
+  await page.evaluate(() => { document.querySelector('#overlay').hidden = true; });
+  const geo = () => page.evaluate(() => { const s = document.querySelector('.stage').getBoundingClientRect(), h = document.querySelector('.hud').getBoundingClientRect(); return `${Math.round(s.width)}x${Math.round(s.height)}/${h.height.toFixed(1)}`; });
+  const before = await geo();
+  const r = await page.evaluate(async () => {
+    document.querySelector('#score').textContent = '1,234,567';
+    await new Promise((ok) => requestAnimationFrame(() => setTimeout(ok, 0)));
+    return [...document.querySelectorAll('.box b')].map((b) => ({ id: b.id, t: b.textContent, sw: b.scrollWidth, cw: b.clientWidth }));
+  });
+  await wait(page, 50);
+  const after = await geo();
+  const ok = r.length === 2 && r.every((x) => x.t === '1,234,567' && x.sw <= x.cw) && before === after;
+  return { ok, r, before, after };
+}
 async function screenCheck(browser, check, v, key, extra) {
   const S = SCREENS[key];
   const { ctx, page } = await newPage(browser, v, `${v.label} ${S.label}`, { clock: true });
@@ -72,26 +102,23 @@ async function blocksStatsProbe(page, safe) {
   return { ok: bad.length === 0, bad, r };
 }
 
-// ---- ペアワイズの組み合わせ表（端末4 × 向き2 × 起動方法2 × 画面3、全48通り → 12行） ----
-export const PAIRWISE = [
-  // [端末, 画面, 向き, 起動]
-  ['SE', 'menu', 'p', 'app'], ['SE', 'blocks', 'l', 'safari'], ['SE', 't2048', 'l', 'app'],
-  ['i13', 'menu', 'l', 'safari'], ['i13', 'blocks', 'p', 'app'], ['i13', 't2048', 'p', 'safari'],
-  ['PM', 'menu', 'p', 'safari'], ['PM', 'blocks', 'l', 'app'], ['PM', 't2048', 'l', 'safari'],
-  ['iPad', 'menu', 'l', 'app'], ['iPad', 'blocks', 'p', 'safari'], ['iPad', 't2048', 'p', 'app'],
-];
+// ---- ペアワイズの組み合わせ表（端末4 × 向き2 × 起動方法2 × 画面4、全64通り → 16行） ----
+// 端末×画面は全16組。向き・起動の組（縦ホーム／横Safari／横ホーム／縦Safari）は (端末の番号＋画面の番号) mod 4 で割り当てる（ラテン方格）
+const COMBOS = [['p', 'app'], ['l', 'safari'], ['l', 'app'], ['p', 'safari']];
+const DEVS = ['SE', 'i13', 'PM', 'iPad'], SCRS = ['menu', 'blocks', 't2048', 'kiri'];
+export const PAIRWISE = DEVS.flatMap((d, i) => SCRS.map((sc, j) => [d, sc, ...COMBOS[(i + j) % 4]]));
 export function pairwiseMissing(rows = PAIRWISE) {
-  const lv = [['SE', 'i13', 'PM', 'iPad'], ['menu', 'blocks', 't2048'], ['p', 'l'], ['safari', 'app']];
+  const lv = [DEVS, SCRS, ['p', 'l'], ['safari', 'app']];
   const miss = [];
   for (let a = 0; a < 4; a++) for (let b = a + 1; b < 4; b++) for (const x of lv[a]) for (const y of lv[b]) if (!rows.some((r) => r[a] === x && r[b] === y)) miss.push(`${x}×${y}`);
   return miss;
 }
 // smoke の V1・V2 で確かめる組（full でも重ねて流さない）
-const IN_SMOKE = new Set(['SE|menu|p|app', 'SE|t2048|l|app']);
+const IN_SMOKE = new Set(['SE|menu|p|app', 'SE|blocks|l|safari', 'SE|t2048|l|app']);
 
 export const tests = [
   {
-    id: 'V1', tier: 'smoke', title: '最も狭い縦画面（SE 縦・ホーム画面 320×568、幅 ≤360 の区分）で3画面のボタンが画面内',
+    id: 'V1', tier: 'smoke', title: '最も狭い縦画面（SE 縦・ホーム画面 320×568、幅 ≤360 の区分）で4画面のボタンが画面内、スコア欄 7 桁',
     async run({ browser, check }) {
       const v = view('SE', 'p', 'app');
       await screenCheck(browser, check, v, 'menu');
@@ -101,14 +128,21 @@ export const tests = [
         check('SE縦 ブロックの一時停止カードの全ボタンに届く', c.ok, c);
       });
       await screenCheck(browser, check, v, 't2048');
+      await screenCheck(browser, check, v, 'kiri', async (page) => {
+        await page.click('#pauseBtn'); await wait(page, 60);
+        const c = await cardReach(page);
+        check('SE縦 キリトリの一時停止カードの全ボタンに届く', c.ok, c);
+      });
       const { ctx, page } = await newPage(browser, v, 'V1 桁数', { clock: true });
       const d = await blocksStatsProbe(page, v.safe);
       check('SE縦 ブロック：SCORE 1,234,567・LINES 9,999・LEVEL 99 が「…」で省略されず、盤面・欄の高さも変わらない', d.ok, d);
+      const k = await kiriStatsProbe(page);
+      check('SE縦 キリトリ：SCORE・BEST 1,234,567 が「…」で省略されず、欄の高さ・道場の大きさも変わらない', k.ok, k);
       await ctx.close();
     },
   },
   {
-    id: 'V2', tier: 'smoke', title: '最も低い横画面（SE 横・ホーム画面 568×320、高さ ≤360 の区分）でゲーム2画面のボタンが画面内',
+    id: 'V2', tier: 'smoke', title: '最も低い横画面（SE 横・ホーム画面 568×320、高さ ≤360 の区分）でゲーム3画面のボタンが画面内、SE 横 Safari（568×270）のブロックが重ならない（K1）',
     async run({ browser, check }) {
       const v = view('SE', 'l', 'app');
       await screenCheck(browser, check, v, 'blocks', async (page) => {
@@ -116,13 +150,16 @@ export const tests = [
         check('SE横 ブロック：BEST 欄が DROP と重ならない（隠すか離す）', r !== 'overlap', r);
       });
       await screenCheck(browser, check, v, 't2048');
+      await screenCheck(browser, check, v, 'kiri');
+      // K1（SE を Safari で横持ち 568×270：DROP が LEVEL/LINES に、HOLD が NEXT に重なっていた）を smoke でも確かめる
+      await screenCheck(browser, check, view('SE', 'l', 'safari'), 'blocks');
     },
   },
   {
-    id: 'V3', tier: 'full', title: 'ペアワイズ：端末×向き×起動方法×画面 の12通り（全ての2因子の組を1回以上）',
+    id: 'V3', tier: 'full', title: 'ペアワイズ：端末×向き×起動方法×画面 の16通り（全ての2因子の組を1回以上）',
     async run({ browser, check }) {
       const miss = pairwiseMissing();
-      check('組み合わせ表が全ての2因子の組（計44組）を網羅', miss.length === 0, miss);
+      check(`組み合わせ表（${PAIRWISE.length} 行）が全ての2因子の組（計52組）を網羅`, miss.length === 0, miss);
       for (const [d, s, o, l] of PAIRWISE) {
         if (IN_SMOKE.has([d, s, o, l].join('|'))) continue;
         await screenCheck(browser, check, view(d, o, l), s);
@@ -130,12 +167,15 @@ export const tests = [
     },
   },
   {
-    id: 'V4', tier: 'full', title: '境界値：CSS の切り替わり（縦幅 360/361、横の高さ 360/361・500/501、メニュー幅 699/700）の両側',
+    id: 'V4', tier: 'full', title: '境界値：CSS の切り替わり（縦幅 360/361、横の高さ 319/320・360/361・500/501、メニュー幅 699/700）の両側',
     async run({ browser, check }) {
       for (const v of [custom(360, 640), custom(361, 640), custom(640, 360), custom(640, 361), custom(900, 500), custom(900, 501)]) {
         await screenCheck(browser, check, v, 'blocks');
         await screenCheck(browser, check, v, 't2048');
+        await screenCheck(browser, check, v, 'kiri');
       }
+      // K1 の境界：ブロックの低い横持ち 319/320（直した @media の切り替わり）と 285・311（旧 310 の境目で重なっていた高さ）
+      for (const v of [custom(568, 285), custom(568, 311), custom(568, 319), custom(568, 320)]) await screenCheck(browser, check, v, 'blocks');
       for (const v of [custom(699, 1000), custom(700, 1000)]) await screenCheck(browser, check, v, 'menu');
     },
   },
@@ -162,6 +202,8 @@ export const tests = [
         await page.goto(BLK); await wait(page, 100); await page.click('#card [data-cmd=restart]'); await wait(page, 100);
         const bl = await page.evaluate(() => [...document.querySelectorAll('.stat')].filter((e) => e.offsetParent).map((e) => { const s = e.getBoundingClientRect(); return { t: e.textContent.replace(/\s+/g, ''), fit: [...e.querySelectorAll('b, .label')].every((x) => { const r = x.getBoundingClientRect(); return r.left >= s.left - 0.5 && r.right <= s.right + 0.5 && r.right <= innerWidth; }) }; }));
         check(`${v.label}：ブロックの BEST 1,234,567 などの表示が切れない`, bl.length > 0 && bl.every((b) => b.fit), bl);
+        const k = await kiriStatsProbe(page);
+        check(`${v.label}：キリトリの SCORE・BEST 1,234,567 が省略されず、高さが変わらない`, k.ok, k);
         await ctx.close();
       }
     },
@@ -225,12 +267,13 @@ export const tests = [
     },
   },
   {
-    id: 'V8', tier: 'full', title: 'ブロックのスコア欄の桁数：12 画面（iPhone 縦横・iPad 縦横）で SCORE/BEST 7桁・LINES 4桁・LEVEL 2桁が省略されない',
+    id: 'V8', tier: 'full', title: 'ブロックのスコア欄の桁数：14 画面（iPhone 縦横・SE の Safari 横・iPad 縦横）で SCORE/BEST 7桁・LINES 4桁・LEVEL 2桁が省略されない',
     async run({ browser, check }) {
       const cases = [
         [320, 568, [20, 0, 0, 0]], [375, 667, [20, 0, 0, 0]], [390, 844, [47, 0, 34, 0]], [430, 932, [59, 0, 34, 0]],
         [568, 320, [0, 0, 0, 0]], [667, 375, [0, 0, 0, 0]], [844, 390, [0, 47, 21, 47]], [932, 430, [0, 59, 21, 59]],
         [768, 1024, [24, 0, 20, 0]], [1024, 768, [24, 0, 20, 0]], [810, 1080, [24, 0, 20, 0]], [1080, 810, [24, 0, 20, 0]],
+        [568, 270, null], [568, 300, null],                  // K1：SE を Safari で横持ち
       ];
       const bad = [];
       for (const [w, h, safe] of cases) {
@@ -241,6 +284,29 @@ export const tests = [
         await ctx.close();
       }
       check(`${cases.length - 1} 画面すべてで数字が省略されず、重なり・safe-area 外・横スクロールなし、ボタン 44px 以上`, bad.length === 0, bad);
+    },
+  },
+  {
+    id: 'V9', tier: 'full', title: 'キリトリ道場：プレイ中に向きを変えても、的が道場の中に置き直され、落とした扱いにならない・ライフが減らない。低い横画面では的が大きい（半径 25 以上）',
+    async run({ browser, check }) {
+      const { ctx, page } = await newPage(browser, custom(358, 540, null, 'iPhone 13 縦'), 'V9', { clock: true });
+      await seed(page, {});
+      await page.goto(KIRI); await wait(page, 150); await kiriStart(page);
+      let s = await kiriSnap(page);
+      for (let i = 0; i < 60 && !s.objs.some((o) => o.y - o.r > s.stage.y); i++) { await wait(page, 100); s = await kiriSnap(page); }
+      const inside = (q) => q.objs.every((o) => o.x >= q.stage.x - o.r && o.x <= q.stage.x + q.stage.w + o.r && o.y <= q.stage.y + q.stage.h + o.r * 3);
+      const rows = [];
+      for (const [w, h] of [[812, 278], [358, 540], [568, 320]]) {
+        await page.setViewportSize({ width: w, height: h }); await wait(page, 300);
+        const q = await kiriSnap(page);
+        rows.push({ w, h, n: q.objs.length, lives: q.lives, marks: q.marks, state: q.state, ok: inside(q), r: Math.max(0, ...q.objs.map((o) => o.r)), stageH: Math.round(q.stage.h) });
+      }
+      check('縦→横→縦→SE 横と向きを変えても、的は道場の中に置き直され、ライフ 3・落とした印 0・遊び続けている', rows.every((r) => r.ok && r.lives === 3 && r.marks === 0 && r.state === 'play'), rows);
+      // 低い横画面（568×320 → 道場の高さ約 260）では的の半径の下限が 25
+      let big = rows[2].r;
+      for (let i = 0; i < 40 && big < 20; i++) { await wait(page, 100); big = Math.max(...(await kiriSnap(page)).objs.map((o) => o.r)); }
+      check(`低い横画面（道場の高さ ${rows[2].stageH}px）の的の半径は 25 以上（${big}）`, big >= 25 * 0.88, { big, rows });
+      await ctx.close();
     },
   },
 ];
