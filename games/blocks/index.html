@@ -753,10 +753,12 @@
   }
   document.querySelectorAll(".key").forEach((btn) => {
     const action = btn.dataset.action;
-    let fired = false;
-    const up = () => { btn.classList.remove("on"); release(action); setTimeout(() => { fired = false; }, 600); };
+    let fired = false, firedTimer = 0;
+    // 前のタップの予約が残っていると、長押しの途中で fired が戻り、離したときの click で操作が1回多く出るため、毎回取り消してから予約する
+    const up = () => { btn.classList.remove("on"); release(action); clearTimeout(firedTimer); firedTimer = setTimeout(() => { fired = false; }, 600); };
     btn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
+      clearTimeout(firedTimer); firedTimer = 0;
       fired = true;
       try { btn.setPointerCapture(e.pointerId); } catch (err) { /* 未対応ブラウザ */ }
       btn.classList.add("on");

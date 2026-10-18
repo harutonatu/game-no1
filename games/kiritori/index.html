@@ -670,6 +670,7 @@
   // カードは HTML の骨組みだけを書き、数値などは data-f の要素に textContent で入れる
   // カードを閉じたら、開く前にフォーカスのあった所へ戻す（カードの中のボタンは消えるため）
   let returnFocus = null;
+  const appEl = $("app");
   function showCard(html, fields = {}, { soft = false } = {}) {
     if (overlay.hidden) {
       const a = document.activeElement;
@@ -681,17 +682,21 @@
     card.querySelectorAll("[data-f]").forEach((el) => { el.textContent = fields[el.dataset.f] ?? ""; });
     overlay.classList.toggle("soft", soft);
     overlay.hidden = false;
+    appEl.inert = true;          // カードの表示中は後ろの画面（道場・上のボタン）を操作・読み上げの対象にしない
     overlay.scrollTop = 0;
     const primary = card.querySelector(".primary");
     if (primary) primary.focus({ preventScroll: true });
   }
+  // プレイに戻るときはフォーカスを戻さず外す（II や ♪ にフォーカスが残ると、Enter・Space で的を切らずにボタンが動くため）
   function hideOverlay() {
     const wasOpen = !overlay.hidden;
     overlay.hidden = true;
+    appEl.inert = false;
     overlay.classList.remove("soft");
     if (!wasOpen) return;
     const back = returnFocus;
     returnFocus = null;
+    if (state === "play") { document.activeElement?.blur?.(); return; }
     if (back && back.isConnected && typeof back.focus === "function") back.focus({ preventScroll: true });
     else if (overlay.contains(document.activeElement)) document.activeElement.blur();
   }
