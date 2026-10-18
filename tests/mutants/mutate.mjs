@@ -65,7 +65,7 @@ const M = [
   ['MH5 ハシわたり：隠れたとき（visibilitychange で hidden）押下を取り消さない', '中断', 'games/hashi/main.js', 'if (phase === "growing") abortHold();', ''],
   ['MH6 ハシわたり：「もう一度」で clearLater() を呼ばない（古い回のタイマーが残る）', 'タイマー', 'games/hashi/main.js', 'clearLater();   // 前の回のタイマーを片付ける（もう一度・起動）', ''],
   // ---- 版の表示（メニュー）。版を上げる手順が崩れたときの検出 ----
-  ['MV1 版の数字だけ上げ忘れる（version.js が古いまま。sw.js は v18）', '更新', 'common/version.js', 'version: "v18"', 'version: "v17"'],
+  ['MV1 版の数字だけ上げ忘れる（version.js が古いまま。sw.js は v19）', '更新', 'common/version.js', 'version: "v19"', 'version: "v18"'],
   ['MV2 version.js を事前キャッシュから外す（オフラインで版が出ない）', 'オフライン', 'sw.js', '  "./common/version.js",\n', ''],
   ['MV3 更新日が YYYY-MM-DD でない', '表示', 'common/version.js', 'date: "2026-10-18"', 'date: "2026/10/18"'],
   // ---- 日付・時刻（いろコード）。日付の処理を足したら、ここにも変異を足す（tests/README.md「日付・時計」）----
