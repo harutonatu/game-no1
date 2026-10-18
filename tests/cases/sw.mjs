@@ -270,17 +270,17 @@ export const tests = [
         return { ver, foot, vw: innerWidth, vh: innerHeight, sw: document.documentElement.scrollWidth, fs: getComputedStyle(document.getElementById('ver')).fontSize };
       });
       check('iPhone SE（320×568）：他の要素と重ならず、横にはみ出さず、画面内（下端までスクロールして）', box.ver.top >= box.foot.bottom && box.ver.left >= 0 && box.ver.right <= box.vw && box.ver.bottom <= box.vh && box.sw <= box.vw, box);
+      const others = {};
+      for (const [k, url] of [['blocks', BLK], ['t2048', T48], ['kiri', KIRI], ['iro', IRO], ['zen', ZEN]]) {
+        await page.goto(url); await sleep(300);
+        others[k] = await page.evaluate((t) => ({ el: !!document.getElementById('ver'), text: document.body.innerText.includes(t) }), t1 || '?');
+      }
+      check('ゲーム5画面には版が出ない', Object.values(others).every((o) => !o.el && !o.text), others);
+      await page.goto(BASE); await sleep(300);
       await srv.ctl('offline=1');
       await page.goto(BASE).catch(() => {}); await sleep(200);
       const t2 = await shown();
       check('オフラインでも同じ表示が出る', t2 === t1 && !!t2, { t1, t2 });
-      const others = {};
-      for (const [k, url] of [['blocks', BLK], ['t2048', T48], ['kiri', KIRI], ['iro', IRO], ['zen', ZEN]]) {
-        await page.goto(url).catch(() => {}); await sleep(100);
-        others[k] = await page.evaluate((t) => ({ el: !!document.getElementById('ver'), text: document.body.innerText.includes(t) }), t1 || '?');
-      }
-      check('ゲーム5画面には版が出ない', Object.values(others).every((o) => !o.el && !o.text), others);
-      await srv.ctl('offline=0');
       await ctx.close();
     },
   },

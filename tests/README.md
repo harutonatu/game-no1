@@ -64,8 +64,9 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | いろコード（games/irocode/）の変更 | smoke ＋ `ONLY=I10,I11,I12,I13,I14,I15,I16,I17,I18 node tests/run.mjs full`（ロジックだけなら `ONLY=I1,I2,I3 node tests/run.mjs smoke`、0 秒） |
 | ゼンマイさんぽ（games/zenmai/）の変更 | smoke ＋ `ONLY=ZL1,ZL2,ZL3,ZL4,ZL5,ZL6,ZL7,ZU6,ZU7,ZU8,ZU9,ZU10,ZU11,ZU12,ZU13,ZU14 node tests/run.mjs full`（ステージの数値は ZL、画面は ZU） |
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
-| テストを変えたとき・月 1 回 | `node tests/mutants/mutate.mjs both`（テストがわざと入れた不具合を見つけられるか） |
+| テストを変えたとき・中身の仕組み（点数計算・保存・日付・ルール）を変えたとき | `node tests/mutants/mutate.mjs both`（そのゲームの分だけ。テストがわざと入れた不具合を見つけられるか） |
 
+- **公開の条件**は Chromium smoke・full（WORKERS=2）と WebKit smoke（WORKERS=1）の合格。変異テストは中身の仕組み（点数計算・保存・日付・ルール）を変えたときだけ、そのゲームの分だけ流す。表示・見た目・文言だけの修正では流さない。
 - **smoke**（約 110 確認）：データが消えない・メニューへ戻れる・ボタンが画面内（最も狭い／最も低い画面）・オフラインで開く・更新で旧キャッシュが消える・基本操作・効果音のオン/オフ・ダブルタップ抑止など、壊れると困るもの。
 - **full**（約 280 確認）：smoke ＋ 境界値（CSS の切り替わり・桁数・0.8 秒・3 秒）、ペアワイズの 12 画面、操作の細部、全部の効果音、タッチ操作一式。
 
