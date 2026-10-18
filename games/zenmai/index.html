@@ -127,7 +127,7 @@
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
-    padding-bottom: 4px;
+    padding: 3px 3px 5px;   /* .stage.next の枠（2px）が端で欠けないよう内側に余白 */
   }
   @media (min-width: 520px) { .stage-list { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
   .stage {
@@ -318,14 +318,15 @@
     .ctrl { align-content: center; }
     .go { width: 100%; }
   }
-  /* 横長で背が十分ある画面（iPad など）：ヒントを舞台の直下に詰め、全体を縦中央に寄せる */
+  /* 横長で背が十分ある画面（iPad など）：ヒントを舞台の直下に詰め、上に詰めて舞台を大きく使う */
   @media (orientation: landscape) and (min-height: 501px) {
     .play {
       grid-template-rows: auto auto auto;
       grid-template-areas: "info ctrl" "canvas ctrl" "hint ctrl";
-      align-content: center;
+      align-content: start;
     }
-    .canvas-wrap { max-height: none; }
+    .canvas-wrap { max-height: none; aspect-ratio: 3 / 2; }
+    .ctrl { align-content: start; padding-top: 8px; }
   }
   @media (orientation: landscape) and (max-height: 500px) {
     :root { --dial: min(130px, 36vh); }
@@ -502,8 +503,8 @@
   const KEY_PROGRESS = "zenmai.progress";
   const KEY_HELP = "zenmai.help";     // 遊び方を一度見たか（初回だけ自動で出す）
   // 限界のこの回転数手前から「そろそろ限界」。舞台上部のバー（80%）と揃え、最低でも1回転
-  // 限界の1回転手前から警告（舞台のゲージと共通）。全ステージで ★3・帯の上端より後ろ、崖（maxTurns−0.75以下）より手前
-  const WARN_MARGIN = 1;
+  // 限界の1.5回転手前から警告（舞台のゲージと共通）。全ステージで ★3・帯の上端より後ろ、崖（警告の出始めから0.5回転以上先）より手前
+  const WARN_MARGIN = 1.5;
   const warnMargin = () => WARN_MARGIN;
   const BTN_STEP = 0.25;              // ＋/－ボタン1回の巻き数
 

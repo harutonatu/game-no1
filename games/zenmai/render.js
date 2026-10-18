@@ -20,7 +20,7 @@
 
   function num(v, d) { return typeof v === "number" && isFinite(v) ? v : d; }
 
-  var WARN_MARGIN = 1; // 限界のこの回転数手前から警告（ネジと同じ。view.warnMargin で上書き可）
+  var WARN_MARGIN = 1.5; // 限界のこの回転数手前から警告（崖の0.5回転以上手前。ネジと同じ。view.warnMargin で上書き可）
 
   // 警告の段階（0: ふつう / 1: そろそろ限界 / 2: 超えている）。ネジ（index.html）と同じ基準
   function warnLevel(turns, maxTurns, margin) {
@@ -255,25 +255,36 @@
       ctx.beginPath(); ctx.moveTo(X(c), fy); ctx.lineTo(X(c), fy - 34); ctx.stroke();
       ctx.fillStyle = C.accent;
       ctx.beginPath(); ctx.moveTo(X(c), fy - 34); ctx.lineTo(X(c) + 14, fy - 28); ctx.lineTo(X(c), fy - 22); ctx.closePath(); ctx.fill();
-      // ★の範囲ラベル（各帯の中央に。幅が足りなければ省く）
-      var lf = Math.max(11, Math.round(fs * 0.95));
+      // 帯の輪郭：明るい線＋外側に暗い線で、地面（無彩色でも）から浮かせる。色だけに頼らない
+      var bx0o = c - half, bx1o = c + half;
+      function bandPath() {
+        var xx;
+        ctx.beginPath(); ctx.moveTo(X(bx0o), Y(bx0o) + 2);
+        for (xx = bx0o; xx <= bx1o; xx += 4) ctx.lineTo(X(xx), Y(xx) + 2);
+        ctx.lineTo(X(bx1o), Y(bx1o) + 2); ctx.lineTo(X(bx1o), Y(bx1o) + 2 + BH);
+        for (xx = bx1o; xx >= bx0o; xx -= 4) ctx.lineTo(X(xx), Y(xx) + 2 + BH);
+        ctx.lineTo(X(bx0o), Y(bx0o) + 2 + BH); ctx.closePath();
+      }
+      ctx.lineJoin = "round";
+      bandPath(); ctx.strokeStyle = C.void; ctx.lineWidth = 5; ctx.stroke();
+      bandPath(); ctx.strokeStyle = C.ink; ctx.lineWidth = 2.5; ctx.stroke();
+      // ★の範囲ラベル：★3 は必ず帯の真下に出す（背景つきの札、12px 以上）。★2 は余裕があれば帯の両わきに
+      var lf = Math.max(12, Math.round(fs * 0.95));
       ctx.font = "700 " + lf + "px " + FONT; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      var ly = fy + 2 + BH / 2 + 1;
-      if (ly + lf / 2 < H - 2) {
-        var w3 = (p1 - p0), w2 = half * (SR.s2 - SR.s3) * sx, w1 = half * (1 - SR.s2) * sx;
-        var tw = lf * 2.2;
-        if (w3 >= tw) { ctx.fillStyle = C.accentInk; ctx.fillText("★3", X(c), ly); }
-        else if (w3 >= lf * 1.2) { ctx.fillStyle = C.accentInk; ctx.fillText("★", X(c), ly); }
-        if (w2 >= tw) {
-          ctx.fillStyle = C.accentInk;
-          ctx.fillText("★2", X(c - half * (SR.s3 + SR.s2) / 2), ly);
-          ctx.fillText("★2", X(c + half * (SR.s3 + SR.s2) / 2), ly);
-        }
-        if (w1 >= tw * 0.8) {
-          ctx.fillStyle = C.ink;
-          ctx.fillText("★1", X(c - half * (SR.s2 + 1) / 2), ly);
-          ctx.fillText("★1", X(c + half * (SR.s2 + 1) / 2), ly);
-        }
+      function tag(txt, cxp, cyp, fg) {
+        var tw = ctx.measureText(txt).width + 10, th = lf + 6;
+        var x0 = Math.max(2, Math.min(W - tw - 2, cxp - tw / 2));
+        var y0 = Math.max(2, Math.min(H - th - 2, cyp - th / 2));
+        ctx.fillStyle = "rgba(13,17,29,0.92)"; ctx.strokeStyle = fg; ctx.lineWidth = 1.5;
+        ctx.beginPath(); roundRect(x0, y0, tw, th, 5); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = fg; ctx.fillText(txt, x0 + tw / 2, y0 + th / 2 + 0.5);
+      }
+      var ly = fy + 2 + BH + 4 + (lf + 6) / 2;
+      tag("★3", X(c), ly, C.s3);
+      var w2 = half * (SR.s2 - SR.s3) * sx;
+      if (w2 >= lf * 2.4) {
+        tag("★2", X(c - half * (SR.s3 + SR.s2) / 2), ly + (lf + 8), C.ink);
+        tag("★2", X(c + half * (SR.s3 + SR.s2) / 2), ly + (lf + 8), C.ink);
       }
       ctx.textBaseline = "alphabetic";
 

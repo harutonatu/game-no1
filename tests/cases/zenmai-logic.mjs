@@ -39,11 +39,22 @@ export const tests = [
       const cliffBad = S.filter((s) => !(L.turnsToReach(s, s.cliffX) <= s.maxTurns - 0.75 + 1e-9 && L.simulate(s, s.maxTurns).result === 'fall' && s.target.x + s.target.w < s.cliffX))
         .map((s) => ({ id: s.id, reach: L.turnsToReach(s, s.cliffX), max: s.maxTurns, r: L.simulate(s, s.maxTurns).result }));
       check('全15ステージで崖に届く（届く巻き数 ≦ maxTurns−0.75、maxTurns ちょうどは fall、帯の右端 < 崖）', cliffBad.length === 0, cliffBad);
-      // 警告（限界の1回転手前から）は ★3・帯の上端より後ろ、崖より手前
-      const WM = 1;
-      const warnBad = S.filter((s) => { const b = L.bestTurns(s); return !(b.max < s.maxTurns - WM && L.turnsToReach(s, s.target.x + s.target.w) < s.maxTurns - WM && L.turnsToReach(s, s.cliffX) > s.maxTurns - WM); })
+      // 警告（限界の1.5回転手前から）は ★3・帯の上端より後ろ、崖より0.5回転以上手前（警告が出てから崖までに ＋ボタン2回分の余裕）
+      const WM = 1.5;
+      const warnBad = S.filter((s) => { const b = L.bestTurns(s); return !(b.max < s.maxTurns - WM && L.turnsToReach(s, s.target.x + s.target.w) < s.maxTurns - WM && L.turnsToReach(s, s.cliffX) - (s.maxTurns - WM) >= 0.5 - 1e-9); })
         .map((s) => s.id);
-      check('限界の1回転手前（警告の出始め）は ★3・帯の上端より大きく、崖に届く巻き数より小さい（正解では警告が出ず、落ちる前に出る）', warnBad.length === 0, warnBad);
+      check('限界の1.5回転手前（警告の出始め）は ★3・帯の上端より大きく（正解では警告が出ない）、崖に届く巻き数より0.5回転以上小さい（警告から崖まで余裕がある）', warnBad.length === 0, warnBad);
+      const gaps = S.map((s) => +(L.turnsToReach(s, s.cliffX) - (s.maxTurns - WM)).toFixed(2));
+      check(`全ステージで、警告が出始めてから崖まで 0.5 回転以上（最小 ${Math.min(...gaps)}）、かつ警告の出始めから崖までが広すぎない（1回転以下）`, gaps.every((g) => g >= 0.5 && g <= 1), gaps);
+      // ヒントと地形：z15 は「下り坂の先」ではなく、帯が平らな場所にある。帯のある地形と食い違う語を使わない
+      const typeAt = (s, x) => (s.segments.find((g) => x >= g.x0 && x < g.x1) || {}).type;
+      const hintBad = S.filter((s) => {
+        const mid = s.target.x + s.target.w / 2, ty = typeAt(s, mid);
+        if (/下り坂の先/.test(s.hint)) return true;
+        if (s.id === 'z15') return ty !== 'flat' || !/平ら/.test(s.hint) || !s.segments.some((g) => g.type === 'down' && g.x0 >= s.target.x + s.target.w);
+        return false;
+      }).map((s) => s.id);
+      check('最終ステージのヒントが地形と合う（帯は平らな場所、その先に下り坂と崖）', hintBad.length === 0, hintBad);
       const widths = S.map((s) => { const b = L.bestTurns(s); return +(b.max - b.min).toFixed(3); });
       check(`★3の幅は最後の z15 が最小（${widths[14]}）`, widths[14] === Math.min(...widths), widths);
       const ranges = S.map((s) => L.bestTurns(s)).map((b) => b && b.min);

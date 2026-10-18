@@ -538,7 +538,7 @@ export const tests = [
     },
   },
   {
-    id: 'ZU14', tier: 'full', title: '警告の基準がネジと舞台でそろう：★3の中央ではどちらも警告なし、限界の1回転手前から両方が警告。止まった後のゲージは0、「つぎ」の目印は1つ、初回の遊び方は短い',
+    id: 'ZU14', tier: 'full', title: '警告の基準がネジと舞台でそろう：★3の中央ではどちらも警告なし、限界の1.5回転手前から両方が警告。止まった後のゲージは0、「つぎ」の目印は1つ、初回の遊び方は短い',
     async run({ browser, check }) {
       const { ctx, page } = await newPage(browser, view('i13', 'p', 'app'), 'ZU14', { clock: true, initScript: RENDER_SPY });
       const both = () => page.evaluate(() => {
@@ -559,9 +559,9 @@ export const tests = [
       check('全15ステージで ★3 の中央の巻き数では、ネジにも舞台にも警告が出ない', bad.length === 0, bad);
       await openZ(page, { [PK]: prog({}, 15) }); await startStage(page, 'z05');
       const lv = [];
-      for (const t of [8.75, 9, 9.25, 10, 10.25]) { await page.evaluate((t) => window.ZenmaiGame.setTurns(t), t); await wait(page, 100); lv.push({ t, ...(await both()) }); }
+      for (const t of [8.25, 8.5, 8.75, 10, 10.25]) { await page.evaluate((t) => window.ZenmaiGame.setTurns(t), t); await wait(page, 100); lv.push({ t, ...(await both()) }); }
       const exp = [0, 0, 1, 1, 2];
-      check(`z05（限界10）：8.75・9回転は警告なし、9.25・10回転で「そろそろ限界」、10.25回転で超過。ネジと舞台が同じ段階（${lv.map((x) => x.dial + '/' + x.stage).join(' ')}）`, lv.every((x, i) => x.dial === exp[i] && x.stage === exp[i]), lv);
+      check(`z05（限界10）：8.25・8.5回転は警告なし、8.75・10回転で「そろそろ限界」、10.25回転で超過。ネジと舞台が同じ段階（${lv.map((x) => x.dial + '/' + x.stage).join(' ')}）`, lv.every((x, i) => x.dial === exp[i] && x.stage === exp[i]), lv);
       // 止まった後：ネジのゲージは 0 に戻ったまま（満タンに戻らない）
       await openZ(page, { [PK]: prog({}, 15) }); await startStage(page, 'z01');
       const c1 = await calc(page, 'z01');
@@ -581,6 +581,56 @@ export const tests = [
       const full = await page.evaluate(() => document.querySelectorAll('#overlay .howto dt').length);
       check(`初回の自動表示の遊び方は短い（${first.n} 項目）、？ボタンからは全項目（${full} 項目）`, first.kind === 'help' && first.n === 3 && full === 7, { first, full });
       await ctx.close();
+    },
+  },
+  {
+    id: 'ZU15', tier: 'smoke', title: '最終確認の5件（画面）：★3のラベルが全画面で出る・帯の輪郭、iPad 横で舞台が上に詰まる、ステージ選択の「つぎ」の枠が欠けない、警告から崖まで余裕',
+    async run({ browser, check }) {
+      const SPY = () => {
+        window.__lab = [];
+        const ft = CanvasRenderingContext2D.prototype.fillText;
+        CanvasRenderingContext2D.prototype.fillText = function (t, x, y) {
+          const px = parseFloat((/(\d+(?:\.\d+)?)px/.exec(this.font) || [])[1]);
+          if (String(t) === '★3') window.__lab.push({ x, y, px, cw: this.canvas.clientWidth, ch: this.canvas.clientHeight });
+          return ft.apply(this, arguments);
+        };
+      };
+      for (const [dev, o] of [['SE', 'p'], ['i13', 'p'], ['iPad', 'l']]) {
+        const v = view(dev, o, 'app');
+        const { ctx, page } = await newPage(browser, v, 'ZU15', { clock: true, initScript: SPY });
+        const miss = [];
+        for (const id of ['z01', 'z05', 'z07', 'z15']) {
+          await openZ(page, { [PK]: prog({}, 15) }); await startStage(page, id);
+          await wait(page, 150);
+          const l = await page.evaluate(() => window.__lab.slice(-1)[0]);
+          if (!l || l.px < 12 || l.x < 0 || l.x > l.cw || l.y < 0 || l.y > l.ch) miss.push({ id, l });
+        }
+        check(`${v.label}：z01・z05・z07・z15 のどれでも「★3」ラベルが12px以上で舞台の中に出る`, miss.length === 0, miss);
+        if (dev === 'iPad') {
+          await openZ(page, { [PK]: prog({}, 15) }); await startStage(page, 'z05');
+          const g = await page.evaluate(() => {
+            const h = document.querySelector('h1.title').getBoundingClientRect(), i = document.querySelector('.info').getBoundingClientRect(), c = document.querySelector('#canvasWrap').getBoundingClientRect();
+            return { gap: i.top - h.bottom, canvasW: c.width, canvasH: c.height, vw: innerWidth, vh: innerHeight, bottom: c.bottom };
+          });
+          check(`iPad 横：ヘッダーと舞台の間の空白が60px以下（${Math.round(g.gap)}px）で、舞台の高さが画面の40%以上（${Math.round(g.canvasH)}/${g.vh}）`, g.gap <= 60 && g.canvasH >= g.vh * 0.4, g);
+        }
+        // ステージ選択：「つぎ」の枠（2px）がリスト・画面の端で欠けない
+        await openZ(page, { [PK]: prog({ z01: 3, z02: 3, z03: 3, z04: 3, z05: 3 }, 6) });
+        const clip = await page.evaluate(() => {
+          const b = document.querySelector('#stageList .stage.next'); const r = b.getBoundingClientRect();
+          const box = { l: r.left - 2, r: r.right + 2, t: r.top - 2, b: r.bottom + 2 };
+          let el = b.parentElement, cl = 0, cr = innerWidth, ct = 0, cb = innerHeight;
+          for (; el && el !== document.documentElement; el = el.parentElement) {
+            const cs = getComputedStyle(el);
+            if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+              const q = el.getBoundingClientRect(); cl = Math.max(cl, q.left + el.clientLeft); cr = Math.min(cr, q.left + el.clientLeft + el.clientWidth);
+            }
+          }
+          return { id: b.dataset.id, box, cl, cr };
+        });
+        check(`${v.label}：ステージ選択で「つぎ」（${clip.id}）の枠が左右とも欠けない（クリップ内 ${Math.round(clip.cl)}〜${Math.round(clip.cr)}、枠 ${Math.round(clip.box.l)}〜${Math.round(clip.box.r)}）`, clip.id === 'z06' && clip.box.l >= clip.cl - 0.01 && clip.box.r <= clip.cr + 0.01, clip);
+        await ctx.close();
+      }
     },
   },
   {
