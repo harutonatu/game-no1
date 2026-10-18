@@ -3,10 +3,11 @@
  *
  * 遊び方：2〜4人（または1人お試し）。startRound で待機 → applySignal で合図（armed） →
  *   applyPress で勝ち / フライング / 無視を判定。'armed' 中の押下は勝ち、'waiting' 中はフライング。
- * フライング：押した本人以外の全員に +1 点。合図と押下が同時 ms に起きた場合、
- *   先に applySignal が呼ばれていれば 'armed'、まだなら 'waiting' の判定になる（呼び出した順で決まる）。
- * 勝利：3点先取、または maxRounds（5）に到達。最大人数が同点なら 'draw'。
- * 乱数（signalDelay は 1000..4000 ms の整数）と現在時刻は注入可能（テスト用）。
+ * フライング：押した本人以外の全員に +1 点。'armed' 中でも pressedAt < signalFiredAt
+ *   （合図より前の時刻の押下。受付の窓で後から届いたもの）はフライング。同時刻は 0ms の勝ち（PK-10）。
+ * やり直し：redoRound は 'waiting' / 'armed' のとき、点数・回数を変えずに待ちからやり直す（PK-04）。
+ * 勝利：3点先取、または maxRounds（5）に到達。最高点が同点なら 'draw'（サドンデスはしない）。
+ * 乱数（signalDelay は 1000..4000 ms の整数）と現在時刻は注入可能（テスト用。seed は持たない）。
  *
  * UMD: ブラウザでは window.PikattoLogic、Node では module.exports と globalThis.PikattoLogic。
  */
@@ -104,18 +105,30 @@
     });
   }
 
+  // 一時停止から戻るときのやり直し：round・scores・reactions はそのまま、待ち時間を引き直す（PK-04）
+  function redoRound(state) {
+    if (!state || (state.phase !== "waiting" && state.phase !== "armed")) return state;
+    return clone(state, {
+      phase: "waiting",
+      signalDelay: pickDelay(state._random),
+      signalFiredAt: null,
+      lastOutcome: null
+    });
+  }
+
   function applySignal(state) {
     if (!state || state.phase !== "waiting") return state;
     const t = isFn(state._now) ? state._now() : Date.now();
     return clone(state, { phase: "armed", signalFiredAt: t });
   }
 
-  // 勝利判定：3点先取、またはラウンド上限。同点は 'draw'
-  function evaluateEnd(scores, round, maxRounds, players) {
+  // 勝利判定：3点先取、またはラウンド上限。同点は 'draw'。
+  // solo（ひとりで れんしゅう）は点を競わないので、3点では終わらず maxRounds 回で終わる
+  function evaluateEnd(scores, round, maxRounds, mode) {
     const max = Math.max.apply(null, scores);
     const leaders = [];
     for (let i = 0; i < scores.length; i++) if (scores[i] === max) leaders.push(i);
-    if (max >= WIN_SCORE) {
+    if (mode !== "solo" && max >= WIN_SCORE) {
       if (leaders.length === 1) return { done: true, winner: leaders[0] };
       return { done: true, winner: "draw" };
     }
@@ -141,24 +154,25 @@
 
     if (state.phase === "armed") {
       const fired = Number(state.signalFiredAt);
-      const reactionMs = (isFinite(fired) && isFinite(pressedAt)) ? (pressedAt - fired) : 0;
+      const known = isFinite(fired) && isFinite(pressedAt);
+      // 合図より前の時刻の押下はフライング（PK-10）。同時刻は 0ms の勝ち
+      const early = known && pressedAt < fired;
+      if (early) return foul(state, idx);
+      const reactionMs = known ? (pressedAt - fired) : 0;
       const scores = state.scores.slice();
       scores[idx] = scores[idx] + 1;
       const reactions = state.reactions.slice();
       if (state.mode === "solo") reactions.push(reactionMs);
       const outcome = { kind: "win", player: idx, reactionMs: reactionMs, scores: scores.slice() };
-      const end = evaluateEnd(scores, state.round, state.maxRounds, state.players);
-      const next = clone(state, {
-        phase: end.done ? "done" : "resolved",
-        scores: scores,
-        reactions: reactions,
-        lastOutcome: outcome,
-        winner: end.done ? end.winner : state.winner
-      });
-      return { state: next, outcome: outcome };
+      return finish(state, scores, reactions, outcome);
     }
 
     // 'waiting' 中はフライング
+    return foul(state, idx);
+  }
+
+  // フライング：押した本人以外の全員に +1。solo は reactions に null
+  function foul(state, idx) {
     const scores = state.scores.slice();
     const award = [];
     for (let i = 0; i < state.players; i++) {
@@ -167,7 +181,12 @@
     const reactions = state.reactions.slice();
     if (state.mode === "solo") reactions.push(null);
     const outcome = { kind: "foul", foulBy: idx, award: award, scores: scores.slice() };
-    const end = evaluateEnd(scores, state.round, state.maxRounds, state.players);
+    return finish(state, scores, reactions, outcome);
+  }
+
+  // ラウンドの確定：終わりなら 'done' と winner、まだなら 'resolved'
+  function finish(state, scores, reactions, outcome) {
+    const end = evaluateEnd(scores, state.round, state.maxRounds, state.mode);
     const next = clone(state, {
       phase: end.done ? "done" : "resolved",
       scores: scores,
@@ -210,7 +229,7 @@
   const api = {
     DELAY_MIN, DELAY_MAX, MAX_ROUNDS, WIN_SCORE,
     SAVE_KEY_BEST_SOLO,
-    createGame, startRound, applySignal, applyPress,
+    createGame, startRound, redoRound, applySignal, applyPress,
     decideWinner, averageMs, validateBestSolo
   };
   root.PikattoLogic = api;

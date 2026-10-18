@@ -49,8 +49,14 @@ const M = [
   ['MZ4 ゼンマイのネジで指を持ち替えても数え直さない（位置が飛んで余分に巻く）', 'タッチ操作', 'games/zenmai/input.js', 'core.reanchor();\n        feed(pos.x, pos.y);', 'feed(pos.x, pos.y);'],
   // ---- ピカッと早押し（games/pikatto/）。ルール・保存の仕組みを変えたときだけ流す ----
   ['MP1 ピカッと：waiting 中の押下がフライングにならない（armed と同じ勝ち扱い）', 'ルール', 'games/pikatto/logic.js', 'if (state.phase === "armed") {', 'if (true) {'],
-  ['MP2 ピカッと：2点先取で試合が終わる（3点先取の条件を下げる）', 'ルール', 'games/pikatto/logic.js', 'if (max >= WIN_SCORE) {', 'if (max >= 2) {'],
+  ['MP2 ピカッと：2点先取で試合が終わる（3点先取の条件を下げる）', 'ルール', 'games/pikatto/logic.js', 'if (mode !== "solo" && max >= WIN_SCORE) {', 'if (mode !== "solo" && max >= 2) {'],
   ['MP3 ピカッと：validateBestSolo が範囲外（0 や 49 や 5001）の値を通してしまう（0 に戻さない）', '保存データ互換', 'games/pikatto/logic.js', 'if (raw < BEST_MIN || raw > BEST_MAX) return 0;', ''],
+  ['MP4 ピカッと：redoRound（一時停止からのやり直し）で回数が 1 つ進む', 'ルール', 'games/pikatto/logic.js', 'phase: "waiting",\n      signalDelay: pickDelay(state._random),', 'phase: "waiting",\n      round: state.round + 1,\n      signalDelay: pickDelay(state._random),'],
+  ['MP5 ピカッと：合図より前の時刻の押下（受付の窓で後から届いたもの）でも勝ちになる', 'ルール', 'games/pikatto/logic.js', 'const early = known && pressedAt < fired;', 'const early = false;'],
+  ['MP6 ピカッと：5回で終わらない（round >= maxRounds → round > maxRounds）', 'ルール', 'games/pikatto/logic.js', 'if (round >= maxRounds) {', 'if (round > maxRounds) {'],
+  ['MP7 ピカッと：ひとりで れんしゅうのベストを保存しない（saveBestSolo の呼び出しを消す）', 'データ消失', 'games/pikatto/index.html', 'saveBestSolo(bestSolo);', '/* removed */'],
+  ['MP8 ピカッと：ひとりで れんしゅうも 3回せいこうで終わる（5回まで測れない）', 'ルール', 'games/pikatto/logic.js', 'if (mode !== "solo" && max >= WIN_SCORE) {', 'if (max >= WIN_SCORE) {'],
+  ['MP9 ピカッと：よーいの終わり際の押下が受付の窓に残り、よーいの後に届いてフライングになる', 'ルール', 'games/pikatto/index.html', 'if (input) input.discard();', ''],
   // ---- 版の表示（メニュー）。版を上げる手順が崩れたときの検出 ----
   ['MV1 版の数字だけ上げ忘れる（version.js が古いまま。sw.js は v16）', '更新', 'common/version.js', 'version: "v16"', 'version: "v15"'],
   ['MV2 version.js を事前キャッシュから外す（オフラインで版が出ない）', 'オフライン', 'sw.js', '  "./common/version.js",\n', ''],

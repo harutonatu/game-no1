@@ -63,7 +63,7 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | タッチ操作・ダブルタップ抑止 | smoke ＋ `ONLY=T1,T2,T3,T4,T5,T6,P7,E5 node tests/run.mjs full`（WebKit でも `BROWSER=webkit … smoke`） |
 | いろコード（games/irocode/）の変更 | smoke ＋ `ONLY=I10,I11,I12,I13,I14,I15,I16,I17,I18 node tests/run.mjs full`（ロジックだけなら `ONLY=I1,I2,I3 node tests/run.mjs smoke`、0 秒） |
 | ゼンマイさんぽ（games/zenmai/）の変更 | smoke ＋ `ONLY=ZL1,ZL2,ZL3,ZL4,ZL5,ZL6,ZL7,ZU6,ZU7,ZU8,ZU9,ZU10,ZU11,ZU12,ZU13,ZU14 node tests/run.mjs full`（ステージの数値は ZL、画面は ZU） |
-| ピカッと早押し（games/pikatto/）の変更 | smoke ＋ `ONLY=PK5,PK6,PK7,PK8,PK9 node tests/run.mjs full` |
+| ピカッと早押し（games/pikatto/）の変更 | smoke ＋ `ONLY=PK5,PK6,PK7,PK8,PK9,PK12,PK14,PK16,PK17,PK18 node tests/run.mjs full`（ルール・保存を変えたら `ONLY=PK1,PK3,PK9,PK15,PK16 M=MP1,MP2,MP3,MP4,MP5,MP6,MP7 node tests/mutants/mutate.mjs both`） |
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
 | テストを変えたとき・中身の仕組み（点数計算・保存・日付・ルール）を変えたとき | `node tests/mutants/mutate.mjs both`（そのゲームの分だけ。テストがわざと入れた不具合を見つけられるか） |
 
@@ -86,7 +86,7 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | I | いろコード | logic.js（score・乱数・日付・保存データの検証）を Node で直接、画面（基本操作・保存・メニューへ戻れる・画面内・オフライン・境界値・色覚・効果音・ダブルタップ抑止・日付の変わり目・最大値・保存不可・日付の仕様） |
 | ZL | ゼンマイさんぽ 計算ロジック（Node） | `games/zenmai/logic.js`・`stages.js` を直接呼ぶ：15 ステージの形と★3 が取れること、simulate・starsFor・bestTurns・validateProgress の境界値、ZL7 はネジの入力 input.js（持ち替え・cancel・速い回転・中心付近）（zenmai-logic.mjs） |
 | Z | ゼンマイさんぽ 画面 | ZU0 静的（DOM・読み込み順・sw.js・音名）／ZU1 データが消えない・壊れた保存／ZU2 メニューへ戻れる・遊び方／ZU3・ZU11 ボタンが画面内・44px／ZU4 オフライン／ZU5 1 ステージクリア／ZU6 境界値／ZU7 ＋/－/歩かせる だけで遊べる／ZU8・ZU13 円ドラッグ（CDP）／ZU9 効果音／ZU10 ダブルタップ抑止（CDP）／ZU12 最後のステージ・全 15 ステージ・動きを減らす設定／ZU14 警告の基準（ネジと舞台・限界の1回転手前）・止まった後のゲージ・「つぎ」の目印・初回の遊び方（zenmai-ui.mjs） |
-| PK | ピカッと早押し | logic.js（Node：createGame・startRound・applySignal・applyPress・validateBestSolo の境界）、画面（設定→.play・forceSignal→勝ち・waiting でフライング）、保存（bestSolo）、戻れる、画面内・44px、効果音、ダブルタップ抑止、オフライン、境界値（PK1〜PK9） |
+| PK | ピカッと早押し | logic.js（Node：勝ち・フライング・負の時刻・3点先取・5回・引き分け・redoRound・validateBestSolo）、input.js（Node：受付の窓・pointerId・キー・timeStamp）、静的（APP_FILES・読み込み順・音名）、画面（よーい・一時停止・回数表示・ベスト更新・終わり方）、保存（bestSolo）、戻れる、配置（隅が重ならない・2人は対角）、最大桁、効果音、ダブルタップ抑止、オフライン、実イベント（pointercancel・Enter／Space）（PK1〜PK18）。勝ち負けは pressFor(idx, ts) で確かめ、早送り中の実タップでは見ない（event.timeStamp は早送りされないため） |
 | X1 | 共通 | 全ページでコンソールエラー 0（最後に 1 回） |
 
 ## 構成
@@ -269,6 +269,10 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | MZ2 ゼンマイの保存データで範囲外の★（9など）を受け入れる | 検出（ZL6, ZU1） | 検出（ZL6, ZU1） |
 | MZ3 ゼンマイの結果カードから「メニューへ」が消える | 検出（ZU1, ZU2） | 検出（ZU1, ZU2, ZU6, ZU12） |
 | MZ4 ゼンマイのネジで指を持ち替えても数え直さない（位置が飛んで余分に巻く） | （未計測） | 検出（ZL7） |
+| MP4 ピカッと：redoRound で回数が 1 つ進む | （未計測） | 検出（PK1。Node の項目だけで確認） |
+| MP5 ピカッと：合図より前の時刻の押下でも勝ちになる | （未計測） | 検出（PK1。Node の項目だけで確認） |
+| MP6 ピカッと：5回で終わらない（round >= maxRounds → round > maxRounds） | （未計測） | 検出（PK1。Node の項目だけで確認） |
+| MP7 ピカッと：ひとりで れんしゅうのベストを保存しない | （未計測） | （未計測。画面の修正後に PK3・PK15 で確認） |
 
 ※ M19 は本来 full の P9 で見つけるもの。smoke で P8 が落ちたのは、同時に 2 つの的を切った・落としたときに P8 が 1 つずつ前提で判定していたため（負荷の高いときだけ起きる）。P8 を「切った数・落とした数に合わせて判定」と「軌跡の 0.2 秒はページの時間を止めて進める」に直した。直した後に M19 を smoke で流し直し、見逃し（設計どおり full のみ）を確認した。
 

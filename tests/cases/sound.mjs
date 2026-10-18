@@ -7,7 +7,7 @@ import vm from 'node:vm';
 import { BASE, T48, BLK, KIRI, custom, newPage, seed, ST, sleep, wait, SFX_SPY, plays, starts, kiriStart, kiriWaitObj, kiriSlash, kiriSnap } from '../lib.mjs';
 
 const V = () => custom(390, 844, null, 'iPhone 13');
-const PAGES = [['games/blocks/index.html', 'blocks'], ['games/2048/index.html', 'tiles'], ['games/kiritori/index.html', 'kiritori'], ['games/irocode/index.html', 'irocode'], ['games/zenmai/index.html', 'zenmai'], ['index.html', 'menu']];
+const PAGES = [['games/blocks/index.html', 'blocks'], ['games/2048/index.html', 'tiles'], ['games/kiritori/index.html', 'kiritori'], ['games/irocode/index.html', 'irocode'], ['games/zenmai/index.html', 'zenmai'], ['games/pikatto/index.html', 'pikatto'], ['index.html', 'menu']];
 
 export const tests = [
   {

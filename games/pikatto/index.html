@@ -13,20 +13,22 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=JetBrains+Mono:wght@500;700&display=swap">
 <!--
-  ピカッと早押し：2〜4人（またはお試し1人）で、合図でタップする早押しゲーム。
+  ピカッと早押し：2〜4人（またはひとりで れんしゅう）で、ひかったらタップする早押しゲーム。
 
   画面の流れ：
-    #setup（人数選び）→ #play（4隅のボタンで早押し）→ #overlay（結果カード）
+    #setup（人数選び）→ #play（4つのすみのボタンで早押し）→ #overlay（結果カード）
 
-  ラウンドの状態（logic.js の phase と対応）：
-    'waiting' … 合図前。入力されたら即フライング扱い（applyPress → foul）
-    'armed'   … 合図発火後。正しい色を押せば勝ち
+  ラウンドの状態（#field[data-phase]）：
+    'ready'   … よーい（約 1000ms）。この間の押下は無視（PK-05）
+    'waiting' … 合図前。押したらフライング（applyPress → foul）
+    'armed'   … 合図中。押した時刻が合図より後なら勝ち（前ならフライング、PK-10）
     'resolved'… 結果が確定。次ラウンド or 終了カード
+    'paused'  … 裏に回した・「？」を開いた。「つづける」で redoRound → よーい（PK-04）
 
-  待ち時間（signalDelay、1.0〜4.0 秒）は logic.js がランダムで返す。bootstrap は
-  setTimeout でそれだけ待ってから applySignal を呼ぶ。待っている最中にユーザーが
-  押下した場合は、まず input のコールバックが届くので、そこでタイマーを止めて
-  applyPress（foul）を処理する（setTimeout と input の順序はブラウザが保証）。
+  タイマー：readyTimer（よーい）→ signalTimer（待ち時間）→ fireSignal。
+    最終結果を出す setTimeout は finalTimer、カードのボタンの鍵は lockTimer。
+  入力：input.js の onPress は受付の窓（30ms）の分だけ遅れて届くので、
+    よーい・一時停止かどうかは onPress を受けた時点で判断する。
 
   テスト用 API： window.PikattoGame = { getState, startRound, forceSignal, pressFor, reset }
 -->
@@ -37,13 +39,19 @@
     --well: #0d111d;
     --line: #2f3750;
     --ink: #ece6d6;
-    --muted: #9aa1b8;
+    --muted: #c3c8d8;
     --accent: #f0a43a;
     --accent-ink: #231705;
-    --p1-color: #e0524d;  /* 赤 */
-    --p2-color: #4a86e8;  /* 青 */
-    --p3-color: #f2cc4b;  /* 黄 */
-    --p4-color: #4cae6a;  /* 緑 */
+    /* Okabe-Ito 系（色覚の違いがあっても見分けやすい、PK-07） */
+    --p1-color: #D55E00;  /* 朱 */
+    --p2-color: #0072B2;  /* 青 */
+    --p3-color: #F0E442;  /* 黄 */
+    --p4-color: #009E73;  /* 青緑 */
+    /* 隅の番号・図形の色（それぞれの地の色に対して濃く見える方） */
+    --p1-ink: #111111;
+    --p2-ink: #ffffff;
+    --p3-ink: #111111;
+    --p4-ink: #111111;
     --font-display: "Chakra Petch", "Hiragino Sans", system-ui, sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
     --font-text: "Hiragino Sans", system-ui, sans-serif;
@@ -54,7 +62,7 @@
   html { overscroll-behavior: none; touch-action: none; }
   body {
     margin: 0;
-    font-size: 14px;
+    font-size: 16px;
     background: var(--bg);
     color: var(--ink);
     font-family: var(--font-display);
@@ -95,7 +103,7 @@
     border: 1px solid var(--line);
     background: var(--panel);
     color: var(--ink);
-    font: 700 14px var(--font-text);
+    font: 700 16px var(--font-text);
     text-decoration: none;
     white-space: nowrap;
     touch-action: manipulation;
@@ -112,7 +120,7 @@
     border: 1px solid var(--line);
     background: transparent;
     color: var(--ink);
-    font: 700 16px var(--font-display);
+    font: 700 18px var(--font-display);
     padding: 0 8px;
     touch-action: manipulation;
     display: inline-flex;
@@ -135,10 +143,26 @@
     touch-action: pan-y;
     padding: 10px 2px;
     align-items: center;
-    justify-content: center;
+    /* 中央寄せは first/last の auto margin で行う（高さが足りないとき上が切れてスクロールで戻れなくなるのを防ぐ） */
+    justify-content: flex-start;
+  }
+  .setup > :first-child { margin-top: auto; }
+  .setup > :last-child { margin-bottom: auto; }
+  @media (max-height: 500px) {
+    .setup { gap: 10px; }
+    .players-pick button { min-height: 56px; }
   }
   .setup h2 { margin: 0; font-size: 22px; letter-spacing: 0.04em; text-align: center; }
-  .setup .lead { margin: 0; color: var(--muted); font: 13px/1.6 var(--font-text); text-align: center; max-width: 32em; }
+  .setup .lead { margin: 0; color: var(--ink); font: 16px/1.6 var(--font-text); text-align: center; max-width: 32em; }
+  .setup .rule {
+    margin: 0;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--accent);
+    color: var(--ink);
+    font: 700 16px/1.4 var(--font-text);
+    text-align: center;
+  }
   .players-pick {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -160,7 +184,7 @@
   .players-pick button[aria-pressed="true"] {
     background: var(--panel);
     border-color: var(--accent);
-    box-shadow: inset 0 0 0 2px var(--accent);
+    box-shadow: inset 0 0 0 3px var(--accent);
     color: var(--ink);
   }
   .players-pick button:active:not(:disabled) { filter: brightness(1.2); }
@@ -201,17 +225,19 @@
     box-sizing: border-box;
     min-width: 56px;
     min-height: 36px;
-    padding: 4px 10px;
+    padding: 4px 8px;
     border-radius: 10px;
     background: var(--panel);
     border: 1px solid var(--line);
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    font: 700 14px var(--font-text);
+    gap: 5px;
+    font: 700 16px var(--font-text);
     color: var(--ink);
+    white-space: nowrap;
   }
   .score .dot {
+    flex: 0 0 auto;
     width: 14px; height: 14px; border-radius: 50%;
     box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.18);
   }
@@ -219,8 +245,8 @@
   .score[data-player="2"] .dot { background: var(--p2-color); }
   .score[data-player="3"] .dot { background: var(--p3-color); }
   .score[data-player="4"] .dot { background: var(--p4-color); }
-  .score .n { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 16px; min-width: 1.2em; text-align: right; }
-  .score .label { font-size: 12px; color: var(--muted); }
+  .score .n { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 18px; min-width: 1.2em; text-align: right; }
+  .score .label { font-size: 16px; color: var(--ink); }
 
   .field {
     grid-area: field;
@@ -233,91 +259,134 @@
     overflow: hidden;
     touch-action: none;
   }
-  /* 4隅ボタン：画面短辺の 32% 以上を狙う */
+  /* 4つのすみのボタン：上下・左右のすみの間に必ず 6px のすき間（PK-02） */
   .corner {
     position: absolute;
     box-sizing: border-box;
-    width: min(44%, 220px);
-    height: min(44%, 220px);
+    width: calc(50% - 9px);
+    height: calc(50% - 9px);
     min-width: 44px;
     min-height: 44px;
     border: 2px solid rgba(255, 255, 255, 0.08);
     border-radius: 16px;
     padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font: 700 48px var(--font-display);
-    color: rgba(255, 255, 255, 0.85);
-    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+    color: var(--c-ink);
     touch-action: none;
     -webkit-touch-callout: none;
     user-select: none;
     cursor: pointer;
-    /* 待機中は少し暗く・小さくして、合図のときに「光る」のがわかるように */
-    filter: brightness(0.55);
+    /* 待っている間は少し暗く。合図のときに「光る」のがわかるように */
+    /* 地の色だけ暗くする（番号・図形の文字は暗くしない。コントラストを保つ） */
+    background-image: linear-gradient(rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.22));
     transition: filter 160ms ease-out, transform 100ms ease-out;
   }
-  .corner[data-player="1"] { top: 6px;    left: 6px;    background: var(--p1-color); }
-  .corner[data-player="2"] { top: 6px;    right: 6px;   background: var(--p2-color); }
-  .corner[data-player="3"] { bottom: 6px; left: 6px;    background: var(--p3-color); }
-  .corner[data-player="4"] { bottom: 6px; right: 6px;   background: var(--p4-color); }
-  /* 色だけに頼らず、数字/アイコンでも区別可能にする */
+  .corner[data-player="1"] { top: 6px;    left: 6px;    background: var(--p1-color); --c-ink: var(--p1-ink); }
+  .corner[data-player="2"] { top: 6px;    right: 6px;   background: var(--p2-color); --c-ink: var(--p2-ink); }
+  .corner[data-player="3"] { bottom: 6px; left: 6px;    background: var(--p3-color); --c-ink: var(--p3-ink); }
+  .corner[data-player="4"] { bottom: 6px; right: 6px;   background: var(--p4-color); --c-ink: var(--p4-ink); }
+  /* 2人：2P は右下（対角、PK-03） */
+  .field[data-players="2"] .corner[data-player="2"] { top: auto; bottom: 6px; }
+  /* ひとりで れんしゅう：フィールド全体が 1P のボタン（PK-25） */
+  .field[data-players="1"] .corner[data-player="1"] { inset: 0; width: auto; height: auto; border-radius: 12px; }
+  /* 色だけに頼らず、番号と図形でも区別する（番号は濃く、図形は中央に 48px 以上、PK-07） */
   .corner::before {
     content: attr(data-player);
     position: absolute;
-    top: 8px; left: 10px;
-    font: 700 20px var(--font-mono);
-    color: rgba(0, 0, 0, 0.55);
+    top: 6px; left: 10px;
+    font: 700 22px/1 var(--font-mono);
+    color: var(--c-ink);
   }
   .corner::after {
     content: attr(data-icon);
     position: absolute;
-    right: 10px; bottom: 8px;
-    font: 700 24px var(--font-display);
-    color: rgba(0, 0, 0, 0.55);
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font: 700 56px/1 var(--font-text);
+    color: var(--c-ink);
   }
-  /* 合図中（armed）はすべての隅が光る */
-  .field[data-phase="armed"] .corner { filter: brightness(1.1); }
-  .field[data-phase="resolved"] .corner { filter: brightness(0.5); }
-  .corner[data-lit="on"] { filter: brightness(1.25) saturate(1.1); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.6), 0 0 24px rgba(255, 255, 255, 0.5); }
+  /* 3人・4人：上のすみ（1P・2P）の番号と図形は、向かい側の人から読めるよう 180° 回す（PK-26） */
+  .field[data-players="3"] .corner[data-player="1"]::before,
+  .field[data-players="3"] .corner[data-player="1"]::after,
+  .field[data-players="3"] .corner[data-player="2"]::before,
+  .field[data-players="3"] .corner[data-player="2"]::after,
+  .field[data-players="4"] .corner[data-player="1"]::before,
+  .field[data-players="4"] .corner[data-player="1"]::after,
+  .field[data-players="4"] .corner[data-player="2"]::before,
+  .field[data-players="4"] .corner[data-player="2"]::after { transform: rotate(180deg); }
+  /* 合図中（armed）：すぐ光る（transition なし、PK-13）。明るさだけでなく白い太枠でも伝える */
+  .field[data-phase="armed"] .corner {
+    background-image: none;
+    filter: brightness(1.1);
+    box-shadow: inset 0 0 0 5px #ffffff;
+    transition: none;
+  }
+  .field[data-phase="resolved"] .corner { background-image: linear-gradient(rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.22)); }
+  .corner[data-lit="on"] { background-image: none; filter: brightness(1.25) saturate(1.1); box-shadow: inset 0 0 0 5px #ffffff, 0 0 0 3px rgba(255, 255, 255, 0.6); }
   .corner:active { transform: scale(0.985); }
 
-  /* 合図の光（画面全体を一瞬白くする。.overlay は z-index:20 なのでそれより下） */
+  /* 合図：中央に濃い色の「ピカッ！」と、フィールドの淡い光（PK-08・PK-19） */
   .signal {
-    position: fixed;
+    position: absolute;
     inset: 0;
-    z-index: 10;
+    z-index: 3;
     pointer-events: none;
-    background: radial-gradient(circle at center, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 70%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
     opacity: 0;
-    transition: opacity 100ms ease-out;
+    will-change: opacity;
+    transition: opacity 120ms ease-out;
   }
-  .signal[data-phase="armed"] { opacity: 1; animation: flash 350ms ease-out both; }
+  .signal::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 70%);
+    opacity: 0;
+  }
+  .signal .word {
+    position: relative;
+    padding: 6px 18px;
+    border-radius: 16px;
+    background: #fff6c2;
+    color: #1b1206;
+    font: 700 48px/1.1 var(--font-text);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    box-shadow: 0 0 0 3px #1b1206, 0 6px 18px rgba(0, 0, 0, 0.45);
+  }
+  .signal[data-phase="armed"] { opacity: 1; transition: none; }
+  .signal[data-phase="armed"]::before { animation: flash 350ms ease-out both; }
   @keyframes flash {
-    0% { opacity: 0; }
-    20% { opacity: 1; }
-    100% { opacity: 0.15; }
+    0% { opacity: 1; }
+    100% { opacity: 0.35; }
   }
 
+  /* ヒント：高さは2行分で固定（PK-12） */
   .hint {
     grid-area: hint;
     margin: 0;
+    box-sizing: border-box;
+    height: calc(2 * 1.4em);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
     text-align: center;
-    color: var(--muted);
-    font: 500 13px/1.5 var(--font-text);
-    min-height: 1.6em;
+    color: var(--ink);
+    font: 500 16px/1.4 var(--font-text);
   }
+  .hint > span { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hint .round { font-weight: 700; }
 
-  /* 横持ちで横に広い端末では、ボタンをより大きく */
-  @media (orientation: landscape) and (min-height: 420px) {
-    .corner { width: min(42%, 260px); height: min(80%, 320px); }
-  }
   /* iPhone 横 */
   @media (orientation: landscape) and (max-height: 500px) {
-    .corner { width: min(40%, 220px); height: min(80%, 220px); font-size: 36px; }
-    .corner::before { font-size: 16px; }
-    .corner::after { font-size: 18px; }
+    .corner::before { font-size: 18px; top: 4px; left: 8px; }
+    .corner::after { font-size: 48px; }
+    .signal .word { padding: 2px 14px; }
   }
   @media (max-width: 480px) {
     .head { flex-wrap: wrap; row-gap: 4px; }
@@ -345,7 +414,7 @@
   }
   .overlay.soft { background: rgba(13, 17, 29, 0.5); -webkit-backdrop-filter: none; backdrop-filter: none; }
   .card {
-    width: min(360px, 100%);
+    width: min(380px, 100%);
     box-sizing: border-box;
     margin: auto;
     flex: 0 0 auto;
@@ -358,10 +427,19 @@
     text-align: center;
     box-shadow: 0 0 0 1px var(--line), 0 20px 50px rgba(0, 0, 0, 0.5);
   }
-  .card h2 { margin: 0; font-size: 24px; letter-spacing: 0.04em; }
-  .card p { margin: 0; color: var(--muted); font: 13px/1.6 var(--font-text); }
-  .card p.res { color: var(--ink); font-size: 15px; }
-  .card .howto { margin: 0; text-align: left; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; font: 13px/1.5 var(--font-text); }
+  .card:focus { outline: none; }
+  .card h2 { margin: 0; font-size: 24px; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+  .card p { margin: 0; color: var(--ink); font: 16px/1.6 var(--font-text); overflow-wrap: anywhere; }
+  .card p.res { font-size: 18px; font-weight: 700; }
+  .card .best-new {
+    align-self: center;
+    padding: 4px 14px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font: 700 18px/1.4 var(--font-text);
+  }
+  .card .howto { margin: 0; text-align: left; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 10px; font: 16px/1.5 var(--font-text); }
   .card .howto dt { font-weight: 700; color: var(--accent); white-space: nowrap; }
   .card .howto dd { margin: 0; color: var(--ink); }
   .card .btns { display: flex; flex-direction: column; gap: 10px; }
@@ -376,9 +454,11 @@
     color: var(--ink);
     font: 700 16px var(--font-display);
     touch-action: manipulation;
+    transition: opacity 120ms ease-out;
   }
   .cta.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
-  .cta:active { filter: brightness(1.2); }
+  .cta:disabled { opacity: 0.45; }
+  .cta:active:not(:disabled) { filter: brightness(1.2); }
   .card .winner-dot {
     display: inline-block;
     width: 18px; height: 18px;
@@ -387,12 +467,28 @@
     margin-right: 6px;
     box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.18);
   }
+  /* 最終結果：勝った人の色を大きく（PK-14） */
+  .card .winner-mark {
+    align-self: center;
+    width: 96px; height: 96px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font: 700 56px/1 var(--font-text);
+    box-shadow: 0 0 0 3px #ffffff;
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    .card { padding: 14px 18px; gap: 8px; }
+    .card .winner-mark { width: 60px; height: 60px; font-size: 36px; border-radius: 14px; }
+  }
 
+  /* 動きを減らす設定：アニメーションを止め、画面を白くしない（「ピカッ！」と隅の枠で伝える、PK-19） */
   @media (prefers-reduced-motion: reduce) {
-    .signal { opacity: 0; }
-    .signal[data-phase="armed"] { animation: none; opacity: 1; }
-    .signal[data-phase="resolved"], .signal:not([data-phase]) { opacity: 0; }
+    .signal, .signal[data-phase="armed"] { transition: none; }
+    .signal::before, .signal[data-phase="armed"]::before { display: none; animation: none; }
     .corner { transition: none; }
+    .cta { transition: none; }
   }
 </style>
 </head>
@@ -411,32 +507,33 @@
   <!-- 設定画面 -->
   <section class="setup" id="setup" aria-label="設定">
     <h2>にんずうをえらぶ</h2>
-    <p class="lead">合図でボタンが光ったら、自分の色をタップ。<br>合図のまえに押したらフライング（ほかのみんなに1点）。</p>
+    <p class="lead">ひかったら、じぶんの色を タップ。<br>ひかるまえに おすと、ほかのみんなに 1点。</p>
     <div class="players-pick" id="players-pick" role="group" aria-label="人数">
-      <button type="button" data-players="2" aria-pressed="false">2人</button>
+      <button type="button" data-players="2" aria-pressed="true">2人</button>
       <button type="button" data-players="3" aria-pressed="false">3人</button>
       <button type="button" data-players="4" aria-pressed="false">4人</button>
-      <button type="button" data-players="solo" aria-pressed="false">お試し（1人）</button>
+      <button type="button" data-players="solo" aria-pressed="false">ひとりで れんしゅう</button>
     </div>
-    <button class="start" type="button" data-action="start" disabled>はじめる</button>
+    <p class="rule">さきに 3点とったら 勝ち（5回で おわり）</p>
+    <button class="start" type="button" data-action="start">はじめる</button>
   </section>
 
   <!-- プレイ画面 -->
   <section class="play" id="play" aria-label="プレイ" hidden>
-    <div class="scoreboard" id="scores" aria-live="polite"></div>
-    <div class="field" id="field" data-phase="waiting">
-      <button class="corner" type="button" data-player="1" data-color="red"    data-icon="●" aria-label="1人目：赤"></button>
-      <button class="corner" type="button" data-player="2" data-color="blue"   data-icon="■" aria-label="2人目：青"></button>
-      <button class="corner" type="button" data-player="3" data-color="yellow" data-icon="▲" aria-label="3人目：黄" hidden></button>
-      <button class="corner" type="button" data-player="4" data-color="green"  data-icon="◆" aria-label="4人目：緑" hidden></button>
-      <div class="signal" id="signal" aria-live="polite"></div>
+    <div class="scoreboard" id="scores"></div>
+    <div class="field" id="field" data-phase="waiting" data-players="2">
+      <button class="corner" type="button" data-player="1" data-color="red"    data-icon="●" aria-label="1P（●）"></button>
+      <button class="corner" type="button" data-player="2" data-color="blue"   data-icon="■" aria-label="2P（■）"></button>
+      <button class="corner" type="button" data-player="3" data-color="yellow" data-icon="▲" aria-label="3P（▲）" hidden></button>
+      <button class="corner" type="button" data-player="4" data-color="green"  data-icon="◆" aria-label="4P（◆）" hidden></button>
+      <div class="signal" id="signal" aria-hidden="true"></div>
     </div>
     <p class="hint" id="hint" aria-live="polite"></p>
   </section>
 </main>
 
 <div class="overlay" id="overlay" hidden>
-  <div class="card" id="card" role="dialog" aria-modal="true"></div>
+  <div class="card" id="card" role="dialog" aria-modal="true" aria-labelledby="card-title" tabindex="-1"></div>
 </div>
 
 <script src="../../common/sfx.js"></script>
@@ -449,8 +546,12 @@
 
   const KEY_HELP = "pikatto.help";
   const KEY_BEST_SOLO = "pikatto.bestSolo";
+  const KEY_BEST_AVG_SOLO = "pikatto.bestAvgSolo";
   const WIN_SCORE = 3;
   const MAX_ROUNDS = 5;
+  const READY_MS = 1000;        // よーい（PK-05）
+  const CARD_LOCK_MS = 600;     // 結果カードのボタンを押せない時間（PK-11）
+  const PLAYER_ICONS = ["●", "■", "▲", "◆"];
 
   const $ = (id) => document.getElementById(id);
   const el = {
@@ -464,6 +565,7 @@
     hint: $("hint"),
     overlay: $("overlay"),
     card: $("card"),
+    app: $("app"),
     helpBtn: $("help-btn"),
     soundBtn: $("sound-btn"),
     corners: Array.from(document.querySelectorAll(".corner"))
@@ -484,11 +586,22 @@
 
   // ===== 状態（画面側のみ。ゲームの中身の状態は logic.js の state） =====
   let screen = "setup";          // "setup" | "play"
-  let selectedPlayers = null;    // 2 | 3 | 4 | "solo"
+  let selectedPlayers = 2;       // 2 | 3 | 4 | "solo"（最初から2人、PK-18）
   let gameState = null;          // PikattoLogic.createGame の返り値
-  let signalTimer = 0;           // setTimeout の id
+  let ready = false;             // 「よーい」中（PK-05）
+  let paused = false;            // 一時停止中（PK-04）
+  let readyTimer = 0;            // よーい → 待ち時間
+  let signalTimer = 0;           // 待ち時間 → 合図
+  let finalTimer = 0;            // 最終結果のカードを出す（PK-21）
+  let lockTimer = 0;             // カードのボタンの鍵（PK-11）
   let input = null;              // PikattoInput.attach の返り値
+  let currentCard = null;        // いま出しているカード（遊び方を閉じたら戻すため）
+  let returnCard = null;         // 遊び方を閉じたときに戻すカード
+  let bestUpdated = false;       // このラウンドでベストを更新した（PK-15）
+  let focusBeforeCard = null;    // カードを開く前にフォーカスがあった要素（閉じたら戻す）
   let bestSolo = loadBestSolo();
+  let bestAvgSolo = loadBestAvgSolo();
+  let prevBestSolo = 0;          // このラウンドの前のベスト（ベストまでの差の表示用）
 
   // ===== 保存データ =====
   function loadBestSolo() {
@@ -503,10 +616,44 @@
     } catch (e) { return 0; }
   }
   function saveBestSolo(ms) {
-    try { localStorage.setItem(KEY_BEST_SOLO, String(ms)); } catch (e) { /* 無視 */ }
+    try { localStorage.setItem(KEY_BEST_SOLO, String(ms)); } catch (e) {
+      // 保存できなくても遊べる（プライベートモードなど）。原因は開発者向けに残す
+      if (window.console) console.warn("pikatto: ベストを保存できませんでした", e);
+    }
+  }
+  // へいきんのベスト：ベストと同じ検証（50..5000 の整数）。壊れた値は 0 扱い
+  function loadBestAvgSolo() {
+    try {
+      const raw = localStorage.getItem(KEY_BEST_AVG_SOLO);
+      if (raw === null) return 0;
+      const L = window.PikattoLogic;
+      if (L && typeof L.validateBestSolo === "function") return L.validateBestSolo(raw);
+      const n = Number(raw);
+      return Number.isInteger(n) && n >= 50 && n <= 5000 ? n : 0;
+    } catch (e) { return 0; }
+  }
+  function saveBestAvgSolo(ms) {
+    try { localStorage.setItem(KEY_BEST_AVG_SOLO, String(ms)); } catch (e) {
+      if (window.console) console.warn("pikatto: へいきんのベストを保存できませんでした", e);
+    }
   }
   function helpSeen() { try { return localStorage.getItem(KEY_HELP) === "1"; } catch (e) { return false; } }
-  function markHelpSeen() { try { localStorage.setItem(KEY_HELP, "1"); } catch (e) { /* 無視 */ } }
+  function markHelpSeen() { try { localStorage.setItem(KEY_HELP, "1"); } catch (e) { /* 次回もう一度出るだけ */ } }
+
+  // ===== 表示用の小さな関数（副作用なし） =====
+  const fmtSec = (ms) => String(Number((ms / 1000).toFixed(2)));
+  const fmtMs = (ms) => `${Math.round(ms)} ms（${fmtSec(Math.round(ms))}びょう）`;
+  const colorFor = (i) => ["var(--p1-color)", "var(--p2-color)", "var(--p3-color)", "var(--p4-color)"][i] || "var(--ink)";
+  const inkFor = (i) => ["var(--p1-ink)", "var(--p2-ink)", "var(--p3-ink)", "var(--p4-ink)"][i] || "var(--bg)";
+  const nameFor = (i) => (i + 1) + "P";
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
 
   // ===== 設定画面 =====
   function selectPlayers(v) {
@@ -531,6 +678,13 @@
     startGame();
   });
 
+  // ===== タイマー =====
+  function clearRoundTimers() {
+    clearTimeout(readyTimer); readyTimer = 0;
+    clearTimeout(signalTimer); signalTimer = 0;
+  }
+  function clearFinalTimer() { clearTimeout(finalTimer); finalTimer = 0; }
+
   // ===== ゲーム開始 =====
   function startGame() {
     const L = window.PikattoLogic;
@@ -538,26 +692,35 @@
       el.hint.textContent = "読み込み中です…";
       return;
     }
+    clearRoundTimers();
+    clearFinalTimer();
     const mode = selectedPlayers === "solo" ? "solo" : "vs";
     const players = mode === "solo" ? 1 : selectedPlayers;
     // reactionMs の時刻起点を performance.now() に揃える
-    // （input.js の pressedAt は event.timeStamp = navigationStart 起点）
+    // （input.js の pressedAt は normalizeTs(event.timeStamp) = performance.now() と同じ起点）
     gameState = L.createGame({ players, mode, now: () => performance.now() });
     screen = "play";
+    paused = false;
+    ready = false;
     el.setup.hidden = true;
     el.play.hidden = false;
     hideOverlay();
     showScoreboard();
     showCorners();
     if (input) input.detach();
+    input = null;
     if (window.PikattoInput) {
       input = window.PikattoInput.attach(el.field, {
         onPress: handlePress,
-        onCornerDown: (p) => markLit(p, true),
-        onCornerUp:   (p) => markLit(p, false)
+        onCornerDown: (p) => markLit(p && p.playerIdx, true),
+        onCornerUp:   (p) => markLit(p && p.playerIdx, false)
       });
     }
     startRound();
+  }
+  function scoreValueText(i) {
+    if (gameState.mode === "solo") return bestSolo > 0 ? bestSolo + " ms" : "—";
+    return String(gameState.scores[i] || 0);
   }
   function showScoreboard() {
     el.scores.innerHTML = "";
@@ -567,35 +730,24 @@
       d.className = "score";
       d.dataset.player = String(i + 1);
       d.innerHTML = `<span class="dot" aria-hidden="true"></span><span class="label"></span><span class="n"></span>`;
-      d.querySelector(".label").textContent = gameState.mode === "solo" ? "じぶん" : (i + 1) + "P";
-      d.querySelector(".n").textContent = gameState.mode === "solo"
-        ? (bestSolo > 0 ? bestSolo + " ms" : "—")
-        : String(gameState.scores[i] || 0);
+      d.querySelector(".label").textContent = gameState.mode === "solo" ? "ベスト" : nameFor(i);
       el.scores.appendChild(d);
     }
+    updateScoreboard();
   }
   function updateScoreboard() {
-    const colorNames = ["赤", "青", "黄", "緑"];
     el.scores.querySelectorAll(".score").forEach((d) => {
       const i = Number(d.dataset.player) - 1;
-      if (gameState.mode === "solo") {
-        const val = bestSolo > 0 ? bestSolo + " ms" : "—";
-        d.querySelector(".n").textContent = val;
-        d.setAttribute("aria-label", `じぶん：${val}`);
-      } else {
-        const pts = String(gameState.scores[i] || 0);
-        d.querySelector(".n").textContent = pts;
-        d.setAttribute("aria-label", `${colorNames[i] || (i + 1) + "P"}：${pts}点`);
-      }
+      const val = scoreValueText(i);
+      d.querySelector(".n").textContent = val;
+      d.setAttribute("aria-label", gameState.mode === "solo" ? `ベスト：${val}` : `${nameFor(i)}（${PLAYER_ICONS[i]}）：${val}点`);
     });
   }
   function showCorners() {
+    const n = gameState.mode === "solo" ? 1 : gameState.players;
+    el.field.dataset.players = String(n);
     el.corners.forEach((c) => {
-      const idx = Number(c.dataset.player);
-      const show = gameState.mode === "solo"
-        ? idx === 1
-        : idx <= gameState.players;
-      c.hidden = !show;
+      c.hidden = Number(c.dataset.player) > n;
       c.removeAttribute("data-lit");
     });
   }
@@ -605,197 +757,359 @@
     if (on) c.setAttribute("data-lit", "on");
     else c.removeAttribute("data-lit");
   }
+  function clearLit() { el.corners.forEach((c) => c.removeAttribute("data-lit")); }
+  function signalOff() {
+    el.signal.removeAttribute("data-phase");
+    el.signal.textContent = "";
+  }
+
+  // ===== ヒント（1行目：回数、2行目：いまの状態。高さは2行分で固定） =====
+  function setHint(msg) {
+    if (!gameState) { el.hint.textContent = msg || ""; return; }
+    const head = `${gameState.round}回目（全${MAX_ROUNDS}回）` + (gameState.mode === "solo" ? "" : `・${WIN_SCORE}点で勝ち`);
+    el.hint.innerHTML = `<span class="round"></span><span class="msg"></span>`;
+    el.hint.querySelector(".round").textContent = head;
+    el.hint.querySelector(".msg").textContent = msg || "";
+  }
 
   // ===== ラウンド =====
   function startRound() {
     const L = window.PikattoLogic;
     if (!L || !gameState) return;
-    clearTimeout(signalTimer); signalTimer = 0;
+    clearRoundTimers();
+    clearFinalTimer();
+    if (input) input.reset();
     gameState = L.startRound(gameState);
     if (gameState.phase === "done") { showFinalResult(); return; }
+    beginReady();
+  }
+  // よーい（約 1000ms、押しても無視）→ 待ち時間 → 合図
+  function beginReady() {
+    paused = false;
+    ready = true;
+    bestUpdated = false;
+    el.field.dataset.phase = "ready";
+    signalOff();
+    clearLit();
+    setHint("よーい…");
+    sfx.play("ready");
+    readyTimer = setTimeout(endReady, READY_MS);
+    focusFirstCorner();
+  }
+  // キーボード・スイッチ操作の人が、ラウンドごとに Tab で隅まで戻らなくてよいように
+  function focusFirstCorner() {
+    if (!el.overlay.hidden) return;
+    const c = el.corners[0];
+    if (c && !c.hidden && document.activeElement !== c) c.focus({ preventScroll: true });
+  }
+  function endReady() {
+    readyTimer = 0;
+    if (!gameState || paused || gameState.phase !== "waiting") return;
+    // よーいの終わり際の押下が受付の窓（30ms）に残っていると、ready=false の後に届いてフライングになる。
+    // よーい中の押下は無視する決まりなので、窓に溜まった分をここで捨てる（押しっぱなしは残す）
+    if (input) input.discard();
+    ready = false;
     el.field.dataset.phase = "waiting";
-    el.signal.removeAttribute("data-phase");
-    el.signal.textContent = "";
-    el.corners.forEach((c) => c.removeAttribute("data-lit"));
-    if (gameState.mode === "solo") {
-      el.hint.textContent = "ピカッと光ったら、ボタンを押す";
-    } else {
-      el.hint.innerHTML = `ラウンド ${gameState.round + 1} / ${MAX_ROUNDS}<br>まってね…`;
-    }
+    setHint("ひかったら じぶんの色を タップ");
     const delay = Math.max(0, Number(gameState.signalDelay) || 1000);
     signalTimer = setTimeout(fireSignal, delay);
   }
   function fireSignal() {
     const L = window.PikattoLogic;
     signalTimer = 0;
-    if (!L || !gameState || gameState.phase !== "waiting") return;
+    if (!L || !gameState || paused || gameState.phase !== "waiting") return;
+    ready = false;
     gameState = L.applySignal(gameState);
     el.field.dataset.phase = "armed";
+    el.signal.innerHTML = `<span class="word">ピカッ！</span>`;
     el.signal.dataset.phase = "armed";
-    el.signal.textContent = "ピカッ！";
     sfx.play("signal");
-    el.hint.textContent = gameState.mode === "solo" ? "いまだ！" : "ピカッ！";
+    setHint("いまだ！");
   }
+  // 押下（input.js からも pressFor からも）。受け付けたら true
   function handlePress({ playerIdx, pressedAt }) {
     const L = window.PikattoLogic;
-    if (!L || !gameState) return;
-    // 待機中の押下 → フライング（タイマーを止める）
-    if (gameState.phase === "waiting") {
-      clearTimeout(signalTimer); signalTimer = 0;
-    }
-    if (gameState.phase !== "waiting" && gameState.phase !== "armed") return;
+    if (!L || !gameState || screen !== "play") return false;
+    // よーい・一時停止中は無視（フライングにしない）。判断は押下が届いた時点で行う
+    if (ready || paused) return false;
+    if (gameState.phase !== "waiting" && gameState.phase !== "armed") return false;
     const { state: next, outcome } = L.applyPress(gameState, { playerIdx, pressedAt });
+    if (outcome.kind === "ignore") return false;
     gameState = next;
-    if (outcome.kind === "ignore") return;
+    clearRoundTimers();
+    if (input) input.reset();
     el.field.dataset.phase = "resolved";
-    el.signal.removeAttribute("data-phase");
-    el.signal.textContent = "";
-    updateScoreboard();
+    signalOff();
+    bestUpdated = false;
     if (outcome.kind === "foul") {
       sfx.play("foul");
       sfx.buzz([60, 40, 120]);
+      setHint("まだだよ！");
     } else if (outcome.kind === "win") {
       sfx.play("win");
-      // solo モードはベスト更新
+      setHint(gameState.mode === "solo" ? fmtMs(outcome.reactionMs) : `${nameFor(outcome.player)} の 1点！`);
+      // ひとりで れんしゅう：ベスト更新
       if (gameState.mode === "solo" && Number.isFinite(outcome.reactionMs)) {
         const ms = Math.round(outcome.reactionMs);
-        if (Number.isInteger(ms) && ms >= 50 && ms <= 5000) {
-          if (bestSolo === 0 || ms < bestSolo) {
-            bestSolo = ms;
-            saveBestSolo(bestSolo);
-            sfx.play("best");
-          }
+        prevBestSolo = bestSolo;
+        if (Number.isInteger(ms) && ms >= 50 && ms <= 5000 && (bestSolo === 0 || ms < bestSolo)) {
+          bestSolo = ms;
+          saveBestSolo(bestSolo);
+          bestUpdated = true;
+          sfx.play("best");
         }
       }
-      updateScoreboard();
     }
+    updateScoreboard();
     showRoundResult(outcome);
+    return true;
   }
 
+  // ===== 一時停止（PK-04） =====
+  function canPause() {
+    return screen === "play" && !!gameState && !paused && (gameState.phase === "waiting" || gameState.phase === "armed");
+  }
+  function pauseRound() {
+    clearRoundTimers();
+    if (input) input.reset();
+    ready = false;
+    paused = true;
+    el.field.dataset.phase = "paused";
+    signalOff();
+    clearLit();
+    setHint("とまっています");
+  }
+  function resumeRound() {
+    const L = window.PikattoLogic;
+    hideOverlay();
+    if (!L || !gameState || !paused) return;
+    gameState = L.redoRound(gameState);    // 回数・点数はそのまま、待ち時間を引き直す
+    if (input) input.reset();
+    beginReady();
+  }
+  function showPauseCard() {
+    showCard(`
+      <h2>とまっています</h2>
+      <p>この回は、よーいから やりなおします。点は そのままです。</p>
+      <div class="btns">
+        <div class="row"><button class="cta primary" type="button" data-cmd="resume">つづける</button></div>
+        <div class="row"><button class="cta" type="button" data-cmd="menu">メニューへ</button></div>
+      </div>
+    `);
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) return;
+    if (!canPause()) return;
+    pauseRound();
+    showPauseCard();
+  });
+
   // ===== 結果カード =====
-  function colorFor(playerIdx) {
-    return ["var(--p1-color)", "var(--p2-color)", "var(--p3-color)", "var(--p4-color)"][playerIdx] || "var(--ink)";
-  }
-  function nameFor(playerIdx) {
-    return gameState.mode === "solo" ? "じぶん" : (playerIdx + 1) + "P";
-  }
   function showRoundResult(outcome) {
-    const done = gameState.phase === "done";
-    if (done) {
-      setTimeout(() => showFinalResult(outcome), reduceMotion.matches ? 100 : 400);
+    if (gameState.phase === "done") {
+      clearFinalTimer();
+      finalTimer = setTimeout(() => { finalTimer = 0; showFinalResult(); }, reduceMotion.matches ? 100 : 400);
       return;
     }
+    const solo = gameState.mode === "solo";
     let title = "";
     let body = "";
+    let mark = "";
+    let extra = "";
     if (outcome.kind === "win") {
-      title = gameState.mode === "solo" ? "ピカッ！" : `${nameFor(outcome.player)} の勝ち`;
-      body = gameState.mode === "solo"
-        ? `${Math.round(outcome.reactionMs)} ms`
-        : `反応 ${Math.round(outcome.reactionMs)} ms`;
+      title = solo ? "はやさ" : `${nameFor(outcome.player)} の 1点！`;
+      body = solo ? fmtMs(outcome.reactionMs) : `はやさ ${fmtMs(outcome.reactionMs)}`;
+      if (solo) {
+        const ms = Math.round(outcome.reactionMs);
+        if (bestUpdated && prevBestSolo > 0 && prevBestSolo > ms) extra = `まえのベストより ${prevBestSolo - ms} ms はやい`;
+        else if (!bestUpdated && bestSolo > 0 && ms > bestSolo) extra = `ベストまで あと ${ms - bestSolo} ms`;
+      }
+      if (!solo) mark = `<span class="winner-dot" style="background:${colorFor(outcome.player)}"></span>`;
     } else if (outcome.kind === "foul") {
-      title = "ちょっと早かった！";
-      body = gameState.mode === "solo"
-        ? "合図のまえに押しました"
-        : `${nameFor(outcome.foulBy)} が合図のまえに押しました。ほかのみんなに +1点。`;
+      title = "まだだよ！";
+      body = solo
+        ? "ひかるまえに おしました"
+        : `${PLAYER_ICONS[outcome.foulBy] || ""} ${nameFor(outcome.foulBy)} が ひかるまえに おしたので、ほかのみんなに 1点`;
+      if (!solo) mark = `<span class="winner-dot" style="background:${colorFor(outcome.foulBy)}"></span>`;
     }
     showCard(`
-      <h2>${escapeHtml(title)}</h2>
+      <h2>${mark}${escapeHtml(title)}</h2>
       <p class="res">${escapeHtml(body)}</p>
+      ${extra ? `<p>${escapeHtml(extra)}</p>` : ""}
+      ${bestUpdated ? `<p class="best-new">ベスト更新！</p>` : ""}
       ${scoresLineHtml()}
       <div class="btns">
-        <div class="row"><button class="cta primary" type="button" data-cmd="next">つぎのラウンド</button></div>
+        <div class="row"><button class="cta primary" type="button" data-cmd="next">つぎへ</button></div>
         <div class="row">
           <button class="cta" type="button" data-cmd="again">さいしょから</button>
           <button class="cta" type="button" data-cmd="menu">メニューへ</button>
         </div>
       </div>
-    `, { soft: true });
+    `, { soft: true, lock: true, best: bestUpdated });
   }
-  function showFinalResult(outcome) {
+  function showFinalResult() {
+    clearFinalTimer();
+    if (!gameState || gameState.phase !== "done") return;
     sfx.play("finish");
     const w = gameState.winner;
-    let title, body;
-    if (gameState.mode === "solo") {
+    const solo = gameState.mode === "solo";
+    const top = Math.max.apply(null, gameState.scores);
+    let title, body, mark = "";
+    let avgLine = "";
+    let avgUpdated = false;
+    if (solo) {
       const L = window.PikattoLogic;
       const avg = L && typeof L.averageMs === "function" ? L.averageMs(gameState.reactions || []) : null;
       title = "おつかれさま";
       body = (avg !== null && avg !== undefined)
-        ? `平均 ${Math.round(avg)} ms` + (bestSolo > 0 ? `　ベスト ${bestSolo} ms` : "")
-        : (bestSolo > 0 ? `ベスト ${bestSolo} ms` : "記録なし");
+        ? `へいきん ${fmtMs(avg)}`
+        : "きろくなし";
+      const avgMs = (avg !== null && avg !== undefined) ? Math.round(avg) : 0;
+      if (avgMs >= 50 && avgMs <= 5000) {
+        if (bestAvgSolo === 0 || avgMs < bestAvgSolo) {
+          bestAvgSolo = avgMs;
+          saveBestAvgSolo(bestAvgSolo);
+          avgUpdated = true;
+        }
+      }
+      if (bestAvgSolo > 0) avgLine = `<p>へいきんの ベスト ${escapeHtml(fmtMs(bestAvgSolo))}</p>`;
     } else if (w === "draw") {
-      title = "引き分け";
-      body = "同点でした";
+      title = "ひきわけ";
+      body = "いちばん多い点が 同じでした";
     } else {
-      title = `${nameFor(w)} の勝ち`;
-      body = `${WIN_SCORE} 点先取`;
+      title = `${nameFor(w)} の勝ち！`;
+      body = top >= WIN_SCORE ? `${WIN_SCORE}点とった！` : `${MAX_ROUNDS}回 おわって いちばん 点が多い`;
+      mark = `<div class="winner-mark" aria-hidden="true" style="background:${colorFor(w)};color:${inkFor(w)}">${PLAYER_ICONS[w] || ""}</div>`;
     }
+    const bestLine = solo && bestSolo > 0 ? `<p>ベスト ${escapeHtml(fmtMs(bestSolo))}</p>` : "";
     showCard(`
-      <h2>${w !== null && w !== undefined && w !== "draw" ? `<span class="winner-dot" style="background:${colorFor(w)}"></span>` : ""}${escapeHtml(title)}</h2>
+      ${mark}
+      <h2>${escapeHtml(title)}</h2>
       <p class="res">${escapeHtml(body)}</p>
+      ${bestUpdated ? `<p class="best-new">ベスト更新！</p>` : ""}
+      ${avgUpdated ? `<p class="best-new">へいきん ベスト更新！</p>` : ""}
+      ${avgLine}
+      ${bestLine}
       ${scoresLineHtml()}
       <div class="btns">
         <div class="row"><button class="cta primary" type="button" data-cmd="again">もう一度</button></div>
         <div class="row"><button class="cta" type="button" data-cmd="menu">メニューへ</button></div>
       </div>
-    `, { soft: true });
+    `, { soft: true, lock: true, final: true, best: bestUpdated });
   }
   function scoresLineHtml() {
     if (gameState.mode === "solo") return "";
     const parts = [];
     for (let i = 0; i < gameState.players; i++) {
-      parts.push(`<span style="color:${colorFor(i)}">${nameFor(i)}:${gameState.scores[i] || 0}</span>`);
+      parts.push(`<span style="white-space:nowrap">${PLAYER_ICONS[i]} ${nameFor(i)}:${gameState.scores[i] || 0}</span>`);
     }
     return `<p>${parts.join("　")}</p>`;
   }
-  function showHelpCard() {
+  // resume=true：プレイ中に開いたとき（close の代わりに「つづける」）
+  function showHelpCard({ resume = false } = {}) {
+    const btn = resume
+      ? `<button class="cta primary" type="button" data-cmd="resume">つづける</button>`
+      : `<button class="cta primary" type="button" data-cmd="close">わかった</button>`;
     showCard(`
       <h2>遊び方</h2>
       <dl class="howto">
-        <dt>にんずう</dt><dd>2〜4人、または 1人（お試し）。4隅のボタンに1人ずつ。</dd>
-        <dt>合図</dt><dd>1〜4秒まってから、画面がピカッと光ります。</dd>
-        <dt>勝ち</dt><dd>光ったら自分の色のボタンを早く押す。先に3点とった人の勝ち。同点のときは勝ち負けなし（引き分け）。</dd>
-        <dt>フライング</dt><dd>光るまえに押すと、ほかのみんなに1点。</dd>
-        <dt>お試し</dt><dd>合図から押すまでの時間（ミリ秒）を測ります。</dd>
+        <dt>にんずう</dt><dd>2〜4人。4つのすみのボタンに1人ずつ。ひとりで れんしゅう もできます。</dd>
+        <dt>ひかる</dt><dd>よーいの あと、1〜4秒で 画面がピカッと ひかります。</dd>
+        <dt>勝ち</dt><dd>ひかったら じぶんの色を タップ。いちばん はやい人に 1点。さきに 3点とったら 勝ち。5回で おわり、同じ点なら ひきわけ。</dd>
+        <dt>まだ</dt><dd>ひかるまえに おすと、ほかのみんなに 1点。</dd>
+        <dt>れんしゅう</dt><dd>ひかってから おすまでの はやさを はかります。はやさは ms（1000分の1秒）で 出ます。</dd>
+        <dt>iPad</dt><dd>4本・5本指のジェスチャーは、iPad の設定でオフにすると安全です。</dd>
       </dl>
-      <div class="btns"><div class="row"><button class="cta primary" type="button" data-cmd="close">わかった</button></div></div>
-    `, { soft: false });
+      <div class="btns"><div class="row">${btn}</div></div>
+    `);
   }
 
-  function showCard(html, { soft = false } = {}) {
+  // opts: soft（背景を薄く）、lock（600ms ボタンを押せない）、final（data-final）、best（data-best）
+  function showCard(html, opts = {}) {
+    const { soft = false, lock = false, final = false, best = false } = opts;
+    clearTimeout(lockTimer); lockTimer = 0;
+    currentCard = { html, opts };
     el.card.innerHTML = html;
+    if (final) el.card.dataset.final = "1"; else delete el.card.dataset.final;
+    if (best) el.card.dataset.best = "1"; else delete el.card.dataset.best;
     el.overlay.classList.toggle("soft", soft);
+    if (el.overlay.hidden) {
+      const a = document.activeElement;
+      focusBeforeCard = a && a !== document.body && !el.overlay.contains(a) ? a : null;
+    }
+    // 開いている間は後ろを操作・読み上げの対象から外す（Tab で後ろの隅や「？」に出ない）
+    el.app.inert = true;
+    el.app.setAttribute("aria-hidden", "true");
+    // 見出しをダイアログの名前に、結果の行を説明にする
+    const title = el.card.querySelector("h2");
+    if (title) title.id = "card-title";
+    const desc = el.card.querySelector("p.res");
+    if (desc) { desc.id = "card-desc"; el.card.setAttribute("aria-describedby", "card-desc"); }
+    else el.card.removeAttribute("aria-describedby");
     el.overlay.hidden = false;
     el.overlay.scrollTop = 0;
-    const primary = el.card.querySelector(".primary");
-    if (primary) primary.focus({ preventScroll: true });
+    const btns = Array.from(el.card.querySelectorAll("button"));
+    const focusPrimary = () => {
+      const primary = el.card.querySelector(".primary");
+      if (primary) primary.focus({ preventScroll: true });
+    };
+    if (lock) {
+      btns.forEach((b) => { b.disabled = true; });
+      // 押せない間はカード自体にフォーカスを置き、見出し（だれの勝ちか）を読み上げる
+      el.card.focus({ preventScroll: true });
+      lockTimer = setTimeout(() => {
+        lockTimer = 0;
+        btns.forEach((b) => { b.disabled = false; });
+        focusPrimary();
+      }, CARD_LOCK_MS);
+    } else {
+      focusPrimary();
+    }
   }
   function hideOverlay() {
+    clearTimeout(lockTimer); lockTimer = 0;
     el.overlay.hidden = true;
     el.overlay.classList.remove("soft");
+    el.app.inert = false;
+    el.app.removeAttribute("aria-hidden");
+    // 開く前のフォーカスに戻す（ラウンドを始めるときは beginReady が 1P の隅へ移す）
+    const back = focusBeforeCard;
+    focusBeforeCard = null;
+    if (back && back.isConnected && !back.disabled && !back.closest("[hidden]")) back.focus({ preventScroll: true });
+    delete el.card.dataset.final;
+    delete el.card.dataset.best;
+    currentCard = null;
+    returnCard = null;
   }
 
   el.overlay.addEventListener("click", (e) => {
-    const cmd = e.target.closest?.("[data-cmd]")?.dataset.cmd;
-    if (!cmd) return;
+    const b = e.target.closest?.("[data-cmd]");
+    if (!b || b.disabled) return;
+    const cmd = b.dataset.cmd;
     if (cmd === "next") { hideOverlay(); startRound(); }
     else if (cmd === "again") { hideOverlay(); startGame(); }
     else if (cmd === "menu") { location.href = "../../"; }
+    else if (cmd === "resume") { markHelpSeen(); resumeRound(); }
     else if (cmd === "close") {
       markHelpSeen();
+      const back = returnCard;
       hideOverlay();
+      // 結果カードの上から開いたときは、そのカードに戻す（鍵はかけ直さない）
+      if (back) showCard(back.html, Object.assign({}, back.opts, { lock: false }));
     }
   });
-  el.helpBtn.addEventListener("click", () => { sfx.unlock(); showHelpCard(); });
-
-  // ===== ユーティリティ =====
-  function escapeHtml(s) {
-    return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
+  el.helpBtn.addEventListener("click", () => {
+    sfx.unlock();
+    // プレイ中（よーい・待ち・合図中）は止めてから遊び方を出す（PK-04）
+    if (paused || canPause()) {
+      if (!paused) pauseRound();
+      showHelpCard({ resume: true });
+      return;
+    }
+    const back = el.overlay.hidden ? null : currentCard;
+    showHelpCard({ resume: false });
+    returnCard = back;
+  });
 
   // ===== iOS：長押しメニュー・拡大・引っ張り更新を止める =====
   document.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -826,47 +1140,51 @@
     if (quick) {
       e.preventDefault();
       const btn = target.closest("button, a");
-      if (btn && !btn.disabled) btn.click();
+      // 隅のボタンは pointerdown で受け付け済み。ここで click を送ると、支援技術の click（detail=0）と
+      // 見分けがつかず二重の押下になるので送らない
+      if (btn && !btn.disabled && !btn.classList.contains("corner")) btn.click();
     }
   }, { passive: false });
 
   // ===== テスト用公開 API =====
-  // 画面側のラウンドのタイマーを飛ばして即 'armed' にする（forceSignal）、
-  // 任意のプレイヤーを押させる（pressFor）、状態の取得（getState）、
-  // 設定画面に戻す（reset）を公開
   window.PikattoGame = Object.freeze({
     getState() {
       // 平らな形で返す（テストが state.phase・state.scores で直接触れるように）。
       // 入れ子の gameState キーも残し、画面の既存の読み方と両立させる
       const g = gameState ? JSON.parse(JSON.stringify(gameState)) : null;
-      return Object.assign({}, g || {}, { screen, selectedPlayers, bestSolo, gameState: g });
+      return Object.assign({}, g || {}, { screen, selectedPlayers, bestSolo, gameState: g, ready, paused });
     },
     startRound() { if (screen === "play") startRound(); },
+    // 「よーい」と待ち時間を両方飛ばして即 armed（ready・waiting のどちらでも効く）
     forceSignal() {
-      if (screen !== "play" || !gameState || gameState.phase !== "waiting") return false;
-      clearTimeout(signalTimer); signalTimer = 0;
+      if (screen !== "play" || !gameState || paused || gameState.phase !== "waiting") return false;
+      clearRoundTimers();
+      ready = false;
       fireSignal();
       return true;
     },
-    pressFor(playerIdx) {
+    // 受付の窓を通さず直接ロジックへ（勝ち負けのテスト用）。よーい・一時停止中は false
+    pressFor(playerIdx, ts) {
       if (screen !== "play") return false;
-      // createGame に注入した now と同じ時刻起点にそろえる
-      const ts = performance.now();
-      handlePress({ playerIdx: Number(playerIdx), pressedAt: ts });
-      return true;
+      const t = typeof ts === "number" && Number.isFinite(ts) ? ts : performance.now();
+      return handlePress({ playerIdx: Number(playerIdx), pressedAt: t });
     },
     reset() {
-      clearTimeout(signalTimer); signalTimer = 0;
-      if (input) { input.detach(); input = null; }
+      clearRoundTimers();
+      clearFinalTimer();
+      if (input) { input.reset(); input.detach(); input = null; }
       gameState = null;
-      selectedPlayers = null;
+      ready = false;
+      paused = false;
+      bestUpdated = false;
       screen = "setup";
       el.play.hidden = true;
       el.setup.hidden = false;
       el.field.dataset.phase = "waiting";
-      el.signal.removeAttribute("data-phase");
-      el.playersPick.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", "false"));
-      el.startBtn.disabled = true;
+      signalOff();
+      clearLit();
+      el.hint.textContent = "";
+      selectPlayers(2);
       hideOverlay();
     }
   });
@@ -874,7 +1192,7 @@
   // 初回だけ遊び方を出す
   if (!helpSeen()) {
     // 画面を表示したあとに出す（起動直後に見えるカードが先に重ならないように）
-    setTimeout(() => showHelpCard(), 100);
+    setTimeout(() => { if (screen === "setup" && el.overlay.hidden) showHelpCard(); }, 100);
   }
 })();
 
