@@ -73,6 +73,7 @@
 詳細は [tests/README.md](tests/README.md)。要点だけ書きます。
 
 - **公開の条件**：Chromium の smoke と full、WebKit の smoke がすべて合格すること。WebKit は並列だとオフライン系が不安定なので `WORKERS=1`。
+- WebKit の合否はクラウド（Linux）の結果を正とする。Windows の WebKit には AudioContext が無く、A4 が「対象外」になるのは既知（不合格ではない）。
 - **変異テスト**（`node tests/mutants/mutate.mjs both`）は、中身の仕組み（点数計算・保存・日付・ルール）を変えたときだけ、**そのゲームの分だけ**流す。表示・見た目・文言の修正では流さない。
 - 日付を扱う処理は、0時またぎ・時計が戻る・保存された日付が壊れている、の3つを同時に検査する。
 - **版を上げる**：`common/version.js` の `version` と `date`、`sw.js` の `CACHE_VERSION` の**3つを一緒に**更新する（日付は公開する日）。食い違いはテスト L10 が不合格にする。ファイルの追加・改名をしたときも上げる。

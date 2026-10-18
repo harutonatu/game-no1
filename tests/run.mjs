@@ -60,9 +60,21 @@ async function worker(key) {
   try {
     const needBrowser = plan.some((t) => !t.node);
     if (needBrowser) { srv = await lib.startServer(root); browser = await lib.launchBrowser(); }
+    let audioOk = null;
+    const hasAudio = async () => {
+      if (audioOk === null) {
+        const c = await browser.newContext(); const p = await c.newPage();
+        audioOk = await p.evaluate(() => typeof AudioContext !== 'undefined' || typeof webkitAudioContext !== 'undefined').catch(() => false);
+        await c.close();
+      }
+      return audioOk;
+    };
     for (const t of plan) {
       // CDP（Chromium 専用の機能）を使う確認は、ほかのブラウザでは対象外にする
       if (t.cdp && !lib.IS_CHROMIUM) { out.skipped.push({ id: t.id, title: t.title, why: t.cdp }); continue; }
+      // 効果音の確認（audio: true）は、ブラウザに AudioContext が無い環境（Windows 版 Playwright の WebKit など）では対象外にする。
+      // OS 名では決めず、実際に typeof AudioContext / webkitAudioContext を調べる
+      if (t.audio && !(await hasAudio())) { out.skipped.push({ id: t.id, title: t.title, why: '環境に AudioContext が無い', env: true }); continue; }
       rec.start(t.id, t.title);
       const ctx = { browser, srv, root, tier, errors: lib.pageErrors, check: (n, ok, d, known) => rec.check(n, ok, d, known) };
       let timer;
@@ -134,7 +146,7 @@ async function main() {
         else if (!c.ok || process.env.VERBOSE) console.log(`        ${c.ok ? '✓' : '✗'} ${c.name}${c.ok ? '' : '\n          ' + String(JSON.stringify(c.detail)).slice(0, 1500)}`);
       }
     }
-    for (const s of r.skipped) { skipped.push(s); console.log(`  対象外 ${s.id.padEnd(3)}        ${s.title}（${BROWSER} では不可：${s.why}）`); }
+    for (const s of r.skipped) { skipped.push(s); console.log(`  対象外 ${s.id.padEnd(3)}        ${s.title}（${s.env ? `${BROWSER} の実行環境：${s.why}` : `${BROWSER} では不可：${s.why}`}）`); }
     errors.push(...r.errors);
   }
   // 全ページ共通の確認は最後に1回だけ（各グループで集めたコンソールエラーをまとめる）

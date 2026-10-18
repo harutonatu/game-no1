@@ -174,6 +174,7 @@ sw.js にも版を直接書く二重持ちにしているのは、import 先だ�
 5. 画面サイズを足すときは、まず design.md §4 の同値クラスと境界に当てはめ、新しいクラスか境界でなければ足さない。
 6. 待ちは `sleep` ではなく `wait(page, ms)` を使い、ページを `{ clock: true }` で開く（早送りされる。書き方は上の「日付・時計」の3）。実時間で確かめる必要があるもの（境界の時間・Service Worker・音）だけ `sleep` のまま。
 7. CDP（Chromium 専用）を使う項目には `cdp: '理由'` を付ける（WebKit では対象外として表示）。CDP なしで書けるなら書く（T5 のように）。
+   AudioContext が要る項目（A4）には `audio: true` を付ける。ブラウザに `AudioContext` も `webkitAudioContext` も無い環境（Windows 版 Playwright の WebKit）では、不合格にせず「対象外（環境に AudioContext が無い）」と表示する。OS 名では決めず、実際に調べる。Linux の WebKit・Chromium では今までどおり流れる。
 8. 外部（インターネット）に出ない・リポジトリや作業ツリーに書き込まない・決まったポート以外を使わない。
 
 ## Chromium・WebKit と実機の違い

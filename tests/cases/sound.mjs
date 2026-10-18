@@ -109,7 +109,7 @@ export const tests = [
     },
   },
   {
-    id: 'A4', tier: 'smoke', title: '効果音オフ：♪ や M キーの設定が保存され、3つのゲーム・メニューで共有、オフなら何も鳴らない',
+    id: 'A4', tier: 'smoke', audio: true, title: '効果音オフ：♪ や M キーの設定が保存され、3つのゲーム・メニューで共有、オフなら何も鳴らない',
     async run({ browser, check }) {
       const { ctx, page } = await newPage(browser, V(), 'A4', { initScript: SFX_SPY });
       await seed(page, {});
