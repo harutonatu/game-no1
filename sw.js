@@ -2,7 +2,7 @@
 // ファイルを更新したら CACHE_VERSION を上げる（古いキャッシュを削除させるため）。
 // メニューに出す版は common/version.js と二重に持つ（sw.js 本体のバイトを変えて、iOS Safari でも更新を確実に検知させるため）。
 // 上げるときは version.js の version・date も一緒に変える（テスト L10 が一致を強制する）
-const CACHE_VERSION = "v17";
+const CACHE_VERSION = "v18";
 const APP_PREFIX = "yubiasobi-app-";
 const APP_CACHE = `${APP_PREFIX}${CACHE_VERSION}`;
 const FONT_CACHE = "yubiasobi-fonts";
@@ -34,6 +34,13 @@ const APP_FILES = [
   "./games/pikatto/index.html",
   "./games/pikatto/logic.js",
   "./games/pikatto/input.js",
+  "./games/hashi/",
+  "./games/hashi/index.html",
+  "./games/hashi/course.js",
+  "./games/hashi/logic.js",
+  "./games/hashi/render.js",
+  "./games/hashi/input.js",
+  "./games/hashi/main.js",
   "./common/sfx.js",
   "./common/version.js",
   "./manifest.webmanifest",

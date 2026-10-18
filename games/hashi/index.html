@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ゆびあそび">
+<meta name="theme-color" content="#1b1f2e">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<title>ハシわたり</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+  /* Layout：上に「← メニュー / 見出し / ？ ♪」、その下に HUD・池（長押しの面）・ヒント。
+     横向きで背が低い（高さ 500px 以下）ときは、HUD を左の縦列に移す */
+  :root {
+    --bg: #1b1f2e;
+    --panel: #252c41;
+    --well: #0d111d;
+    --line: #2f3750;
+    --ink: #ece6d6;
+    --muted: #9aa1b8;
+    --hint: #c9cee0;
+    --accent: #f0a43a;
+    --accent-ink: #231705;
+    --water: #0f2a3d;
+    --leaf: #009e73;
+    --leaf-edge: #cfe9df;
+    --bridge: #e69f00;
+    --perfect: #f0e442;
+    --hero: #56b4e9;
+    --font-display: "Chakra Petch", "Hiragino Sans", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --font-text: "Hiragino Sans", system-ui, sans-serif;
+    --head-h: 44px;
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  /* 画面には出さず、読み上げだけに使う */
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+  html, body { height: 100%; }
+  /* ダブルタップ拡大・ピンチ拡大を止める（iOS Safari は user-scalable=no を無視するため CSS と JS の両方で防ぐ） */
+  html { overscroll-behavior: none; touch-action: none; }
+  body {
+    margin: 0;
+    font-size: 16px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-display);
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+  .app {
+    box-sizing: border-box;
+    height: 100%;
+    /* ノッチ・ホームバーに重ならないよう safe-area 分を空ける */
+    padding-top: max(10px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 10px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  /* ===== 上の帯 ===== */
+  .head { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: var(--head-h); }
+  /* 「← メニュー」：既存ゲームと同じ表記・同じ見た目（枠つき、44×44px 以上）。
+     カード（オーバーレイ）を開いていても押せるよう、オーバーレイより上に置く */
+  .back {
+    position: relative;
+    z-index: 30;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    font: 700 16px var(--font-text);
+    text-decoration: none;
+    white-space: nowrap;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+  }
+  .back:active { filter: brightness(1.3); }
+  h1.title { margin: 0; flex: 1 1 auto; min-width: 0; font-size: 20px; letter-spacing: 0.04em; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+  .head-tools { display: flex; gap: 6px; flex: 0 0 auto; margin-left: auto; }
+  .tool {
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink);
+    font: 700 18px var(--font-display);
+    padding: 0 8px;
+    touch-action: manipulation;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tool:active:not(:disabled) { filter: brightness(1.3); background: var(--panel); }
+  .tool:disabled { opacity: 0.35; }
+  /* 音が切れているときは、色だけでなく取り消し線でも伝える */
+  #soundBtn[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
+  button:focus-visible, a:focus-visible, .stage-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ===== プレイ画面 ===== */
+  .play {
+    min-height: 0;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "hud" "stage" "hint";
+    gap: 8px;
+  }
+
+  /* HUD：縦向きは2列×2段（左の列に「いま」「ベスト」、右の列に「のこり」「ぴったり」）。
+     「いま」「ベスト」は 16 桁でもはみ出さないよう、枠の幅に合わせて字を縮める（省略しない） */
+  .hud {
+    grid-area: hud;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 112px;
+    grid-template-areas: "score lives" "best streak";
+    gap: 6px 8px;
+  }
+  .stat {
+    box-sizing: border-box;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px 10px;
+    border-radius: 10px;
+    background: var(--panel);
+    box-shadow: 0 0 0 1px var(--line);
+    line-height: 1.1;
+  }
+  .hud > .stat:nth-child(1) { grid-area: score; }
+  .hud > .stat:nth-child(2) { grid-area: best; }
+  .stat.lives { grid-area: lives; }
+  .stat.streak { grid-area: streak; }
+  .stat .label { font: 500 16px/1.2 var(--font-text); color: var(--muted); white-space: nowrap; }
+  .stat b {
+    display: block;
+    min-width: 0;
+    font: 700 24px/1.15 var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: var(--ink);
+  }
+  /* 16 桁 × 0.6em（等幅）＝ 9.6em。少し余裕を見て 9.8 で割る。最小 20px、最大 28px */
+  #score, #best { font-size: 20px; }
+  @supports (font-size: 1cqi) {
+    .hud > .stat:nth-child(1), .hud > .stat:nth-child(2) { container-type: inline-size; }
+    #score, #best { font-size: clamp(12px, calc(100cqi / 9.8), 28px); }
+    /* 桁数の段階（main.js が data-size を付ける）。s＝6 桁まで（20px 以上）、m＝10 桁まで、l＝16 桁まで */
+    #score[data-size="s"], #best[data-size="s"] { font-size: clamp(20px, calc(100cqi / 3.8), 28px); }
+    #score[data-size="m"], #best[data-size="m"] { font-size: clamp(12px, calc(100cqi / 6.2), 28px); }
+  }
+  #score { color: var(--accent); }
+  .stat.lives, .stat.streak { align-items: flex-start; }
+  #lives, #streak { font-size: 22px; }
+  #hearts { font-size: 18px; letter-spacing: 1px; color: var(--accent); }
+  /* 連続ぴったり：黄の◆の印と文字で伝える（色だけに頼らない） */
+  .stat.streak { box-shadow: 0 0 0 2px var(--perfect); }
+  .stat.streak .label::before { content: "◆ "; color: var(--perfect); }
+  .stat.streak { flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: 4px; }
+  .stat.streak .label { flex: 1 0 100%; }
+  .stat.streak b { display: inline; color: var(--perfect); }
+  .stat.streak b + span { font: 500 16px var(--font-text); color: var(--ink); white-space: nowrap; }
+
+  /* 池（長押しを受ける面）：キャンバス全体。ここだけ touch-action: none を敷く */
+  .stage-wrap {
+    grid-area: stage;
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    background: var(--water);
+    border-radius: 12px;
+    box-shadow: 0 0 0 2px var(--line);
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    cursor: pointer;
+  }
+  .stage-wrap[data-holding="1"] { box-shadow: 0 0 0 2px var(--accent); }
+  canvas#stage { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
+
+  /* ヒント：2行分の高さに固定し、文言が変わっても配置が動かない */
+  .hint {
+    grid-area: hint;
+    box-sizing: border-box;
+    margin: 0;
+    height: 3em;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--hint);
+    font: 16px/1.5 var(--font-text);
+    overflow-wrap: anywhere;
+  }
+
+  /* 幅の広い縦画面（iPad など）：HUD を1段に並べる */
+  @media (min-width: 640px) and (orientation: portrait), (min-width: 640px) and (min-height: 501px) {
+    .hud {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+      grid-template-areas: "score best lives streak";
+    }
+  }
+  /* 背の低い縦画面（iPhone SE の Safari など）：すき間を詰める */
+  @media (orientation: portrait) and (max-height: 600px) {
+    .app { gap: 6px; padding-top: max(6px, env(safe-area-inset-top, 0px)); padding-bottom: max(8px, env(safe-area-inset-bottom, 0px)); }
+    .play { gap: 6px; }
+  }
+  /* 幅のごく狭い画面：見出しを少し小さく */
+  @media (max-width: 360px) {
+    h1.title { font-size: 17px; }
+    .back { padding: 0 8px; }
+  }
+
+  /* 横向きで背が低い（iPhone 横など）：HUD を左の縦列に、池が残りを使う。ヒントは池の下 */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .app { gap: 6px; padding-top: max(6px, env(safe-area-inset-top, 0px)); padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)); }
+    h1.title { font-size: 18px; }
+    .play {
+      /* 16 桁を 20px で出せる幅（約 210px）。狭い画面では 34vw まで */
+      grid-template-columns: min(220px, 34vw) minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) auto;
+      grid-template-areas: "hud stage" "hud hint";
+      gap: 6px 10px;
+    }
+    .hud {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "score" "best" "lives" "streak";
+      grid-auto-rows: auto;
+      align-content: start;
+      gap: 6px;
+      overflow: hidden;
+    }
+    .stat { padding: 3px 10px; }
+    .stat.lives, .stat.streak { min-width: 0; }
+    .stat.lives, .stat.streak { flex-direction: row; align-items: baseline; flex-wrap: wrap; column-gap: 8px; }
+    .stat.streak .label { flex: 0 0 auto; }
+    #lives, #streak { font-size: 20px; }
+    .hint { font-size: 16px; }
+  }
+
+  /* ===== オーバーレイ（結果・遊び方と設定・一時停止のカード） ===== */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    box-sizing: border-box;
+    display: flex;
+    /* カードが画面より高いときは縦にスクロールできるようにする（中央寄せは .card の margin:auto） */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    /* 上は「← メニュー」の帯の分を空け、カードがメニューボタンに重ならないようにする */
+    padding-top: calc(max(10px, env(safe-area-inset-top, 0px)) + var(--head-h) + 10px);
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background: rgba(13, 17, 29, 0.78);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+  .card {
+    width: min(380px, 100%);
+    box-sizing: border-box;
+    margin: auto;
+    flex: 0 0 auto;
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+    box-shadow: 0 0 0 1px var(--line), 0 20px 50px rgba(0, 0, 0, 0.5);
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .card h2 { margin: 0; font-size: 26px; line-height: 1.3; letter-spacing: 0.04em; text-wrap: balance; overflow-wrap: anywhere; }
+  .card p { margin: 0; color: var(--ink); font: 16px/1.6 var(--font-text); overflow-wrap: anywhere; }
+  .card p.sub, .card p.note { color: var(--muted); }
+  .card ul, .card ol { margin: 0; padding-left: 1.4em; text-align: left; font: 16px/1.6 var(--font-text); }
+  .card dl { margin: 0; text-align: left; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; font: 16px/1.5 var(--font-text); }
+  .card dt { font-weight: 700; color: var(--accent); white-space: nowrap; }
+  .card dd { margin: 0; color: var(--ink); }
+  .card .btns { display: flex; flex-direction: column; gap: 10px; }
+  .card .btns button,
+  .card button[data-set] {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 44px;
+    min-height: 50px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--ink);
+    font: 700 16px/1.3 var(--font-text);
+    touch-action: manipulation;
+    overflow-wrap: anywhere;
+  }
+  /* 1つ目のボタン（もう一度・つづける・閉じる）を目立たせる */
+  .card .btns button:first-child { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .card .btns button:active:not(:disabled),
+  .card button[data-set]:active:not(:disabled) { filter: brightness(1.2); }
+  /* カードを出した直後に押せない間（main.js が aria-disabled="true" にする。フォーカスは置ける） */
+  .card button:disabled,
+  .card button[aria-disabled="true"] { opacity: 0.5; }
+  /* 設定の切り替え：オン/オフを色だけでなく ●／○ の形でも伝える */
+  .card button[data-set] { display: flex; align-items: center; justify-content: flex-start; gap: 10px; text-align: left; }
+  .card button[data-set]::before { content: "○"; flex: 0 0 auto; font: 700 20px/1 var(--font-text); color: var(--muted); }
+  .card button[data-set][aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .card button[data-set][aria-pressed="true"]::before { content: "●"; color: var(--accent); }
+  .card .sets { display: flex; flex-direction: column; gap: 8px; }
+  @media (orientation: landscape) and (max-height: 500px) {
+    .overlay { padding-top: calc(max(6px, env(safe-area-inset-top, 0px)) + var(--head-h) + 6px); padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)); }
+    .card { padding: 12px 16px; gap: 8px; }
+    .card h2 { font-size: 20px; }
+    .card .btns button, .card button[data-set] { min-height: 44px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="head">
+    <a id="back" class="back" href="../../">← メニュー</a>
+    <h1 class="title">ハシわたり</h1>
+    <div class="head-tools">
+      <button class="tool" id="helpBtn" type="button" aria-label="遊び方とせってい">？</button>
+      <button class="tool" id="soundBtn" type="button" aria-label="効果音" aria-pressed="true">♪</button>
+    </div>
+  </header>
+
+  <section class="play" id="playView" aria-label="プレイ" data-phase="ready">
+    <div class="hud" id="hud">
+      <span class="stat"><span class="label">いま</span><b id="score">0</b></span>
+      <span class="stat"><span class="label">ベスト</span><b id="best">0</b></span>
+      <span class="stat lives" id="livesBox"><span class="label">いのち</span><span id="hearts" aria-hidden="true">♥♥♥</span><b id="lives">3</b></span>
+      <span class="stat streak" id="streakBox" hidden><span class="label">ぴったり</span><b id="streak">0</b><span>れんぞく</span></span>
+    </div>
+    <div class="stage-wrap" id="stageWrap" tabindex="0" role="button"
+         aria-label="ながく おすと くきが のびる。はなすと たおれる" data-holding="0">
+      <canvas id="stage" role="img" aria-label="池と はすの葉"></canvas>
+    </div>
+    <p class="hint" id="hint">ながく おして、はなしてね</p>
+    <p class="sr-only" id="sr" aria-live="polite" aria-atomic="true"></p>
+  </section>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="card" id="card" role="dialog" aria-modal="true" aria-labelledby="cardTitle"></div>
+</div>
+
+<script src="../../common/sfx.js"></script>
+<script src="course.js"></script>
+<script src="logic.js"></script>
+<script src="render.js"></script>
+<script src="input.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
