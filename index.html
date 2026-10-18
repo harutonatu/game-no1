@@ -103,7 +103,7 @@
   .name { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: 0.03em; line-height: 1.25; }
   .desc { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; font-family: var(--font-text); }
   .best { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; min-width: 0; }
-  .best .label { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .best .label { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
   .best b {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
@@ -116,9 +116,9 @@
   .best b.none { font-family: var(--font-text); font-size: 12px; font-weight: 500; color: var(--muted); }
   .go { color: var(--muted); font-size: 22px; line-height: 1; padding-right: 2px; }
 
-  .foot { margin: 24px 0 0; text-align: center; color: var(--muted); font-size: 11px; font-family: var(--font-text); line-height: 1.6; }
+  .foot { margin: 24px 0 0; text-align: center; color: var(--muted); font-size: 12px; font-family: var(--font-text); line-height: 1.6; }
 
-  .ver { margin: 6px 0 0; text-align: center; color: var(--muted); font-size: 10px; letter-spacing: 0.08em; font-family: var(--font-mono); line-height: 1.4; }
+  .ver { margin: 6px 0 0; text-align: center; color: var(--muted); font-size: 12px; letter-spacing: 0.08em; font-family: var(--font-mono); line-height: 1.4; }
 
   /* iPhone SE など幅の狭い画面では絵を少し小さくする */
   @media (max-width: 360px) {
@@ -242,7 +242,7 @@
         ctx.fill();
         ctx.fillStyle = fg;
         const digits = String(v).length;
-        ctx.font = `700 ${Math.round(s * (digits >= 4 ? 0.28 : digits >= 2 ? 0.4 : 0.48))}px "JetBrains Mono", ui-monospace, Menlo, monospace`;
+        ctx.font = `700 ${Math.max(12, Math.round(s * (digits >= 4 ? 0.28 : digits >= 2 ? 0.4 : 0.48)))}px "JetBrains Mono", ui-monospace, Menlo, monospace`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(String(v), x + s / 2, y + s / 2 + 1);
@@ -423,7 +423,7 @@
       roundRect(ctx, m, m, w - m * 2, h - m * 2, 10);
       ctx.fill();
       ctx.fillStyle = "#231705";
-      ctx.font = `700 ${Math.round(h * 0.4)}px "Hiragino Sans", system-ui, sans-serif`;
+      ctx.font = `700 ${Math.max(12, Math.round(h * 0.4))}px "Hiragino Sans", system-ui, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText([...game.name][0] || "?", w / 2, h / 2 + 1);

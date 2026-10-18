@@ -74,7 +74,7 @@
     gap: 4px;
   }
   .label {
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--muted);
@@ -83,7 +83,7 @@
   .next { grid-area: next; }
   .hold canvas { width: 56px; height: 48px; }
   .next canvas { width: 124px; height: 48px; }
-  .stats .label { font-size: 9px; letter-spacing: 0.06em; }
+  .stats .label { font-size: 12px; letter-spacing: 0.06em; }
   .stats {
     grid-area: stats;
     display: grid;
@@ -143,9 +143,11 @@
   }
   .sound-btn { font-size: 17px; }
   /* 「← メニュー」：ばいばいタイルと同じ表記。幅が狭いので矢印の下に小さく「メニュー」 */
+  .sys { align-items: flex-end; }
+  .pause-btn.menu-btn { width: auto; min-width: 44px; padding: 0 2px; }
   .menu-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; line-height: 1.05; }
   .menu-btn .arr { font: 700 16px "Hiragino Sans", system-ui, sans-serif; }
-  .menu-btn small { font: 700 9px "Hiragino Sans", system-ui, sans-serif; letter-spacing: 0; white-space: nowrap; }
+  .menu-btn small { font: 700 12px "Hiragino Sans", system-ui, sans-serif; letter-spacing: 0; white-space: nowrap; }
   .sound-btn[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
   .stage {
     grid-area: board;
@@ -206,7 +208,7 @@
     box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
     transition: transform 60ms, box-shadow 60ms;
   }
-  .key small { font-size: 9px; letter-spacing: 0.1em; font-weight: 500; opacity: 0.75; }
+  .key small { font-size: 12px; letter-spacing: 0.1em; font-weight: 500; opacity: 0.75; }
   .key.on { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35); filter: brightness(1.2); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -225,7 +227,7 @@
     .next { justify-self: start; align-self: start; }
     .hold canvas { width: 64px; }
     .next canvas { width: 64px; height: 150px; }
-    .stats .label { font-size: 10px; letter-spacing: 0.14em; }
+    .stats .label { font-size: 12px; letter-spacing: 0.14em; }
     .stats { grid-template-columns: 1fr; width: 150px; padding-top: 52px; }
     .stats .stat.score { grid-column: auto; }
     .sys { grid-area: stats; flex-direction: row; }
@@ -254,7 +256,7 @@
     .next canvas { height: 104px; }
     .stats { padding-top: 48px; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 0 6px; }
     .stats .stat { flex-direction: row; align-items: baseline; gap: 4px; }
-    .stats .label { flex: none; font-size: 9px; letter-spacing: 0.02em; }
+    .stats .label { flex: none; font-size: 12px; letter-spacing: 0.02em; }
     .stat b { font-size: 13px; line-height: 16px; }
     .stat.score b { font-size: 15px; line-height: 18px; }
   }
@@ -314,15 +316,21 @@
   @media (orientation: landscape) and (max-height: 500px) {
     .card { width: min(560px, 100%); padding: 14px 18px; gap: 8px; }
     .card h1 { font-size: 22px; }
-    .howto { grid-template-columns: auto 1fr auto 1fr; gap: 2px 10px; font-size: 11px; }
+    .howto { grid-template-columns: auto 1fr auto 1fr; gap: 2px 10px; font-size: 12px; }
   }
   /* iPhone SE など幅の狭い縦画面では BEST を省く（ゲームオーバー画面には表示される） */
   @media (orientation: portrait) and (max-width: 360px) {
     /* 「LEVEL」「LINES」の見出しがくっつかないよう、スコア欄の幅を少し広げ（左右の間隔 12→8px）、文字間を詰める */
     .app { column-gap: 8px; }
-    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stats { grid-template-columns: minmax(0, 1fr); }
     .stats .label { letter-spacing: 0.02em; }
     .stat.best { display: none; }
+    /* 見出しが 12px 以上になったので、HOLD と NEXT の絵を少し細くしてスコア欄を広げ、LEVEL と LINES は1行ずつ（見出しと数字を横並び）にする */
+    .hold canvas { width: 52px; }
+    .next canvas { width: 108px; }
+    .stats .stat:not(.score) { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 4px; }
+    .stats .stat:not(.score) .label { flex: none; }
+    .stats .stat:not(.score) b { flex: 0 1 auto; text-align: right; }
   }
   @media (prefers-reduced-motion: reduce) { .key { transition: none; } }
 </style>
@@ -989,7 +997,7 @@
     if (queue) {
       const vertical = nextCv.dataset.vertical === "1";
       for (let i = 0; i < 3 && i < queue.length; i++) {
-        const s = i === 0 ? 13 : 10;
+        const s = (i === 0 ? 13 : 10) * (vertical ? 1 : Math.min(1, nw / 124));   // 狭い NEXT 欄（幅 108px）では絵も縮める
         if (vertical) drawMini(nctx, queue[i], nw / 2, nh * (i * 2 + 1) / 6, s, 1);
         else drawMini(nctx, queue[i], nw * (i * 2 + 1) / 6, nh / 2, s, 1);
       }
@@ -1011,9 +1019,9 @@
     let fs = parseFloat(cs.fontSize);
     // 行の高さは元のまま保ち、縮めても欄の高さが変わらないようにする
     if (lh.endsWith("px")) el.style.lineHeight = lh;
-    fs = Math.max(8, Math.floor(fs * el.clientWidth / el.scrollWidth * 2) / 2);
+    fs = Math.max(12, Math.floor(fs * el.clientWidth / el.scrollWidth * 2) / 2);
     el.style.fontSize = fs + "px";
-    while (fs > 8 && el.scrollWidth > el.clientWidth) {
+    while (fs > 12 && el.scrollWidth > el.clientWidth) {
       fs -= 0.5;
       el.style.fontSize = fs + "px";
     }

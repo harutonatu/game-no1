@@ -150,7 +150,7 @@
     gap: 8px;
     flex-wrap: wrap;
     color: var(--muted);
-    font: 500 11px var(--font-jp);
+    font: 500 12px var(--font-jp);
   }
   .status b { color: var(--ink); font-family: var(--font-mono); font-size: 13px; }
   .legend { white-space: normal; font-size: 12px; }
@@ -207,7 +207,7 @@
     padding: 0;
     color: var(--ink);
     display: flex; align-items: center; justify-content: center;
-    font-size: calc(var(--peg) * 0.42); line-height: 1;
+    font-size: max(12px, calc(var(--peg) * 0.42)); line-height: 1;
     touch-action: manipulation;
   }
   .slot.next { border-color: var(--accent); }
@@ -227,7 +227,7 @@
     box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25), inset 0 2px 0 rgba(255, 255, 255, 0.18);
     touch-action: manipulation;
   }
-  .pal small { font: 700 10px var(--font-jp); letter-spacing: 0; white-space: nowrap; }
+  .pal small { font: 700 12px var(--font-jp); letter-spacing: 0; white-space: nowrap; }
   .pal:active:not(:disabled) { filter: brightness(1.15); transform: translateY(1px); }
   .pal:disabled { opacity: 0.35; }
   .actions { display: flex; gap: 8px; }
@@ -284,7 +284,7 @@
   @media (orientation: portrait) and (max-height: 600px) {
     .input { gap: 6px; }
     .row { height: 28px; }
-    .mini { width: 22px; height: 22px; font-size: 11px; }
+    .mini { width: 22px; height: 22px; font-size: 12px; }
   }
 
   .overlay {
@@ -334,17 +334,17 @@
   /* ボタンの段：1段目は主ボタンを横幅いっぱい、2段目に残りを並べる */
   .card .btns { display: flex; flex-direction: column; gap: 10px; }
   .card .cta { min-height: 50px; }
-  .card .cta small { display: block; font-size: 11px; font-weight: 500; opacity: 0.8; }
+  .card .cta small { display: block; font-size: 12px; font-weight: 500; opacity: 0.8; }
   .answer { display: flex; justify-content: center; gap: 8px; }
   .answer .slot { --peg: 40px; }
-  .answer-label { font: 500 11px var(--font-jp); color: var(--muted); letter-spacing: 0.1em; }
+  .answer-label { font: 500 12px var(--font-jp); color: var(--muted); letter-spacing: 0.1em; }
   .help { text-align: left; display: flex; flex-direction: column; gap: 8px; }
   .help p { color: var(--ink); }
   .help .demo { display: flex; align-items: center; gap: 6px; }
   .help .demo .key { width: 12px; height: 12px; }
   .help .sw { display: flex; flex-wrap: wrap; gap: 6px; }
   .help .sw span { display: inline-flex; align-items: center; gap: 3px; font: 500 12px var(--font-jp); color: var(--ink); white-space: nowrap; }
-  .help .sw .mini { width: 20px; height: 20px; font-size: 10px; }
+  .help .sw .mini { width: 20px; height: 20px; font-size: 12px; }
   @media (orientation: landscape) and (max-height: 500px) {
     .card { padding: 12px 16px; gap: 8px; }
     .card h2 { font-size: 20px; }
