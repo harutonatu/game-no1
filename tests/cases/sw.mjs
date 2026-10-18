@@ -249,4 +249,42 @@ export const tests = [
       await ctx.close();
     },
   },
+  {
+    id: 'S8', tier: 'smoke', title: '版の表示：メニュー最下部に「版・日付」が出て、動いている sw.js の CACHE_VERSION と一致。オフラインでも出る。iPhone SE 幅でも重ならず・はみ出さない。ゲーム画面には出ない',
+    async run({ browser, check, srv, root }) {
+      const info = swInfo(root);
+      srv.reset();
+      const { ctx, page } = await newPage(browser, custom(320, 568, null, 'iPhone SE'), 'S8', { sw: true });
+      await page.goto(BASE);
+      await page.evaluate(() => Promise.race([navigator.serviceWorker.ready, new Promise((r) => setTimeout(r, 8000))]));
+      if (!(await page.evaluate(() => !!navigator.serviceWorker.controller))) { await page.reload(); await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 10000 }); }
+      const shown = () => page.evaluate(() => document.getElementById('ver')?.textContent || null);
+      const swText = await page.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); return (await fetch(r.active.scriptURL, { cache: 'no-store' })).text(); });
+      const live = (swText.match(/CACHE_VERSION\s*=\s*["']([^"']+)["']/) || [])[1];
+      const t1 = await shown();
+      const m = /^(.+)・(\d{4}-\d{2}-\d{2})$/.exec(t1 || '');
+      check('メニューに「版・YYYY-MM-DD」が出て、版は動いている sw.js の CACHE_VERSION と同じ', !!m && m[1] === live && live === info.ver, { shown: t1, live });
+      const keys = await page.evaluate(() => caches.keys());
+      check('その版のアプリ用キャッシュが実際にある', keys.includes(info.prefix + (m && m[1])), keys);
+      const box = await page.evaluate(() => {
+        const r = (s) => { const b = document.querySelector(s).getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right }; };
+        window.scrollTo(0, document.documentElement.scrollHeight);
+        const ver = r('#ver'), foot = r('.foot');
+        return { ver, foot, vw: innerWidth, vh: innerHeight, sw: document.documentElement.scrollWidth, fs: getComputedStyle(document.getElementById('ver')).fontSize };
+      });
+      check('iPhone SE（320×568）：他の要素と重ならず、横にはみ出さず、画面内（下端までスクロールして）', box.ver.top >= box.foot.bottom && box.ver.left >= 0 && box.ver.right <= box.vw && box.ver.bottom <= box.vh && box.sw <= box.vw, box);
+      await srv.ctl('offline=1');
+      await page.goto(BASE).catch(() => {}); await sleep(200);
+      const t2 = await shown();
+      check('オフラインでも同じ表示が出る', t2 === t1 && !!t2, { t1, t2 });
+      const others = {};
+      for (const [k, url] of [['blocks', BLK], ['t2048', T48], ['kiri', KIRI], ['iro', IRO], ['zen', ZEN]]) {
+        await page.goto(url).catch(() => {}); await sleep(100);
+        others[k] = await page.evaluate((t) => ({ el: !!document.getElementById('ver'), text: document.body.innerText.includes(t) }), t1 || '?');
+      }
+      check('ゲーム5画面には版が出ない', Object.values(others).every((o) => !o.el && !o.text), others);
+      await srv.ctl('offline=0');
+      await ctx.close();
+    },
+  },
 ];

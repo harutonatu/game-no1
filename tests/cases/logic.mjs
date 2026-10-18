@@ -220,4 +220,23 @@ export const tests = [
         mono && first.maxCount === 1 && first.bombRate === 0 && L.difficulty(7.9).bombRate === 0 && L.difficulty(8).bombRate > 0 && late.interval >= 0.8 && late.maxCount === 4 && late.bombRate <= 0.2 && late.flight >= 0.85, { first, late });
     },
   },
+  {
+    id: 'L10', tier: 'smoke', node: true, title: '版の表示：version.js と sw.js の CACHE_VERSION が一致、日付は YYYY-MM-DD の実在の日、version.js はメニューだけが読み、事前キャッシュに入っている',
+    run({ check, root }) {
+      const rd = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+      const box = {}; vm.runInNewContext(rd('common/version.js'), { self: box });
+      const v = box.YUBI_VERSION || {};
+      const sw = rd('sw.js');
+      const ver = (sw.match(/CACHE_VERSION\s*=\s*["']([^"']+)["']/) || [])[1];
+      check('version.js の version が sw.js の CACHE_VERSION と同じ（上げるときは両方）', !!v.version && v.version === ver, { v: v.version, sw: ver });
+      const okFmt = typeof v.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.date);
+      const d = okFmt ? new Date(v.date + 'T00:00:00Z') : null;
+      check('日付は YYYY-MM-DD で、実在する日', okFmt && !isNaN(d) && d.toISOString().slice(0, 10) === v.date, v.date);
+      const files = [...(sw.match(/APP_FILES\s*=\s*\[([\s\S]*?)\]/) || [, ''])[1].matchAll(/["']([^"']+)["']/g)].map((m) => m[1]);
+      check('version.js が事前キャッシュ（APP_FILES）に入っている（オフラインでも版が出る）', files.includes('./common/version.js'), files);
+      const pages = ['index.html', 'games/blocks/index.html', 'games/2048/index.html', 'games/kiritori/index.html', 'games/irocode/index.html', 'games/zenmai/index.html'];
+      const readers = pages.filter((f) => /version\.js|YUBI_VERSION/.test(rd(f)));
+      check('version.js を読むのはメニュー（index.html）だけ', readers.join() === 'index.html', readers);
+    },
+  },
 ];

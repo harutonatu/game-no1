@@ -20,7 +20,7 @@
 - **L（Node）**：`games/2048/index.html`・`games/kiritori/index.html` の script を vm で実行し、公開 API `window.Tile2048Logic`・`window.KiritoriLogic` を直接呼ぶ。sw.js・manifest・各 HTML・メニューの GAMES は文字列として検査。
 - **機能テスト**は端末を iPhone 13 に固定（操作の結果は画面サイズに依存しない＝同値分割）。
 - **画面サイズ**は共通関数 `layoutProbe`（画面内・safe-area 内・重なり・44px・横スクロール）を 1 画面 1 回。
-- **版数など毎回変わる値は決め打ちしない**：キャッシュ名・件数は sw.js から読む（`swInfo`）。旧版の SW はサーバーが配信中の sw.js の `CACHE_VERSION` だけ書き換えて作る（`/__ctl?swver=`）。
+- **版数など毎回変わる値は決め打ちしない**：キャッシュ名・件数は sw.js から読む（`swInfo`）。メニューの版表示（common/version.js）は sw.js の CACHE_VERSION と一致することを L10・S8 で確かめる（値そのものは書かない）。旧版の SW はサーバーが配信中の sw.js の `CACHE_VERSION` だけ書き換えて作る（`/__ctl?swver=`）。
 - **外部に出ない**：Google Fonts は空の応答で即答（SW の通信も差し替え）。オフラインはサーバーが接続を切って再現（setOffline は SW の fetch に効かないため）。
 
 ## 3. グループとリスク

@@ -56,7 +56,7 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 |---|---|
 | どんな変更でも（コミット前） | `node tests/run.mjs smoke` |
 | CSS・HTML の配置・文字の大きさ | smoke ＋ `ONLY=V1,V2,V3,V4,V5,V6,V7,V8,E4,E5 node tests/run.mjs full` |
-| sw.js・manifest・ファイルの追加や改名（CACHE_VERSION を上げたとき） | smoke ＋ `ONLY=L5,S1,S2,S3,S4,S5,S6,S7 node tests/run.mjs full` |
+| sw.js・manifest・ファイルの追加や改名（CACHE_VERSION を上げたとき） | smoke ＋ `ONLY=L5,L10,S8,S1,S2,S3,S4,S5,S6,S7 node tests/run.mjs full` |
 | 保存データ（localStorage）・2048 のロジック | smoke ＋ `ONLY=D1,D2,D3,D4,D5,D6,D7,D8,D9,D10 node tests/run.mjs full` |
 | キリトリ道場（games/kiritori/） | smoke ＋ `ONLY=L7,L8,L9,D3,D10,E4,E6,V1,V2,V3,V4,V5,P8,P9,A4,A6,T5,T6 node tests/run.mjs full` |
 | 効果音（common/sfx.js）・♪ボタン | smoke ＋ `ONLY=A1,A2,A3,A4,A5,A6,T1,T4,T6,P5 node tests/run.mjs full` |
@@ -134,6 +134,13 @@ A5（メニューの pointerdown の処理 ≤16ms）は、負荷の高い並列
 いま登録しているものはない。
 
 解消したもの：K1（iPhone SE を Safari で横持ち＝高さ約 270〜319px にすると、ブロックの DROP が LEVEL/LINES に、HOLD が NEXT に重なる）は feature/kiritori で直し（高さ 319px 以下の横持ちだけ HOLD 欄・スコア欄・NEXT 欄を低くする）、登録を外した。V2（smoke、568×270）・V3・V4（285・311・319/320 の境界）・V8（568×270・568×300 の桁数）で確かめる。K2（遅い回線・無応答で common/sfx.js をネットワークで待ち続け、表示が遅れる）は hotfix/k2（CACHE_VERSION v11）で直し、登録を外した。S4・S6・S7 で確かめる。
+
+## 版を上げるとき（メニュー最下部の「v16・2026-10-18」）
+
+版の表示は `common/version.js`（`version` と `date`）で、メニュー（index.html）だけが読む。Service Worker の更新の合図は `sw.js` の `CACHE_VERSION`。
+**版を上げるときは、`common/version.js` の `version` と `date`、`sw.js` の `CACHE_VERSION` の3つを一緒に更新する**（日付は公開する日、`YYYY-MM-DD`）。
+sw.js にも版を直接書く二重持ちにしているのは、import 先だけが変わる方式だと iOS Safari で更新の検知が確実か分からないため（sw.js 本体のバイトを必ず変える）。食い違いは L10 が不合格にする（変異 MV1〜MV3 で検出を確認）。
+確認：smoke ＋ `ONLY=L10,S8 node tests/run.mjs full`。
 
 ## 日付・時計
 

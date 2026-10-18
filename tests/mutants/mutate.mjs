@@ -47,6 +47,10 @@ const M = [
   ['MZ2 ゼンマイの保存データで範囲外の★（9など）を受け入れる', '保存データ互換', 'games/zenmai/logic.js', 'if (!(Number.isInteger(s) && s >= 0 && s <= 3)) continue;', ''],
   ['MZ3 ゼンマイの結果カードから「メニューへ」が消える', '閉じ込め', 'games/zenmai/index.html', '<button class="cta" type="button" data-cmd="menu">メニューへ</button>', ''],
   ['MZ4 ゼンマイのネジで指を持ち替えても数え直さない（位置が飛んで余分に巻く）', 'タッチ操作', 'games/zenmai/input.js', 'core.reanchor();\n        feed(pos.x, pos.y);', 'feed(pos.x, pos.y);'],
+  // ---- 版の表示（メニュー）。版を上げる手順が崩れたときの検出 ----
+  ['MV1 版の数字だけ上げ忘れる（version.js が古いまま。sw.js は v16）', '更新', 'common/version.js', 'version: "v16"', 'version: "v15"'],
+  ['MV2 version.js を事前キャッシュから外す（オフラインで版が出ない）', 'オフライン', 'sw.js', '  "./common/version.js",\n', ''],
+  ['MV3 更新日が YYYY-MM-DD でない', '表示', 'common/version.js', 'date: "2026-10-18"', 'date: "2026/10/18"'],
   // ---- 日付・時刻（いろコード）。日付の処理を足したら、ここにも変異を足す（tests/README.md「日付・時計」）----
   ['MD1 いろコード：todayStr を UTC の日付にする（toISOString 由来。日本の0〜9時台に前日になる）', '日付', 'games/irocode/logic.js', 'return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());', 'return d.toISOString().slice(0, 10);'],
   ['MD2 いろコード：todayStr の月が 1 ずれる（getMonth() + 1 を外す）', '日付', 'games/irocode/logic.js', 'pad2(d.getMonth() + 1)', 'pad2(d.getMonth())'],
