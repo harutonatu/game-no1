@@ -1,6 +1,8 @@
 // オフラインでも遊べるようにするための Service Worker（ゲーム集「ゆびあそび」全体で1つ）
-// ファイルを更新したら CACHE_VERSION を上げる（古いキャッシュを削除させるため）
-const CACHE_VERSION = "v15";
+// ファイルを更新したら CACHE_VERSION を上げる（古いキャッシュを削除させるため）。
+// メニューに出す版は common/version.js と二重に持つ（sw.js 本体のバイトを変えて、iOS Safari でも更新を確実に検知させるため）。
+// 上げるときは version.js の version・date も一緒に変える（テスト L10 が一致を強制する）
+const CACHE_VERSION = "v16";
 const APP_PREFIX = "yubiasobi-app-";
 const APP_CACHE = `${APP_PREFIX}${CACHE_VERSION}`;
 const FONT_CACHE = "yubiasobi-fonts";
@@ -29,6 +31,7 @@ const APP_FILES = [
   "./games/zenmai/render.js",
   "./games/zenmai/input.js",
   "./common/sfx.js",
+  "./common/version.js",
   "./manifest.webmanifest",
   "./icons/apple-touch-icon.png",
   "./icons/icon-192.png",

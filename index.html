@@ -118,6 +118,8 @@
 
   .foot { margin: 24px 0 0; text-align: center; color: var(--muted); font-size: 11px; font-family: var(--font-text); line-height: 1.6; }
 
+  .ver { margin: 6px 0 0; text-align: center; color: var(--muted); font-size: 10px; letter-spacing: 0.08em; font-family: var(--font-mono); line-height: 1.4; opacity: 0.8; }
+
   /* iPhone SE など幅の狭い画面では絵を少し小さくする */
   @media (max-width: 360px) {
     .art { width: 68px; height: 68px; }
@@ -145,9 +147,18 @@
   <ul class="games" id="games" aria-label="ゲーム一覧"></ul>
 
   <p class="foot">ホーム画面に追加すると、オフラインでも遊べます。</p>
+  <p class="ver" id="ver" aria-label="バージョン"></p>
 </main>
 
 <script src="common/sfx.js"></script>
+<script src="common/version.js"></script>
+<script>
+  // 版と更新日（common/version.js が唯一の元。メニューだけに出す）
+  (function () {
+    var v = self.YUBI_VERSION, el = document.getElementById("ver");
+    if (v && el) el.textContent = v.version + "・" + v.date;
+  })();
+</script>
 <script>
 (() => {
   "use strict";
