@@ -7,6 +7,7 @@
  *   const sfx = YubiSfx.create("kiritori"); // キリトリ道場
  *   const sfx = YubiSfx.create("irocode");  // いろコード（place/remove/submit/hint(hit)/win/lose。start/best/toggle は共通）
  *   const sfx = YubiSfx.create("zenmai");   // ゼンマイさんぽ
+ *   const sfx = YubiSfx.create("pikatto");  // ピカッと早押し
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -303,8 +304,28 @@
       clear: () => { const t = N(); [C5, E5, G5, C6].forEach((f, i) => mallet(f, t + i * 0.07, { vol: 0.1, decay: i === 3 ? 0.4 : 0.16 })); bell(G6, t + 0.3, { vol: 0.04, decay: 0.4 }); }
     };
 
+    // ピカッと早押し：合図は短く明るく、フライングは責めない、勝ちは2〜3音の上昇
+    const PIKATTO = {
+      // 合図：高めのマリンバ＋小さなベル。遅れが気にならないよう decay は短め（0.08〜0.12秒）
+      signal: () => { const t = N(); mallet(C6, t, { vol: 0.14, decay: 0.1, bright: 0.7 }); bell(E6 * 2, t + 0.005, { vol: 0.04, decay: 0.12 }); },
+      // 合図前のカウント：極小の木の音。心を落ち着かせる
+      ready: () => wood(520, N(), { vol: 0.03, dur: 0.025, jit: 30 }),
+      // フライング：責めない「こつん」。低音の木＋ごく小さい noise
+      foul: () => { const t = N(); wood(180, t, { vol: 0.1, dur: 0.08, jit: 20 }); noise(t, 0.05, { type: "lowpass", freq: 500, vol: 0.04, a: 0.004 }); },
+      // 自分が勝ったラウンド：C5 → G5 → C6 の明るい上昇
+      win: () => { const t = N(); mallet(C5, t, { vol: 0.11, decay: 0.14 }); mallet(G5, t + 0.06, { vol: 0.12, decay: 0.14 }); mallet(C6, t + 0.12, { vol: 0.13, decay: 0.22, bright: 0.5 }); },
+      // 引き分け：やさしい2音（中音域、同じ高さを少しずらして）
+      tie: () => { const t = N(); mallet(E5, t, { vol: 0.09, decay: 0.12, bright: 0.3 }); mallet(E5, t + 0.09, { vol: 0.09, decay: 0.14, bright: 0.3 }); },
+      // 最終勝利：4音の上昇＋ベルで締める（タイルの win より少し短め）
+      finish: () => {
+        const t = N();
+        [C5, E5, G5, C6].forEach((f, i) => mallet(f, t + i * 0.055, { vol: 0.11, decay: i === 3 ? 0.35 : 0.16 }));
+        bell(G6, t + 0.24, { vol: 0.05, decay: 0.45 });
+      }
+    };
+
     const table = Object.assign({}, COMMON,
-      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "zenmai" ? ZENMAI : {});
+      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : {});
 
     return {
       get on() { return on; },
