@@ -9,7 +9,7 @@
 2. **版**：v18・2026-10-18（common/version.js・sw.js の CACHE_VERSION を一致させた。L10 合格）。
 3. **再テスト（release/v18、Linux の Chromium、`WORKERS=2`）**：smoke 74/74 合格（56.2 秒）、full 146/146 合格（213.7 秒）。T-02（A5・P9）は今回出なかった。WebKit smoke（`BROWSER=webkit WORKERS=1`）は 72/72 合格（確認 515/515、181.8 秒、対象外 2 項目＝P7・T1。CDP のタッチ操作が WebKit で使えないため。従来どおり）。変異テストは `ONLY=<PK または HW・HL の全項目> M=<MP1〜MP9 または MH1〜MH6> node tests/mutants/mutate.mjs both` で絞って流し、MP は smoke 9/9・full 9/9、MH は smoke 4/6・full 6/6 を検出（smoke の見逃しは MH5・MH6 で、どちらも full の HW6・HW8 で検出。画面の動きで見つける設計）。MP と MH は別ポート（9900・9950）で同時に流して約6分。PK-01〜PK-30 は「済」にした。
 4. **公開**：ユーザーの承認を得てから `git push origin release/v18:master`（fast-forward。origin/master 42c80d3 が release/v18 の祖先）。公開後、ユーザーが実機で確認（tests/README.md の実機確認リスト。ピカッと早押しは iPad の4本・5本指ジェスチャーの確認 PK-27 も。メニュー最下部が `v18・2026-10-18` になっていること）。
-5. **ユーザーの判断待ち**：X-09（拡大の抑止を外すか）、T-01（Windows の WebKit A4 の扱い）、T-03（.gitattributes の追加）、2048 の方向ボタン（X-05）。
+5. **ユーザーの判断待ち**：なくなった（2026-10-18 に X-09・T-01・T-03・X-05 をユーザーが「おすすめどおり」で決定。ブランチ fix/decisions、版 v19。X-09＝拡大の抑止は残して12px未満の文字を12px以上に、T-01＝A4 を AudioContext が無い環境では対象外に、T-03＝.gitattributes を追加、X-05＝2048 の方向ボタンは見送り）。公開（master への push）はユーザーの承認待ち。
 6. **未着手の低い指摘**：PK-31〜PK-38、HS-01〜HS-11（HS-11 は中）。今回の公開の範囲外。
 
 ## ピカッと早押し（games/pikatto/）
@@ -92,11 +92,11 @@
 | X-02 | 低 | AudioContext の生成を try で囲んでおらず、失敗するとゲームの処理が止まる | common/sfx.js:44 | 済 | fix/yokotenkai c43ffb2 |
 | X-03 | 低 | メニューが効果音の部品を作り直すたびに、古い AudioContext を閉じていない | index.html:477 | 済 | fix/yokotenkai c43ffb2 |
 | X-04 | 中 | キリトリ道場はキーボード・スイッチ操作で遊べない | games/kiritori/ | 済 | fix/yokotenkai c43ffb2・eade462 |
-| X-05 | 低 | ブロックパズルの画面ボタンは pointerdown のみで click が無い。2048 は方向ボタンが無い | games/blocks/:735-748, games/2048/ | 一部済 | ブロックは fix/yokotenkai c43ffb2・eade462。2048 の方向ボタンは機能追加なので未着手 |
+| X-05 | 低 | ブロックパズルの画面ボタンは pointerdown のみで click が無い。2048 は方向ボタンが無い | games/blocks/:735-748, games/2048/ | 済（2048 は見送り） | ブロックは fix/yokotenkai c43ffb2・eade462。2048 の方向ボタンは見送り（ユーザー決定 2026-10-18。要望が出たら再検討。付けるなら設定で表示切り替え） |
 | X-06 | 中 | 結果カード（dialog）に名前（aria-labelledby）が無い、閉じた後にフォーカスが戻らない、背景に inert が無い | 全ゲーム共通 | 済 | fix/yokotenkai c43ffb2・eade462 |
 | X-07 | 中 | 灰色の文字（--muted #8a91a8）が panel の上でコントラスト 4.42:1（4.5 未満）→ #9aa1b8 に統一 | index.html と blocks・2048・kiritori・irocode | 済 | fix/yokotenkai c43ffb2 |
 | X-08 | 低 | メニュー最下部の版表示が 3.84:1、ゼンマイの --danger が 4.22:1 | index.html:121, games/zenmai/ | 済 | fix/yokotenkai c43ffb2 |
-| X-09 | 低 | 拡大できない（user-scalable=no）、補助の文字が 9〜10px | 全ゲーム共通 | 未着手 | ダブルタップ拡大の抑止（CLAUDE.md）とぶつかるので、ユーザーの判断待ち |
+| X-09 | 低 | 拡大できない（user-scalable=no）、補助の文字が 9〜10px | 全ゲーム共通 | 済 | fix/decisions dc99194・9a6b19d（ブロック横の余白）・テスト V11 66ee652。拡大の抑止は残し、9〜11px の文字を12px以上に（ユーザー決定 2026-10-18） |
 | X-10 | 低 | ゼンマイの巻き数が aria-live で読み上げが続く | games/zenmai/index.html:480 | 済 | fix/yokotenkai c43ffb2 |
 | X-11 | 低 | ブロックパズルは動きを減らす設定で canvas の演出を止めていない（要確認） | games/blocks/ | 済（対象なし） | ブロックの canvas に止めるべき演出が無かった |
 | X-12 | 低 | 2048：まれに1フレームだけ点数が前より少なく表示される | games/2048/index.html:671-674 | 済 | fix/yokotenkai c43ffb2 |
@@ -106,9 +106,9 @@
 
 | 番号 | 優先度 | 内容 | 状態 | 対応 |
 |---|---|---|---|---|
-| T-01 | 中 | Windows 版の Playwright WebKit には AudioContext が無く、WebKit smoke の A4（効果音の共有）が毎回落ちる。公開の条件をどう扱うか決める | 未着手 | |
+| T-01 | 中 | Windows 版の Playwright WebKit には AudioContext が無く、WebKit smoke の A4（効果音の共有）が毎回落ちる。公開の条件をどう扱うか決める | 済 | fix/decisions 0bbf733。A4 は AudioContext が無い環境では対象外と表示（実際に調べる）。CLAUDE.md に「WebKit の合否はクラウド（Linux）を正」と追記 |
 | T-02 | 低 | A5（メニューの処理 16ms 以内）と P9（キリトリ）が並列のときだけ落ちる。単独では合格 | 未着手 | |
-| T-03 | 低 | 改行コード：作業ツリーが CRLF になり全行変更に見える。.gitattributes（`* text=auto eol=lf`）の追加を検討 | 未着手 | |
+| T-03 | 低 | 改行コード：作業ツリーが CRLF になり全行変更に見える。.gitattributes（`* text=auto eol=lf`）の追加を検討 | 済 | fix/decisions 7aeb1ab。.gitattributes を追加（改行だけの変更は出なかった） |
 | T-04 | 中 | テストの並列化：別々のテストを同時に流すときは `PORT` をずらす（例 8800・8900・9000。並列 i 番目は PORT+i を使うので、WORKERS ぶん離す）。6コアでは Chromium 2本＋WebKit 1本程度まで | 一部済 | 2026-10-18 のワークフローで 8800・8900 に分けて実施 |
 
 ## 進め方の改善（ワークフロー・サブエージェント）
