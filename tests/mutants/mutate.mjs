@@ -51,6 +51,13 @@ const M = [
   ['MP1 ピカッと：waiting 中の押下がフライングにならない（armed と同じ勝ち扱い）', 'ルール', 'games/pikatto/logic.js', 'if (state.phase === "armed") {', 'if (true) {'],
   ['MP2 ピカッと：2点先取で試合が終わる（3点先取の条件を下げる）', 'ルール', 'games/pikatto/logic.js', 'if (max >= WIN_SCORE) {', 'if (max >= 2) {'],
   ['MP3 ピカッと：validateBestSolo が範囲外（0 や 49 や 5001）の値を通してしまう（0 に戻さない）', '保存データ互換', 'games/pikatto/logic.js', 'if (raw < BEST_MIN || raw > BEST_MAX) return 0;', ''],
+  // ---- ハシわたり（games/hashi/）。判定・点数・いのち・保存・中断・タイマーの仕組みを変えたときだけ流す ----
+  ['MH1 ハシわたり：判定の端を開区間にする（茎の先が葉の端ちょうどで落ちる）', 'ルール', 'games/hashi/logic.js', 'if (tipX >= left && tipX <= right) {', 'if (tipX > left && tipX < right) {'],
+  ['MH2 ハシわたり：recordBest で同点もベスト更新にする', '保存データ', 'games/hashi/logic.js', 'const improved = s > prev;', 'const improved = s >= prev;'],
+  ['MH3 ハシわたり：ぴったりボーナスの上限 16 を外す', '計算', 'games/hashi/logic.js', 'return Math.min(Math.pow(2, Math.floor(s) - 1), BONUS_CAP);', 'return Math.pow(2, Math.floor(s) - 1);'],
+  ['MH4 ハシわたり：落ちてもいのちを減らさない（終わらない）', '遊べること', 'games/hashi/logic.js', 'const lives = Math.max(state.lives - 1, 0);', 'const lives = state.lives;'],
+  ['MH5 ハシわたり：隠れたとき（visibilitychange で hidden）押下を取り消さない', '中断', 'games/hashi/main.js', 'if (phase === "growing") abortHold();', ''],
+  ['MH6 ハシわたり：「もう一度」で clearLater() を呼ばない（古い回のタイマーが残る）', 'タイマー', 'games/hashi/main.js', 'clearLater();   // 前の回のタイマーを片付ける（もう一度・起動）', ''],
   // ---- 版の表示（メニュー）。版を上げる手順が崩れたときの検出 ----
   ['MV1 版の数字だけ上げ忘れる（version.js が古いまま。sw.js は v16）', '更新', 'common/version.js', 'version: "v16"', 'version: "v15"'],
   ['MV2 version.js を事前キャッシュから外す（オフラインで版が出ない）', 'オフライン', 'sw.js', '  "./common/version.js",\n', ''],

@@ -173,7 +173,8 @@
     { name: "キリトリ道場", desc: "飛んでくる的を指でなぞって切る。爆弾に注意", url: "games/kiritori/", best: "kiritori.best", art: "kiritori" },
     { name: "いろコード", desc: "4つの色の並びを推理する", url: "games/irocode/", stats: "irocode.stats", art: "code" },
     { name: "ゼンマイさんぽ", desc: "ネジを巻いて、崖の手前でぴたりと止める", url: "games/zenmai/", bestText: () => zenmaiBest(), art: "zenmai" },
-    { name: "ピカッと早押し", desc: "合図でタップ、1番はやいのはだれ？", url: "games/pikatto/", bestText: () => pikattoBest(), art: "pikatto" }
+    { name: "ピカッと早押し", desc: "合図でタップ、1番はやいのはだれ？", url: "games/pikatto/", bestText: () => pikattoBest(), art: "pikatto" },
+    { name: "ハシわたり", desc: "ながおしで くきを のばして、つぎの葉へ", url: "games/hashi/", best: "hashi.best", art: "hashi" }
   ];
 
   // ===== 小さな絵（Canvas で描く。画像ファイルは使わない） =====
@@ -360,6 +361,60 @@
       // 中央のコア（真っ白）
       ctx.fillStyle = "#ffffff";
       ctx.beginPath(); ctx.arc(cx - r * 0.2, cy - r * 0.2, r * 0.45, 0, Math.PI * 2); ctx.fill();
+    },
+    // 夜の池に、はすの葉2枚と倒れかけの草の茎、左の葉に空色のカエル「ケロ」（ゲームと同じ配色）
+    hashi(ctx, w, h) {
+      const u = Math.min(w, h);
+      // 池（濃い青の角丸）
+      ctx.fillStyle = "#0f2a3d";
+      roundRect(ctx, u * 0.04, u * 0.04, w - u * 0.08, h - u * 0.08, u * 0.14);
+      ctx.fill();
+      // 水面のさざなみ
+      ctx.strokeStyle = "rgba(207,233,223,0.18)";
+      ctx.lineWidth = Math.max(1, u * 0.02);
+      ctx.lineCap = "round";
+      [[0.22, 0.24, 0.16], [0.62, 0.2, 0.14], [0.5, 0.86, 0.12]].forEach(([x, y, l]) => {
+        ctx.beginPath(); ctx.moveTo(w * x, h * y); ctx.lineTo(w * x + u * l, h * y); ctx.stroke();
+      });
+      // はすの葉（緑の楕円＋明るいふち、切れ込みつき）
+      const leaf = (cx, cy, rx, ry) => {
+        ctx.fillStyle = "#009e73";
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rx, ry, 0, -Math.PI / 2 + 0.35, Math.PI * 1.5 - 0.35);
+        ctx.lineTo(cx, cy);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "#cfe9df";
+        ctx.lineWidth = Math.max(1.5, u * 0.025);
+        ctx.stroke();
+      };
+      const ly = h * 0.7;
+      leaf(w * 0.22, ly, u * 0.17, u * 0.07);
+      leaf(w * 0.8, ly, u * 0.15, u * 0.065);
+      // 倒れかけの草の茎（左の葉の右端から、右上へ斜めに）
+      const bx = w * 0.22 + u * 0.12, by = ly - u * 0.03;
+      ctx.strokeStyle = "#e69f00";
+      ctx.lineWidth = Math.max(2, u * 0.045);
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + u * 0.3, by - u * 0.32); ctx.stroke();
+      // 茎の先の小さな葉
+      ctx.fillStyle = "#e69f00";
+      ctx.beginPath(); ctx.ellipse(bx + u * 0.32, by - u * 0.34, u * 0.04, u * 0.02, -0.8, 0, Math.PI * 2); ctx.fill();
+      // ケロ（空色の小さなカエル）
+      const fx = w * 0.17, fy = ly - u * 0.08, fr = u * 0.08;
+      ctx.fillStyle = "#56b4e9";
+      ctx.beginPath(); ctx.ellipse(fx, fy, fr * 1.15, fr * 0.85, 0, 0, Math.PI * 2); ctx.fill();
+      // 目（上に2つ）
+      [-0.5, 0.5].forEach((d) => {
+        ctx.fillStyle = "#56b4e9";
+        ctx.beginPath(); ctx.arc(fx + fr * d, fy - fr * 0.75, fr * 0.38, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath(); ctx.arc(fx + fr * d, fy - fr * 0.78, fr * 0.24, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#0d111d";
+        ctx.beginPath(); ctx.arc(fx + fr * d + fr * 0.06, fy - fr * 0.78, fr * 0.12, 0, Math.PI * 2); ctx.fill();
+      });
+      // ほっぺ
+      ctx.fillStyle = "rgba(240,164,58,0.55)";
+      ctx.beginPath(); ctx.arc(fx + fr * 0.75, fy + fr * 0.1, fr * 0.16, 0, Math.PI * 2); ctx.fill();
     },
     // 絵が用意されていないゲーム用：頭文字のタイル
     fallback(ctx, w, h, game) {

@@ -8,6 +8,7 @@
  *   const sfx = YubiSfx.create("irocode");  // いろコード（place/remove/submit/hint(hit)/win/lose。start/best/toggle は共通）
  *   const sfx = YubiSfx.create("zenmai");   // ゼンマイさんぽ
  *   const sfx = YubiSfx.create("pikatto");  // ピカッと早押し
+ *   const sfx = YubiSfx.create("hashi");    // ハシわたり（grow(ratio)/tip/land/perfect(n)/walk/splash/peek）
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -23,7 +24,7 @@
   // 同じ処理の中で続けて鳴らすとき、鳴らす時刻をこの秒数ずつずらす（currentTime は1つの処理の中では進まないため、間引かずに順に鳴らす）
   const STAGGER = { slice: 0.03 };
   const STAGGER_MAX = 0.24;
-  const GAP = { move: 0.03, rotate: 0.03, hold: 0.05, merge: 0.03, tap: 0.04, undo: 0.06, launch: 0.07, miss: 0.08, tick: 0.045, unwind: 0.045, limit: 0.25, step: 0.08 };
+  const GAP = { move: 0.03, rotate: 0.03, hold: 0.05, merge: 0.03, tap: 0.04, undo: 0.06, launch: 0.07, miss: 0.08, tick: 0.045, unwind: 0.045, limit: 0.25, step: 0.08, grow: 0.05, walk: 0.08 };
 
   function create(game, opts) {
     opts = opts || {};
@@ -324,8 +325,40 @@
       }
     };
 
+    // ハシわたり：夜の池。伸びる音は極小、ぴったりは連続で少しずつ高く、落ちる音はやさしく
+    const HASHI = {
+      // 茎が伸びる間の極小の「ぷつ」。ratio（0..1）が大きいほど少し高く（vol 0.02〜0.04）
+      grow: (ratio) => {
+        const r = Math.max(0, Math.min(1, Number(ratio) || 0));
+        wood((700 + 900 * r) * jit(40), N(), { vol: 0.02 + 0.02 * r, dur: 0.018, jit: 30 });
+      },
+      // 茎が倒れて「ことん」：低めの木の音とこもった音
+      tip: () => { const t = N(); wood(240, t, { vol: 0.11, dur: 0.07, jit: 20 }); noise(t, 0.05, { type: "lowpass", freq: 650, vol: 0.05, a: 0.003 }); },
+      // 葉に乗った「ぽん」：少し持ち上がる柔らかい音
+      land: () => { const t = N(); partial(G5 / 2, t, 0.12, { vol: 0.08, from: 300, fromT: 0.03 }); mallet(G5, t + 0.01, { vol: 0.1, decay: 0.16, bright: 0.4 }); },
+      // ぴったり：n=連続回数（1〜5 で頭打ち）。五音音階で少しずつ高くなり、ベルで締める
+      perfect: (n) => {
+        const k = Math.max(1, Math.min(5, Math.floor(Number(n)) || 1));
+        const f = C5 * Math.pow(2, PENTA[k - 1] / 12), t = N();
+        mallet(f, t, { vol: 0.11, decay: 0.16, bright: 0.5, jit: 4 });
+        mallet(f * 1.5, t + 0.05, { vol: 0.11 + k * 0.006, decay: 0.24, bright: 0.5, jit: 4 });
+        bell(f * 2, t + 0.09, { vol: 0.035 + k * 0.004, decay: 0.35 + k * 0.03 });
+      },
+      // 歩く1歩「ぺた」：小さく湿った音
+      walk: () => { const t = N(); wood(360 * jit(60), t, { vol: 0.04, dur: 0.03, jit: 40 }); noise(t, 0.025, { type: "lowpass", freq: 900, vol: 0.02, a: 0.002 }); },
+      // 水に落ちる「ぽちゃん」：下がる水滴の音と、やさしい水の音（責めない）
+      splash: () => {
+        const t = N();
+        partial(420, t, 0.16, { vol: 0.07, from: 900, fromT: 0.01, to: 380, toT: 0.14 });
+        noise(t + 0.02, 0.3, { type: "lowpass", freq: 1400, to: 300, vol: 0.06, a: 0.01 });
+        partial(700, t + 0.12, 0.1, { vol: 0.03, from: 500, fromT: 0.05 });
+      },
+      // 水から顔を出す「ぴょこ」：軽く上がる2音
+      peek: () => { const t = N(); partial(A5, t, 0.08, { vol: 0.06, from: 520, fromT: 0.04 }); mallet(C6, t + 0.06, { vol: 0.07, decay: 0.12, bright: 0.5 }); }
+    };
+
     const table = Object.assign({}, COMMON,
-      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : {});
+      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : game === "hashi" ? HASHI : {});
 
     return {
       get on() { return on; },

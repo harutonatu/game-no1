@@ -64,6 +64,7 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | いろコード（games/irocode/）の変更 | smoke ＋ `ONLY=I10,I11,I12,I13,I14,I15,I16,I17,I18 node tests/run.mjs full`（ロジックだけなら `ONLY=I1,I2,I3 node tests/run.mjs smoke`、0 秒） |
 | ゼンマイさんぽ（games/zenmai/）の変更 | smoke ＋ `ONLY=ZL1,ZL2,ZL3,ZL4,ZL5,ZL6,ZL7,ZU6,ZU7,ZU8,ZU9,ZU10,ZU11,ZU12,ZU13,ZU14 node tests/run.mjs full`（ステージの数値は ZL、画面は ZU） |
 | ピカッと早押し（games/pikatto/）の変更 | smoke ＋ `ONLY=PK5,PK6,PK7,PK8,PK9 node tests/run.mjs full` |
+| ハシわたり（games/hashi/）の変更 | smoke ＋ `ONLY=HW5,HW6,HW7,HW8,HW9,HW10,HW11,HW12,HW13 node tests/run.mjs full`（ロジックだけなら `ONLY=HL1,HL2,HL3,HL4,HL5,HL6,HL7,HL8 node tests/run.mjs smoke`、0 秒） |
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
 | テストを変えたとき・中身の仕組み（点数計算・保存・日付・ルール）を変えたとき | `node tests/mutants/mutate.mjs both`（そのゲームの分だけ。テストがわざと入れた不具合を見つけられるか） |
 
@@ -87,6 +88,8 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | ZL | ゼンマイさんぽ 計算ロジック（Node） | `games/zenmai/logic.js`・`stages.js` を直接呼ぶ：15 ステージの形と★3 が取れること、simulate・starsFor・bestTurns・validateProgress の境界値、ZL7 はネジの入力 input.js（持ち替え・cancel・速い回転・中心付近）（zenmai-logic.mjs） |
 | Z | ゼンマイさんぽ 画面 | ZU0 静的（DOM・読み込み順・sw.js・音名）／ZU1 データが消えない・壊れた保存／ZU2 メニューへ戻れる・遊び方／ZU3・ZU11 ボタンが画面内・44px／ZU4 オフライン／ZU5 1 ステージクリア／ZU6 境界値／ZU7 ＋/－/歩かせる だけで遊べる／ZU8・ZU13 円ドラッグ（CDP）／ZU9 効果音／ZU10 ダブルタップ抑止（CDP）／ZU12 最後のステージ・全 15 ステージ・動きを減らす設定／ZU14 警告の基準（ネジと舞台・限界の1回転手前）・止まった後のゲージ・「つぎ」の目印・初回の遊び方（zenmai-ui.mjs） |
 | PK | ピカッと早押し | logic.js（Node：createGame・startRound・applySignal・applyPress・validateBestSolo の境界）、画面（設定→.play・forceSignal→勝ち・waiting でフライング）、保存（bestSolo）、戻れる、画面内・44px、効果音、ダブルタップ抑止、オフライン、境界値（PK1〜PK9） |
+| HL | ハシわたり 計算ロジック（Node） | `games/hashi/logic.js`・`course.js` を直接呼ぶ：押した時間⇔茎の長さの境界と逆関数、resolve の端ちょうど・ぴったり・missBy・おしい、ボーナス 1→2→4→8→16→16、いのちと over、イミュータブル、コースの公平さ、validateBest・recordBest・validateFlag、読み込み順の誤り（HL1〜HL8、hashi-logic.mjs） |
+| HW | ハシわたり 画面 | DOM と `window.HashiGame`（getState・holdFor・lenToCross・setRandom・skip）で：渡る・表示の一致、落ちる・いのち・もう一度、ベストの保存、戻れる、画面内・横向きの重なり、中断（hidden・遊び方）、キーボード、タイマーの片付け、時計、効果音、ダブルタップ抑止、設定、オフライン（HW1〜HW13、hashi-ui.mjs） |
 | X1 | 共通 | 全ページでコンソールエラー 0（最後に 1 回） |
 
 ## 構成
@@ -269,6 +272,12 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | MZ2 ゼンマイの保存データで範囲外の★（9など）を受け入れる | 検出（ZL6, ZU1） | 検出（ZL6, ZU1） |
 | MZ3 ゼンマイの結果カードから「メニューへ」が消える | 検出（ZU1, ZU2） | 検出（ZU1, ZU2, ZU6, ZU12） |
 | MZ4 ゼンマイのネジで指を持ち替えても数え直さない（位置が飛んで余分に巻く） | （未計測） | 検出（ZL7） |
+| MH1 ハシわたり：判定の端を開区間にする（端ちょうどで落ちる） | 検出（HL2, HL3。HL だけを直接流して確認） | （未計測） |
+| MH2 ハシわたり：recordBest で同点もベスト更新にする | 検出（HL7。HL だけを直接流して確認） | （未計測） |
+| MH3 ハシわたり：ぴったりボーナスの上限 16 を外す | 検出（HL3。HL だけを直接流して確認） | （未計測） |
+| MH4 ハシわたり：落ちてもいのちを減らさない | 検出（HL4。HL だけを直接流して確認。HW2 は未計測） | （未計測） |
+| MH5 ハシわたり：隠れたとき押下を取り消さない | （未計測。smoke では見逃す設計） | （未計測。HW6 で検出する設計） |
+| MH6 ハシわたり：「もう一度」で clearLater() を呼ばない | （未計測。smoke では見逃す設計） | （未計測。HW8 で検出する設計） |
 
 ※ M19 は本来 full の P9 で見つけるもの。smoke で P8 が落ちたのは、同時に 2 つの的を切った・落としたときに P8 が 1 つずつ前提で判定していたため（負荷の高いときだけ起きる）。P8 を「切った数・落とした数に合わせて判定」と「軌跡の 0.2 秒はページの時間を止めて進める」に直した。直した後に M19 を smoke で流し直し、見逃し（設計どおり full のみ）を確認した。
 
