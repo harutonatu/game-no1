@@ -1,0 +1,889 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ゆびあそび">
+<meta name="theme-color" content="#1b1f2e">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<title>ピカッと早押し</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<!--
+  ピカッと早押し：2〜4人（またはお試し1人）で、合図でタップする早押しゲーム。
+
+  画面の流れ：
+    #setup（人数選び）→ #play（4隅のボタンで早押し）→ #overlay（結果カード）
+
+  ラウンドの状態（logic.js の phase と対応）：
+    'waiting' … 合図前。入力されたら即フライング扱い（applyPress → foul）
+    'armed'   … 合図発火後。正しい色を押せば勝ち
+    'resolved'… 結果が確定。次ラウンド or 終了カード
+
+  待ち時間（signalDelay、1.0〜4.0 秒）は logic.js がランダムで返す。bootstrap は
+  setTimeout でそれだけ待ってから applySignal を呼ぶ。待っている最中にユーザーが
+  押下した場合は、まず input のコールバックが届くので、そこでタイマーを止めて
+  applyPress（foul）を処理する（setTimeout と input の順序はブラウザが保証）。
+
+  テスト用 API： window.PikattoGame = { getState, startRound, forceSignal, pressFor, reset }
+-->
+<style>
+  :root {
+    --bg: #1b1f2e;
+    --panel: #252c41;
+    --well: #0d111d;
+    --line: #2f3750;
+    --ink: #ece6d6;
+    --muted: #9aa1b8;
+    --accent: #f0a43a;
+    --accent-ink: #231705;
+    --p1-color: #e0524d;  /* 赤 */
+    --p2-color: #4a86e8;  /* 青 */
+    --p3-color: #f2cc4b;  /* 黄 */
+    --p4-color: #4cae6a;  /* 緑 */
+    --font-display: "Chakra Petch", "Hiragino Sans", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --font-text: "Hiragino Sans", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  html { overscroll-behavior: none; touch-action: none; }
+  body {
+    margin: 0;
+    font-size: 14px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-display);
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+  .app {
+    box-sizing: border-box;
+    height: 100%;
+    padding-top: max(10px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 10px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  .head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .back {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    font: 700 14px var(--font-text);
+    text-decoration: none;
+    white-space: nowrap;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+  }
+  .back:active { filter: brightness(1.3); }
+  h1.title { margin: 0; flex: 1 1 auto; min-width: 0; font-size: 20px; letter-spacing: 0.04em; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+  .head-tools { display: flex; gap: 6px; flex: 0 0 auto; margin-left: auto; }
+  .tool {
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink);
+    font: 700 16px var(--font-display);
+    padding: 0 8px;
+    touch-action: manipulation;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tool:active:not(:disabled) { filter: brightness(1.3); background: var(--panel); }
+  .sound-btn[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ===== 設定画面 ===== */
+  .setup {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    padding: 10px 2px;
+    align-items: center;
+    justify-content: center;
+  }
+  .setup h2 { margin: 0; font-size: 22px; letter-spacing: 0.04em; text-align: center; }
+  .setup .lead { margin: 0; color: var(--muted); font: 13px/1.6 var(--font-text); text-align: center; max-width: 32em; }
+  .players-pick {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    width: min(360px, 100%);
+  }
+  .players-pick button {
+    box-sizing: border-box;
+    min-height: 72px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    font: 700 18px var(--font-display);
+    letter-spacing: 0.04em;
+    touch-action: manipulation;
+    padding: 8px;
+  }
+  .players-pick button[aria-pressed="true"] {
+    background: var(--panel);
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 2px var(--accent);
+    color: var(--ink);
+  }
+  .players-pick button:active:not(:disabled) { filter: brightness(1.2); }
+  .setup .start {
+    box-sizing: border-box;
+    width: min(360px, 100%);
+    min-height: 56px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font: 700 18px var(--font-display);
+    touch-action: manipulation;
+  }
+  .setup .start:disabled { opacity: 0.4; }
+  .setup .start:active:not(:disabled) { filter: brightness(1.1); }
+
+  /* ===== プレイ画面 ===== */
+  .play {
+    min-height: 0;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "sc" "field" "hint";
+    gap: 8px;
+    touch-action: none;
+  }
+  .scoreboard {
+    grid-area: sc;
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .score {
+    box-sizing: border-box;
+    min-width: 56px;
+    min-height: 36px;
+    padding: 4px 10px;
+    border-radius: 10px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font: 700 14px var(--font-text);
+    color: var(--ink);
+  }
+  .score .dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  }
+  .score[data-player="1"] .dot { background: var(--p1-color); }
+  .score[data-player="2"] .dot { background: var(--p2-color); }
+  .score[data-player="3"] .dot { background: var(--p3-color); }
+  .score[data-player="4"] .dot { background: var(--p4-color); }
+  .score .n { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 16px; min-width: 1.2em; text-align: right; }
+  .score .label { font-size: 12px; color: var(--muted); }
+
+  .field {
+    grid-area: field;
+    position: relative;
+    min-height: 0;
+    min-width: 0;
+    background: var(--well);
+    border-radius: 12px;
+    box-shadow: 0 0 0 2px var(--line);
+    overflow: hidden;
+    touch-action: none;
+  }
+  /* 4隅ボタン：画面短辺の 32% 以上を狙う */
+  .corner {
+    position: absolute;
+    box-sizing: border-box;
+    width: min(44%, 220px);
+    height: min(44%, 220px);
+    min-width: 44px;
+    min-height: 44px;
+    border: 2px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font: 700 48px var(--font-display);
+    color: rgba(255, 255, 255, 0.85);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+    touch-action: none;
+    -webkit-touch-callout: none;
+    user-select: none;
+    cursor: pointer;
+    /* 待機中は少し暗く・小さくして、合図のときに「光る」のがわかるように */
+    filter: brightness(0.55);
+    transition: filter 160ms ease-out, transform 100ms ease-out;
+  }
+  .corner[data-player="1"] { top: 6px;    left: 6px;    background: var(--p1-color); }
+  .corner[data-player="2"] { top: 6px;    right: 6px;   background: var(--p2-color); }
+  .corner[data-player="3"] { bottom: 6px; left: 6px;    background: var(--p3-color); }
+  .corner[data-player="4"] { bottom: 6px; right: 6px;   background: var(--p4-color); }
+  /* 色だけに頼らず、数字/アイコンでも区別可能にする */
+  .corner::before {
+    content: attr(data-player);
+    position: absolute;
+    top: 8px; left: 10px;
+    font: 700 20px var(--font-mono);
+    color: rgba(0, 0, 0, 0.55);
+  }
+  .corner::after {
+    content: attr(data-icon);
+    position: absolute;
+    right: 10px; bottom: 8px;
+    font: 700 24px var(--font-display);
+    color: rgba(0, 0, 0, 0.55);
+  }
+  /* 合図中（armed）はすべての隅が光る */
+  .field[data-phase="armed"] .corner { filter: brightness(1.1); }
+  .field[data-phase="resolved"] .corner { filter: brightness(0.5); }
+  .corner[data-lit="on"] { filter: brightness(1.25) saturate(1.1); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.6), 0 0 24px rgba(255, 255, 255, 0.5); }
+  .corner:active { transform: scale(0.985); }
+
+  /* 合図の光（画面全体を一瞬白くする。.overlay は z-index:20 なのでそれより下） */
+  .signal {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+    background: radial-gradient(circle at center, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 70%);
+    opacity: 0;
+    transition: opacity 100ms ease-out;
+  }
+  .signal[data-phase="armed"] { opacity: 1; animation: flash 350ms ease-out both; }
+  @keyframes flash {
+    0% { opacity: 0; }
+    20% { opacity: 1; }
+    100% { opacity: 0.15; }
+  }
+
+  .hint {
+    grid-area: hint;
+    margin: 0;
+    text-align: center;
+    color: var(--muted);
+    font: 500 13px/1.5 var(--font-text);
+    min-height: 1.6em;
+  }
+
+  /* 横持ちで横に広い端末では、ボタンをより大きく */
+  @media (orientation: landscape) and (min-height: 420px) {
+    .corner { width: min(42%, 260px); height: min(80%, 320px); }
+  }
+  /* iPhone 横 */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .corner { width: min(40%, 220px); height: min(80%, 220px); font-size: 36px; }
+    .corner::before { font-size: 16px; }
+    .corner::after { font-size: 18px; }
+  }
+  @media (max-width: 480px) {
+    .head { flex-wrap: wrap; row-gap: 4px; }
+    h1.title { order: 3; flex: 1 0 100%; font-size: 18px; }
+  }
+
+  /* ===== オーバーレイ ===== */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    box-sizing: border-box;
+    display: flex;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    padding-top: max(12px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background: rgba(13, 17, 29, 0.78);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+  .overlay.soft { background: rgba(13, 17, 29, 0.5); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .card {
+    width: min(360px, 100%);
+    box-sizing: border-box;
+    margin: auto;
+    flex: 0 0 auto;
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+    box-shadow: 0 0 0 1px var(--line), 0 20px 50px rgba(0, 0, 0, 0.5);
+  }
+  .card h2 { margin: 0; font-size: 24px; letter-spacing: 0.04em; }
+  .card p { margin: 0; color: var(--muted); font: 13px/1.6 var(--font-text); }
+  .card p.res { color: var(--ink); font-size: 15px; }
+  .card .howto { margin: 0; text-align: left; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; font: 13px/1.5 var(--font-text); }
+  .card .howto dt { font-weight: 700; color: var(--accent); white-space: nowrap; }
+  .card .howto dd { margin: 0; color: var(--ink); }
+  .card .btns { display: flex; flex-direction: column; gap: 10px; }
+  .card .row { display: flex; gap: 10px; }
+  .cta {
+    flex: 1;
+    min-width: 0;
+    min-height: 50px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--ink);
+    font: 700 16px var(--font-display);
+    touch-action: manipulation;
+  }
+  .cta.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .cta:active { filter: brightness(1.2); }
+  .card .winner-dot {
+    display: inline-block;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    vertical-align: -3px;
+    margin-right: 6px;
+    box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .signal { opacity: 0; }
+    .signal[data-phase="armed"] { animation: none; opacity: 1; }
+    .signal[data-phase="resolved"], .signal:not([data-phase]) { opacity: 0; }
+    .corner { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<main class="app" id="app">
+  <header class="head">
+    <a id="back" class="back" href="../../" aria-label="メニューへ戻る">← メニュー</a>
+    <h1 class="title">ピカッと早押し</h1>
+    <div class="head-tools">
+      <button id="help-btn" class="tool" type="button" aria-label="遊び方">？</button>
+      <button id="sound-btn" class="tool sound-btn" type="button" aria-label="音のオン/オフ" aria-pressed="true">♪</button>
+    </div>
+  </header>
+
+  <!-- 設定画面 -->
+  <section class="setup" id="setup" aria-label="設定">
+    <h2>にんずうをえらぶ</h2>
+    <p class="lead">合図でボタンが光ったら、自分の色をタップ。<br>合図のまえに押したらフライング（ほかのみんなに1点）。</p>
+    <div class="players-pick" id="players-pick" role="group" aria-label="人数">
+      <button type="button" data-players="2" aria-pressed="false">2人</button>
+      <button type="button" data-players="3" aria-pressed="false">3人</button>
+      <button type="button" data-players="4" aria-pressed="false">4人</button>
+      <button type="button" data-players="solo" aria-pressed="false">お試し（1人）</button>
+    </div>
+    <button class="start" type="button" data-action="start" disabled>はじめる</button>
+  </section>
+
+  <!-- プレイ画面 -->
+  <section class="play" id="play" aria-label="プレイ" hidden>
+    <div class="scoreboard" id="scores" aria-live="polite"></div>
+    <div class="field" id="field" data-phase="waiting">
+      <button class="corner" type="button" data-player="1" data-color="red"    data-icon="●" aria-label="1人目：赤"></button>
+      <button class="corner" type="button" data-player="2" data-color="blue"   data-icon="■" aria-label="2人目：青"></button>
+      <button class="corner" type="button" data-player="3" data-color="yellow" data-icon="▲" aria-label="3人目：黄" hidden></button>
+      <button class="corner" type="button" data-player="4" data-color="green"  data-icon="◆" aria-label="4人目：緑" hidden></button>
+      <div class="signal" id="signal" aria-live="polite"></div>
+    </div>
+    <p class="hint" id="hint" aria-live="polite"></p>
+  </section>
+</main>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="card" id="card" role="dialog" aria-modal="true"></div>
+</div>
+
+<script src="../../common/sfx.js"></script>
+<script src="../../common/version.js"></script>
+<script src="logic.js"></script>
+<script src="input.js"></script>
+<script>
+(() => {
+  "use strict";
+
+  const KEY_HELP = "pikatto.help";
+  const KEY_BEST_SOLO = "pikatto.bestSolo";
+  const WIN_SCORE = 3;
+  const MAX_ROUNDS = 5;
+
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    setup: $("setup"),
+    play: $("play"),
+    playersPick: $("players-pick"),
+    startBtn: $("setup").querySelector('[data-action="start"]'),
+    field: $("field"),
+    signal: $("signal"),
+    scores: $("scores"),
+    hint: $("hint"),
+    overlay: $("overlay"),
+    card: $("card"),
+    helpBtn: $("help-btn"),
+    soundBtn: $("sound-btn"),
+    corners: Array.from(document.querySelectorAll(".corner"))
+  };
+  const reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
+
+  // ===== 効果音（common/sfx.js が無くても落ちない） =====
+  const sfx = window.YubiSfx ? window.YubiSfx.create("pikatto")
+    : { on: false, unlock() {}, toggle() { return false; }, play() {}, buzz() {} };
+  document.addEventListener("pointerdown", () => sfx.unlock(), { capture: true });
+  document.addEventListener("touchend", () => sfx.unlock(), { capture: true });
+  function renderSoundBtn() {
+    el.soundBtn.setAttribute("aria-pressed", String(!!sfx.on));
+    el.soundBtn.setAttribute("aria-label", sfx.on ? "音：オン" : "音：オフ");
+  }
+  el.soundBtn.addEventListener("click", () => { sfx.toggle(); renderSoundBtn(); });
+  renderSoundBtn();
+
+  // ===== 状態（画面側のみ。ゲームの中身の状態は logic.js の state） =====
+  let screen = "setup";          // "setup" | "play"
+  let selectedPlayers = null;    // 2 | 3 | 4 | "solo"
+  let gameState = null;          // PikattoLogic.createGame の返り値
+  let signalTimer = 0;           // setTimeout の id
+  let input = null;              // PikattoInput.attach の返り値
+  let bestSolo = loadBestSolo();
+
+  // ===== 保存データ =====
+  function loadBestSolo() {
+    try {
+      const raw = localStorage.getItem(KEY_BEST_SOLO);
+      if (raw === null) return 0;
+      // logic.js が無くても最低限の検証（50..5000 の整数）
+      const L = window.PikattoLogic;
+      if (L && typeof L.validateBestSolo === "function") return L.validateBestSolo(raw);
+      const n = Number(raw);
+      return Number.isInteger(n) && n >= 50 && n <= 5000 ? n : 0;
+    } catch (e) { return 0; }
+  }
+  function saveBestSolo(ms) {
+    try { localStorage.setItem(KEY_BEST_SOLO, String(ms)); } catch (e) { /* 無視 */ }
+  }
+  function helpSeen() { try { return localStorage.getItem(KEY_HELP) === "1"; } catch (e) { return false; } }
+  function markHelpSeen() { try { localStorage.setItem(KEY_HELP, "1"); } catch (e) { /* 無視 */ } }
+
+  // ===== 設定画面 =====
+  function selectPlayers(v) {
+    selectedPlayers = v;
+    el.playersPick.querySelectorAll("button").forEach((b) => {
+      b.setAttribute("aria-pressed", String(String(b.dataset.players) === String(v)));
+    });
+    el.startBtn.disabled = selectedPlayers === null;
+  }
+  el.playersPick.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-players]");
+    if (!b) return;
+    sfx.unlock();
+    sfx.play("toggle");
+    const v = b.dataset.players === "solo" ? "solo" : Number(b.dataset.players);
+    selectPlayers(v);
+  });
+  el.startBtn.addEventListener("click", () => {
+    if (el.startBtn.disabled) return;
+    sfx.unlock();
+    sfx.play("start");
+    startGame();
+  });
+
+  // ===== ゲーム開始 =====
+  function startGame() {
+    const L = window.PikattoLogic;
+    if (!L) {
+      el.hint.textContent = "読み込み中です…";
+      return;
+    }
+    const mode = selectedPlayers === "solo" ? "solo" : "vs";
+    const players = mode === "solo" ? 1 : selectedPlayers;
+    // reactionMs の時刻起点を performance.now() に揃える
+    // （input.js の pressedAt は event.timeStamp = navigationStart 起点）
+    gameState = L.createGame({ players, mode, now: () => performance.now() });
+    screen = "play";
+    el.setup.hidden = true;
+    el.play.hidden = false;
+    hideOverlay();
+    showScoreboard();
+    showCorners();
+    if (input) input.detach();
+    if (window.PikattoInput) {
+      input = window.PikattoInput.attach(el.field, {
+        onPress: handlePress,
+        onCornerDown: (p) => markLit(p, true),
+        onCornerUp:   (p) => markLit(p, false)
+      });
+    }
+    startRound();
+  }
+  function showScoreboard() {
+    el.scores.innerHTML = "";
+    const n = gameState.mode === "solo" ? 1 : gameState.players;
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement("div");
+      d.className = "score";
+      d.dataset.player = String(i + 1);
+      d.innerHTML = `<span class="dot" aria-hidden="true"></span><span class="label"></span><span class="n"></span>`;
+      d.querySelector(".label").textContent = gameState.mode === "solo" ? "じぶん" : (i + 1) + "P";
+      d.querySelector(".n").textContent = gameState.mode === "solo"
+        ? (bestSolo > 0 ? bestSolo + " ms" : "—")
+        : String(gameState.scores[i] || 0);
+      el.scores.appendChild(d);
+    }
+  }
+  function updateScoreboard() {
+    const colorNames = ["赤", "青", "黄", "緑"];
+    el.scores.querySelectorAll(".score").forEach((d) => {
+      const i = Number(d.dataset.player) - 1;
+      if (gameState.mode === "solo") {
+        const val = bestSolo > 0 ? bestSolo + " ms" : "—";
+        d.querySelector(".n").textContent = val;
+        d.setAttribute("aria-label", `じぶん：${val}`);
+      } else {
+        const pts = String(gameState.scores[i] || 0);
+        d.querySelector(".n").textContent = pts;
+        d.setAttribute("aria-label", `${colorNames[i] || (i + 1) + "P"}：${pts}点`);
+      }
+    });
+  }
+  function showCorners() {
+    el.corners.forEach((c) => {
+      const idx = Number(c.dataset.player);
+      const show = gameState.mode === "solo"
+        ? idx === 1
+        : idx <= gameState.players;
+      c.hidden = !show;
+      c.removeAttribute("data-lit");
+    });
+  }
+  function markLit(playerIdx, on) {
+    const c = el.corners[playerIdx];
+    if (!c) return;
+    if (on) c.setAttribute("data-lit", "on");
+    else c.removeAttribute("data-lit");
+  }
+
+  // ===== ラウンド =====
+  function startRound() {
+    const L = window.PikattoLogic;
+    if (!L || !gameState) return;
+    clearTimeout(signalTimer); signalTimer = 0;
+    gameState = L.startRound(gameState);
+    if (gameState.phase === "done") { showFinalResult(); return; }
+    el.field.dataset.phase = "waiting";
+    el.signal.removeAttribute("data-phase");
+    el.signal.textContent = "";
+    el.corners.forEach((c) => c.removeAttribute("data-lit"));
+    if (gameState.mode === "solo") {
+      el.hint.textContent = "ピカッと光ったら、ボタンを押す";
+    } else {
+      el.hint.innerHTML = `ラウンド ${gameState.round + 1} / ${MAX_ROUNDS}<br>まってね…`;
+    }
+    const delay = Math.max(0, Number(gameState.signalDelay) || 1000);
+    signalTimer = setTimeout(fireSignal, delay);
+  }
+  function fireSignal() {
+    const L = window.PikattoLogic;
+    signalTimer = 0;
+    if (!L || !gameState || gameState.phase !== "waiting") return;
+    gameState = L.applySignal(gameState);
+    el.field.dataset.phase = "armed";
+    el.signal.dataset.phase = "armed";
+    el.signal.textContent = "ピカッ！";
+    sfx.play("signal");
+    el.hint.textContent = gameState.mode === "solo" ? "いまだ！" : "ピカッ！";
+  }
+  function handlePress({ playerIdx, pressedAt }) {
+    const L = window.PikattoLogic;
+    if (!L || !gameState) return;
+    // 待機中の押下 → フライング（タイマーを止める）
+    if (gameState.phase === "waiting") {
+      clearTimeout(signalTimer); signalTimer = 0;
+    }
+    if (gameState.phase !== "waiting" && gameState.phase !== "armed") return;
+    const { state: next, outcome } = L.applyPress(gameState, { playerIdx, pressedAt });
+    gameState = next;
+    if (outcome.kind === "ignore") return;
+    el.field.dataset.phase = "resolved";
+    el.signal.removeAttribute("data-phase");
+    el.signal.textContent = "";
+    updateScoreboard();
+    if (outcome.kind === "foul") {
+      sfx.play("foul");
+      sfx.buzz([60, 40, 120]);
+    } else if (outcome.kind === "win") {
+      sfx.play("win");
+      // solo モードはベスト更新
+      if (gameState.mode === "solo" && Number.isFinite(outcome.reactionMs)) {
+        const ms = Math.round(outcome.reactionMs);
+        if (Number.isInteger(ms) && ms >= 50 && ms <= 5000) {
+          if (bestSolo === 0 || ms < bestSolo) {
+            bestSolo = ms;
+            saveBestSolo(bestSolo);
+            sfx.play("best");
+          }
+        }
+      }
+      updateScoreboard();
+    }
+    showRoundResult(outcome);
+  }
+
+  // ===== 結果カード =====
+  function colorFor(playerIdx) {
+    return ["var(--p1-color)", "var(--p2-color)", "var(--p3-color)", "var(--p4-color)"][playerIdx] || "var(--ink)";
+  }
+  function nameFor(playerIdx) {
+    return gameState.mode === "solo" ? "じぶん" : (playerIdx + 1) + "P";
+  }
+  function showRoundResult(outcome) {
+    const done = gameState.phase === "done";
+    if (done) {
+      setTimeout(() => showFinalResult(outcome), reduceMotion.matches ? 100 : 400);
+      return;
+    }
+    let title = "";
+    let body = "";
+    if (outcome.kind === "win") {
+      title = gameState.mode === "solo" ? "ピカッ！" : `${nameFor(outcome.player)} の勝ち`;
+      body = gameState.mode === "solo"
+        ? `${Math.round(outcome.reactionMs)} ms`
+        : `反応 ${Math.round(outcome.reactionMs)} ms`;
+    } else if (outcome.kind === "foul") {
+      title = "ちょっと早かった！";
+      body = gameState.mode === "solo"
+        ? "合図のまえに押しました"
+        : `${nameFor(outcome.foulBy)} が合図のまえに押しました。ほかのみんなに +1点。`;
+    }
+    showCard(`
+      <h2>${escapeHtml(title)}</h2>
+      <p class="res">${escapeHtml(body)}</p>
+      ${scoresLineHtml()}
+      <div class="btns">
+        <div class="row"><button class="cta primary" type="button" data-cmd="next">つぎのラウンド</button></div>
+        <div class="row">
+          <button class="cta" type="button" data-cmd="again">さいしょから</button>
+          <button class="cta" type="button" data-cmd="menu">メニューへ</button>
+        </div>
+      </div>
+    `, { soft: true });
+  }
+  function showFinalResult(outcome) {
+    sfx.play("finish");
+    const w = gameState.winner;
+    let title, body;
+    if (gameState.mode === "solo") {
+      const L = window.PikattoLogic;
+      const avg = L && typeof L.averageMs === "function" ? L.averageMs(gameState.reactions || []) : null;
+      title = "おつかれさま";
+      body = (avg !== null && avg !== undefined)
+        ? `平均 ${Math.round(avg)} ms` + (bestSolo > 0 ? `　ベスト ${bestSolo} ms` : "")
+        : (bestSolo > 0 ? `ベスト ${bestSolo} ms` : "記録なし");
+    } else if (w === "draw") {
+      title = "引き分け";
+      body = "同点でした";
+    } else {
+      title = `${nameFor(w)} の勝ち`;
+      body = `${WIN_SCORE} 点先取`;
+    }
+    showCard(`
+      <h2>${w !== null && w !== undefined && w !== "draw" ? `<span class="winner-dot" style="background:${colorFor(w)}"></span>` : ""}${escapeHtml(title)}</h2>
+      <p class="res">${escapeHtml(body)}</p>
+      ${scoresLineHtml()}
+      <div class="btns">
+        <div class="row"><button class="cta primary" type="button" data-cmd="again">もう一度</button></div>
+        <div class="row"><button class="cta" type="button" data-cmd="menu">メニューへ</button></div>
+      </div>
+    `, { soft: true });
+  }
+  function scoresLineHtml() {
+    if (gameState.mode === "solo") return "";
+    const parts = [];
+    for (let i = 0; i < gameState.players; i++) {
+      parts.push(`<span style="color:${colorFor(i)}">${nameFor(i)}:${gameState.scores[i] || 0}</span>`);
+    }
+    return `<p>${parts.join("　")}</p>`;
+  }
+  function showHelpCard() {
+    showCard(`
+      <h2>遊び方</h2>
+      <dl class="howto">
+        <dt>にんずう</dt><dd>2〜4人、または 1人（お試し）。4隅のボタンに1人ずつ。</dd>
+        <dt>合図</dt><dd>1〜4秒まってから、画面がピカッと光ります。</dd>
+        <dt>勝ち</dt><dd>光ったら自分の色のボタンを早く押す。先に3点とった人の勝ち。同点のときは勝ち負けなし（引き分け）。</dd>
+        <dt>フライング</dt><dd>光るまえに押すと、ほかのみんなに1点。</dd>
+        <dt>お試し</dt><dd>合図から押すまでの時間（ミリ秒）を測ります。</dd>
+      </dl>
+      <div class="btns"><div class="row"><button class="cta primary" type="button" data-cmd="close">わかった</button></div></div>
+    `, { soft: false });
+  }
+
+  function showCard(html, { soft = false } = {}) {
+    el.card.innerHTML = html;
+    el.overlay.classList.toggle("soft", soft);
+    el.overlay.hidden = false;
+    el.overlay.scrollTop = 0;
+    const primary = el.card.querySelector(".primary");
+    if (primary) primary.focus({ preventScroll: true });
+  }
+  function hideOverlay() {
+    el.overlay.hidden = true;
+    el.overlay.classList.remove("soft");
+  }
+
+  el.overlay.addEventListener("click", (e) => {
+    const cmd = e.target.closest?.("[data-cmd]")?.dataset.cmd;
+    if (!cmd) return;
+    if (cmd === "next") { hideOverlay(); startRound(); }
+    else if (cmd === "again") { hideOverlay(); startGame(); }
+    else if (cmd === "menu") { location.href = "../../"; }
+    else if (cmd === "close") {
+      markHelpSeen();
+      hideOverlay();
+    }
+  });
+  el.helpBtn.addEventListener("click", () => { sfx.unlock(); showHelpCard(); });
+
+  // ===== ユーティリティ =====
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  // ===== iOS：長押しメニュー・拡大・引っ張り更新を止める =====
+  document.addEventListener("contextmenu", (e) => e.preventDefault());
+  ["gesturestart", "gesturechange", "gestureend"].forEach((type) => {
+    document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+  });
+  document.addEventListener("touchmove", (e) => {
+    if (e.cancelable && !e.target.closest?.(".overlay, .setup")) e.preventDefault();
+  }, { passive: false });
+  document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: false });
+  // 350ms 以内の2回目のタップ（スクロールではない）の touchend を止めて、ダブルタップ拡大を防ぐ。
+  // 止めると click は送られないため、ボタン・リンクなら自分で click を送る（既存ゲームと同じ流儀）。
+  // .overlay 内は（モーダルのスクロールと click を保つため）この処理をかけない。
+  let lastTapEnd = 0, tapStart = null;
+  document.addEventListener("touchstart", (e) => {
+    const t = e.touches[0];
+    tapStart = e.touches.length === 1 && t ? { x: t.clientX, y: t.clientY } : null;
+  }, { passive: true, capture: true });
+  document.addEventListener("touchend", (e) => {
+    const target = e.target;
+    if (!target.closest || target.closest(".overlay")) return;
+    const t = e.changedTouches[0];
+    const isTap = tapStart && t && e.touches.length === 0 && Math.hypot(t.clientX - tapStart.x, t.clientY - tapStart.y) < 12;
+    const now = performance.now();
+    const quick = isTap && now - lastTapEnd < 350;
+    if (isTap) lastTapEnd = now;
+    if (!e.cancelable) return;
+    if (quick) {
+      e.preventDefault();
+      const btn = target.closest("button, a");
+      if (btn && !btn.disabled) btn.click();
+    }
+  }, { passive: false });
+
+  // ===== テスト用公開 API =====
+  // 画面側のラウンドのタイマーを飛ばして即 'armed' にする（forceSignal）、
+  // 任意のプレイヤーを押させる（pressFor）、状態の取得（getState）、
+  // 設定画面に戻す（reset）を公開
+  window.PikattoGame = Object.freeze({
+    getState() {
+      // 平らな形で返す（テストが state.phase・state.scores で直接触れるように）。
+      // 入れ子の gameState キーも残し、画面の既存の読み方と両立させる
+      const g = gameState ? JSON.parse(JSON.stringify(gameState)) : null;
+      return Object.assign({}, g || {}, { screen, selectedPlayers, bestSolo, gameState: g });
+    },
+    startRound() { if (screen === "play") startRound(); },
+    forceSignal() {
+      if (screen !== "play" || !gameState || gameState.phase !== "waiting") return false;
+      clearTimeout(signalTimer); signalTimer = 0;
+      fireSignal();
+      return true;
+    },
+    pressFor(playerIdx) {
+      if (screen !== "play") return false;
+      // createGame に注入した now と同じ時刻起点にそろえる
+      const ts = performance.now();
+      handlePress({ playerIdx: Number(playerIdx), pressedAt: ts });
+      return true;
+    },
+    reset() {
+      clearTimeout(signalTimer); signalTimer = 0;
+      if (input) { input.detach(); input = null; }
+      gameState = null;
+      selectedPlayers = null;
+      screen = "setup";
+      el.play.hidden = true;
+      el.setup.hidden = false;
+      el.field.dataset.phase = "waiting";
+      el.signal.removeAttribute("data-phase");
+      el.playersPick.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", "false"));
+      el.startBtn.disabled = true;
+      hideOverlay();
+    }
+  });
+
+  // 初回だけ遊び方を出す
+  if (!helpSeen()) {
+    // 画面を表示したあとに出す（起動直後に見えるカードが先に重ならないように）
+    setTimeout(() => showHelpCard(), 100);
+  }
+})();
+
+// オフラインでも遊べるようにする（https か localhost のときだけ有効）
+if ("serviceWorker" in navigator && window.isSecureContext && location.protocol !== "file:") {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("../../sw.js").catch(() => { /* 登録できなくてもゲームは遊べる */ });
+  });
+}
+</script>
+</body>
+</html>

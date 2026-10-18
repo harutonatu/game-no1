@@ -1,6 +1,6 @@
 # ゆびあそび 統合テスト（tests/）
 
-ゲーム集「ゆびあそび」（メニュー・ブロックパズル・ばいばいタイル・キリトリ道場・いろコード・ゼンマイさんぽ）を、本物のブラウザで動かして確かめるテストです。
+ゲーム集「ゆびあそび」（メニュー・ブロックパズル・ばいばいタイル・キリトリ道場・いろコード・ゼンマイさんぽ・ピカッと早押し）を、本物のブラウザで動かして確かめるテストです。
 アプリのファイル（index.html・games/・common/・sw.js・manifest.webmanifest・icons/）には触れず、読むだけです。
 設計・項目の対応表は [design.md](design.md) にあります。
 
@@ -63,6 +63,7 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | タッチ操作・ダブルタップ抑止 | smoke ＋ `ONLY=T1,T2,T3,T4,T5,T6,P7,E5 node tests/run.mjs full`（WebKit でも `BROWSER=webkit … smoke`） |
 | いろコード（games/irocode/）の変更 | smoke ＋ `ONLY=I10,I11,I12,I13,I14,I15,I16,I17,I18 node tests/run.mjs full`（ロジックだけなら `ONLY=I1,I2,I3 node tests/run.mjs smoke`、0 秒） |
 | ゼンマイさんぽ（games/zenmai/）の変更 | smoke ＋ `ONLY=ZL1,ZL2,ZL3,ZL4,ZL5,ZL6,ZL7,ZU6,ZU7,ZU8,ZU9,ZU10,ZU11,ZU12,ZU13,ZU14 node tests/run.mjs full`（ステージの数値は ZL、画面は ZU） |
+| ピカッと早押し（games/pikatto/）の変更 | smoke ＋ `ONLY=PK5,PK6,PK7,PK8,PK9 node tests/run.mjs full` |
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
 | テストを変えたとき・中身の仕組み（点数計算・保存・日付・ルール）を変えたとき | `node tests/mutants/mutate.mjs both`（そのゲームの分だけ。テストがわざと入れた不具合を見つけられるか） |
 
@@ -85,6 +86,7 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | I | いろコード | logic.js（score・乱数・日付・保存データの検証）を Node で直接、画面（基本操作・保存・メニューへ戻れる・画面内・オフライン・境界値・色覚・効果音・ダブルタップ抑止・日付の変わり目・最大値・保存不可・日付の仕様） |
 | ZL | ゼンマイさんぽ 計算ロジック（Node） | `games/zenmai/logic.js`・`stages.js` を直接呼ぶ：15 ステージの形と★3 が取れること、simulate・starsFor・bestTurns・validateProgress の境界値、ZL7 はネジの入力 input.js（持ち替え・cancel・速い回転・中心付近）（zenmai-logic.mjs） |
 | Z | ゼンマイさんぽ 画面 | ZU0 静的（DOM・読み込み順・sw.js・音名）／ZU1 データが消えない・壊れた保存／ZU2 メニューへ戻れる・遊び方／ZU3・ZU11 ボタンが画面内・44px／ZU4 オフライン／ZU5 1 ステージクリア／ZU6 境界値／ZU7 ＋/－/歩かせる だけで遊べる／ZU8・ZU13 円ドラッグ（CDP）／ZU9 効果音／ZU10 ダブルタップ抑止（CDP）／ZU12 最後のステージ・全 15 ステージ・動きを減らす設定／ZU14 警告の基準（ネジと舞台・限界の1回転手前）・止まった後のゲージ・「つぎ」の目印・初回の遊び方（zenmai-ui.mjs） |
+| PK | ピカッと早押し | logic.js（Node：createGame・startRound・applySignal・applyPress・validateBestSolo の境界）、画面（設定→.play・forceSignal→勝ち・waiting でフライング）、保存（bestSolo）、戻れる、画面内・44px、効果音、ダブルタップ抑止、オフライン、境界値（PK1〜PK9） |
 | X1 | 共通 | 全ページでコンソールエラー 0（最後に 1 回） |
 
 ## 構成

@@ -172,7 +172,8 @@
     { name: "ばいばいタイル", desc: "同じ数字をぶつけて合体、2048 を目指す", url: "games/2048/", best: "tile2048.best", art: "tiles" },
     { name: "キリトリ道場", desc: "飛んでくる的を指でなぞって切る。爆弾に注意", url: "games/kiritori/", best: "kiritori.best", art: "kiritori" },
     { name: "いろコード", desc: "4つの色の並びを推理する", url: "games/irocode/", stats: "irocode.stats", art: "code" },
-    { name: "ゼンマイさんぽ", desc: "ネジを巻いて、崖の手前でぴたりと止める", url: "games/zenmai/", bestText: () => zenmaiBest(), art: "zenmai" }
+    { name: "ゼンマイさんぽ", desc: "ネジを巻いて、崖の手前でぴたりと止める", url: "games/zenmai/", bestText: () => zenmaiBest(), art: "zenmai" },
+    { name: "ピカッと早押し", desc: "合図でタップ、1番はやいのはだれ？", url: "games/pikatto/", bestText: () => pikattoBest(), art: "pikatto" }
   ];
 
   // ===== 小さな絵（Canvas で描く。画像ファイルは使わない） =====
@@ -331,6 +332,35 @@
       ctx.strokeStyle = "#f0a43a"; ctx.lineWidth = Math.max(2, u * 0.03);
       ctx.beginPath(); ctx.arc(dx - u * 0.14, dy - u * 0.2, u * 0.04, 0, Math.PI * 2); ctx.stroke();
     },
+    // 4色（赤・青・黄・緑）の角丸パネルと、中央にピカッと光る丸
+    pikatto(ctx, w, h) {
+      const colors = ["#e0524d", "#4a86e8", "#f2cc4b", "#4cae6a"];
+      const gap = Math.round(Math.min(w, h) * 0.07);
+      const sw = (w - gap * 3) / 2, sh = (h - gap * 3) / 2;
+      // 4つのパネル（左上=赤、右上=青、左下=黄、右下=緑）
+      for (let i = 0; i < 4; i++) {
+        const x = gap + (i % 2) * (sw + gap);
+        const y = gap + Math.floor(i / 2) * (sh + gap);
+        ctx.fillStyle = colors[i];
+        roundRect(ctx, x, y, sw, sh, Math.min(sw, sh) * 0.18);
+        ctx.fill();
+        // パネルの上面にハイライト
+        ctx.fillStyle = "rgba(255,255,255,0.18)";
+        roundRect(ctx, x + sw * 0.08, y + sh * 0.08, sw * 0.84, sh * 0.22, Math.min(sw, sh) * 0.1);
+        ctx.fill();
+      }
+      // 中央のピカッ（白〜淡い黄の丸、周りに淡い光彩）
+      const cx = w / 2, cy = h / 2, r = Math.min(w, h) * 0.14;
+      ctx.save();
+      ctx.shadowColor = "rgba(255, 240, 160, 0.95)";
+      ctx.shadowBlur = Math.max(8, r * 1.2) * (ctx.getTransform ? ctx.getTransform().a : 1);
+      ctx.fillStyle = "#fff8c8";
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      // 中央のコア（真っ白）
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath(); ctx.arc(cx - r * 0.2, cy - r * 0.2, r * 0.45, 0, Math.PI * 2); ctx.fill();
+    },
     // 絵が用意されていないゲーム用：頭文字のタイル
     fallback(ctx, w, h, game) {
       const m = Math.round(w * 0.12);
@@ -389,6 +419,16 @@
         if (Number.isInteger(v) && v >= 1 && v <= 3) sum += v;
       }
       return sum > 0 ? "★合計 " + sum + " / 45" : "";
+    } catch (e) { return ""; }
+  }
+
+  // ピカッと早押し：pikatto.bestSolo（ms、小さいほど良い）。整数で 50..5000 の範囲だけ有効、それ以外は空
+  function pikattoBest() {
+    try {
+      const raw = localStorage.getItem("pikatto.bestSolo");
+      if (raw === null) return "";
+      const n = Number(raw);
+      return Number.isInteger(n) && n >= 50 && n <= 5000 ? n + " ms" : "";
     } catch (e) { return ""; }
   }
 

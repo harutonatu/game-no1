@@ -29,6 +29,7 @@ export const GROUPS = [
   { key: 'T', title: 'T タッチ操作（ダブルタップ拡大の抑止・音の準備）', file: 'touch.mjs', weight: { smoke: 6, full: 28 } },
   { key: 'I', title: 'I いろコード（ロジック・保存・戻れる・画面内・オフライン・色覚・効果音・日付）', file: 'irocode.mjs', weight: { smoke: 7, full: 30 } },
   { key: 'Z', title: 'Z ゼンマイさんぽ 画面（データ・戻る・ボタン・オフライン・クリア・円ドラッグ・音）', file: 'zenmai-ui.mjs', weight: { smoke: 10, full: 45 } },
+  { key: 'PK', title: 'PK ピカッと早押し（ロジック・画面・保存・オフライン・音・タッチ）', file: 'pikatto.mjs', weight: { smoke: 8, full: 35 } },
 ];
 
 const args = process.argv.slice(2);
