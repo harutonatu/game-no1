@@ -1,6 +1,6 @@
 // オフラインでも遊べるようにするための Service Worker（ゲーム集「ゆびあそび」全体で1つ）
 // ファイルを更新したら CACHE_VERSION を上げる（古いキャッシュを削除させるため）
-const CACHE_VERSION = "v11-iro";
+const CACHE_VERSION = "v13";
 const APP_PREFIX = "yubiasobi-app-";
 const APP_CACHE = `${APP_PREFIX}${CACHE_VERSION}`;
 const FONT_CACHE = "yubiasobi-fonts";
@@ -17,6 +17,8 @@ const APP_FILES = [
   "./games/blocks/index.html",
   "./games/2048/",
   "./games/2048/index.html",
+  "./games/kiritori/",
+  "./games/kiritori/index.html",
   "./games/irocode/",
   "./games/irocode/index.html",
   "./games/irocode/logic.js",

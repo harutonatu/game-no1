@@ -196,6 +196,60 @@ export async function blocksPlay(page, n = 4) {
   for (let i = 0; i < n; i++) { await page.keyboard.press('Space'); await wait(page, 40); }
   return page.evaluate(() => Number(document.querySelector('#score').textContent.replace(/,/g, '')));
 }
+// ---------- キリトリ道場 ----------
+// ゲームの様子は window.KiritoriGame.snapshot()（読むだけ）で調べ、切るのは本物のマウス操作（pointer イベント）で行う
+export const KIRI = BASE + 'games/kiritori/';
+export const kiriSnap = (p) => p.evaluate(() => window.KiritoriGame.snapshot());
+export async function kiriStart(page) {
+  if (!page.url().startsWith(KIRI)) { await page.goto(KIRI); await wait(page, 150); }
+  await page.click('#card [data-cmd=restart]'); await wait(page, 60);
+}
+// 道場の中に全体が見えている的（爆弾を除く。bomb: true なら爆弾）を待つ。見つからなければ null
+export async function kiriWaitObj(page, { bomb = false, maxMs = 8000, step = 100, min = 1 } = {}) {
+  for (let t = 0; t <= maxMs; t += step) {
+    const s = await kiriSnap(page);
+    if (s.state !== 'play') return null;
+    const vis = s.objs.filter((o) => (o.kind === 'bomb') === bomb && o.y - o.r > s.stage.y + 2 && o.y + o.r < s.stage.y + s.stage.h - 2 && o.x - o.r > s.stage.x && o.x + o.r < s.stage.x + s.stage.w);
+    if (vis.length >= min) return { s, objs: vis, o: vis[0] };
+    await wait(page, step);
+  }
+  return null;
+}
+// 点の列をマウスでなぞる（1回のスワイプ）。早送り中のページでは時間を止めたまま（的が動かない）。
+// pts は点の列か、止めた時点の snapshot から点の列を作る関数（関数が null を返したらなぞらない）
+export async function kiriSwipe(page, pts, steps = 5) {
+  return frozen(page, async () => {
+    const list = typeof pts === 'function' ? pts(await kiriSnap(page)) : pts;
+    if (!list) return false;
+    await page.mouse.move(list[0][0], list[0][1]);
+    await page.mouse.down();
+    for (let i = 1; i < list.length; i++) await page.mouse.move(list[i][0], list[i][1], { steps });
+    await page.mouse.up();
+    return true;
+  });
+}
+const nearest = (s, o) => s.objs.filter((x) => x.kind === o.kind).sort((a, b) => Math.hypot(a.x - o.x, a.y - o.y) - Math.hypot(b.x - o.x, b.y - o.y))[0];
+// 1つの的（kiriWaitObj で見つけたもの）を横に切る
+export const kiriSlash = (page, o) => kiriSwipe(page, (s) => { const n = nearest(s, o); return n && [[n.x - n.r - 16, n.y + 2], [n.x + n.r + 16, n.y - 2]]; });
+// 爆弾をよけて的を切り続け、cond(snapshot) が真になるまで遊ぶ（最大 maxMs のゲーム内時間）。
+// lazy: true なら落ち始めた的だけ切る（上がっている的は残す＝同時に飛ぶ的が増える）
+export async function kiriAutoplay(page, cond, { maxMs = 60000, step = 150, lazy = false } = {}) {
+  const pick = (s) => {
+    const bombs = s.objs.filter((o) => o.kind === 'bomb');
+    const safe = (o) => bombs.every((b) => Math.abs(b.y - o.y) > b.r + 10 || b.x + b.r < o.x - o.r - 12 || b.x - b.r > o.x + o.r + 12);
+    const tgt = s.objs.find((o) => o.kind !== 'bomb' && o.y - o.r > s.stage.y + 2 && o.y < s.stage.y + s.stage.h && safe(o) && (!lazy || o.vy > 0));
+    return tgt && [[tgt.x - tgt.r - 6, tgt.y], [tgt.x + tgt.r + 6, tgt.y]];
+  };
+  for (let t = 0; t <= maxMs; t += step) {
+    const s = await kiriSnap(page);
+    if (cond(s) || s.state !== 'play') return s;
+    // 切る的があるときだけ、時間を止めてなぞる（止めた時点の位置で選び直す）
+    if (pick(s)) await kiriSwipe(page, pick, 3);
+    await wait(page, step);
+  }
+  return kiriSnap(page);
+}
+
 // ブロックパズルの乱数を固定する（ブロックの出順を毎回同じにする）
 export const fixedRandom = () => { let a = 42; Math.random = () => { a = (a * 1103515245 + 12345) % 2147483648; return a / 2147483648; }; };
 
@@ -300,8 +354,8 @@ export async function cardReach(page) {
 
 // ---------- 合否の記録 ----------
 // 既知の不具合の一覧（ここに載せたものだけが「既知」扱い。直ったら行を消す）
+// K1（SE 横・Safari でブロックの DROP・HOLD が重なる）は feature/kiritori で直し、通常の合否に入れた（V2・V3・V8）
 export const KNOWN_ISSUES = {
-  'SE横・Safari|blocks': 'K1 iPhone SE(4インチ)を Safari で横持ち（高さ約270〜300px）にすると、ブロックの DROP が LEVEL/LINES に、HOLD が NEXT に重なる。2026-10 のテスト統合で発見。',
 };
 // 既知の不具合のキー → 説明（なければ undefined）。check(名前, ok, 詳細, known(キー)) のように使う
 export const known = (key) => KNOWN_ISSUES[key];

@@ -1,5 +1,5 @@
 // D: データが消えない・保存データの互換性（リスク最重要）。画面サイズは iPhone 13 ホーム画面の1種類だけで確かめる
-import { BASE, T48, BLK, view, newPage, seed, open2048, ST, stateOf, cardText, blocksPlay, fixedRandom, sleep, wait } from '../lib.mjs';
+import { BASE, T48, BLK, KIRI, view, newPage, seed, open2048, ST, stateOf, cardText, blocksPlay, fixedRandom, sleep, wait, kiriSnap, kiriStart, kiriWaitObj, kiriSlash } from '../lib.mjs';
 const V = () => view('i13', 'p', 'app');
 const G0 = [2, 0, 0, 2, 0, 4, 0, 0, 0, 0, 8, 0, 2, 0, 0, 0];
 const NEAR_OVER = [2, 4, 2, 4, 4, 2, 4, 2, 2, 4, 2, 8, 64, 64, 8, 16];   // 左で 128 ができて詰む
@@ -73,13 +73,14 @@ export const tests = [
       const { ctx, page } = await newPage(browser, V(), 'D3', { clock: true });
       const fails = [];
       for (const bad of ['Infinity', '-500', 'abc', '1.5', String(2 ** 53), '1e400']) {
-        await open2048(page, undefined, { 'tile2048.best': bad, 'blockpuzzle.best': bad });
+        await open2048(page, undefined, { 'tile2048.best': bad, 'blockpuzzle.best': bad, 'kiritori.best': bad });
         const b1 = await page.evaluate(() => document.querySelector('#best').textContent);
         await page.goto(BLK); const b2 = await page.evaluate(() => document.querySelector('#best').textContent);
+        await page.goto(KIRI); const b4 = await page.evaluate(() => document.querySelector('#best').textContent);
         await page.goto(BASE); const b3 = await page.evaluate(() => [...document.querySelectorAll('.best b')].map((b) => b.textContent));
-        if (!(b1 === '0' && b2 === '0' && b3.every((x) => x === 'まだ記録なし'))) fails.push({ bad, b1, b2, b3 });
+        if (!(b1 === '0' && b2 === '0' && b4 === '0' && b3.length === 4 && b3.every((x) => x === 'まだ記録なし'))) fails.push({ bad, b1, b2, b4, b3 });
       }
-      check('不正なベスト 6 種（∞・負・文字・小数・2^53・1e400）→ 0／まだ記録なし', fails.length === 0, fails);
+      check('不正なベスト 6 種（∞・負・文字・小数・2^53・1e400）→ 0／まだ記録なし（2048・ブロック・キリトリ・メニュー）', fails.length === 0, fails);
       const big = 2 ** 53 - 1;
       await open2048(page, undefined, { 'tile2048.best': String(big), 'blockpuzzle.best': '777' });
       const a = await page.evaluate(() => document.querySelector('#best').textContent);
@@ -172,7 +173,11 @@ export const tests = [
       await page.goto(BLK); await wait(page, 150);
       await page.click('#card [data-cmd=restart]'); await page.keyboard.press('Space'); await wait(page, 80);
       const sc = await page.evaluate(() => Number(document.querySelector('#score').textContent.replace(/,/g, '')));
-      check('メニュー表示・2048 で手が進む・ブロックで得点、ページエラーなし', cards === 3 && tiles >= 2 && sc > 0 && errors.length === before, { cards, tiles, sc, errs: errors.slice(before) });
+      await page.goto(KIRI); await wait(page, 150);
+      await page.click('#card [data-cmd=restart]');
+      await page.waitForFunction(() => window.KiritoriGame.snapshot().elapsed > 1, null, { timeout: 10000 }).catch(() => {});
+      const ks = await kiriSnap(page);
+      check('メニュー表示・2048 で手が進む・ブロックで得点・キリトリ道場で的が飛ぶ、ページエラーなし', cards === 4 && tiles >= 2 && sc > 0 && ks.state === 'play' && ks.elapsed > 1 && errors.length === before, { cards, tiles, sc, ks: ks.state, errs: errors.slice(before) });
       await ctx.close();
     },
   },
@@ -245,6 +250,62 @@ export const tests = [
       await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
       const b = await page.evaluate(() => [...document.querySelectorAll('.best b')].map((b) => b.textContent));
       check('戻るボタンで戻っても、bfcache 復帰(pageshow persisted)でもベストを再表示', a[1] === '99,999' && b[1] === '2,048', { a, b });
+      await ctx.close();
+    },
+  },
+  {
+    id: 'D10', tier: 'smoke', title: 'キリトリ道場のベストが消えない（切った瞬間に保存・一時停止→メニューへ・裏へ回す・低い得点では上書きしない・不正値は 0）',
+    async run({ browser, check, tier }) {
+      const { ctx, page } = await newPage(browser, V(), 'D10', { clock: true });
+      await seed(page, { 'kiritori.best': 'abc' });
+      await page.goto(KIRI); await wait(page, 150);
+      const b0 = await page.evaluate(() => document.querySelector('#best').textContent);
+      await kiriStart(page);
+      const f = await kiriWaitObj(page);
+      if (f) await kiriSlash(page, f.o);
+      await wait(page, 50);
+      const s1 = await kiriSnap(page);
+      const ls1 = await page.evaluate(() => localStorage.getItem('kiritori.best'));
+      check(`不正なベスト（abc）は 0 表示、的を切った瞬間にベスト ${s1.score} を保存`, b0 === '0' && !!f && s1.score >= 1 && ls1 === String(s1.score), { b0, score: s1.score, ls1 });
+      await page.click('#pauseBtn'); await wait(page, 60);
+      const note = await page.evaluate(() => document.querySelector('#card p')?.textContent || '');
+      await page.click('#card [data-cmd=menu]'); await page.waitForURL(BASE);
+      const menu = await page.evaluate(() => [...document.querySelectorAll('.best b')].map((b) => b.textContent));
+      check('一時停止 →「メニューへ」でメニューのキリトリ道場にベストを表示（注記あり）', menu[2] === s1.score.toLocaleString('en-US') && /ベストは記録されます/.test(note), { menu, note });
+      // 既存ベストより低い得点では上書きしない（境界：999999 のまま）
+      await seed(page, { 'kiritori.best': '999999' });
+      await kiriStart(page);
+      const g = await kiriWaitObj(page); if (g) await kiriSlash(page, g.o); await wait(page, 50);
+      await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false })));
+      const sc2 = (await kiriSnap(page)).score;
+      check(`既存ベスト 999999 より低い得点（${sc2}）では上書きしない、表示もベスト 999,999`, sc2 >= 1 && await page.evaluate(() => localStorage.getItem('kiritori.best')) === '999999' && await page.evaluate(() => document.querySelector('#best').textContent) === '999,999');
+      // アプリを裏へ回す → 自動で一時停止、ベストを記録
+      await seed(page, { 'kiritori.best': '0' });
+      await kiriStart(page);
+      const h = await kiriWaitObj(page); if (h) await kiriSlash(page, h.o); await wait(page, 50);
+      await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')); delete document.hidden; });
+      const v = await page.evaluate(() => ({ s: localStorage.getItem('kiritori.best'), h: document.querySelector('#card h1')?.textContent, ov: !document.querySelector('#overlay').hidden, st: window.KiritoriGame.snapshot() }));
+      const t0 = v.st.elapsed; await wait(page, 1000); const t1 = (await kiriSnap(page)).elapsed;
+      check(`アプリを裏へ回す（visibilitychange）→ 自動で一時停止して時間が止まり、ベスト ${v.st.score} を保存`, v.ov && v.h === '一時停止' && v.st.state === 'pause' && v.s === String(v.st.score) && v.st.score >= 1 && t1 === t0, { ...v, t0, t1 });
+      if (tier === 'full') {
+        // 自己ベスト更新の境界：開始時ベストと同点では出さない、1点上なら出す
+        const over = async (best) => {
+          await seed(page, { 'kiritori.best': String(best) });
+          await kiriStart(page);
+          for (let i = 0; i < 40 && (await kiriSnap(page)).state === 'play'; i++) await wait(page, 500);   // 切らずに落とす → ライフ 0
+          await wait(page, 1000);
+          return page.evaluate(() => document.querySelector('#card').innerText.replace(/\s+/g, ' '));
+        };
+        const tie = await over(0);
+        check('1点も取らずに終わると（開始時ベスト 0 と同点）「自己ベスト更新！」は出ない', /ゲームオーバー/.test(tie) && !/自己ベスト更新/.test(tie) && /ベスト 0/.test(tie), tie);
+        await seed(page, { 'kiritori.best': '0' });
+        await kiriStart(page);
+        const k = await kiriWaitObj(page); if (k) await kiriSlash(page, k.o);
+        for (let i = 0; i < 40 && (await kiriSnap(page)).state === 'play'; i++) await wait(page, 500);
+        await wait(page, 1000);
+        const up = await page.evaluate(() => ({ t: document.querySelector('#card').innerText.replace(/\s+/g, ' '), ls: localStorage.getItem('kiritori.best') }));
+        check('開始時ベストより1点でも上なら「自己ベスト更新！」、保存も更新', /自己ベスト更新/.test(up.t) && Number(up.ls) >= 1, up);
+      }
       await ctx.close();
     },
   },

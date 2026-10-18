@@ -2,7 +2,7 @@
 // hotfix/doubletap.mjs と release-sound/unlock-touch.mjs を統合したもの。
 // 素早い連続タップ・スワイプ・長押しは CDP の Input.dispatchTouchEvent で送るため Chromium 専用（WebKit では対象外）。
 // 実機の iOS Safari でダブルタップ拡大が起きないかは、ここでは確かめられない（README の実機確認へ）。
-import { BASE, T48, BLK, custom, newPage, seed, wait, frozen, touch, SFX_SPY } from '../lib.mjs';
+import { BASE, T48, BLK, KIRI, custom, newPage, seed, wait, frozen, touch, SFX_SPY, kiriSnap, kiriWaitObj } from '../lib.mjs';
 
 const CDP = 'CDP のタッチ操作（連続タップ・スワイプ・長押し）';
 const IP13 = (h = 664) => custom(390, h, null, 'iPhone 13 Safari');
@@ -47,13 +47,13 @@ export const tests = [
     id: 'T5', tier: 'smoke', title: 'ダブルタップ拡大の抑止（CDP を使わない版。WebKit でも確かめる）：dblclick・gesture を止め、盤面の連続タップの touchend を止める',
     async run({ browser, check }) {
       // Playwright の touchscreen.tap（どのブラウザでも使える）を2回続けて送る
-      for (const [name, url, sel] of [['ブロック', BLK, '#board'], ['2048', T48, '#board'], ['メニュー', BASE, '.head h1']]) {
+      for (const [name, url, sel] of [['ブロック', BLK, '#board'], ['2048', T48, '#board'], ['キリトリ', KIRI, '#field'], ['メニュー', BASE, '.head h1']]) {
         const { ctx, page } = await newPage(browser, IP13(), 'T5 ' + name, { initScript: TE_SPY, clock: true });
         await seed(page, {});
         await page.goto(url); await page.waitForTimeout(200);
-        if (url === BLK) { await page.locator('#card [data-cmd=restart]').tap(); await page.waitForTimeout(400); }
+        if (url === BLK || url === KIRI) { await page.locator('#card [data-cmd=restart]').tap(); await page.waitForTimeout(400); }
         const g = await page.evaluate(() => {
-          const el = document.querySelector('#board') || document.body;
+          const el = document.querySelector('#board') || document.querySelector('#field') || document.body;
           const d = el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
           const gs = ['gesturestart', 'gesturechange'].map((n) => el.dispatchEvent(new Event(n, { bubbles: true, cancelable: true })));
           return { dblclickPrevented: !d, gesturePrevented: gs.every((x) => !x) };
@@ -225,6 +225,44 @@ export const tests = [
         check(`${name}：♪を素早く2回 → 2回目の touchend は止めて click() で補い、unlock は毎回、切り替えは2回（元に戻る）`, m2.te.length === 2 && m2.te[0].p === false && m2.te[1].p === true && m2.unlock >= 2 && q0 === q1 && q0 === 'true', { q0, q1, ...m2 });
         await t.ctx.close();
       }
+    },
+  },
+  {
+    id: 'T6', tier: 'full', cdp: CDP, title: 'キリトリ道場のタッチ操作（指のスワイプで切る・道場の touchend は常に止める・最初のタッチで音の準備・上のボタンの連続タップ・カードのボタン）',
+    async run({ browser, check }) {
+      const k = await open(browser, IP13(), 'T6', KIRI);
+      const { page } = k;
+      await k.tapEl('#card [data-cmd=restart]'); await k.w(150);
+      const started = (await kiriSnap(page)).state === 'play';
+      await k.te(); await k.audio();
+      const f = await kiriWaitObj(page);
+      // 指で的を横になぞる（時間を止めたまま、止めた時点の位置で）
+      await frozen(page, async () => {
+        const s = await kiriSnap(page);
+        const o = s.objs.filter((x) => x.kind !== 'bomb').sort((a, b) => Math.hypot(a.x - f.o.x, a.y - f.o.y) - Math.hypot(b.x - f.o.x, b.y - f.o.y))[0];
+        await k.swipe(o.x - o.r - 30, o.y + 2, 2 * o.r + 60, -4, 8, 0);
+      });
+      await k.w(30);
+      const s1 = await kiriSnap(page);
+      const ev = await k.te(), au = await k.audio();
+      check('指のスワイプで的が切れて 1 点、道場の touchend は止める、最初のタッチで unlock・AudioContext 1つ・slice が鳴る', started && !!f && s1.score === 1 && ev.length === 1 && ev[0].p === true && au.unlock >= 1 && au.ac === 1 && au.plays.includes('slice'), { started, score: s1.score, ev, au });
+      await k.te();
+      await k.doubleTap('#field'); const ev2 = await k.te();
+      check('道場の連続タップは 1 回目から touchend を止める（拡大しない）', ev2.length === 2 && ev2.every((x) => x.p), ev2);
+      await k.w(400);
+      const p0 = await pressed(page); await k.te(); await k.doubleTap('#soundBtn'); const ev3 = await k.te(); const p1 = await pressed(page);
+      check('♪ の連続タップで2回切り替わり（元に戻る）、2回目の touchend は止めて click を補う', p0 === p1 && ev3[0]?.p === false && ev3[1]?.p === true, { p0, p1, ev3 });
+      await k.w(400);
+      await k.tapEl('#pauseBtn'); await k.w(150);
+      const paused = /一時停止/.test(await cardH(page));
+      await k.tapEl('#card [data-cmd=resume]'); await k.w(150);
+      const resumed = (await kiriSnap(page)).state === 'play' && await hidden(page);
+      await k.w(400);
+      await k.tapEl('#menuBtn'); await k.w(150);
+      const viaMenu = /一時停止/.test(await cardH(page));
+      await k.tapEl('#card [data-cmd=menu]'); await page.waitForURL(BASE, { timeout: 3000 }).catch(() => {});
+      check('II → 再開、← メニュー → 一時停止 →「メニューへ」でメニュー（すべてタップ）', paused && resumed && viaMenu && page.url() === BASE, { paused, resumed, viaMenu, url: page.url() });
+      await k.ctx.close();
     },
   },
 ];

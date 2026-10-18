@@ -19,13 +19,13 @@ const SELF = fileURLToPath(import.meta.url);
 // weight は並列実行の割り振り用の目安（秒）。長いものから先に始める
 export const GROUPS = [
   { key: 'L', title: 'L 計算ロジック・静的検査(Node)', file: 'logic.mjs', weight: { smoke: 0, full: 0 } },
-  { key: 'D', title: 'D データ保護・互換', file: 'data.mjs', weight: { smoke: 8, full: 24 } },
-  { key: 'E', title: 'E 閉じ込めなし', file: 'escape.mjs', weight: { smoke: 5, full: 17 } },
-  { key: 'S', title: 'S オフライン・更新', file: 'sw.mjs', weight: { smoke: 5, full: 29 } },
-  { key: 'V', title: 'V 画面外・押せる・桁数', file: 'layout.mjs', weight: { smoke: 4, full: 27 } },
-  { key: 'P', title: 'P 遊べること', file: 'play.mjs', weight: { smoke: 4, full: 21 } },
-  { key: 'A', title: 'A 効果音', file: 'sound.mjs', weight: { smoke: 4, full: 16 } },
-  { key: 'T', title: 'T タッチ操作（ダブルタップ拡大の抑止・音の準備）', file: 'touch.mjs', weight: { smoke: 5, full: 28 } },
+  { key: 'D', title: 'D データ保護・互換', file: 'data.mjs', weight: { smoke: 9, full: 37 } },
+  { key: 'E', title: 'E 閉じ込めなし', file: 'escape.mjs', weight: { smoke: 7, full: 30 } },
+  { key: 'S', title: 'S オフライン・更新', file: 'sw.mjs', weight: { smoke: 6, full: 56 } },
+  { key: 'V', title: 'V 画面外・押せる・桁数', file: 'layout.mjs', weight: { smoke: 6, full: 43 } },
+  { key: 'P', title: 'P 遊べること', file: 'play.mjs', weight: { smoke: 6, full: 34 } },
+  { key: 'A', title: 'A 効果音', file: 'sound.mjs', weight: { smoke: 5, full: 23 } },
+  { key: 'T', title: 'T タッチ操作（ダブルタップ拡大の抑止・音の準備）', file: 'touch.mjs', weight: { smoke: 6, full: 28 } },
   { key: 'I', title: 'I いろコード（ロジック・保存・戻れる・画面内・オフライン・色覚・効果音・日付）', file: 'irocode.mjs', weight: { smoke: 7, full: 30 } },
 ];
 

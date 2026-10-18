@@ -1,5 +1,5 @@
 // E: メニューへ戻れる（閉じ込めがない）。どの画面・どのカードからも出口があること
-import { BASE, T48, BLK, view, custom, newPage, seed, open2048, ST, cardText, overlayShown, stateOf, cardReach, sleep, wait, touch } from '../lib.mjs';
+import { BASE, T48, BLK, KIRI, view, custom, newPage, seed, open2048, ST, cardText, overlayShown, stateOf, cardReach, sleep, wait, touch, kiriSnap, kiriStart } from '../lib.mjs';
 const V = () => view('i13', 'p', 'app');
 const OVER = [2, 4, 2, 4, 4, 2, 4, 2, 2, 4, 2, 4, 4, 2, 4, 2];
 const WIN = [2048, 4, 2, 4, 4, 2, 4, 2, 2, 4, 2, 4, 4, 2, 4, 0];
@@ -12,7 +12,7 @@ export const tests = [
       const { ctx, page } = await newPage(browser, V(), 'E1', { clock: true });
       await seed(page, {});
       await page.goto(BASE);
-      check('メニューにゲームのカードが3枚・見出し「ゆびあそび」', await page.evaluate(() => document.querySelectorAll('a.game').length === 3 && document.querySelector('h1').textContent === 'ゆびあそび'));
+      check('メニューにゲームのカードが4枚（3本目はキリトリ道場・4本目はいろコード）・見出し「ゆびあそび」', await page.evaluate(() => document.querySelectorAll('a.game').length === 4 && document.querySelectorAll('a.game')[2].getAttribute('href') === 'games/kiritori/' && document.querySelectorAll('a.game')[3].getAttribute('href') === 'games/irocode/' && document.querySelector('h1').textContent === 'ゆびあそび'));
       await page.locator('a.game').nth(0).tap(); await page.waitForURL('**/games/blocks/');
       const title = await cardText(page);
       check('ブロック：タイトル画面に「スタート」と「メニューへ」', /スタート/.test(title) && /メニューへ/.test(title), title);
@@ -127,6 +127,16 @@ export const tests = [
           for (let i = 0; i < 90; i++) { await page.keyboard.press('Space'); if (await overlayShown(page)) break; }
           await wait(page, 60); res['ブロック ゲームオーバー'] = await cardReach(page);
         }
+        await seed(page, {});
+        await page.goto(KIRI); await wait(page, 150); res['キリトリ タイトル'] = await cardReach(page);
+        await kiriStart(page);
+        await page.click('#pauseBtn'); await wait(page, 60); res['キリトリ 一時停止'] = await cardReach(page);
+        if (tier === 'full') {
+          await page.click('#card [data-cmd=askRestart]'); res['キリトリ やり直し確認'] = await cardReach(page);
+          await page.click('#card [data-cmd=cancel]'); await page.click('#card [data-cmd=resume]');
+          for (let i = 0; i < 60 && !(await overlayShown(page)); i++) await wait(page, 500);
+          res['キリトリ ゲームオーバー'] = await cardReach(page);
+        }
         const states = { 'ゲームオーバー': ST(OVER, { score: 1234567, prev: { grid: [...OVER.slice(0, 15), 0], score: 1234560, seed: 1 } }), 'クリア': ST(WIN, { score: 1234567 }), '新しいゲーム確認': ST([2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2], { score: 120 }) };
         for (const [k, s] of Object.entries(states)) {
           if (tier !== 'full' && k !== 'ゲームオーバー') continue;
@@ -140,6 +150,9 @@ export const tests = [
           await page.goto(BLK); await wait(page, 120);
           const init = await page.evaluate(() => [...document.querySelectorAll('#card button')].every((b) => { const r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }));
           check(`${v.label}：ブロックのタイトルは「スタート」「メニューへ」がスクロールなしで見える`, init);
+          await page.goto(KIRI); await wait(page, 120);
+          const ki = await page.evaluate(() => [...document.querySelectorAll('#card button')].every((b) => { const r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }));
+          check(`${v.label}：キリトリ道場のタイトルは「はじめる」「メニューへ」がスクロールなしで見える`, ki);
         }
         await ctx.close();
       }
@@ -174,6 +187,51 @@ export const tests = [
         }
         await ctx.close();
       }
+    },
+  },
+  {
+    id: 'E6', tier: 'smoke', title: 'キリトリ道場：タイトル・プレイ中（← メニューは一時停止を経由）・一時停止・やり直し確認・結果カードからメニューへ戻れる',
+    async run({ browser, check, tier }) {
+      const { ctx, page } = await newPage(browser, V(), 'E6', { clock: true });
+      await seed(page, {});
+      await page.goto(BASE);
+      await page.locator('a.game').nth(2).tap(); await page.waitForURL('**/games/kiritori/'); await wait(page, 150);
+      const title = await btns(page);
+      check('タイトル：[メニューへ][はじめる*]、「← メニュー」の表記', JSON.stringify(title) === JSON.stringify(['メニューへ', 'はじめる*']) && await page.evaluate(() => document.querySelector('#menuBtn').textContent.replace(/\s+/g, '')) === '←メニュー', title);
+      await page.click('#card [data-cmd=menu]'); await page.waitForURL(BASE);
+      check('タイトルの「メニューへ」でメニューへ', page.url() === BASE);
+      await page.goto(KIRI); await wait(page, 150);
+      await kiriStart(page); await wait(page, 500);
+      await page.locator('#menuBtn').tap(); await wait(page, 60);
+      const pc = await cardText(page), pb = await btns(page);
+      const t0 = (await kiriSnap(page)).elapsed; await wait(page, 800); const t1 = (await kiriSnap(page)).elapsed;
+      check('プレイ中の「← メニュー」は一時停止画面を経由（[再開*] / [やり直す][メニューへ]）、止まっている間は時間が進まない', /一時停止/.test(pc) && JSON.stringify(pb) === JSON.stringify(['再開*', 'やり直す', 'メニューへ']) && page.url() === KIRI && t0 === t1, { pc, pb, t0, t1 });
+      await page.click('#card [data-cmd=askRestart]');
+      const cb = await btns(page), ct = await cardText(page);
+      await page.click('#card [data-cmd=cancel]');
+      const back = await cardText(page);
+      await page.keyboard.press('Escape'); await wait(page, 60);
+      const resumed = (await kiriSnap(page)).state;
+      check('「やり直す」は確認 [やめる][やり直す*] →「やめる」で一時停止へ戻る → Esc で再開', /やり直す？/.test(ct) && JSON.stringify(cb) === JSON.stringify(['やめる', 'やり直す*']) && /一時停止/.test(back) && resumed === 'play', { ct, cb, back, resumed });
+      await page.click('#pauseBtn'); await wait(page, 60);
+      await page.click('#card [data-cmd=menu]'); await page.waitForURL(BASE);
+      check('一時停止の「メニューへ」でメニューへ', page.url() === BASE);
+      // 切らずに落とし続けてライフ 0 → 結果カード [もう一度*] / [メニューへ]
+      await page.goto(KIRI); await wait(page, 150); await kiriStart(page);
+      for (let i = 0; i < 60 && !(await overlayShown(page)); i++) await wait(page, 500);
+      const ob = await btns(page), ot = await cardText(page);
+      check('ライフ 0 で結果カード：スコア・ベスト・最大コンボ、[もう一度*]（横幅いっぱい）/ [メニューへ]', /ゲームオーバー/.test(ot) && /最大コンボ/.test(ot) && /ベスト/.test(ot) && JSON.stringify(ob) === JSON.stringify(['もう一度*', 'メニューへ'])
+        && await page.evaluate(() => { const c = document.querySelector('#card .btns').getBoundingClientRect(), p = document.querySelector('#card .primary').getBoundingClientRect(); return Math.abs(c.width - p.width) < 1; }), { ot, ob });
+      await page.click('#card [data-cmd=menu]'); await page.waitForURL(BASE);
+      check('結果カードの「メニューへ」でメニューへ', page.url() === BASE);
+      if (tier === 'full') {
+        await page.goto(KIRI); await wait(page, 150); await kiriStart(page);
+        for (let i = 0; i < 60 && !(await overlayShown(page)); i++) await wait(page, 500);
+        await page.click('#card [data-cmd=restart]'); await wait(page, 100);
+        const s = await kiriSnap(page);
+        check('結果カードの「もう一度」で新しいゲーム（スコア 0・ライフ 3）', s.state === 'play' && s.score === 0 && s.lives === 3 && !s.overlay, s);
+      }
+      await ctx.close();
     },
   },
 ];
