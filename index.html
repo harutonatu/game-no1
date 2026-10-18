@@ -20,7 +20,7 @@
     --well: #0d111d;
     --line: #2f3750;
     --ink: #ece6d6;
-    --muted: #8a91a8;
+    --muted: #9aa1b8;
     --accent: #f0a43a;
     --accent-ink: #231705;
     --font-display: "Chakra Petch", "Hiragino Sans", system-ui, sans-serif;
@@ -118,7 +118,7 @@
 
   .foot { margin: 24px 0 0; text-align: center; color: var(--muted); font-size: 11px; font-family: var(--font-text); line-height: 1.6; }
 
-  .ver { margin: 6px 0 0; text-align: center; color: var(--muted); font-size: 10px; letter-spacing: 0.08em; font-family: var(--font-mono); line-height: 1.4; opacity: 0.8; }
+  .ver { margin: 6px 0 0; text-align: center; color: var(--muted); font-size: 10px; letter-spacing: 0.08em; font-family: var(--font-mono); line-height: 1.4; }
 
   /* iPhone SE など幅の狭い画面では絵を少し小さくする */
   @media (max-width: 360px) {
@@ -474,7 +474,9 @@
     list.appendChild(li);
     // 押した瞬間に「コッ」と鳴らす（音は待たずにそのまま移動する）
     a.addEventListener("pointerdown", () => {
-      if (soundOff() === sfx.on) sfx = YubiSfx.create("menu"); // ゲーム側で切り替えて戻ってきたとき
+      // ゲーム側で切り替えて戻ってきたとき：設定がオフなら鳴らさない。オフで作った部品は音の装置を持たないので、オンに戻ったときだけ作り直す（装置は最大1つ）
+      if (soundOff()) return;
+      if (!sfx.on) sfx = YubiSfx.create("menu");
       sfx.unlock();
       sfx.play("tap");
     });

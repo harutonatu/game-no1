@@ -25,7 +25,7 @@
     --accent: #f0a43a;
     --accent-ink: #231705;
     --warn: #f2cb32;
-    --danger: #ed5f5b;
+    --danger: #f2706c;
     --font-display: "Chakra Petch", "Hiragino Sans", system-ui, sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
     --font-text: "Hiragino Sans", system-ui, sans-serif;
@@ -477,8 +477,8 @@
         <div class="dial-mark" id="dialMark" aria-hidden="true"><span id="dialIcon">⟳</span><small id="dialSub">まわす</small></div>
       </div>
       <button class="wbtn" id="windPlus" type="button" aria-label="1/4回転巻く">＋<small>1/4巻く</small></button>
-      <div class="meter" aria-live="polite">
-        <span class="label">巻き数</span><b id="turns">0</b><span class="unit">回転</span><span class="warnmsg" id="warnMsg"></span>
+      <div class="meter">
+        <span class="label">巻き数</span><b id="turns">0</b><span class="unit">回転</span><span class="warnmsg" id="warnMsg" role="status"></span>
       </div>
       <button class="go" id="go" type="button">歩かせる</button>
     </div>
@@ -486,7 +486,7 @@
 </div>
 
 <div class="overlay" id="overlay" hidden>
-  <div class="card" id="card" role="dialog" aria-modal="true"></div>
+  <div class="card" id="card" role="dialog" aria-modal="true" aria-labelledby="cardTitle"></div>
 </div>
 
 <script src="../../common/sfx.js"></script>
@@ -517,7 +517,7 @@
     turns: $("turns"), warnMsg: $("warnMsg"),
     plus: $("windPlus"), minus: $("windMinus"), go: $("go"),
     pauseBtn: $("pauseBtn"), helpBtn: $("helpBtn"), soundBtn: $("soundBtn"),
-    overlay: $("overlay"), card: $("card")
+    overlay: $("overlay"), card: $("card"), app: $("app")
   };
   const reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
 
@@ -719,6 +719,7 @@
   }
   function showSelect() {
     stopLoop();
+    clearResultTimers();
     if (input) input.reset();
     screen = "select";
     paused = false;
@@ -734,6 +735,7 @@
   }
   function startStage(i) {
     if (i < 0 || i >= STAGES.length || i >= progress.unlocked) return;
+    clearResultTimers();   // 結果カードからすぐ再開したとき、前の回の★・ベストの音を鳴らさない
     idx = i;
     const s = stage();
     screen = "play";
@@ -847,12 +849,15 @@
         pops.forEach((node, i) => {
           if (!reduceMotion.matches) node.style.animationDelay = `${120 + i * 180}ms`;
           node.classList.add("pop");
-          setTimeout(() => sfx.play("star", i + 1), 120 + i * 180);
+          resultTimers.push(setTimeout(() => sfx.play("star", i + 1), 120 + i * 180));
         });
-        if (res.improved && res.prevStars > 0) setTimeout(() => sfx.play("best"), 120 + res.stars * 180 + 80);
+        if (res.improved && res.prevStars > 0) resultTimers.push(setTimeout(() => sfx.play("best"), 120 + res.stars * 180 + 80));
       }
     }
   }
+  // 結果カードの★・ベストの音の予約（startStage・showSelect で取り消す）
+  let resultTimers = [];
+  function clearResultTimers() { resultTimers.forEach((t) => clearTimeout(t)); resultTimers = []; }
   function retry() { startStage(idx); }
   function nextStage() { if (idx + 1 < STAGES.length && idx + 1 < progress.unlocked) startStage(idx + 1); }
 
@@ -918,16 +923,31 @@
 
   // ===== カード =====
   // カードは HTML の骨組みだけを書き、文言は data-f の要素に textContent で入れる
+  let cardReturnFocus = null;   // カードを閉じたあとにフォーカスを戻す要素
   function showCard(html, fields = {}, { soft = false, kind = null } = {}) {
+    if (el.overlay.hidden) cardReturnFocus = document.activeElement;
     el.card.innerHTML = html;
     el.card.querySelectorAll("[data-f]").forEach((n) => { n.textContent = fields[n.dataset.f] ?? ""; });
+    const title = el.card.querySelector("h2");
+    if (title) title.id = "cardTitle";   // dialog の名前（aria-labelledby）
     el.overlay.classList.toggle("soft", soft);
     el.overlay.hidden = false;
+    el.app.setAttribute("inert", "");   // カードの裏の画面は操作・読み上げの対象から外す
     overlayKind = kind;
     const primary = el.card.querySelector(".primary");
     if (primary) primary.focus({ preventScroll: true });
   }
-  function hideOverlay() { el.overlay.hidden = true; el.overlay.classList.remove("soft"); overlayKind = null; dirty = true; startLoop(); }
+  function hideOverlay() {
+    const wasOpen = !el.overlay.hidden;
+    el.overlay.hidden = true; el.overlay.classList.remove("soft"); overlayKind = null; dirty = true;
+    el.app.removeAttribute("inert");
+    // 開く前の要素へフォーカスを戻す（画面が切り替わって見えなくなった要素には戻さない）
+    const back = cardReturnFocus; cardReturnFocus = null;
+    if (wasOpen && back && back !== document.body && back.isConnected && !back.closest("[hidden]") && back.focus) {
+      try { back.focus({ preventScroll: true }); } catch (e) { /* 戻せなくても遊べる */ }
+    }
+    startLoop();
+  }
   el.overlay.addEventListener("click", (e) => {
     const cmd = e.target.closest?.("[data-cmd]")?.dataset.cmd;
     if (!cmd) return;

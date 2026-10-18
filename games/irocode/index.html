@@ -21,7 +21,7 @@
     --well: #0d111d;
     --line: #2f3750;
     --ink: #ece6d6;
-    --muted: #8a91a8;
+    --muted: #9aa1b8;
     --accent: #f0a43a;
     --accent-ink: #231705;
     --font-display: "Chakra Petch", "Hiragino Sans", system-ui, sans-serif;
@@ -402,7 +402,7 @@
 </div>
 
 <div class="overlay" id="overlay" hidden>
-  <div class="card" id="card" role="dialog" aria-modal="true"></div>
+  <div class="card" id="card" role="dialog" aria-modal="true" aria-labelledby="cardTitle"></div>
 </div>
 
 <script src="../../common/sfx.js"></script>
@@ -421,7 +421,7 @@
     rows: $("rows"), slots: $("slots"), palette: $("palette"), submit: $("submit"), del: $("delBtn"),
     restart: $("restartBtn"), tries: $("triesLeft"), modeNote: $("modeNote"),
     daily: $("modeDaily"), practice: $("modePractice"), hard: $("hardToggle"),
-    overlay: $("overlay"), card: $("card")
+    overlay: $("overlay"), card: $("card"), app: $("app")
   };
   const reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
 
@@ -445,6 +445,8 @@
   let hardPref = false;           // れんしゅうの「むずかしい」（いまのゲームから引き継ぐ）
   let view = "play";              // play | result | locked | help | confirm
   let resultTimer = 0;
+  let hintTimer = 0;              // 手がかりの音（submit の 160ms 後）
+  let bestTimer = 0;              // ベスト更新の音（結果カードの 700ms 後）
   let lastAdded = -1;             // 直前に置いたスロット（演出用）
 
   function saveState() { if (state) writeJSON(KEY_STATE, state); }
@@ -618,7 +620,8 @@
     render(true);
     sfx.play("submit");
     if (!state.done) {
-      setTimeout(() => sfx.play("hint", r.hit), 160);
+      clearTimeout(hintTimer);
+      hintTimer = setTimeout(() => { hintTimer = 0; sfx.play("hint", r.hit); }, 160);
       return;
     }
     // 最後の行を少し見せてから結果カードを出す
@@ -677,6 +680,9 @@
   function start(mode, hard) {
     abandonDaily(state);
     clearTimeout(resultTimer); resultTimer = 0;
+    // 前の回の音が新しい回に重ならないよう、待っている音を取り消す
+    clearTimeout(hintTimer); hintTimer = 0;
+    clearTimeout(bestTimer); bestTimer = 0;
     if (mode === "daily") state = L.newGame({ mode: "daily", hard: false, date: today() });
     else { hardPref = !!hard; state = L.newGame({ mode: "practice", hard: hardPref }); }
     saveState();
@@ -732,21 +738,33 @@
 
   // ===== カード =====
   let confirmFn = null, confirmBack = null;
+  let returnFocus = null;         // カードを閉じたらフォーカスを戻す先（カードを開く前に選んでいたボタン）
   function showCard(html, { soft = false } = {}) {
+    if (ui.overlay.hidden) {
+      const a = document.activeElement;
+      returnFocus = a && a !== document.body && !ui.overlay.contains(a) ? a : null;
+    }
     ui.card.innerHTML = html;
+    ui.app.inert = true;          // 後ろの画面はカードの表示中は操作・読み上げの対象にしない
     ui.overlay.classList.toggle("soft", soft);
     ui.overlay.hidden = false;
     ui.overlay.scrollTop = 0;
     const primary = ui.card.querySelector(".primary");
     if (primary) primary.focus({ preventScroll: true });
   }
-  function hideOverlay() { ui.overlay.hidden = true; ui.overlay.classList.remove("soft"); view = "play"; confirmFn = null; confirmBack = null; }
+  function hideOverlay() {
+    ui.overlay.hidden = true; ui.overlay.classList.remove("soft"); view = "play"; confirmFn = null; confirmBack = null;
+    ui.app.inert = false;
+    const el = returnFocus;
+    returnFocus = null;
+    if (el && el.isConnected && !el.disabled) { try { el.focus({ preventScroll: true }); } catch (e) { /* 戻せなくても遊べる */ } }
+  }
   function setText(sel, text) { const el = ui.card.querySelector(sel); if (el) el.textContent = text; }
   function showConfirm(msg, okLabel, fn, title = "やめて切り替える？") {
     confirmFn = fn;
     view = "confirm";
     showCard(`
-      <h2 data-f="t"></h2>
+      <h2 id="cardTitle" data-f="t"></h2>
       <p class="lead" data-f="m"></p>
       <div class="brow">
         <button class="cta" type="button" data-cmd="cancel">やめる</button>
@@ -769,9 +787,11 @@
     const first = firstVisit && !helpSeen;
     helpSeen = true;
     if (back === "result" || back === "locked" || back === "confirm") return;
+    // 結果カードを出す直前（最後の行を見せている間）は開かない（開いてもすぐ結果カードに替わってしまうため）
+    if (resultTimer) return;
     view = "help";
     showCard(`
-      <h2>遊び方</h2>
+      <h2 id="cardTitle">遊び方</h2>
       <div class="help">
         <p>6色のうち4つが、決まった順に隠れています。色をえらんで4つ並べ、「決定」で答えます。</p>
         <p class="demo"><span class="key hit"></span>位置も色も合っている数</p>
@@ -815,11 +835,11 @@
     const tries = state.rows.length;
     const isDaily = state.mode === "daily";
     if (withSound) {
-      if (win) { sfx.play("win"); sfx.buzz([40, 30, 60]); if (newBest) setTimeout(() => sfx.play("best"), 700); }
+      if (win) { sfx.play("win"); sfx.buzz([40, 30, 60]); if (newBest) { clearTimeout(bestTimer); bestTimer = setTimeout(() => { bestTimer = 0; sfx.play("best"); }, 700); } }
       else { sfx.play("lose"); sfx.buzz([60, 40, 120]); }
     }
     showCard(`
-      <h2 data-f="t"></h2>
+      <h2 id="cardTitle" data-f="t"></h2>
       <p class="lead" data-f="m"></p>
       ${answerHTML()}
       ${statsHTML()}
@@ -838,7 +858,7 @@
   function showLocked() {
     view = "locked";
     showCard(`
-      <h2>今日の1問</h2>
+      <h2 id="cardTitle">今日の1問</h2>
       <p class="lead" data-f="m"></p>
       ${answerHTML()}
       ${statsHTML()}

@@ -20,7 +20,7 @@
     --well: #0d111d;
     --line: #2f3750;
     --ink: #ece6d6;
-    --muted: #8a91a8;
+    --muted: #9aa1b8;
     --accent: #f0a43a;
     --accent-ink: #231705;
     --font-display: "Chakra Petch", "Hiragino Sans", system-ui, sans-serif;
@@ -415,7 +415,7 @@
 </div>
 
 <div class="overlay" id="overlay" hidden>
-  <div class="card" id="card" role="dialog" aria-modal="true"></div>
+  <div class="card" id="card" role="dialog" aria-modal="true" aria-labelledby="cardTitle"></div>
 </div>
 
 <script src="../../common/sfx.js"></script>
@@ -544,7 +544,8 @@
 
   // ===== 要素 =====
   const $ = (id) => document.getElementById(id);
-  const boardEl = $("board"), stage = $("stage"), overlay = $("overlay"), card = $("card");
+  const boardEl = $("board"), stage = $("stage"), overlay = $("overlay"), card = $("card"), appEl = $("app");
+  let returnFocus = null;        // 結果カードを閉じたときにフォーカスを戻す先
   const ui = { score: $("score"), best: $("best"), undo: $("undoBtn"), newGame: $("newBtn") };
   const reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
 
@@ -670,7 +671,8 @@
     }
     const t0 = performance.now(), DUR = 200;
     const step = (now) => {
-      const k = Math.min(1, (now - t0) / DUR);
+      // rAF の時刻が t0 より前のことがあるので 0..1 に丸める（前より少ない点数が出ないように）
+      const k = Math.min(1, Math.max(0, (now - t0) / DUR));
       shownScore = k >= 1 ? to : Math.round(from + (to - from) * (1 - (1 - k) * (1 - k)));
       ui.score.textContent = shownScore.toLocaleString();
       if (k < 1) countAnim = requestAnimationFrame(step);
@@ -918,12 +920,27 @@
     card.className = "card" + (cls ? " " + cls : "");
     card.innerHTML = html;
     card.querySelectorAll("[data-f]").forEach((el) => { el.textContent = fields[el.dataset.f] ?? ""; });
+    const h2 = card.querySelector("h2");
+    if (h2) h2.id = "cardTitle";
+    // カードを出す前にフォーカスのあった所を覚えておき、閉じたら戻す（カードを出したまま差し替えるときは覚え直さない）
+    if (overlay.hidden) {
+      const a = document.activeElement;
+      returnFocus = a && a !== document.body && !card.contains(a) ? a : null;
+    }
     overlay.classList.toggle("soft", soft);
     overlay.hidden = false;
+    appEl.inert = true;          // 背景（盤面・上のボタン）をスクリーンリーダーや Tab で触れないようにする
     const primary = card.querySelector(".primary");
     if (primary) primary.focus({ preventScroll: true });
   }
-  function hideOverlay() { overlay.hidden = true; overlay.classList.remove("soft"); }
+  function hideOverlay() {
+    const wasShown = !overlay.hidden;
+    overlay.hidden = true; overlay.classList.remove("soft");
+    appEl.inert = false;
+    const f = returnFocus;
+    returnFocus = null;
+    if (wasShown && f && f.isConnected) f.focus({ preventScroll: true });
+  }
   overlay.addEventListener("click", (e) => {
     // 結果カードを「画面に触れて」出した直後は、同じ指の操作でボタンが押されないようにする
     if (revealedByTap && performance.now() - revealedByTap < 350) return;
