@@ -8,7 +8,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
-import { BASE, IRO, view, custom, newPage, seed, wait, frozen, layoutProbe, swInfo, sleep, SFX_SPY } from '../lib.mjs';
+import { spawnSync } from 'node:child_process';
+import { BASE, IRO, view, custom, newPage, seed, wait, frozen, layoutProbe, swInfo, sleep, SFX_SPY, TIMEZONES, zonedTime } from '../lib.mjs';
 
 const V = () => view('i13', 'p', 'app');
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -40,6 +41,15 @@ function makeState(L, opts, guesses = [], cur = []) {
 function wrong(secret, i = 0) {
   // ふつうの画面は入力中の同じ色を押せないので、4色ともちがう推測を返す
   for (let k = 0; k < 6; k++) { const j = i + k; const g = [j % 6, (j + 1) % 6, (j + 2) % 6, (j + 3) % 6]; if (!eq(g, secret)) return g; }
+}
+
+// 別プロセスで TZ を指定して todayStr を呼ぶ（このプロセスの TZ に左右されない）。戻り値：{ offset, out }（offset は getTimezoneOffset）
+function todayStrInTZ(root, tz, cases) {
+  const code = 'const L=require(process.argv[1]);const c=JSON.parse(process.argv[2]);'
+    + 'const d=c.map(([y,m,d,h,mi,s])=>new Date(y,m-1,d,h,mi,s));'
+    + 'console.log(JSON.stringify({offset:d[0].getTimezoneOffset(),out:d.map((x)=>L.todayStr(x))}));';
+  const r = spawnSync(process.execPath, ['-e', code, path.join(root, 'games/irocode/logic.js'), JSON.stringify(cases)], { env: { ...process.env, TZ: tz }, encoding: 'utf8' });
+  try { return JSON.parse(r.stdout); } catch { return { offset: null, out: [], err: r.stderr }; }
 }
 
 // ---------- ブラウザ：共通の操作 ----------
@@ -147,6 +157,13 @@ export const tests = [
       const days = [[D(2026, 1, 5), '2026-01-05'], [D(2026, 12, 31, 23, 59, 59), '2026-12-31'], [D(2027, 1, 1, 0, 0, 0), '2027-01-01'], [D(2028, 2, 29), '2028-02-29'], [D(2026, 10, 17, 23, 59, 59), '2026-10-17'], [D(2026, 10, 18, 0, 0, 0), '2026-10-18']];
       const badDay = days.filter(([d, s]) => L.todayStr(d) !== s).map(([d, s]) => [s, L.todayStr(d)]);
       check('todayStr：ローカル日付 YYYY-MM-DD（0 埋め・年末・うるう日・23:59:59 と 0:00:00 で日が変わる）、引数なしは今日', badDay.length === 0 && /^\d{4}-\d{2}-\d{2}$/.test(L.todayStr()), badDay);
+      // 同じ確認を、タイムゾーンを変えた別プロセスでも行う（UTC のままだと、UTC 由来の日付への取り違えに気づけない）
+      const tzCases = [[2026, 1, 5, 12, 0, 0], [2026, 12, 31, 23, 59, 59], [2027, 1, 1, 0, 0, 0], [2028, 2, 29, 12, 0, 0], [2026, 10, 17, 23, 59, 59], [2026, 10, 18, 0, 0, 0], [2026, 3, 9, 8, 30, 0], [2026, 9, 30, 0, 0, 1]];
+      const tzWant = ['2026-01-05', '2026-12-31', '2027-01-01', '2028-02-29', '2026-10-17', '2026-10-18', '2026-03-09', '2026-09-30'];
+      const tzRes = Object.fromEntries(TIMEZONES.map((tz) => [tz, todayStrInTZ(root, tz, tzCases)]));
+      const tzBad = Object.entries(tzRes).filter(([, r]) => !eq(r.out, tzWant)).map(([tz, r]) => [tz, r.out]);
+      check(`todayStr：タイムゾーン ${TIMEZONES.join(' と ')} の別プロセスでも、ローカル日付になる（UTC 由来・月のずれがない。日本は 0〜9 時台、LA は夕方以降に UTC の日付とずれる）`,
+        tzBad.length === 0 && TIMEZONES.every((tz) => typeof tzRes[tz].offset === 'number') && new Set(TIMEZONES.map((tz) => tzRes[tz].offset)).size === TIMEZONES.length, { tzBad, offsets: TIMEZONES.map((tz) => tzRes[tz].offset) });
       const s1 = L.dailySeed('2026-10-17'), s2 = L.dailySeed('2026-10-18');
       check('dailySeed：同じ日付は同じ値、32bit の非負整数、別の日は別の値', s1 === L.dailySeed('2026-10-17') && Number.isInteger(s1) && s1 >= 0 && s1 <= 0xFFFFFFFF && s1 !== s2);
       const seeds = new Set(); for (let i = 0; i < 365; i++) seeds.add(L.dailySeed(L.todayStr(new Date(2026, 0, 1 + i))));
@@ -222,6 +239,9 @@ export const tests = [
       const dBad = Object.entries(dNG).filter(([, x]) => L.validateDaily(x) !== null).map(([k]) => k);
       check(`validateDaily：正しい記録（勝ち・10回目の勝ち・負け・途中）は受け入れ、壊れた ${Object.keys(dNG).length} 種は null`,
         dBad.length === 0 && eq(L.validateDaily(dOK), dOK) && L.validateDaily({ ...dOK, tries: 10 }) !== null && L.validateDaily({ date: '2026-10-17', done: true, win: false, tries: 10 }) !== null && L.validateDaily({ date: '2026-10-17', done: false, win: false, tries: 2 }) !== null, dBad);
+      // 端末の時計を進めて遊んだあと戻した場合：today より未来の日付は受け付けない（today を渡したときだけ。同じ日と過去は受け入れる）
+      const fut = (date) => L.validateDaily({ ...dOK, date }, '2026-10-18');
+      check('validateDaily(x, today)：today より未来の日付は null、today と過去は受け入れる（today を渡さなければ従来どおり）、today が不正なら比べない', fut('2026-10-19') === null && fut('2027-01-01') === null && fut('2026-10-18') !== null && fut('2026-10-17') !== null && fut('2025-12-31') !== null && L.validateDaily({ ...dOK, date: '2026-10-19' }) !== null && L.validateDaily({ ...dOK, date: '2026-10-19' }, 'x') !== null, { f19: fut('2026-10-19'), f18: fut('2026-10-18') });
     },
   },
   {
@@ -532,10 +552,11 @@ export const tests = [
       check('やり直す(1)：保存も新しい問題になっている（irocode.state の seed が一致・検証を通る）', await (async () => { const sv = await lsGet(o.page, 'irocode.state'); return sv && sv.seed === g.seed && sv.rows.length === 0 && eq(L.validateState(sv), sv); })());
       await o.ctx.close();
       // (2) 今日の1問：rows が1つ以上あるとやり直せない（記録の改ざん防止）。cur だけなら消せる
-      const todayS = L.todayStr();      // 端末の「今日」（日付を決め打ちしない）
+      const NOW = zonedTime('Asia/Tokyo', 2026, 10, 18, 12, 0, 0);      // ページの時計をこの時刻に固定する（実際の「いま」と比べない）
+      const todayS = '2026-10-18';      // 固定した時刻の、東京での日付
       const dsd = L.newGame({ mode: 'daily', date: todayS });
       const dst = makeState(L, { mode: 'daily', date: todayS }, [wrong(dsd.secret, 0), wrong(dsd.secret, 1)]);
-      o = await open(browser, 'I10r3', { state: dst });
+      o = await open(browser, 'I10r3', { state: dst, opts: { clockTime: NOW, timezoneId: 'Asia/Tokyo' } });
       const gd0 = await getState(o.page);
       if (gd0.mode === 'daily' && gd0.date === dst.date) {
         check('やり直す(2)：今日の1問で rows が1つ以上あるとき「やり直す」は押せない（disabled）', await rs(o.page).isDisabled(), gd0.rows.length);
@@ -543,7 +564,7 @@ export const tests = [
         const gd = await getState(o.page), dl = await lsGet(o.page, 'irocode.daily');
         check('やり直す(2)：無理に click しても履歴は消えず（rows 2・同じ答え）、確認カードも出ず、daily の記録も書かれない', gd.rows.length === 2 && eq(gd.secret, dst.secret) && !(await overlayShown(o.page)) && (dl === null || dl.done !== true), { rows: gd.rows.length, dl });
       } else {
-        check('やり直す(2)：今日の1問の状態を注入できる（端末の今日の日付でないと前日扱いで捨てられる）', false, gd0);
+        check('やり直す(2)：今日の1問の状態を注入できる（ページの今日の日付でないと前日扱いで捨てられる）', false, gd0);
       }
       await o.ctx.close();
       // 終わったあとはやり直せない（結果カードを閉じても disabled）
@@ -719,72 +740,78 @@ export const tests = [
   },
   {
     id: 'I14', tier: 'full', title: 'いろコード：日付の変わり目（0時またぎで今日の1問が変わる、前日の記録は今日を邪魔しない、1日1回）',
-    async run({ browser, check, root }) {
+    async run({ browser, check: check0, root }) {
       const L = loadLogic(root);
-      const T = (y, m, d, h, mi, s) => new Date(y, m - 1, d, h, mi, s);
-      const mkPage = async (time, items) => {
-        const { ctx, page } = await newPage(browser, V(), 'I14');
-        await page.clock.install({ time });
-        await seed(page, items || {});
-        await page.goto(IRO); await page.clock.runFor(400);
-        if (await page.locator('#overlay:not([hidden]) [data-cmd="close"]').count()) { await page.locator('#overlay [data-cmd="close"]').click(); await page.clock.runFor(200); }
-        return { ctx, page };
-      };
-      const tick = (p, ms) => p.clock.runFor(ms);
-      // 23:59:50 に開く → 今日は 10/17
-      let { ctx, page } = await mkPage(T(2026, 10, 17, 23, 59, 50));
-      await page.locator('#modeDaily').tap(); await tick(page, 450);
-      let s = await getState(page);
-      check('23:59:50：今日の1問は 2026-10-17（種は dailySeed、答えは logic の newGame と同じ）', s.mode === 'daily' && s.date === '2026-10-17' && s.seed === L.dailySeed('2026-10-17') && eq(s.secret, L.newGame({ mode: 'daily', date: '2026-10-17' }).secret) && !s.hard, s);
-      // 一晩アプリを開いたまま、0時をまたいで戻ってくる
-      await page.clock.setSystemTime(T(2026, 10, 18, 0, 0, 10));
-      await page.evaluate(() => { document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('pageshow')); window.dispatchEvent(new Event('focus')); });
-      await tick(page, 300);
-      await page.locator('#modePractice').tap(); await tick(page, 450);
-      await page.locator('#modeDaily').tap(); await tick(page, 450);
-      s = await getState(page);
-      check('0時をまたいで戻り、今日の1問を選び直すと 2026-10-18 の問題になる（昨日の問題のまま遊べてしまわない）', s.mode === 'daily' && s.date === '2026-10-18' && s.seed === L.dailySeed('2026-10-18'), { date: s.date, mode: s.mode });
-      await ctx.close();
-      // 昨日(10-17)の今日の1問が途中のまま保存 → 翌日(10-18)の0:00:10に開く → 昨日の分は捨てられ、今日の新しい問題になる
-      const yd = L.newGame({ mode: 'daily', date: '2026-10-17' });
-      const ySt = makeState(L, { mode: 'daily', date: '2026-10-17' }, [wrong(yd.secret, 0), wrong(yd.secret, 1)]);
-      ({ ctx, page } = await mkPage(T(2026, 10, 17, 23, 59, 50), { 'irocode.state': ySt }));
-      s = await getState(page);
-      check('前提：23:59:50 に開くと昨日分でなく当日(10-17)の途中の問題が復元される（rows 2）', s.mode === 'daily' && s.date === '2026-10-17' && s.rows.length === 2, { date: s.date, rows: s.rows.length });
-      await page.clock.setSystemTime(T(2026, 10, 18, 0, 0, 10));
-      await page.reload(); await tick(page, 400);
-      if (await page.locator('#overlay:not([hidden]) [data-cmd="close"]').count()) { await page.locator('#overlay [data-cmd="close"]').click(); await tick(page, 200); }
-      s = await getState(page);
-      check('0時をまたいだあとに再読み込み：保存された昨日の途中の問題は捨てられ、今日の問題（mode daily・date 2026-10-18・rows 0・seed は今日のもの）', s.mode === 'daily' && s.date === '2026-10-18' && s.rows.length === 0 && s.seed === L.dailySeed('2026-10-18') && !eq(s.secret, ySt.secret), { date: s.date, mode: s.mode, rows: s.rows.length });
-      await ctx.close();
-      // 昨日クリア済みの記録 → 今日は遊べる
-      ({ ctx, page } = await mkPage(T(2026, 10, 18, 0, 0, 5), { 'irocode.daily': { date: '2026-10-17', done: true, win: true, tries: 3 } }));
-      await page.locator('#modeDaily').tap(); await tick(page, 450);
-      await fill(page, [0, 1, 2, 3]).catch(() => {});
-      await page.locator('#submit').tap({ timeout: 2000 }).catch(() => {}); await tick(page, 1100);
-      s = await getState(page);
-      check('昨日クリア済みでも、0:00:05 の今日の1問は未クリアで、1手決められる（date 2026-10-18・rows 1）', s.date === '2026-10-18' && s.rows.length === 1, { date: s.date, rows: s.rows.length, done: s.done });
-      await ctx.close();
-      // 今日クリア済み → 今日の1問は終わっている（1日1回）
-      ({ ctx, page } = await mkPage(T(2026, 10, 18, 23, 59, 59), { 'irocode.daily': { date: '2026-10-18', done: true, win: true, tries: 4 } }));
-      await page.locator('#modeDaily').tap({ timeout: 2000 }).catch(() => {}); await tick(page, 450);
-      s = await getState(page);
-      const shown = await overlayShown(page), submitOff = await page.evaluate(() => document.querySelector('#submit').disabled);
-      check('今日クリア済み（23:59:59）：今日の1問は終了扱い（done か結果カードか決められない状態）で、記録を増やせない', s.mode === 'daily' && s.date === '2026-10-18' && (s.done !== null || shown || submitOff), { done: s.done, rows: s.rows.length, shown, submitOff });
-      await page.clock.setSystemTime(T(2026, 10, 19, 0, 0, 1));
-      await page.reload(); await tick(page, 400);
-      await page.locator('#modeDaily').tap({ timeout: 2000 }).catch(() => {}); await tick(page, 450);
-      s = await getState(page);
-      check('0時をまたぐと翌日（10-19）はまた遊べる（done null・rows 0）', s.date === '2026-10-19' && s.done === null && s.rows.length === 0, { date: s.date, done: s.done, rows: s.rows.length });
-      await ctx.close();
-      // 今日の1問を解くと daily の記録が書かれる
-      ({ ctx, page } = await mkPage(T(2026, 10, 20, 12, 0, 0), {}));
-      await page.locator('#modeDaily').tap(); await tick(page, 450);
-      const secret = (await getState(page)).secret;
-      await fill(page, secret); await page.locator('#submit').tap(); await tick(page, 900);
-      const d = await lsGet(page, 'irocode.daily');
-      check('今日の1問を1回で解くと irocode.daily に {date, done:true, win:true, tries:1} が保存される（検証を通る）', d && d.date === '2026-10-20' && d.done === true && d.win === true && d.tries === 1 && eq(L.validateDaily(d), d), d);
-      await ctx.close();
+      for (const tz of TIMEZONES) {
+        const check = (n, ok, d) => check0(`[${tz}] ${n}`, ok, d);
+        const T = (y, m, d, h, mi, s) => zonedTime(tz, y, m, d, h, mi, s);      // タイムゾーン tz の壁時計の時刻（ページの時計に渡す）
+        const mkPage = async (time, items) => {
+          const { ctx, page } = await newPage(browser, V(), 'I14 ' + tz, { timezoneId: tz });
+          await page.clock.install({ time });
+          await seed(page, items || {});
+          await page.goto(IRO); await page.clock.runFor(400);
+          if (await page.locator('#overlay:not([hidden]) [data-cmd="close"]').count()) { await page.locator('#overlay [data-cmd="close"]').click(); await page.clock.runFor(200); }
+          return { ctx, page };
+        };
+        const tick = (p, ms) => p.clock.runFor(ms);
+        // 23:59:50 に開く → 今日は 10/17
+        let { ctx, page } = await mkPage(T(2026, 10, 17, 23, 59, 50));
+        await page.locator('#modeDaily').tap(); await tick(page, 450);
+        let s = await getState(page);
+        check('23:59:50：今日の1問は 2026-10-17（種は dailySeed、答えは logic の newGame と同じ）', s.mode === 'daily' && s.date === '2026-10-17' && s.seed === L.dailySeed('2026-10-17') && eq(s.secret, L.newGame({ mode: 'daily', date: '2026-10-17' }).secret) && !s.hard, s);
+        // 一晩アプリを開いたまま、0時をまたいで戻ってくる
+        await page.clock.setSystemTime(T(2026, 10, 18, 0, 0, 10));
+        await page.evaluate(() => { document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('pageshow')); window.dispatchEvent(new Event('focus')); });
+        await tick(page, 300);
+        // 戻った直後（モードを切り替える前）に、自動で今日の問題に差し替わっている。手動の切り替えは start('daily') を通るので、ここで確かめないと自動差し替えを消しても気づけない
+        s = await getState(page);
+        check('0時をまたいで戻った直後（モード切替の前）に、自動で今日（2026-10-18）の問題に差し替わる（date・seed・rows 0・結果カードなし）', s.mode === 'daily' && s.date === '2026-10-18' && s.seed === L.dailySeed('2026-10-18') && s.rows.length === 0 && !(await overlayShown(page)), { date: s.date, mode: s.mode, rows: s.rows.length });
+        await page.locator('#modePractice').tap(); await tick(page, 450);
+        await page.locator('#modeDaily').tap(); await tick(page, 450);
+        s = await getState(page);
+        check('0時をまたいで戻り、今日の1問を選び直すと 2026-10-18 の問題になる（昨日の問題のまま遊べてしまわない）', s.mode === 'daily' && s.date === '2026-10-18' && s.seed === L.dailySeed('2026-10-18'), { date: s.date, mode: s.mode });
+        await ctx.close();
+        // 昨日(10-17)の今日の1問が途中のまま保存 → 翌日(10-18)の0:00:10に開く → 昨日の分は捨てられ、今日の新しい問題になる
+        const yd = L.newGame({ mode: 'daily', date: '2026-10-17' });
+        const ySt = makeState(L, { mode: 'daily', date: '2026-10-17' }, [wrong(yd.secret, 0), wrong(yd.secret, 1)]);
+        ({ ctx, page } = await mkPage(T(2026, 10, 17, 23, 59, 50), { 'irocode.state': ySt }));
+        s = await getState(page);
+        check('前提：23:59:50 に開くと昨日分でなく当日(10-17)の途中の問題が復元される（rows 2）', s.mode === 'daily' && s.date === '2026-10-17' && s.rows.length === 2, { date: s.date, rows: s.rows.length });
+        await page.clock.setSystemTime(T(2026, 10, 18, 0, 0, 10));
+        await page.reload(); await tick(page, 400);
+        if (await page.locator('#overlay:not([hidden]) [data-cmd="close"]').count()) { await page.locator('#overlay [data-cmd="close"]').click(); await tick(page, 200); }
+        s = await getState(page);
+        check('0時をまたいだあとに再読み込み：保存された昨日の途中の問題は捨てられ、今日の問題（mode daily・date 2026-10-18・rows 0・seed は今日のもの）', s.mode === 'daily' && s.date === '2026-10-18' && s.rows.length === 0 && s.seed === L.dailySeed('2026-10-18') && !eq(s.secret, ySt.secret), { date: s.date, mode: s.mode, rows: s.rows.length });
+        await ctx.close();
+        // 昨日クリア済みの記録 → 今日は遊べる
+        ({ ctx, page } = await mkPage(T(2026, 10, 18, 0, 0, 5), { 'irocode.daily': { date: '2026-10-17', done: true, win: true, tries: 3 } }));
+        await page.locator('#modeDaily').tap(); await tick(page, 450);
+        await fill(page, [0, 1, 2, 3]).catch(() => {});
+        await page.locator('#submit').tap({ timeout: 2000 }).catch(() => {}); await tick(page, 1100);
+        s = await getState(page);
+        check('昨日クリア済みでも、0:00:05 の今日の1問は未クリアで、1手決められる（date 2026-10-18・rows 1）', s.date === '2026-10-18' && s.rows.length === 1, { date: s.date, rows: s.rows.length, done: s.done });
+        await ctx.close();
+        // 今日クリア済み → 今日の1問は終わっている（1日1回）
+        ({ ctx, page } = await mkPage(T(2026, 10, 18, 23, 59, 59), { 'irocode.daily': { date: '2026-10-18', done: true, win: true, tries: 4 } }));
+        await page.locator('#modeDaily').tap({ timeout: 2000 }).catch(() => {}); await tick(page, 450);
+        s = await getState(page);
+        const shown = await overlayShown(page), submitOff = await page.evaluate(() => document.querySelector('#submit').disabled);
+        check('今日クリア済み（23:59:59）：今日の1問は終了扱い（done か結果カードか決められない状態）で、記録を増やせない', s.mode === 'daily' && s.date === '2026-10-18' && (s.done !== null || shown || submitOff), { done: s.done, rows: s.rows.length, shown, submitOff });
+        await page.clock.setSystemTime(T(2026, 10, 19, 0, 0, 1));
+        await page.reload(); await tick(page, 400);
+        await page.locator('#modeDaily').tap({ timeout: 2000 }).catch(() => {}); await tick(page, 450);
+        s = await getState(page);
+        check('0時をまたぐと翌日（10-19）はまた遊べる（done null・rows 0）', s.date === '2026-10-19' && s.done === null && s.rows.length === 0, { date: s.date, done: s.done, rows: s.rows.length });
+        await ctx.close();
+        // 今日の1問を解くと daily の記録が書かれる
+        ({ ctx, page } = await mkPage(T(2026, 10, 20, 12, 0, 0), {}));
+        await page.locator('#modeDaily').tap(); await tick(page, 450);
+        const secret = (await getState(page)).secret;
+        await fill(page, secret); await page.locator('#submit').tap(); await tick(page, 900);
+        const d = await lsGet(page, 'irocode.daily');
+        check('今日の1問を1回で解くと irocode.daily に {date, done:true, win:true, tries:1} が保存される（検証を通る）', d && d.date === '2026-10-20' && d.done === true && d.win === true && d.tries === 1 && eq(L.validateDaily(d), d), d);
+        await ctx.close();
+      }
     },
   },
   {
@@ -826,13 +853,18 @@ export const tests = [
     id: 'I16', tier: 'full', title: 'いろコード：モード（今日の1問は何度開いても同じ問題、れんしゅうは毎回ちがう）',
     async run({ browser, check, root }) {
       const L = loadLogic(root);
-      const { ctx, page } = await open(browser, 'I16', {});
-      await page.locator('#modeDaily').tap(); await wait(page, 400);
-      const d1 = await getState(page);
-      await page.reload(); await wait(page, 300);
-      await page.locator('#modeDaily').tap(); await wait(page, 400);
-      const d2 = await getState(page);
-      check('今日の1問：date は端末のローカル日付、2回開いても同じ問題、logic の newGame と同じ答え', d1.mode === 'daily' && d1.date === L.todayStr() && d1.seed === d2.seed && eq(d1.secret, d2.secret) && eq(d1.secret, L.newGame({ mode: 'daily', date: d1.date }).secret), { d1, d2 });
+      // ページの時計を固定する：東京の 2026-10-18 12:00 とロサンゼルスの 2026-10-18 12:00（UTC では 03:00 と 19:00）
+      let page, ctx, d1;
+      for (const tz of [...TIMEZONES].reverse()) {       // 最後（= 先頭のタイムゾーン）のページを以降の確認に使う
+        ({ ctx, page } = await open(browser, 'I16 ' + tz, { opts: { clockTime: zonedTime(tz, 2026, 10, 18, 12, 0, 0), timezoneId: tz } }));
+        await page.locator('#modeDaily').tap(); await wait(page, 400);
+        d1 = await getState(page);
+        await page.reload(); await wait(page, 300);
+        await page.locator('#modeDaily').tap(); await wait(page, 400);
+        const d2 = await getState(page);
+        check(`[${tz}] 今日の1問：date は固定した時刻のローカル日付（2026-10-18）、2回開いても同じ問題、logic の newGame と同じ答え`, d1.mode === 'daily' && d1.date === '2026-10-18' && d1.seed === d2.seed && eq(d1.secret, d2.secret) && eq(d1.secret, L.newGame({ mode: 'daily', date: '2026-10-18' }).secret), { d1, d2 });
+        if (tz !== TIMEZONES[0]) await ctx.close();   // 先頭のタイムゾーン以外は閉じる
+      }
       check('今日の1問のあいだは「むずかしい」にならない（hard false・同じ色なしの答え）', d1.hard === false && new Set(d1.secret).size === 4);
       const seen = new Set();
       for (let i = 0; i < 4; i++) {
@@ -903,6 +935,89 @@ export const tests = [
         const fitOn = await segFit();
         check(`${v.label}：モードのボタン3つの文字がはみ出さない（scrollWidth <= clientWidth）・高さ44px以上（むずかしい：オフ／オン）`, fitOff.length === 0 && fitOn.length === 0 && (await page.locator('#hardToggle').getAttribute('aria-pressed')) === 'true', { fitOff, fitOn });
         await ctx.close();
+      }
+    },
+  },
+  {
+    id: 'I19', tier: 'full', title: 'いろコード：日付の仕様（0時をまたいで遊び続ける／確認・遊び方カード中にまたぐ／端末の時計が戻る／途中で捨てたときの成績）',
+    async run({ browser, check: check0, root }) {
+      const L = loadLogic(root);
+      // 仕様：結果は「始めた日」(state.date) で記録する。カードの文言は表示時点の日付と比べる。ヒントを見た問題を完走せず手放したら、理由によらず負け1回（played のみ。勝ち・best は動かさない）。
+      for (const tz of TIMEZONES) {
+        const check = (n, ok, d) => check0(`[${tz}] ${n}`, ok, d);
+        const T = (y, m, d, h, mi, s) => zonedTime(tz, y, m, d, h, mi, s);
+        const openAt = (time, items) => open(browser, 'I19 ' + tz, { extra: { 'irocode.stats': L.initialStats(), ...items }, opts: { clockTime: time, timezoneId: tz } });     // stats ありで始める＝初回の遊び方カードが出ない
+        const cross = async (page, time) => {      // 0時をまたぐ。隠さずに時計だけ進める
+          await page.clock.setSystemTime(time); await wait(page, 100);
+        };
+        const back = async (page) => {             // アプリに戻ってくる（visibilitychange）
+          await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await wait(page, 300);
+        };
+        const dayState = (date, n) => { const g = L.newGame({ mode: 'daily', date }); return makeState(L, { mode: 'daily', date }, Array.from({ length: n }, (_, i) => wrong(g.secret, i))); };
+        const ySt = dayState('2026-10-17', 2);
+        // (a) 23:59:50 に始めて、0時をまたいだまま最後まで遊び、確定する
+        let o = await openAt(T(2026, 10, 17, 23, 59, 50), { 'irocode.state': ySt });
+        let g = await getState(o.page);
+        check('前提：23:59:50 に開くと 10-17 の途中の問題（rows 2）', g.date === '2026-10-17' && g.rows.length === 2, { date: g.date, rows: g.rows.length });
+        await cross(o.page, T(2026, 10, 18, 0, 0, 10));
+        await guess(o.page, ySt.secret);
+        g = await getState(o.page);
+        let dl = await lsGet(o.page, 'irocode.daily'), st = await lsGet(o.page, 'irocode.stats'), card = await cardInfo(o.page);
+        check('0時をまたいで確定(決定ボタン)：始めた日（2026-10-17）の問題として勝ちが記録される（daily の date は 10-17・tries 3、played 1・wins 1）', g.date === '2026-10-17' && g.done === 'win' && dl && dl.date === '2026-10-17' && dl.done === true && dl.win === true && dl.tries === 3 && st.played === 1 && st.wins === 1, { g: g.date, dl, st });
+        check('結果カードは表示時点の日付と比べる：「次は明日」でなく「今日の1問が遊べます」', await overlayShown(o.page) && /今日の1問が遊べます/.test(card.text) && !/次は明日/.test(card.text), card.text);
+        await back(o.page);
+        g = await getState(o.page); card = await cardInfo(o.page);
+        check('戻ると今日（2026-10-18）の新しい問題になる（rows 0・結果カードなし）。昨日の記録は増えない（played 1 のまま）', g.date === '2026-10-18' && g.rows.length === 0 && g.done === null && !(await overlayShown(o.page)) && (await lsGet(o.page, 'irocode.stats')).played === 1, { date: g.date, rows: g.rows.length });
+        await o.ctx.close();
+        // 同じ日の通常の結果カードは、これまでどおり「次は明日」
+        const tSt = dayState('2026-10-18', 2);
+        o = await openAt(T(2026, 10, 18, 12, 0, 0), { 'irocode.state': tSt });
+        await guess(o.page, tSt.secret); card = await cardInfo(o.page);
+        check('同じ日に終えた結果カードは「次は明日」（0時をまたいでいなければ変わらない）', /次は明日/.test(card.text) && !/今日の1問が遊べます/.test(card.text), card.text);
+        await o.ctx.close();
+        // (b) 確認カード（今日の1問を途中でやめてれんしゅうに）の表示中に0時をまたぐ → 戻っても差し替えない → 閉じると今日の問題（途中の問題は負け1回）
+        o = await openAt(T(2026, 10, 17, 23, 59, 50), { 'irocode.state': ySt });
+        await o.page.locator('#modePractice').tap(); await wait(o.page, 400);
+        card = await cardInfo(o.page);
+        await cross(o.page, T(2026, 10, 18, 0, 0, 10)); await back(o.page);
+        g = await getState(o.page); const still = await cardInfo(o.page);
+        check('確認カードの表示中に0時をまたいで戻っても、カードはそのまま（差し替えない）・問題は 10-17 の途中のまま（rows 2）', card.cmds.includes('confirm') && still.cmds.includes('confirm') && g.date === '2026-10-17' && g.rows.length === 2, { cmds: still.cmds, date: g.date, rows: g.rows.length });
+        await o.page.locator('#overlay [data-cmd=cancel]').tap(); await wait(o.page, 400);
+        g = await getState(o.page); st = await lsGet(o.page, 'irocode.stats'); dl = await lsGet(o.page, 'irocode.daily');
+        check('確認カードを閉じると、今日（2026-10-18）の新しい問題に差し替わる。途中だった昨日の問題は負け1回（played 1・wins 0）で、昨日の日付の記録は残さない', g.mode === 'daily' && g.date === '2026-10-18' && g.rows.length === 0 && !(await overlayShown(o.page)) && st.played === 1 && st.wins === 0 && dl === null, { date: g.date, st, dl });
+        await o.ctx.close();
+        // 遊び方カード
+        o = await openAt(T(2026, 10, 17, 23, 59, 50), {});
+        await o.page.locator('#helpBtn').tap(); await wait(o.page, 400);
+        await cross(o.page, T(2026, 10, 18, 0, 0, 10)); await back(o.page);
+        g = await getState(o.page);
+        check('遊び方カードの表示中に0時をまたいで戻っても、カードはそのまま・問題は 10-17 のまま', (await cardInfo(o.page)).cmds.includes('close') && g.date === '2026-10-17', { date: g.date });
+        await o.page.locator('#overlay [data-cmd=close]').tap(); await wait(o.page, 400);
+        g = await getState(o.page);
+        check('遊び方カードを閉じると、今日（2026-10-18）の問題になる（rows 0 だったので成績は動かない：played 0）', g.date === '2026-10-18' && !(await overlayShown(o.page)) && (await lsGet(o.page, 'irocode.stats')).played === 0, { date: g.date });
+        await o.ctx.close();
+        // (c) 端末の時計が戻った：未来の日付の記録・状態は受け付けない
+        const NOW = T(2026, 10, 18, 12, 0, 0);
+        o = await openAt(NOW, { 'irocode.daily': { date: '2026-10-19', done: true, win: true, tries: 2 } });
+        g = await getState(o.page); dl = await lsGet(o.page, 'irocode.daily');
+        check('未来の日付（10-19）の daily 記録は捨てる：今日（10-18）の1問は遊べる状態（結果カードなし・done null）で、保存からも消える', g.date === '2026-10-18' && g.done === null && !(await overlayShown(o.page)) && dl === null, { date: g.date, dl });
+        await o.ctx.close();
+        o = await openAt(NOW, { 'irocode.state': dayState('2026-10-19', 2), 'irocode.daily': { date: '2026-10-19', done: true, win: true, tries: 2 } });
+        g = await getState(o.page); st = await lsGet(o.page, 'irocode.stats'); dl = await lsGet(o.page, 'irocode.daily');
+        check('未来の日付（10-19）の途中の状態も捨てて今日（10-18）の問題にする。扱いは日付が過去のときと同じ：負け1回（played 1・wins 0）、昨日以外の日付の記録は残さない', g.date === '2026-10-18' && g.rows.length === 0 && st.played === 1 && st.wins === 0 && dl === null && !(await overlayShown(o.page)), { date: g.date, st, dl });
+        await o.ctx.close();
+        // 過去の日付の記録は、これまでどおり（今日を邪魔しない）
+        o = await openAt(NOW, { 'irocode.daily': { date: '2026-10-17', done: true, win: true, tries: 3 }, 'irocode.state': dayState('2026-10-17', 3) });
+        g = await getState(o.page); st = await lsGet(o.page, 'irocode.stats');
+        check('昨日（10-17）の途中の状態を起動時に捨てるときも、負け1回（played 1）。ただし昨日の記録がすでにあれば二重に数えない（played 0）', g.date === '2026-10-18' && st.played === 0, { date: g.date, st });
+        await o.ctx.close();
+        // れんしゅうへの切り替え：同じ「負け1回」
+        o = await openAt(NOW, { 'irocode.state': dayState('2026-10-18', 2) });
+        await o.page.locator('#modePractice').tap(); await wait(o.page, 400);
+        await o.page.locator('#overlay [data-cmd=confirm]').tap(); await wait(o.page, 500);
+        st = await lsGet(o.page, 'irocode.stats'); dl = await lsGet(o.page, 'irocode.daily');
+        check('今日の1問を途中でれんしゅうに切り替えると負け1回（played 1・wins 0）で、daily に今日の負けが記録される（捨てる経路の扱いと同じ）', st.played === 1 && st.wins === 0 && dl && dl.date === '2026-10-18' && dl.done === true && dl.win === false, { st, dl });
+        await o.ctx.close();
       }
     },
   },

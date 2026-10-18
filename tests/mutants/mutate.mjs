@@ -47,6 +47,15 @@ const M = [
   ['MZ2 ゼンマイの保存データで範囲外の★（9など）を受け入れる', '保存データ互換', 'games/zenmai/logic.js', 'if (!(Number.isInteger(s) && s >= 0 && s <= 3)) continue;', ''],
   ['MZ3 ゼンマイの結果カードから「メニューへ」が消える', '閉じ込め', 'games/zenmai/index.html', '<button class="cta" type="button" data-cmd="menu">メニューへ</button>', ''],
   ['MZ4 ゼンマイのネジで指を持ち替えても数え直さない（位置が飛んで余分に巻く）', 'タッチ操作', 'games/zenmai/input.js', 'core.reanchor();\n        feed(pos.x, pos.y);', 'feed(pos.x, pos.y);'],
+  // ---- 日付・時刻（いろコード）。日付の処理を足したら、ここにも変異を足す（tests/README.md「日付・時計」）----
+  ['MD1 いろコード：todayStr を UTC の日付にする（toISOString 由来。日本の0〜9時台に前日になる）', '日付', 'games/irocode/logic.js', 'return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());', 'return d.toISOString().slice(0, 10);'],
+  ['MD2 いろコード：todayStr の月が 1 ずれる（getMonth() + 1 を外す）', '日付', 'games/irocode/logic.js', 'pad2(d.getMonth() + 1)', 'pad2(d.getMonth())'],
+  ['MD3 いろコード：隠して戻ったとき日付が変わっていても今日の問題に差し替えない（自動差し替えを無効にする）', '日付', 'games/irocode/index.html', 'if (document.hidden) { saveState(); return; }\n    refreshDay();', 'if (document.hidden) { saveState(); return; }'],
+  ['MD4 いろコード：確認・遊び方カードを閉じたときに日付を見直さない', '日付', 'games/irocode/index.html', 'else if (cmd === "close") { hideOverlay(); renderInput(); refreshDay(); }', 'else if (cmd === "close") { hideOverlay(); renderInput(); }'],
+  ['MD5 いろコード：未来の日付の daily 記録を受け付ける', '日付/保存データ互換', 'games/irocode/logic.js', 'if (isDateStr(today) && x.date > today) return null;', ''],
+  ['MD6 いろコード：0時をまたいで確定した結果を、始めた日でなく確定時の日付で記録する', '日付', 'games/irocode/index.html', 'daily = { date: state.date, done: true, win, tries };', 'daily = { date: today(), done: true, win, tries };'],
+  ['MD7 いろコード：結果カードが0時をまたいでも「次は明日」のまま', '日付', 'games/irocode/index.html', 'const sameDay = state.date === today();', 'const sameDay = true;'],
+  ['MD8 いろコード：起動時に日付が違う途中の問題を捨てるとき、負けとして記録しない（れんしゅう切り替えと食い違う）', '日付/成績', 'games/irocode/index.html', '{ abandonDaily(state); state = null; }', '{ state = null; }'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

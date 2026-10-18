@@ -53,6 +53,20 @@ export async function wait(page, ms) {
   await sleep(Math.min(ms, 15));     // 描画・イベントの後始末に少しだけ実時間を渡す
 }
 
+// ---------- タイムゾーン ----------
+// 日付を扱うテストは、日本（UTC より進む）とロサンゼルス（UTC より遅れる）の2つで動かす。
+// UTC のテスト環境だけだと「ローカル日付」を「UTC の日付」に取り違えても気づけない。
+export const TIMEZONES = ['Asia/Tokyo', 'America/Los_Angeles'];
+// タイムゾーン tz の「年月日 時分秒」にあたる瞬間を Date で返す（page.clock.install({ time }) に渡す用。月は 1 始まり）
+export function zonedTime(tz, y, m, d, h = 0, mi = 0, s = 0) {
+  const want = Date.UTC(y, m - 1, d, h, mi, s);
+  const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+  const wall = (t) => { const p = Object.fromEntries(fmt.formatToParts(new Date(t)).map((x) => [x.type, +x.value])); return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second); };
+  let t = want;
+  t -= wall(t) - want; t -= wall(t) - want;       // 2回で収束（夏時間の境目をまたぐ時刻は使わない）
+  return new Date(t);
+}
+
 // ---------- 配信サーバー（GitHub Pages 風） ----------
 // ・/game-no1/ 配下だけを配信。末尾スラッシュなしのディレクトリは 301。Cache-Control: max-age=600
 // ・/__ctl?delay=ms&offline=1&hang=1&swver=xxx&rel=xxx&log=1 で、遅い回線・接続断（オフライン）・無応答・
@@ -143,7 +157,10 @@ export function watch(page, label, { allowNetErrors = false } = {}) {
   page.on('pageerror', (e) => { if (!(allowNetErrors && netErr.test(e.message))) pageErrors.push(`${label}: [pageerror] ${e.message}`); });
 }
 // opts: { sw: true で Service Worker を有効、reducedMotion, initScript, touch:false でデスクトップ相当、
-//         clock: true で待ち時間を早送り（wait(page, ms) を使う）、device: Playwright の端末名（例 'iPhone 13'） }
+//         clock: true で待ち時間を早送り（wait(page, ms) を使う）、device: Playwright の端末名（例 'iPhone 13'）、
+//         clockTime: 時刻を固定して始める Date（clock を含む。zonedTime で作る）、
+//         timezoneId: ページのタイムゾーン（日付を扱うテストは TIMEZONES の2つで動かす） }
+//   オプションは必ず opts の1オブジェクトに入れる（例 newPage(b, v, 'X', { initScript: f, clock: true })）。第5引数以降は無視される。
 export async function newPage(browser, v, label, opts = {}) {
   const ctx = await browser.newContext({
     ...(opts.device ? devices[opts.device] : {}),
@@ -151,6 +168,7 @@ export async function newPage(browser, v, label, opts = {}) {
     isMobile: opts.touch !== false, hasTouch: opts.touch !== false,
     serviceWorkers: opts.sw ? 'allow' : 'block',
     reducedMotion: opts.reducedMotion || 'no-preference',
+    ...(opts.timezoneId ? { timezoneId: opts.timezoneId } : {}),
   });
   // Google Fonts は外部。テストでは空の応答にして、ネットワークに左右されないようにする
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: /gstatic/.test(r.request().url()) ? 'font/woff2' : 'text/css', body: '', headers: { 'access-control-allow-origin': '*' } }));
@@ -164,7 +182,10 @@ export async function newPage(browser, v, label, opts = {}) {
   }
   if (opts.initScript) await ctx.addInitScript(opts.initScript);
   const page = await ctx.newPage();
-  if (opts.clock && CLOCK) { await page.clock.install(); clocked.add(page); }
+  // clockTime：ページの時刻をこの瞬間（Date）に固定して始める。日付を使うテストは、実際の「いま」でなくこれで時刻を決め、
+  // 期待値もこの時刻から作る。CLOCK=0 でも時刻の固定は行う（早送りだけ止める）
+  if (opts.clockTime) { await page.clock.install({ time: opts.clockTime }); if (CLOCK) clocked.add(page); }
+  else if (opts.clock && CLOCK) { await page.clock.install(); clocked.add(page); }
   watch(page, label, { allowNetErrors: !!opts.allowNetErrors });
   return { ctx, page };
 }
