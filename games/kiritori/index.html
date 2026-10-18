@@ -21,7 +21,7 @@
     --well: #0d111d;
     --line: #2f3750;
     --ink: #ece6d6;
-    --muted: #8a91a8;
+    --muted: #9aa1b8;
     --accent: #f0a43a;
     --accent-ink: #231705;
     --danger: #ef6464;
@@ -270,7 +270,7 @@
 
   <div class="stage" id="stage">
     <canvas id="bg" aria-hidden="true"></canvas>
-    <canvas id="field" role="img" aria-label="道場：飛んでくる的を指でなぞって切る"></canvas>
+    <canvas id="field" role="img" aria-label="道場：飛んでくる的を指でなぞって切る（キーボードは Enter か Space で1つ切る）"></canvas>
   </div>
 </div>
 
@@ -543,6 +543,21 @@
     }
   });
   const up = (e) => { if (swipe && e.pointerId === swipe.id) endSwipe(); };
+  // キーボード・スイッチ操作の代わり：いちばん低い（落ちそうな）的を1つ切る。爆弾は切らない。コンボにはならない
+  function keyCut() {
+    if (state !== "play" || swipe) return;
+    const target = objs.filter((o) => !o.cut && o.kind !== "bomb" && o.y - o.r < H)
+      .reduce((a, o) => (!a || o.y > a.y ? o : a), null);
+    if (!target) return;
+    const now = performance.now(), half = target.r * 1.4;
+    trail.push({ x: target.x - half, y: target.y, t: now, start: true }, { x: target.x + half, y: target.y, t: now });
+    target.cut = true;
+    cutCount++;
+    sfx.play("slice", 1);
+    splitObj(target, 0);
+    addScore(1);
+    objs = objs.filter((o) => !o.cut);
+  }
   stage.addEventListener("pointerup", up);
   stage.addEventListener("pointercancel", up);
   stage.addEventListener("lostpointercapture", up);
@@ -644,6 +659,7 @@
         <dt>黒い爆弾</dt><dd>切るとライフ −1</dd>
         <dt>落とす</dt><dd>的を切らずに落とすとライフ −1。0 でおしまい（はじめの 10 秒は減りません）</dd>
         <dt>コンボ</dt><dd>ひと振りで 3 つ以上切ると加点（3つ +3、4つ +5…）</dd>
+        <dt>キーボード</dt><dd>Enter・Space で的を1つ切る / P 一時停止 / M 効果音</dd>
         <dt>II / ♪</dt><dd>一時停止 / 効果音のオン・オフ（iPhone は消音モード中は鳴りません）</dd>
       </dl>
       <div class="row">
@@ -652,8 +668,16 @@
       </div>`);
   }
   // カードは HTML の骨組みだけを書き、数値などは data-f の要素に textContent で入れる
+  // カードを閉じたら、開く前にフォーカスのあった所へ戻す（カードの中のボタンは消えるため）
+  let returnFocus = null;
   function showCard(html, fields = {}, { soft = false } = {}) {
+    if (overlay.hidden) {
+      const a = document.activeElement;
+      returnFocus = a && a !== document.body && !overlay.contains(a) ? a : null;
+    }
     card.innerHTML = html;
+    const title = card.querySelector("h1");
+    if (title) { title.id = "cardTitle"; card.setAttribute("aria-labelledby", "cardTitle"); } else card.removeAttribute("aria-labelledby");
     card.querySelectorAll("[data-f]").forEach((el) => { el.textContent = fields[el.dataset.f] ?? ""; });
     overlay.classList.toggle("soft", soft);
     overlay.hidden = false;
@@ -661,7 +685,16 @@
     const primary = card.querySelector(".primary");
     if (primary) primary.focus({ preventScroll: true });
   }
-  function hideOverlay() { overlay.hidden = true; overlay.classList.remove("soft"); }
+  function hideOverlay() {
+    const wasOpen = !overlay.hidden;
+    overlay.hidden = true;
+    overlay.classList.remove("soft");
+    if (!wasOpen) return;
+    const back = returnFocus;
+    returnFocus = null;
+    if (back && back.isConnected && typeof back.focus === "function") back.focus({ preventScroll: true });
+    else if (overlay.contains(document.activeElement)) document.activeElement.blur();
+  }
   overlay.addEventListener("click", (e) => {
     const cmd = e.target.closest("[data-cmd]")?.dataset.cmd;
     if (cmd === "restart") newGame();
@@ -678,7 +711,7 @@
   document.addEventListener("visibilitychange", () => { if (document.hidden) { pause(); commitBest(); } });
   window.addEventListener("pagehide", commitBest);
 
-  // ===== キーボード（一時停止・効果音・開始だけ。切るのは指かマウス） =====
+  // ===== キーボード（一時停止・効果音・開始と、Enter・Space で的を1つ切る） =====
   window.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === "Escape" || e.key === "p" || e.key === "P") {
@@ -687,7 +720,12 @@
       return;
     }
     if (e.key === "m" || e.key === "M") { sfx.unlock(); sfx.toggle(); renderSoundBtn(); return; }
-    if (e.key === "Enter" && state === "title") { e.preventDefault(); newGame(); }
+    if (e.key === "Enter" && state === "title") { e.preventDefault(); newGame(); return; }
+    // プレイ中の Enter・Space：的を1つ切る（押しっぱなしの連続は無視。上のボタンにフォーカスがあるときはボタンの動作を優先）
+    if ((e.key === "Enter" || e.key === " ") && state === "play" && !e.target.closest?.("button, a")) {
+      e.preventDefault();
+      if (!e.repeat) keyCut();
+    }
   });
 
   // ===== iOS のダブルタップ拡大・ピンチ拡大・長押しメニューを止める =====

@@ -27,7 +27,7 @@
 
   function create(game, opts) {
     opts = opts || {};
-    let ctx = null, out = null, noiseBuf = null;
+    let ctx = null, out = null, noiseBuf = null, failed = false;
     let on = true;
     if (!opts.ignoreSetting) { try { on = localStorage.getItem(KEY) !== "off"; } catch (e) { /* 読めなければオン */ } }
     const last = {}, nextAt = {};
@@ -35,19 +35,24 @@
 
     function ensure() {
       if (!ctx) {
+        if (failed) return null;
         if (opts.context) ctx = opts.context;
         else {
           const AC = root.AudioContext || root.webkitAudioContext;
           if (!AC) return null;
           // iPhone の消音スイッチに従い、ほかのアプリの音楽も止めない
           try { if (navigator.audioSession) navigator.audioSession.type = "ambient"; } catch (e) { /* 未対応 */ }
-          ctx = new AC();
+          try { ctx = new AC(); } catch (e) { failed = true; return null; } // 作れなければ音なしで続ける
         }
         build();
       }
       if (ctx.state !== "running" && ctx.resume) { try { ctx.resume().catch(() => {}); } catch (e) { /* 無視 */ } }
       return ctx;
     }
+
+    // 電話・Siri などで止められている間（interrupted）は鳴らさない（戻った瞬間にまとめて鳴るのを防ぐ）。
+    // suspended は最初の unlock 直後もこの状態なので止めない（resume 後に鳴る）
+    const ready = () => !!ensure() && ctx.state !== "interrupted";
 
     // マスター：音量 → 高音を丸める → コンプレッサー（大小の差をそろえる）
     function build() {
@@ -334,11 +339,11 @@
       toggle() {
         on = !on;
         try { localStorage.setItem(KEY, on ? "on" : "off"); } catch (e) { /* 保存できなくても動作は続ける */ }
-        if (on && ensure()) table.toggle();
+        if (on && ready()) table.toggle();
         return on;
       },
       play(name, arg) {
-        if (!on || !ensure()) return;
+        if (!on || !ready()) return;
         try {
           const now = ctx.currentTime;
           if (GAP[name] && last[name] != null && now - last[name] < GAP[name]) return; // 連打の間引き

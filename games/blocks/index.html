@@ -20,7 +20,7 @@
     --well: #0d111d;
     --line: #2f3750;
     --ink: #ece6d6;
-    --muted: #8a91a8;
+    --muted: #9aa1b8;
     --accent: #f0a43a;
     --accent-ink: #231705;
     --font-display: "Chakra Petch", "Hiragino Sans", system-ui, sans-serif;
@@ -372,7 +372,7 @@
 </div>
 
 <div class="overlay" id="overlay">
-  <div class="card" id="card"></div>
+  <div class="card" id="card" role="dialog" aria-modal="true" aria-labelledby="cardTitle"></div>
 </div>
 
 <script src="../../common/sfx.js"></script>
@@ -689,14 +689,27 @@
       </div>`);
   }
   // カードは HTML の骨組みだけを書き、数値などは data-f の要素に textContent で入れる
+  // カードを出す前にフォーカスのあった要素を覚えておき、閉じたら戻す。カード表示中は後ろの画面を inert にする
+  const appEl = $("app");
+  let focusBeforeCard = null;
   function showCard(html, fields = {}) {
+    if (overlay.hidden) focusBeforeCard = document.activeElement;
     card.innerHTML = html;
     card.querySelectorAll("[data-f]").forEach((el) => { el.textContent = fields[el.dataset.f] ?? ""; });
+    const title = card.querySelector("h1");
+    if (title) title.id = "cardTitle";
     overlay.hidden = false;
+    appEl.inert = true;
     const primary = card.querySelector(".primary");
     if (primary) primary.focus({ preventScroll: true });
   }
-  function hideOverlay() { overlay.hidden = true; }
+  function hideOverlay() {
+    overlay.hidden = true;
+    appEl.inert = false;
+    const el = focusBeforeCard;
+    focusBeforeCard = null;
+    if (el && el !== document.body && el.isConnected && typeof el.focus === "function") el.focus({ preventScroll: true });
+  }
   overlay.addEventListener("click", (e) => {
     const cmd = e.target.closest("[data-cmd]")?.dataset.cmd;
     if (cmd === "restart") newGame();
@@ -732,11 +745,19 @@
     if (action === "down")  { softDrop = false; dropAcc = 0; }
   }
 
+  // キーボード（Enter）や支援技術の click では pointerdown が来ないので、click だけのときは1回押す（ゼンマイの holdRepeat と同じ方式）
+  function clickPress(action) {
+    if (action === "down") { if (state === "play" && move(0, 1)) score += 1; return; }
+    press(action);
+    release(action);
+  }
   document.querySelectorAll(".key").forEach((btn) => {
     const action = btn.dataset.action;
-    const up = () => { btn.classList.remove("on"); release(action); };
+    let fired = false;
+    const up = () => { btn.classList.remove("on"); release(action); setTimeout(() => { fired = false; }, 600); };
     btn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
+      fired = true;
       try { btn.setPointerCapture(e.pointerId); } catch (err) { /* 未対応ブラウザ */ }
       btn.classList.add("on");
       press(action);
@@ -744,6 +765,7 @@
     btn.addEventListener("pointerup", up);
     btn.addEventListener("pointercancel", up);
     btn.addEventListener("lostpointercapture", up);
+    btn.addEventListener("click", () => { if (fired) { fired = false; return; } clickPress(action); });
     btn.addEventListener("contextmenu", (e) => e.preventDefault());
   });
 
