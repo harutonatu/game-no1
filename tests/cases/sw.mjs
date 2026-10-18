@@ -4,8 +4,8 @@
 import { BASE, ZEN, GAME_COUNT, GAME_URLS, T48, BLK, KIRI, IRO, custom, newPage, seed, ST, sleep, swInfo as libSwInfo, IS_CHROMIUM, SFX_SPY } from '../lib.mjs';
 const V = () => custom(390, 844, null, 'iPhone 13');
 const swInfo = (root) => { const i = libSwInfo(root); return { ...i, files: i.n }; };
-async function installed(browser, label, allowNetErrors = false, opts = {}) {
-  const { ctx, page } = await newPage(browser, V(), label, { sw: true, allowNetErrors, ...opts });
+async function installed(browser, label, allowNetErrors = false, opts = {}, view = V()) {
+  const { ctx, page } = await newPage(browser, view, label, { sw: true, allowNetErrors, ...opts });
   await page.goto(BASE);
   // install に失敗すると ready は永久に解決しないので、8 秒で打ち切って不合格にする（止まらずに先へ進む）
   const ok = await page.evaluate(() => Promise.race([navigator.serviceWorker.ready.then(() => true), new Promise((r) => setTimeout(() => r(false), 8000))]));
@@ -254,10 +254,7 @@ export const tests = [
     async run({ browser, check, srv, root }) {
       const info = swInfo(root);
       srv.reset();
-      const { ctx, page } = await newPage(browser, custom(320, 568, null, 'iPhone SE'), 'S8', { sw: true });
-      await page.goto(BASE);
-      await page.evaluate(() => Promise.race([navigator.serviceWorker.ready, new Promise((r) => setTimeout(r, 8000))]));
-      if (!(await page.evaluate(() => !!navigator.serviceWorker.controller))) { await page.reload(); await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 10000 }); }
+      const { ctx, page } = await installed(browser, 'S8', false, {}, custom(320, 568, null, 'iPhone SE'));
       const shown = () => page.evaluate(() => document.getElementById('ver')?.textContent || null);
       const swText = await page.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); return (await fetch(r.active.scriptURL, { cache: 'no-store' })).text(); });
       const live = (swText.match(/CACHE_VERSION\s*=\s*["']([^"']+)["']/) || [])[1];
