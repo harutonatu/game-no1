@@ -4,6 +4,7 @@
 このファイルは、別の場所（自宅の Windows PC など）で Claude Code を使うときにも決めごとが引き継がれるようにするためのものです。
 次に作るゲームの経緯と候補は [docs/game-plan.md](docs/game-plan.md)、テストの詳細は [tests/README.md](tests/README.md) と [tests/design.md](tests/design.md) にあります。重複は書かず、そちらを見てください。
 見つかった不具合・改善案、作業の進め方の改善策（ワークフローやテストの時間など）は [docs/issues.md](docs/issues.md)（課題管理表）に書き、直したら状態を更新します。
+最新の引き継ぎは [docs/handoff.md](docs/handoff.md)（2026-10-20）。新しい会話は、まずこれを読んでください。
 
 ## 1. プロジェクト概要
 

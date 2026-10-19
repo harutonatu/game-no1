@@ -5,6 +5,8 @@
 
 ## 次にやること（2026-10-18 クラウドで統合・再テストした結果。続きをする人へ）
 
+最新の引き継ぎは docs/handoff.md（2026-10-20）。
+
 1. **統合**：ブランチ release/v18 に、feature/pikatto（50f4a5c）→ fix/yokotenkai（6f7bc0f）→ feature/hashi（52ce341）の順で merge 済み（rebase なし）。衝突は index.html・tests/README.md・tests/design.md・tests/mutants/mutate.mjs で、どれも両方の追記を残した。GAMES と sw.js の APP_FILES にピカッと早押しとハシわたりの両方が入っている。改行コードが CRLF のファイルはなかった。
 2. **版**：v18・2026-10-18（common/version.js・sw.js の CACHE_VERSION を一致させた。L10 合格）。
 3. **再テスト（release/v18、Linux の Chromium、`WORKERS=2`）**：smoke 74/74 合格（56.2 秒）、full 146/146 合格（213.7 秒）。T-02（A5・P9）は今回出なかった。WebKit smoke（`BROWSER=webkit WORKERS=1`）は 72/72 合格（確認 515/515、181.8 秒、対象外 2 項目＝P7・T1。CDP のタッチ操作が WebKit で使えないため。従来どおり）。変異テストは `ONLY=<PK または HW・HL の全項目> M=<MP1〜MP9 または MH1〜MH6> node tests/mutants/mutate.mjs both` で絞って流し、MP は smoke 9/9・full 9/9、MH は smoke 4/6・full 6/6 を検出（smoke の見逃しは MH5・MH6 で、どちらも full の HW6・HW8 で検出。画面の動きで見つける設計）。MP と MH は別ポート（9900・9950）で同時に流して約6分。PK-01〜PK-30 は「済」にした。
