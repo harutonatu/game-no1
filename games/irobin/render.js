@@ -12,6 +12,9 @@
  *     動いていない間は rAF を回さない。setTimeout は使わない（main の timers に数えない）。
  *   - finishAll：動いている演出を一瞬で終わらせ、待っている Promise をすぐ resolve する。
  *     そろった瞬間の光と粒・音は、まだなら finishAll のときに出す（いちばん気持ちいい瞬間を飛ばさない）。
+ *   - 瓶のボタンは、瓶の固定の番号 id（state.bottles[i].id）と結びつける（btn._id・data-id）。届けた瓶は消えるので、
+ *     位置（data-index）は届けるたびに変わる。届けの演出は id で瓶を探し、消えたら残りを詰めて並べ直す（なめらかに寄る）。
+ *     update で渡された state と、並んでいるボタンの id が食い違えば作り直す（1手もどす・飛ばしたとき）。
  */
 (function (root) {
   "use strict";
@@ -286,7 +289,7 @@
     const D = (ms) => (calm ? Math.min(ms, 40) : ms);
 
     let shown = null;               // いま画面に出している state（update で入れたもの）
-    let ui = { selected: null };
+    let ui = { selected: null, selId: null };   // selId：選んでいる瓶の id（位置は届けるとずれるので、見た目は id で合わせる）
     let buttons = [];
     let level = 1;
     let orders = [];                // 面の最初の注文の順（色 id の列）。動物の種類を決めるのに使う
@@ -470,9 +473,21 @@
       if (b.sealed) s += "。せん を した。ちゅうもん まち";
       return s;
     }
+    const idAt = (st, i) => {
+      const b = st && Array.isArray(st.bottles) ? st.bottles[i] : null;
+      return b && Number.isSafeInteger(b.id) ? b.id : i;
+    };
+    // 並んでいるボタンが state の瓶（本数と id の並び）と同じか
+    function aligned(st) {
+      if (!st || !Array.isArray(st.bottles) || buttons.length !== st.bottles.length) return false;
+      for (let i = 0; i < buttons.length; i++) if (buttons[i]._id !== idAt(st, i)) return false;
+      return true;
+    }
+    function byId(id) { for (const b of buttons) if (b._id === id) return b; return null; }
     function syncBottle(i, b, waiting) {
       const btn = buttons[i];
       if (!btn) return;
+      btn._b = b;
       const cells = (b && Array.isArray(b.cells)) ? b.cells : [];
       const hid = (b && Array.isArray(b.hidden)) ? b.hidden : [];
       const sealed = !!(b && b.sealed);
@@ -498,8 +513,8 @@
       btn.setAttribute("aria-label", bottleLabel(i, b));
     }
     function applySelection() {
-      buttons.forEach((btn, i) => {
-        const on = ui.selected === i;
+      buttons.forEach((btn) => {
+        const on = ui.selId !== null && btn._id === ui.selId;
         btn.dataset.selected = on ? "1" : "0";
         btn.setAttribute("aria-pressed", on ? "true" : "false");
       });
@@ -528,6 +543,9 @@
       shown = null;
       if (bopts && Array.isArray(bopts.orders)) orders = bopts.orders.filter((x) => x !== null && x !== undefined);
       else if (state) orders = [].concat(state.slots || [], state.queue || []).filter((x) => x !== null && x !== undefined);
+      // 作り直しても、キーボードのフォーカスは同じ瓶（id）に残す
+      const act = doc.activeElement;
+      const focusId = act && act._id !== undefined && board.contains(act) ? act._id : null;
       board.innerHTML = "";
       buttons = [];
       const n = state && Array.isArray(state.bottles) ? state.bottles.length : 0;
@@ -537,6 +555,8 @@
         btn.type = "button";
         btn.className = "bottle";
         btn.dataset.index = String(i);
+        btn._id = idAt(state, i);
+        btn.dataset.id = String(btn._id);
         btn.dataset.sealed = "0"; btn.dataset.selected = "0"; btn.dataset.waiting = "0";
         btn.innerHTML = '<span class="glass"></span><span class="cork" aria-hidden="true"></span><span class="tag" aria-hidden="true"></span>';
         frag.appendChild(btn);
@@ -546,6 +566,7 @@
       for (const c of custs) c.sig = "";
       layout();
       if (state) update(state);
+      if (focusId !== null) { const f = byId(focusId); if (f) safe(() => f.focus({ preventScroll: true })); }
     }
 
     // ---------- 並べ方（列数と瓶の大きさ） ----------
@@ -651,11 +672,15 @@
 
     // ---------- 演出なしで今の状態に合わせる ----------
     function update(state, u) {
-      if (u && typeof u === "object") ui = { selected: Number.isInteger(u.selected) ? u.selected : null };
+      if (u && typeof u === "object") {
+        const sel = Number.isInteger(u.selected) ? u.selected : null;
+        const ref = state || latestState || shown;   // selected は渡された state の並びの位置
+        ui = { selected: sel, selId: sel !== null && ref && Array.isArray(ref.bottles) && ref.bottles[sel] ? idAt(ref, sel) : null };
+      }
       if (state && cur) { latestState = state; }
       if (!state || cur) { applySelection(); return; }
       if (!Array.isArray(state.bottles)) return;
-      if (buttons.length !== state.bottles.length) { build(state); return; }
+      if (!aligned(state)) { build(state); return; }
       shown = state;
       level = Number(state.level) || 1;
       const slots = Array.isArray(state.slots) ? state.slots : [];
@@ -723,24 +748,28 @@
       for (let i = 0; i < n; i++) { if (d[i]) out.push({ d: d[i] }); if (a[i]) out.push({ a: a[i] }); }
       return out;
     }
-    // 届ける途中の見た目：最後の state から、届けた瓶だけ「栓をした満杯の瓶」に戻したもの
+    // 届ける途中の見た目（いま並んでいるボタンの順）：注いだ後の state の瓶を id で引き、
+    // 届けて消える瓶は「栓をした満杯の瓶」のまま残す（トレイへ飛んでから消える）
     function midBottles(o, st) {
-      const bottles = st.bottles.map((b) => b);
+      const now = new Map();
+      st.bottles.forEach((b, i) => now.set(idAt(st, i), b));
       const c4 = cap();
-      for (const d of (o.deliveries || [])) {
-        if (!Number.isInteger(d.bottle) || !bottles[d.bottle]) continue;
-        bottles[d.bottle] = { cells: Array(c4).fill(d.color), hidden: Array(c4).fill(false), sealed: true };
-      }
-      return bottles;
+      const gone = new Map((o.deliveries || []).map((d) => [d.id, d.color]));
+      return buttons.map((btn) => {
+        if (now.has(btn._id)) return now.get(btn._id);
+        if (gone.has(btn._id)) { const c = gone.get(btn._id); return { cells: Array(c4).fill(c), hidden: Array(c4).fill(false), sealed: true }; }
+        return btn._b || { cells: [], hidden: [], sealed: false };
+      });
     }
 
     function pour(outcome, state) {
       if (cur) finishAll();
-      if (!outcome || outcome.kind !== "pour" || !state || !Array.isArray(state.bottles) || buttons.length !== state.bottles.length) {
+      // 演出は「注ぐ前の並び」（＝いま並んでいるボタン）の上で行う。並びが注ぐ前の state（shown）と食い違うときは演出しない
+      if (!outcome || outcome.kind !== "pour" || !state || !Array.isArray(state.bottles) || !shown || !aligned(shown)) {
         update(state);
         return Promise.resolve();
       }
-      ui = { selected: null };   // 注いだら選ぶのは終わり（演出中に選び直したら update で入る）
+      ui = { selected: null, selId: null };   // 注いだら選ぶのは終わり（演出中に選び直したら update で入る）
       const rec = { kind: "pour", gen: ++gen, outcome, state, played: new Set(), resolve: null, sealShown: false };
       const p = new Promise((res) => { rec.resolve = res; });
       cur = rec;
@@ -837,8 +866,8 @@
       // 中間の見た目：瓶は最後の state（届けた瓶は満杯のまま）、お客さんは前のまま
       const mid = midBottles(o, st);
       const prevSlots = Array.isArray(prev.slots) ? prev.slots.slice() : [null, null];
-      const deliveredSet = new Set((o.deliveries || []).map((d) => d.bottle));
-      mid.forEach((b, i) => syncBottle(i, b, b && b.sealed && !deliveredSet.has(i) && isWaiting(b, st.slots)));
+      const deliveredSet = new Set((o.deliveries || []).map((d) => d.id));
+      mid.forEach((b, i) => syncBottle(i, b, b && b.sealed && !deliveredSet.has(buttons[i]._id) && isWaiting(b, st.slots)));
       applySelection();
       // 見えるようになった段：「？」がふわっと消える
       const rev = Array.isArray(o.revealed) ? o.revealed : [];
@@ -915,10 +944,48 @@
     }
     const DELIVER_MS = 460 + 480 + 260, ARRIVE_MS = 350, WAKE_MS = 220, CHAIN_BUDGET = 2400, CHAIN_MIN = 1000;   // 届け全体を約2.4秒に収める（1本目の後に最低1秒）
 
+    // 届けて消えた瓶のボタンを取り除き、残りを詰めて並べ直す。残りの瓶は前の場所から新しい場所へ、なめらかに寄る
+    // （FLIP：並べ直す前の位置を測り、並べ直した後に「前の位置に見える」ずらしを付けてから 0 へ戻す）。calm では一瞬で
+    function removeButton(btn, k_) {
+      const idx = buttons.indexOf(btn);
+      if (idx < 0) return Promise.resolve();
+      const hadFocus = doc.activeElement === btn;
+      const rest = buttons.filter((b) => b !== btn);
+      const before = new Map(rest.map((b) => [b, rectOf(b)]));
+      buttons = rest;
+      if (btn.parentNode) btn.parentNode.removeChild(btn);
+      buttons.forEach((b, i) => {
+        b.dataset.index = String(i);
+        if (b._b) b.setAttribute("aria-label", bottleLabel(i, b._b));
+      });
+      layout();
+      applySelection();
+      if (hadFocus && buttons.length) { const f = buttons[Math.min(idx, buttons.length - 1)]; safe(() => f.focus({ preventScroll: true })); }
+      if (calm) return Promise.resolve();
+      const moving = [];
+      for (const b of buttons) {
+        const r0 = before.get(b), r1 = rectOf(b);
+        if (!r0 || !r1.width) continue;
+        const dx = (r0.left + r0.width / 2) - (r1.left + r1.width / 2);
+        const dy = (r0.top + r0.height / 2) - (r1.top + r1.height / 2);
+        const sc = r0.width / r1.width;
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(sc - 1) < 0.01) continue;
+        moving.push({ b, dx, dy, sc });
+      }
+      if (!moving.length) return Promise.resolve();
+      const put = (e) => {
+        for (const m of moving) m.b.style.transform = `translate(${(m.dx * (1 - e)).toFixed(1)}px, ${(m.dy * (1 - e)).toFixed(1)}px) scale(${lerp(m.sc, 1, e).toFixed(3)})`;
+      };
+      for (const m of moving) m.b.style.transition = "none";
+      return tween(Math.round(300 * k_), put, ease.inOut).then(() => {
+        for (const m of moving) { m.b.style.transform = ""; m.b.style.transition = ""; }
+      });
+    }
+
     // sp：速さの倍率（連鎖の2本目からは小さい）。n：連鎖の何本目か（音が1段ずつ上がる）。wake：待っていた瓶（先に光らせる）
     async function deliver(d, rec, slotsView, sp, n, wake) {
       const alive = () => rec.gen === gen;
-      const btn = buttons[d.bottle];
+      const btn = Number.isSafeInteger(d.id) ? byId(d.id) : buttons[d.bottle];   // 位置は前の届けでずれるので id で探す
       const c = custs[d.slot];
       if (!btn || !c || !c.el) return;
       const k_ = sp > 0 ? sp : 1;
@@ -935,6 +1002,11 @@
         if (!alive()) return;
       }
       lastServed[d.slot] = { kind: c.kind || animalKind(level, d.color), color: d.color };
+      // 飛び立った瓶は、もう選べない・数字キーの番号にも数えない（input は [data-gone] を除いて数える）
+      btn.dataset.gone = "1";
+      btn.tabIndex = -1;
+      btn.setAttribute("aria-hidden", "true");
+      btn.style.pointerEvents = "none";
       const br = rectOf(btn), tr = rectOf(c.tray || c.el);
       const bc = centerOf(br), tc = centerOf(tr);
       const dx = tc.x - bc.x, dy = (tr.top - br.height * 0.18) - bc.y;
@@ -964,7 +1036,7 @@
           addPart({ x: tc.x, y: tr.top + tr.height / 2, vx: Math.cos(a) * 140, vy: Math.sin(a) * 140 - 40, g: 300, life: 0.5, size: 2.5, color: i % 2 ? "#ffffff" : hex, shape: "star", vr: 6 });
         }
       }
-      // 瓶は消えて、同じ場所に空の瓶がふわっと現れる
+      // 瓶はトレイの上で消える（空の瓶は出てこない）。消えたら、残りの瓶が詰めて寄る
       const fade = calm ? Promise.resolve() : tween(Math.round(140 * k_), (e) => { btn.style.opacity = String(1 - e); }, ease.in);
       const hop = calm ? Promise.resolve() : tween(Math.round(480 * k_), (e, k) => {
         c.el.style.transform = `translateY(${(-Math.abs(Math.sin(k * Math.PI * 2)) * 10 * (1 - k * 0.5)).toFixed(1)}px)`;
@@ -972,15 +1044,8 @@
       }, ease.linear);
       await fade;
       if (!alive()) return;
-      syncBottle(d.bottle, { cells: [], hidden: [], sealed: false }, false);
-      const ck = btn.querySelector(".cork"); if (ck) { ck.style.opacity = ""; ck.style.transform = ""; }
-      btn.style.transform = calm ? "" : "scale(0.85)";
-      btn.style.zIndex = "";
-      if (!calm) {
-        tween(260, (e) => { btn.style.opacity = String(e); btn.style.transform = `scale(${lerp(0.85, 1, e).toFixed(3)})`; }, ease.out)
-          .then(() => { btn.style.opacity = ""; btn.style.transform = ""; btn.style.transition = ""; });
-      } else { btn.style.opacity = ""; btn.style.transition = ""; }
-      await hop;
+      const close = removeButton(btn, k_);
+      await Promise.all([hop, close]);
       if (!alive()) return;
       // 手を振って帰る
       setMood(d.slot, "leave");

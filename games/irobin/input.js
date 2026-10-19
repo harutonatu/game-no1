@@ -5,8 +5,10 @@
  *
  * UMD: window.IrobinInput と module.exports。
  *
- * IrobinInput.attach({ board, root = document }, { onPick(index, via), onCommand(cmd) }, { isBlocked }) → { detach(), focusBottle(index) }
- *   - タップ：#board の .bottle の click で onPick(Number(data-index), 'tap'|'key')。
+ * IrobinInput.attach({ board, root = document }, { onPick(index, via, id), onCommand(cmd) }, { isBlocked }) → { detach(), focusBottle(index) }
+ *   - タップ：#board の .bottle の click で onPick(Number(data-index), 'tap'|'key', Number(data-id))。
+ *     届けた瓶は消えて位置（data-index）がずれるので、瓶の固定の番号 data-id も渡す（main は id を優先して今の位置を引く）。
+ *     届けの演出で飛んでいる瓶（data-gone="1"）は数えない・選ばない。
  *     （Enter・Space はボタンの標準の click に任せる。キーで押した click は via 'key'）
  *   - ダブルタップ拡大の抑止：#board と .tools で、350ms 以内の2回目のタップの touchend を止め、click は自分で送る。
  *     dblclick・gesturestart/change/end も止める。
@@ -35,9 +37,10 @@
       offs.push(() => target.removeEventListener(type, fn, o));
     }
     const blocked = () => { const b = safe(() => isBlocked()); return b === true; };
-    const pick = (i, via) => { if (blocked()) return; safe(() => callbacks.onPick && callbacks.onPick(i, via)); };
+    const pick = (i, via, id) => { if (blocked()) return; safe(() => callbacks.onPick && callbacks.onPick(i, via, id)); };
     const command = (cmd) => safe(() => callbacks.onCommand && callbacks.onCommand(cmd));
-    const bottles = () => (board ? Array.from(board.querySelectorAll(".bottle")) : []);
+    const bottles = () => (board ? Array.from(board.querySelectorAll('.bottle:not([data-gone="1"])')) : []);
+    const idOf = (btn) => { const n = btn && btn.dataset ? Number(btn.dataset.id) : NaN; return Number.isSafeInteger(n) && n >= 0 ? n : undefined; };
     const overlayOpen = () => {
       const ov = doc && doc.getElementById ? doc.getElementById("overlay") : null;
       return !!(ov && !ov.hidden);
@@ -47,11 +50,11 @@
     let synthTap = false;   // 自分で送った click（2回目の素早いタップ）は 'tap'
     on(board, "click", (e) => {
       const btn = e.target && e.target.closest ? e.target.closest(".bottle") : null;
-      if (!btn || !board.contains(btn)) return;
+      if (!btn || !board.contains(btn) || btn.dataset.gone === "1") return;
       const i = Number(btn.dataset.index);
       if (!Number.isInteger(i)) return;
       const via = !synthTap && e.detail === 0 ? "key" : "tap";
-      pick(i, via);
+      pick(i, via, idOf(btn));
     });
 
     // ---- ダブルタップ拡大の抑止 ----
@@ -85,11 +88,12 @@
     for (const type of ["gesturestart", "gesturechange", "gestureend"]) on(doc, type, (e) => e.preventDefault(), { passive: false });
 
     // ---- キーボード ----
+    // 並んでいる瓶（飛んでいる瓶を除く）の中で何番目か。data-index は届けの演出中に古いことがあるので使わない
     function focusedIndex() {
       const a = doc.activeElement;
       if (!a || !a.classList || !a.classList.contains("bottle") || !board.contains(a)) return null;
-      const i = Number(a.dataset.index);
-      return Number.isInteger(i) ? i : null;
+      const i = bottles().indexOf(a);
+      return i >= 0 ? i : null;
     }
     function focusBottle(index) {
       const list = bottles();
@@ -153,7 +157,7 @@
         if (n > list.length) return;
         e.preventDefault();
         focusBottle(n - 1);
-        pick(n - 1, "key");
+        pick(n - 1, "key", idOf(list[n - 1]));
       }
     });
 

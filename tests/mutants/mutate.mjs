@@ -78,18 +78,21 @@ const M = [
   ['MD7 いろコード：結果カードが0時をまたいでも「次は明日」のまま', '日付', 'games/irocode/index.html', 'const sameDay = state.date === today();', 'const sameDay = true;'],
   ['MD8 いろコード：起動時に日付が違う途中の問題を捨てるとき、負けとして記録しない（れんしゅう切り替えと食い違う）', '日付/成績', 'games/irocode/index.html', '{ abandonDaily(state); state = null; }', '{ state = null; }'],
   // ---- いろびん（games/irobin/）。注ぐ規則・そろい判定・届ける・隠れ・ソルバー・保存・中断の仕組みを変えたときだけ流す ----
+  //      届けた瓶は消える（2026-10-19 のルール変更）。MB4＝消えない、MB13＝旧仕様（空き瓶に置き換わる）、MB14＝瓶の番号のずれ
   ['MB1 いろびん：色違いの瓶にも注げる（mismatch の判定を外す）', 'ルール', 'games/irobin/logic.js', 'if (dl > 0 && col(d, dl - 1) !== c) return R_MISMATCH;', ''],
   ['MB2 いろびん：注ぐ量が相手の空きを超える（空きで丸めない）', 'ルール', 'games/irobin/logic.js', 'return Math.min(run, CAP - dl);', 'return run;'],
-  ['MB3 いろびん：そろった瓶を、注文の色と違うお客さんにも届ける', 'ルール', 'games/irobin/logic.js', 'if (isSealedP(x) && col(x, 0) === want) {', 'if (isSealedP(x)) {'],
-  ['MB4 いろびん：届けた後、空の瓶に置き換えない（栓をした瓶が残って場所をふさぐ）', 'ルール', 'games/irobin/logic.js', 'bots[b] = 0;                                         // 届けた瓶は空の瓶に置き換わる', 'bots[b] = bots[b];                                   // (変異)'],
+  ['MB3 いろびん：そろった瓶を、注文の色と違うお客さんにも届ける', 'ルール', 'games/irobin/logic.js', 'if (x !== GONE && isSealedP(x) && col(x, 0) === want) {', 'if (x !== GONE && isSealedP(x)) {'],
+  ['MB4 いろびん：届けた瓶が消えない（栓をしたまま残る）', 'ルール', 'games/irobin/logic.js', 'bots[b] = GONE;                                      // 届けた瓶は消える（空の瓶は出てこない）', 'bots[b] = bots[b];                                   // (変異)'],
   ['MB5 いろびん：注いでも隠れた段が見えるようにならない', 'ルール', 'games/irobin/logic.js', 'ns &= ~(1 << (8 + 5 * (nsl - 1)));', ''],
-  ['MB6 いろびん：ソルバーが注文の順を無視する（いつも anyOrder）', 'ルール/生成', 'games/irobin/logic.js', 'const any = !!(opts && opts.anyOrder);', 'const any = true;'],
+  ['MB6 いろびん：ソルバーが待ち瓶をもう届けたものとして数える（いつも anyOrder。手の位置がずれる）', 'ルール/生成', 'games/irobin/logic.js', 'const any = !!(opts && opts.anyOrder);', 'const any = true;'],
   ['MB7 いろびん：validateSave が手の形を確かめない（3 要素の手も通る）', '保存データ互換', 'games/irobin/logic.js', 'for (const m of o.moves) if (!Array.isArray(m) || m.length !== 2 ||', 'for (const m of o.moves) if (false ||'],
   ['MB8 いろびん：hidden で演出を止めない（render.pause を呼ばない）', '中断', 'games/irobin/main.js', '      paused = true;\n      render.pause();\n      syncPhase();', '      paused = true;\n      syncPhase();'],
   ['MB9 いろびん：1手もどすで2手戻る', 'お助け', 'games/irobin/main.js', 'state = history.pop();\n    moves.pop();', 'state = history.pop(); if (history.length) state = history.pop();\n    moves.pop();'],
   ['MB10 いろびん：render.js を事前キャッシュから外す（オフラインで開かない）', 'オフライン', 'sw.js', '  "./games/irobin/render.js",\n', ''],
   ['MB11 いろびん：手はあるがもう解けない局面を知らせない（詰み予備軍の判定を外す）', 'ルール', 'games/irobin/main.js', 'doomed = !!(r && r.solved === false && r.exhausted === false);', 'doomed = false;'],
   ['MB12 いろびん：届けの連鎖を短くしない（6 本続くと約 10 秒待たされる）', '演出', 'games/irobin/render.js', 'const fast = rest > 0 ? Math.max(0.12, Math.min(0.45, Math.max(CHAIN_MIN, CHAIN_BUDGET - used) / rest)) : 1;', 'const fast = 1;'],
+  ['MB13 いろびん：届けたあと空き瓶を足す（旧仕様に戻す：届けた瓶が同じ場所の空の瓶に置き換わる）', 'ルール', 'games/irobin/logic.js', 'bots[b] = GONE;                                      // 届けた瓶は消える（空の瓶は出てこない）', 'bots[b] = 0;                                         // (変異) 旧仕様'],
+  ['MB14 いろびん：演出中に押した瓶を、押したボタンの位置で選ぶ（届けて詰めた後の並びとずれる）', '操作', 'games/irobin/main.js', 'if (Number.isSafeInteger(id)) {\n      i = safeCall', 'if (false) {\n      i = safeCall'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

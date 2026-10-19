@@ -3,6 +3,7 @@
 3人の担当（ロジック・画面・組み込み）が同じ約束のもとで**並列に**作業するための1枚紙です。実装後は不要になります（tests/design.md に取り込むか削除）。
 ユーザーの承認（2026-10-19）：「はい、ワークフローで」（PM が示した「色水を仕分けるパズル＋上の動物の注文に応えて瓶を片付ける新ゲームを、約束→分担して並列に作る→レビュー→テスト合格後、公開前にユーザーに確認」への返事）。
 ハシわたり・ピカッと早押しの教訓（§14）と、課題管理表の W-04〜W-06 を最初から入れてあります。
+**ルール変更（ユーザー決定 2026-10-19）**：「消えるだけにする。空き瓶が増えると指数関数的に難易度が下がるため　修正後公開してください」。届けた瓶は消えるだけで、空き瓶は出てこない（§1.1）。瓶の番号の扱い（§1.2）・面の表（§3.2）・保存の形（§4.2、v:2）・演出（§7.3）・テスト（§12）をこれに合わせて直した。
 
 ## 1. ねらいと中身
 
@@ -21,13 +22,29 @@
 - **隠れた色**：難しい面では、最初の瓶の一番上以外は「？」（隠れ）。注いで上がどいたら、**新しく一番上になった1段だけ**が見えるようになる。隠れた段は注ぐ量に数えない（隠れの下に同じ色が続いていても動かない）。この決まりは全部が分かっているソルバーでも同じに働く（決定的）。
 - **そろう（栓）**：注いだ後、相手の瓶が4段とも同じ色なら `sealed = true`。そろった瞬間に隠れも全部見えるようにする。栓をした瓶は、注ぐ元にも相手にもならない。
 - **お客さん（注文）**：各色は**ちょうど4段**あり、各色に1つずつ注文がある（注文の数＝色の数）。注文は列 `queue` に並び、そのうち先頭の `ORDER_SLOTS = 2` 件が画面上のお客さん（`slots[0]`・`slots[1]`）として見えている。
-- **届ける**：栓をした瓶の色が、見えているお客さんの注文と一致したら、その瓶はトレイに乗って消え、**同じ場所に空の瓶が置かれる**（片付けると場所が空く＝注文の順番に意味が出る）。そのお客さんは喜んで帰り、同じ枠に `queue` の次のお客さんが来る（列が尽きたら空の枠）。
-- **注文を待つ**：一致するお客さんがいなければ、栓をした瓶はその場で待つ（場所をふさぐ）。その色のお客さんが来たら**自動で**届く。
-- **処理の順（決定的）**：注ぐ → 相手がそろえば栓 → 届けられるものを届ける。届けた後に来たお客さんに合う待ち瓶があれば、また届ける（連鎖）。同時に候補があるときは、**枠は左（0）から、瓶は番号の小さい方から**。
+- **届ける**：栓をした瓶の色が、見えているお客さんの注文と一致したら、その瓶はトレイに乗って**消える**。**空き瓶は出てこない**（ユーザー決定 2026-10-19。理由「空き瓶が増えると指数関数的に難易度が下がるため」）。瓶の本数は届けるたびに1本減り、残りの瓶は並び順のまま前に詰めて並べ直す。そのお客さんは喜んで帰り、同じ枠に `queue` の次のお客さんが来る（列が尽きたら空の枠）。
+  - 以前の仕様（設計担当の独自追加）は「同じ場所に空の瓶が置かれる」だった。届けるほど空き瓶が増えて、面の後半が急にやさしくなっていた。
+- **注文を待つ**：一致するお客さんがいなければ、栓をした瓶はその場で待つ。その色のお客さんが来たら**自動で**届く。
+  - 待ち瓶は注ぐ元にも相手にもならず、届けても空きは増えないので、**注文の順番は「解けるかどうか」を変えない**（待ち瓶は見た目と「あと何人」の目標の役。BL6 が確かめる）。
+- **処理の順（決定的）**：注ぐ → 相手がそろえば栓 → 届けられるものを届ける。届けた後に来たお客さんに合う待ち瓶があれば、また届ける（連鎖）。同時に候補があるときは、**枠は左（0）から、瓶は番号の小さい方から**。連鎖の間は瓶を詰めない（番号は注ぐ前の並びのまま）。連鎖が終わってから、届けた瓶をまとめて取り除いて詰める。
 - **面クリア**：全部の注文に応えた（`served === total`）。
 - **詰み**：動かせる手が1つも無く、クリアでもない。そのことを伝え、「1手もどす」「やりなおし」を案内する（ゲームオーバーにはしない）。
 - **詰み予備軍（doomed）**：手は残っているが、もう全部は届けられない。注ぎ終わって落ち着いたとき（と、1手もどした後・途中から再開したとき）に `solve(state, { nodeLimit: 3000 })` を1回流し、`solved:false` かつ `exhausted:false`（言い切れた）ときだけ、ヒント「この ままだと ぜんぶは とどけられないよ。「1手もどす」を おしてみてね」とお助けの `data-attention="1"` を出す。phase は idle／selected のまま（新しい phase は作らない）。上限に届いたときは何も言わない。setState の局面は調べない。
 - **お助け（無料・回数制限なし）**：1手もどす（何回でも、面の最初まで）、やりなおし（面の最初から。確認カードあり）。
+
+### 1.2 瓶の番号（位置と id）
+
+届けた瓶が消えて詰めるので、「何番目の瓶か」は届けるたびに変わる。食い違いを防ぐため、番号を2種類に分ける。
+
+| 番号 | 意味 | 使う所 |
+|---|---|---|
+| 位置（index） | 今の並びの何番目か（0〜）。届けると後ろの瓶は1つ前にずれる | `applyMove(state, from, to)`・`pourCheck`・`legalMoves`・`solve` の手・`info.solution`・`IrobinGame.pick/pour/solution`・`.bottle[data-index]`・数字キー（見えている並びの何本目か）・`aria-label` の「Nばん」 |
+| id | 瓶の固定の番号。面の最初の並び順（0〜）。詰めても変わらない | `state.bottles[i].id`・`.bottle[data-id]`・保存の手 `[fromId, toId]`（`makeSave` の v:2）・`replay`・`info.solutionIds`・`moveById`・演出で瓶を探すとき |
+
+- `applyMove` の outcome の位置（`from`・`to`・`sealed`・`revealed[].bottle`・`deliveries[].bottle`）は、すべて**注ぐ前の並び**の位置（＝演出の間、画面に並んでいるボタンの位置）。`outcome.fromId`・`toId`・`deliveries[].id` は id。
+- 画面（render）は、ボタンと瓶を id で結びつける。届けの演出は id で瓶を探し、トレイへ飛んで消えたら、そのボタンを取り除いて残りを詰め、`data-index` と `aria-label` の番号を振り直す。
+- 入力（input）は、押したボタンの `data-index` と `data-id` の両方を渡す。main は、演出中に押されたら演出を終わらせた後の state で id から位置を引き直す（消えた瓶なら何もしない）。飛んでいる瓶（`data-gone="1"`）は数字キーで数えず、押せない。
+- 保存は id で記録する。古い保存 `v:1`（位置の手・前のルール）は、手を捨ててその面の最初から始める。
 
 ## 2. ファイル構成と担当（衝突しないよう、編集してよいファイルを限定）
 
@@ -83,11 +100,11 @@
 
 | 面 | 色の数 `colors` | 空き瓶 `empties` | 隠れ `hidden` | 注文の順 `order` | ねらい |
 |---|---|---|---|---|---|
-| 1 | 2 | 1 | なし | `easy` | 遊び方を覚える（瓶 3 本） |
+| 1 | 2 | 2 | なし | `easy` | 遊び方を覚える（瓶 4 本。どの最初の手でも解けなくならない） |
 | 2 | 3 | 2 | なし | `easy` | |
 | 3 | 4 | 2 | なし | `easy` | |
 | 4–5 | 5 | 2 | なし | `easy` | |
-| 6–9 | 6 | 2 | なし | `random` | 注文の順番を考え始める |
+| 6–9 | 6 | 2 | なし | `random` | 待ち瓶（まだ来ていないお客さんの色）が出始める |
 | 10–14 | 7 | 2 | 12・14 面だけ | `random` | 隠れた色の登場 |
 | 15–24 | 8 | 2 | 奇数面 | `random` | |
 | 25–39 | 9 | 2 | 奇数面 | `random` | |
@@ -96,7 +113,22 @@
 - `LEVELS` は上の表を `[{ from, colors, empties, hidden: 'none'|'odd'|'all'|[12,14], order }]` の形で持つ（形は A が決めてよい。公開するのは `paramsFor`）。
 - `paramsFor(level) → { colors, empties, hidden: boolean, order: 'easy'|'random' }`。level は 1 以上の安全な整数に丸める（壊れた値は 1）。
 - `order: 'easy'`：注文の列を「注文を気にせず解いたときに、そろう順」にする（下の §4 generate）。そのとおりに解けば待ちが一度も起きない＝やさしい。
-- `order: 'random'`：注文の列を乱数で並べ、その列のままで解けることをソルバーで確かめる。
+- `order: 'random'`：注文の列を乱数で並べ、その列のままで解けることをソルバーで確かめる（届けても空き瓶が増えないので、注文の順は解けるかどうかを変えない。待ち瓶が出るかどうかだけが変わる）。
+
+**表の見直し（2026-10-19、届けた瓶は消えるルールに変えたとき）**：変えたのは **1 面の空き瓶 1 → 2 本だけ**。理由と測った値（Node、1〜2000 面を生成。ゆるい遊び方＝「同じ色の上へ注ぐ手を 8 割で選び、ほかは乱数」で各面 15〜40 回遊んだクリアの割合）：
+
+| 面（色・空き） | 前のルール | 新しいルール | 見たこと |
+|---|---|---|---|
+| 1（2色・空き1） | 48% | 48% | 最初の2手のうち1手で解けなくなる（前のルールでも同じ）。チュートリアルなので空き2本に → 100% |
+| 2〜5（3〜5色・空き2） | 98〜100% | 100% | やさしいまま |
+| 6〜9（6色） | 68% | 79% | 変わらない〜少しやさしい（待ち瓶が場所をふさがなくなった） |
+| 10〜14（7色） | 57% | 66% | 同上 |
+| 15〜24（8色） | 37% | 25% | 少し難しい |
+| 25〜（9色） | 25〜31% | 21〜23% | 少し難しい |
+
+- 解けなくなるのは平均 8〜12 手目（面の前半）で、前のルールで空き瓶が増えていたのは面の後半なので、差は面の後半の「やさしすぎ」が消えた分に出る。序盤〜中盤（1〜14 面）は前と同じかやさしいので、空き瓶・色の数は変えない。
+- 8・9 色の面を空き瓶 3 本にすると、同じ遊び方で 97〜98% クリアになり、やさしすぎる（瓶も 11〜12 本になる）。手は残っているのに解けない局面は、詰み予備軍の案内（IB-02）が知らせる。
+- 生成（1〜2000 面）：全部ソルバーで解けることを確かめた面（fallback 0 が 2000 面）。生成で調べた局面は最大 7481（1529 面）、1 面の生成は最大 22ms（Node。2000 面の生成と解の再生の合計 4.2 秒）。
 - 使う色：`colors` 色を `COLORS` から乱数で選ぶ（面ごとに違う色の組み合わせ）。
 
 ## 4. ロジックの API（`games/irobin/logic.js`、担当A）
@@ -109,8 +141,9 @@ UMD で `window.IrobinLogic` と Node の `module.exports`（と `globalThis.Iro
 state = {
   level: 7,                        // 面の番号（1〜）
   params: { colors, empties, hidden, order },
-  bottles: [                       // 本数は面の中で変わらない（届けた瓶は空の瓶に置き換わる）
-    { cells: [2, 2, 5, 1],         // 色 id。下→上。長さ 0〜CAP
+  bottles: [                       // 届けた瓶は消える：本数は届けるたびに 1 本減る（残りは並び順のまま前に詰める）
+    { id: 3,                       // 瓶の固定の番号（面の最初の並び順 0〜）。詰めても変わらない（§1.2）
+      cells: [2, 2, 5, 1],         // 色 id。下→上。長さ 0〜CAP
       hidden: [true, true, false, false], // cells と同じ長さ。true＝「？」で見えない。一番上は必ず false
       sealed: false }              // 栓をした（4段同じ色）。sealed のとき hidden は全部 false
   ],
@@ -136,9 +169,10 @@ IrobinLogic = {
   paramsFor(level) → params               // §3.2
   createLevel(level, opts?) → { state, info }
   //   決定的：同じ level からは必ず同じ state（JSON で一致）
-  //   info = { level, seed, params, tries, nodes, fallback: 0|1|2, solution: [[from,to],...] }
+  //   info = { level, seed, params, tries, nodes, fallback: 0|1|2, solution: [[from,to],...], solutionIds: [[fromId,toId],...] }
   //     fallback 0＝表のとおり、1＝易しい側（空き瓶 +1・order 'easy'。瓶が MAX_BOTTLES=11 を超えるときは空き瓶を増やさず色を1つ減らす）、2＝固定の予備の面
-  //     solution＝この state から解ける手順（テストと、将来のヒント用。画面には出さない）
+  //     solution＝この state から解ける手順（位置の手。テストと、将来のヒント用。画面には出さない）
+  //     solutionIds＝同じ手順を瓶の id で書いたもの（保存の形。replay にそのまま渡せる）
   //   作り方：
   //     1) 選んだ色を各4段ずつ混ぜ、色の数ぶんの瓶に4段ずつ配る。空き瓶を後ろに足す。
   //        4段同じ色の瓶ができた配り方は捨てる（最初からそろっている瓶は無し）。
@@ -147,7 +181,7 @@ IrobinLogic = {
   //        order 'random'：queue を乱数で並べ、solve(state) で解けるか確かめる。
   //     3) 解けなければ配り直す（GEN_TRIES 回まで）。合計の局面数が GEN_NODE_BUDGET を超えたら fallback 1、
   //        それでもだめなら fallback 2（logic.js の中に書いた、必ず解ける固定の面）。
-  //     4) 最後に replay で solution を再生し、won になることを確かめてから返す。
+  //     4) 最後に、画面と同じ applyMove で solution を再生し、won になることを確かめてから返す。
   //   瓶の並び順も乱数で混ぜてよい（空き瓶が必ず右端、にしない）。
 
   // ---- 手 ----
@@ -158,37 +192,42 @@ IrobinLogic = {
   applyMove(state, from, to) → { state: newState, outcome }
   //   outcome（注げないとき）：{ kind: 'invalid', reason, from, to }   ← state はそのまま（同じオブジェクトを返してよい）
   //   outcome（注いだとき）：
-  //   { kind: 'pour', from, to, color, count,
+  //   { kind: 'pour', from, to, fromId, toId, color, count,   // 位置はすべて注ぐ前の並び（§1.2）。fromId・toId は瓶の id
   //     revealed: [{ bottle, index, color }],      // 新しく見えた段（元の瓶の新しい一番上。そろって全部見えた段も含む）
-  //     sealed: number|null,                       // そろった瓶の番号（無ければ null）
-  //     deliveries: [{ bottle, slot, color }],     // 届けた順（連鎖を含む）。届けた瓶は空の瓶になっている
+  //     sealed: number|null,                       // そろった瓶の位置（無ければ null）
+  //     deliveries: [{ bottle, id, slot, color }], // 届けた順（連鎖を含む）。bottle＝注ぐ前の位置、id＝瓶の id。届けた瓶は新しい state には無い
   //     arrivals: [{ slot, color|null }],          // 来たお客さん（届けるたびに1件。列が尽きたら color null）
   //     won: boolean, stuck: boolean }             // stuck＝注いだ後に動かせる手が無く、won でない
   //   arrivals と deliveries は、起きた順に交互に並ぶ。render はこの順に演出する（§7.3）
   legalMoves(state) → [[from, to], ...]   // 注げる手のすべて（from の小さい順、同じ from は to の小さい順）
   isStuck(state) → boolean                // legalMoves が空で、won でない
+  indexOfId(state, id) → number           // 瓶の id → 今の位置（無ければ -1）
+  moveById(state, fromId, toId) → { state, outcome }   // id で指定した applyMove。id が無ければ invalid（reason 'range'）
+  toIdMoves(state, moves) → [[fromId,toId],...]|null    // 位置の手の列を、state から順に当てながら id の列に直す
 
   // ---- ソルバー（全部の情報を知っている前提でよい） ----
   solve(state, { nodeLimit = SOLVE_NODE_LIMIT, anyOrder = false } = {})
     → { solved: boolean, moves: [[from,to],...]|null, nodes: number, exhausted: boolean }
-  //   applyMove と同じ決まりで探す（注文の順・待ち瓶が場所をふさぐこと・届けると空の瓶になることを含む）。
-  //   anyOrder: true のときだけ、そろった瓶をすぐ届けたものとして扱う（generate の 'easy' 用）。
+  //   applyMove と同じ決まりで探す（注文の順・待ち瓶がその場に残ること・届けると瓶が消えて詰めることを含む）。手は位置で返す。
+  //   anyOrder: true のときだけ、そろった瓶をすぐ届けたものとして消す（generate の 'easy' 用。手の位置は実際の遊びとずれる）。
+  //   局面のキーには栓をした瓶を入れない（注ぐ元にも相手にもならず、届けても空きが増えないので、先の手が同じ）。
   //   exhausted＝上限に達して打ち切った（solved:false でも「解けない」とは限らない）。
   //   同じ局面を二度調べない（瓶の並びは順不同として正規化したキーで記録してよい）。
   //   むだな手を省いてよい：中身が全部見えていて1色だけの瓶を、空の瓶へまるごと移す手。
 
   // ---- 再生と保存 ----
   replay(level, moves) → { state, ok: boolean, applied: number }
-  //   createLevel(level).state に moves を順に当てる。注げない手が出たらそこで止めて ok:false
+  //   moves は保存の形（瓶の id の組 [fromId, toId]）。createLevel(level).state に moveById で順に当てる。注げない手（無い id を含む）が出たらそこで止めて ok:false
   //   （applied＝当てられた数。state はそこまでの状態）
   hud(state) → { level, served, total, left, moves }   // left = total - served。画面に出す数（UI で ±1 しない）
   validateBest(raw) → number
   //   Number(raw) が Number.isSafeInteger で 0 以上ならその値。それ以外（null・""・NaN・負・小数・Infinity・object）は 0
   validateSave(raw) → { level, moves } | null
-  //   raw は localStorage の文字列。JSON.parse に失敗・形が違う・v が 1 でない・level が 1 以上の安全な整数でない・
+  //   raw は localStorage の文字列。JSON.parse に失敗・形が違う・v が 2 でない・level が 1 以上の安全な整数でない・
   //   moves が配列でない／長さが MAX_MOVES_SAVED を超える／各要素が [整数, 整数] でない → null
+  //   古い v:1（位置の手・届けると空き瓶が出てきた前のルール）は、level が正しければ { level, moves: [] }（手を捨てて面の最初から）
   //   （手が今の面で注げるかは validateSave では見ない。main が replay で確かめ、ok:false なら面の最初から）
-  makeSave(level, moves) → string         // JSON.stringify({ v: 1, level, moves })
+  makeSave(level, moves) → string         // JSON.stringify({ v: 2, level, moves })。moves は瓶の id の組
   recordBest(prevBest, clearedLevel) → { best, improved }
   //   best = max(validateBest(prevBest), clearedLevel)。improved は clearedLevel > validateBest(prevBest) のときだけ true
   validateFlag(raw) → boolean             // '1' のときだけ true
@@ -208,17 +247,17 @@ UMD で `window.IrobinInput` と `module.exports`。ルール（注げるか）�
 
 ```js
 IrobinInput.attach({ board, root = document }, {
-  onPick(index, via),     // 瓶が選ばれた。via: 'tap'|'key'
+  onPick(index, via, id), // 瓶が選ばれた。via: 'tap'|'key'。index＝data-index（位置）、id＝data-id（瓶の id。§1.2）
   onCommand(cmd)          // 'undo'|'restart'|'deselect'|'sound'|'help'|'close'
 }, { isBlocked = () => false }) → { detach(), focusBottle(index) }
 ```
 
-- **タップ**：`#board` の `.bottle`（`<button>`）の `click` で `onPick(Number(data-index), 'tap')`。`pointerdown` で選ぶと指がずれた押下まで拾うので、`click` を使う（`touch-action: manipulation` で遅れは出ない）。
+- **タップ**：`#board` の `.bottle`（`<button>`）の `click` で `onPick(Number(data-index), 'tap', Number(data-id))`。届けの演出で飛んでいる瓶（`data-gone="1"`）は押しても何もしない。`pointerdown` で選ぶと指がずれた押下まで拾うので、`click` を使う（`touch-action: manipulation` で遅れは出ない）。
 - **ダブルタップ拡大の抑止**：`#board` と `.tools` で `touchend`（2回目の素早いタップ）・`dblclick` を `preventDefault`。`gesturestart` も止める。既存ゲームの作り（ゼンマイ・ハシわたり）に準じる。
 - **キーボード**（`document` の `keydown`。入力欄・カードが開いているとき〈`#overlay` が見えている〉は Esc 以外を無視）：
   - `←` `→`：フォーカスを左右の瓶へ（端で止まる）。`↑` `↓`：上下の段の瓶へ（render の並びの列数を `board.dataset.cols` から読む）
   - `Enter`・`Space`：フォーカスのある瓶を選ぶ（`<button>` の標準の click に任せ、二重にしない）
-  - `1`〜`9`・`0`：その番号の瓶を選ぶ（`0` は10本目、11本目はキーなし）
+  - `1`〜`9`・`0`：その番号の瓶を選ぶ（`0` は10本目、11本目はキーなし）。番号は、いま並んでいる瓶（`data-gone` を除く）の何本目か
   - `U` または `Backspace`：`onCommand('undo')`。`R`：`onCommand('restart')`（確認カードが出る）
   - `Esc`：選んでいれば `onCommand('deselect')`、カードが開いていれば `onCommand('close')`
   - `M`：`onCommand('sound')`。`?`（`/`）：`onCommand('help')`
@@ -251,7 +290,7 @@ IrobinInput.attach({ board, root = document }, {
     </div>
     <div class="board" id="board" role="group" aria-label="びん" data-cols="6">
       <!-- render.build が作る -->
-      <button class="bottle" type="button" data-index="0" data-sealed="0" data-selected="0" data-waiting="0"
+      <button class="bottle" type="button" data-index="0" data-id="0" data-sealed="0" data-selected="0" data-waiting="0"
               aria-label="1ばん：した から あお、あお、？、オレンジ">
         <span class="glass">
           <span class="seg" data-color="4" data-hidden="0"><svg class="mark">…</svg></span>
@@ -284,7 +323,7 @@ IrobinInput.attach({ board, root = document }, {
 | `.customer .tray` | 注文の色のトレイ。色と記号を描く（色だけに頼らない） |
 | `#left` | まだ応えていない注文の数（`hud(state).left` ＝ `total - served`。いま並んでいるお客さんも含む）。0 のときも「あと 0 にん」 |
 | `#board[data-cols]` | 1行の瓶の数（キーボードの上下移動に使う） |
-| `.bottle[data-index][data-sealed][data-selected][data-waiting]` | 瓶。`data-waiting="1"`＝栓をして注文を待っている。`aria-label` に番号・中身（隠れは「？」）・状態 |
+| `.bottle[data-index][data-id][data-sealed][data-selected][data-waiting]` | 瓶。`data-index`＝今の並びの位置（届けると振り直す）、`data-id`＝瓶の id（変わらない）。`data-waiting="1"`＝栓をして注文を待っている。届けの演出で飛んでいる間は `data-gone="1"`。`aria-label` に番号（位置＋1）・中身（隠れは「？」）・状態 |
 | `.seg[data-color][data-hidden]` | 段。隠れの段は `data-color` を出さない（`data-color=""`・`data-hidden="1"`）で「？」を描く（DOM から答えが分からないように） |
 | `.cork` | 栓（sealed のときだけ見える） |
 | `canvas#fx` | 光と粒（ポインターを通す。`pointer-events: none`） |
@@ -306,9 +345,9 @@ UMD で `window.IrobinRender`。状態は変えない（受け取った state �
 
 ```js
 IrobinRender.create({ board, shop, fx }, { calm = false } = {}) → {
-  build(state),                 // 面の始めに瓶のボタンを作り直す（本数が変わる）。layout も行う
+  build(state),                 // 面の始めに瓶のボタンを作り直す（本数が変わる）。layout も行う。ボタンは瓶の id と結びつける
   layout(),                     // 画面の大きさに合わせて列数と瓶の大きさを決め、board.dataset.cols を書く
-  update(state, ui),            // 演出なしで今の状態に合わせる。ui = { selected: number|null }
+  update(state, ui),            // 演出なしで今の状態に合わせる。ui = { selected: number|null }（state の位置）。ボタンの id の並びが state と違えば作り直す
   pour(outcome, state) → Promise,  // §7.3 の順で演出し、終わったら resolve（最後に update(state) 済み）
   deny(index, reason),          // 注げない：相手の瓶を小さく横に揺らす（0.25 秒）
   celebrate() → Promise,        // 面クリアの演出（お客さん全員が喜ぶ、紙ふぶき）
@@ -344,7 +383,7 @@ IrobinRender.drawAnimal(ctx, kind, { w, h, mood, t })   // メニューの絵で
    - `#fx` に、その色と白の粒が 16〜24 個、瓶の口から噴き出して落ちる（0.8 秒）
    - 音 `seal`（明るい和音）。`navigator.vibrate` があれば `sfx.buzz(15)` 程度（無ければ何もしない）
    - そろった光と粒は**次の操作で消さない**（finishAll でも粒だけは最後まで描いてよい。Promise はすぐ resolve）
-5. **届ける**（`deliveries` の順。1件 0.6 秒）：瓶がお客さんのトレイの上へ飛び、小さくなって消える（音 `deliver`）。お客さんは `happy` → `leave`。同じ場所に空の瓶がふわっと現れる。
+5. **届ける**（`deliveries` の順。1件 0.6 秒）：瓶（id で探す）がお客さんのトレイの上へ飛び、小さくなって消える（音 `deliver`）。お客さんは `happy` → `leave`。**空の瓶は出てこない**：消えたボタンを取り除き、残りの瓶を詰めて並べ直す（列数と大きさも本数に合わせて決め直す）。残りの瓶は前の場所から新しい場所へ 0.3 秒でなめらかに寄る。`calm` では一瞬で並べ直す。
 6. **次のお客さん**（`arrivals`、0.35 秒）：`enter`（音 `arrive`）。待ち瓶への自動の届けは 5 に戻る。
 7. 最後に `update(state)` で表示を正にそろえる。
 
@@ -356,7 +395,7 @@ IrobinRender.drawAnimal(ctx, kind, { w, h, mood, t })   // メニューの絵で
 ## 8. 進行（`games/irobin/main.js`、担当B）
 
 ### 8.1 状態の流れ
-- 起動：`validateSave(localStorage['irobin.save'])` → `replay(level, moves)`。ok でなければ同じ面の最初から（手は捨てる）。保存が無い・壊れているなら、`level = validateBest(best) + 1`（なければ 1）の最初から。初回（`irobin.help` が無い）は遊び方カードを出す。
+- 起動：`validateSave(localStorage['irobin.save'])` → `replay(level, moves)`（手は瓶の id）。ok でなければ同じ面の最初から（手は捨てる）。古い `v:1` も同じ面の最初から。保存が無い・壊れているなら、`level = validateBest(best) + 1`（なければ 1）の最初から。初回（`irobin.help` が無い）は遊び方カードを出す。
 - `idle` で瓶を押す：注げる中身がある瓶なら `selected`（音 `pick`）。空・栓の瓶はヒントだけ（「からの びんは えらべないよ」「せんを した びんは うごかせないよ」）。
 - `selected` で：同じ瓶 → 選ぶのをやめる（音 `drop`、`idle`）。別の瓶 → `applyMove`：
   - `invalid` → `render.deny`、音 `deny`、ヒント（`mismatch`＝「いろが ちがうよ」、`full`＝「いっぱいだよ」、`sealed`＝「せんを した びんには いれられないよ」）、選ぶのをやめる。
@@ -370,7 +409,7 @@ IrobinRender.drawAnimal(ctx, kind, { w, h, mood, t })   // メニューの絵で
 - **やりなおし**：手が1つ以上あれば確認カード（「さいしょから やりなおす？」［やりなおす `restartYes`］［やめる `close`］）。手が0なら何もしない。
 
 ### 8.3 保存
-- 注ぐたび・もどすたびに `irobin.save` へ `makeSave(level, moves)` を書く。クリアしたら `irobin.best` を `recordBest` で更新し、`irobin.save` を次の面・手0にする。
+- 注ぐたび・もどすたびに `irobin.save` へ `makeSave(level, moves)` を書く（手は `outcome.fromId`・`toId` の組）。クリアしたら `irobin.best` を `recordBest` で更新し、`irobin.save` を次の面・手0にする。
 - 読み書きは `try/catch` で囲む（保存できなくても遊べる）。ほかのゲームのキーに触らない。
 - `pagehide` でも保存する。
 
@@ -391,8 +430,8 @@ IrobinRender.drawAnimal(ctx, kind, { w, h, mood, t })   // メニューの絵で
 window.IrobinGame = Object.freeze({
   getState(),   // { phase, level, best, served, total, left, moves, bottles, slots, queue, selected, stuck, doomed, par, won,
                 //   overlay: null|'help'|'clear'|'confirm', busy, paused, timers, runId, canUndo, calm }
-                //   bottles・slots・queue は logic の state の写し（JSON にできる形）
-  pick(index),  // 瓶を押したのと同じ（onPick と同じ道を通る）。戻り値なし
+                //   bottles・slots・queue は logic の state の写し（JSON にできる形。bottles には id がある）
+  pick(index),  // 瓶を押したのと同じ（onPick と同じ道を通る）。index は今の state の位置。戻り値なし
   pour(from, to),  // pick(from) → pick(to) と同じ。演出は finishAll で終わらせる。outcome.kind を返す
   solution(),   // 今の state から solve した手順 [[from,to],...]（解けなければ null）
   skip(),       // 今の演出を終わりまで進める（render.finishAll）
@@ -452,13 +491,14 @@ const IROBIN = {
 ### 12.2 BL（Node、`tests/cases/irobin-logic.mjs`）
 - BL1：定数・`COLORS`（9色・hex と記号がすべて違う・`NAME`）・`paramsFor` が §3.2 の表どおり（境界 1・2・5・6・9・10・12・14・15・24・25・39・40・1000・壊れた値）。
 - BL2：`pourCheck`・`applyMove` の決まり（空へ・同じ色へ・色違い・いっぱい・栓・同じ瓶・範囲外・クリア後、reason の順）。注ぐ量＝見えている同じ色の続き と 空き の小さい方。
-- BL3：そろい・届け・空の瓶への置き換え・待ち瓶が場所をふさぐ・お客さんが来たら自動で届く（連鎖の順）・全部届けて won。outcome の `deliveries`・`arrivals` の順。
+- BL3：そろい・届け・**届けた瓶は消える（瓶が1本減り、空き瓶は増えない。残りは並び順のまま詰め、id は変わらない）**・待ち瓶・お客さんが来たら自動で届く（連鎖の順。連鎖の途中で位置がずれない）・全部届けて won。outcome の `deliveries`（bottle・id）・`arrivals` の順。
 - BL4：イミュータブル（applyMove の前後で元の state が JSON で一致）。おかしな引数で例外を投げない。
-- BL5：生成。1〜60 面と 1000 面が決定的（2回作って JSON 一致）、各色ちょうど4段、最初からそろった瓶なし、隠れの面は一番上以外が隠れ、`info.solution` を replay すると won。60 面の生成の合計が Node で 3 秒以内、`info.nodes <= GEN_NODE_BUDGET`。
-- BL6：ソルバー。解けない小さな盤で solved:false、注文の順のせいで解けない盤（注文なしなら解ける）を正しく解けないと判定、`anyOrder` では解ける。
-- BL7：保存の検証。`validateBest`（`null`・`""`・`"abc"`・`"-1"`・`"1.5"`・`"NaN"`・`"Infinity"`・`"{}"`・`"1e400"`・`"9007199254740992"`）→ 0。`validateSave` が壊れた JSON・v 違い・level 0・手の形違い・長すぎで null。`replay` が注げない手で ok:false。`recordBest` で同じ面は improved:false。
+- BL5：生成。1〜60 面と 1000 面が決定的（2回作って JSON 一致）、各色ちょうど4段、最初からそろった瓶なし、隠れの面は一番上以外が隠れ、最初の id が 0〜、`info.solutionIds` を replay すると won で空き瓶だけが残る。1 面はどの最初の手でも解ける。60 面の生成の合計が Node で 3 秒以内、`info.nodes <= GEN_NODE_BUDGET`。
+- BL6：ソルバー。解けない小さな盤で solved:false、待ち瓶ができる盤で solve の手順を applyMove で再生すると won（手の位置がずれない）、注文の順を逆にしても `anyOrder` でも解けるかどうかは同じ。
+- BL7：保存の検証。`validateBest`（`null`・`""`・`"abc"`・`"-1"`・`"1.5"`・`"NaN"`・`"Infinity"`・`"{}"`・`"1e400"`・`"9007199254740992"`）→ 0。`makeSave` は v:2。`validateSave` が壊れた JSON・v 違い・level 0・手の形違い・長すぎで null、古い v:1 は手を捨てる。`replay`（id の手）が注げない手・無い id で ok:false。`recordBest` で同じ面は improved:false。
 - BL8：詰み（`isStuck`・outcome.stuck）。
 - BL9：隠れ。注いで一番上になった1段だけが見えるようになる。隠れの段は注ぐ量に数えない。そろうと全部見える。
+- BL11：生成した面（2・6・12・20・40 面）の解を通して、届けるたびに瓶が届けた本数だけ減り、空き瓶は注いだ分しか変わらない。`fromId`・`toId`・`deliveries[].id` が正しく、残りの瓶は並び順のまま・中身も同じ id に付いていく。消えた id では注げない。途中で保存（v:2）→ `validateSave` → `replay` で同じ局面。
 
 ### 12.3 BW（画面、`tests/cases/irobin-ui.mjs`）
 smoke：
@@ -466,6 +506,7 @@ smoke：
 - BW2：`solution()` の手順を `pick` で進めるとクリアのカード（`next`・`menu`）。`irobin.best` が更新され、`next` で面 +1・手0。
 - BW3：2手注いで再読み込みすると同じ局面。壊れた `irobin.save`・`irobin.best` で落ちず、面 1 から（ページエラーなし）。ほかのゲームの保存キーが変わらない。
 - BW4：プレイ中・遊び方・クリア・やりなおしの確認の、どこからでも `a#back` でメニューへ戻れる。
+- BW17：届けた瓶は消える。届けると画面の瓶が1本減り空き瓶は増えない、残りの瓶がなめらかに寄る（動きを減らす設定では寄る動きなしで 0.5 秒以内）、`data-index` は 0〜で振り直し `data-id` は state の id、届けの演出中に押した瓶・数字キーが正しい瓶（id）を選ぶ、再読み込みで同じ局面（v:2）。
 
 full（smoke に加えて）：
 - BW5：SE 縦・SE 横（568×320 と 667×375）・iPad 縦横、11本の面（40 面）でも、ボタンと瓶が 44×44 以上で safe-area 内、`.head`・`#shop`・`#board`・`#hint`・`#tools` が重ならずはみ出さない。16 桁の面番号でもはみ出さない。
@@ -487,14 +528,17 @@ full（smoke に加えて）：
 - MB1 色違いの瓶にも注げる（`mismatch` の判定を外す）→ BL2
 - MB2 注ぐ量が空きを超える（空きで丸めない）→ BL2
 - MB3 そろった瓶を、注文の色と違うお客さんにも届ける → BL3
-- MB4 届けた後、空の瓶に置き換えない（瓶が消える）→ BL3・BL5
+- MB4 届けた瓶が消えない（栓をしたまま残る）→ BL3・BL5・BL11
 - MB5 注いでも隠れた段が見えるようにならない → BL9
-- MB6 ソルバーが注文の順を無視する（いつも anyOrder）→ BL6
+- MB6 ソルバーが待ち瓶をもう届けたものとして数える（いつも anyOrder。手の位置がずれる）→ BL6
 - MB7 `validateSave` が手の形を確かめない → BL7・BW3
 - MB8 hidden で演出を止めない → BW9
 - MB9 1手もどすで2手戻る → BW6
+- MB10〜MB12 は tests/README.md の表を見る
+- MB13 届けたあと空き瓶を足す（旧仕様に戻す）→ BL3・BL5・BL11・BW17
+- MB14 演出中に押した瓶を、押したボタンの位置で選ぶ（瓶の番号のずれ）→ BW17
 - 置換前の文字列は、実装が固まった後に C が実物から写す（A・B は、置換の目印になる行を変に分けない）。
-- 変異テストは最後の関門だけで流す（W-01）。`ONLY=<BL と BW の全項目> M=MB1,…,MB9 node tests/mutants/mutate.mjs both`。
+- 変異テストは最後の関門だけで流す（W-01）。`ONLY=<BL と BW の全項目> M=MB1,…,MB14 node tests/mutants/mutate.mjs both`。
 
 ### 12.5 テストを流すときの PORT（W-04）
 

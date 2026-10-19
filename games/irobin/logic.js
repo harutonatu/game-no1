@@ -13,6 +13,11 @@
  *     applyMove もソルバーも、同じ関数 pourCount（注げるか・注ぐ量）と step（注ぐ・栓・届け）を通る。
  *     → 画面の決まりとソルバーの決まりが食い違わない。
  *   - 生成の上限は時間ではなく「調べた局面の数」（どの端末でも同じ面ができる）。
+ *   - 届けた瓶は消える（空の瓶は出てこない。ユーザー決定 2026-10-19）。瓶の本数は届けるたびに 1 本減り、残りの瓶は
+ *     並び順を保ったまま前に詰める。瓶にはそれぞれ固定の番号 id（面の最初の並び順 0〜）があり、詰めても変わらない。
+ *     applyMove の from・to は「今の並びの何番目か」（位置）。保存の手は id で記録する（makeSave の v:2）。
+ *     outcome の位置（from・to・sealed・revealed[].bottle・deliveries[].bottle）は、すべて「注ぐ前の並び」の位置
+ *     （＝演出の間、画面に並んでいる瓶の位置）。届けた瓶の id は deliveries[].id。
  */
 (function (root) {
   "use strict";
@@ -47,8 +52,9 @@
   const ANIMAL_KEYS = Object.freeze(["kuma", "usagi", "neko", "penguin", "risu", "hitsuji"]);
 
   // 面の難しさの表（契約 §3.2）。from 面から次の行の from-1 面まで
+  // 1 面は空き瓶 2 本（届けた瓶が消えるルールに合わせて見直し。空き瓶 1 本だと最初の 2 手のうち 1 手で解けなくなった）
   const LEVELS = Object.freeze([
-    { from: 1,  colors: 2, empties: 1, hidden: "none", order: "easy" },
+    { from: 1,  colors: 2, empties: 2, hidden: "none", order: "easy" },
     { from: 2,  colors: 3, empties: 2, hidden: "none", order: "easy" },
     { from: 3,  colors: 4, empties: 2, hidden: "none", order: "easy" },
     { from: 4,  colors: 5, empties: 2, hidden: "none", order: "easy" },
@@ -213,7 +219,8 @@
 
     if (sealed < 0) return;
     if (ctx.any) {                                               // 注文を気にしない（generate の 'easy' 用）
-      bots[sealed] = 0;
+      bots.splice(sealed, 1);                                    // そろった瓶はすぐ届けたものとして消す
+      if (ctx.ids) ctx.ids.splice(sealed, 1);
       ctx.served++;
       return;
     }
@@ -221,9 +228,11 @@
   }
 
   // 見えているお客さんに合う、栓をした瓶を届ける。枠は左から、瓶は番号の小さい方から。来た客にも続けて届ける
+  // 届けた瓶は消える。連鎖の間は印（GONE）を付けておき、最後にまとめて詰める
+  // （deliveries[].bottle が「注ぐ前の並び」の位置のまま食い違わないように）
   function deliverAll(ctx, ev) {
     const bots = ctx.bots;
-    let progress = true;
+    let progress = true, gone = 0;
     while (progress) {
       progress = false;
       for (let si = 0; si < ctx.slots.length && !progress; si++) {
@@ -231,13 +240,14 @@
         if (want < 0) continue;
         for (let b = 0; b < bots.length; b++) {
           const x = bots[b];
-          if (isSealedP(x) && col(x, 0) === want) {
-            bots[b] = 0;                                         // 届けた瓶は空の瓶に置き換わる
+          if (x !== GONE && isSealedP(x) && col(x, 0) === want) {
+            bots[b] = GONE;                                      // 届けた瓶は消える（空の瓶は出てこない）
+            gone++;
             ctx.served++;
             const next = ctx.qi < ctx.queue.length ? ctx.queue[ctx.qi++] : -1;
             ctx.slots[si] = next;
             if (ev) {
-              ev.deliveries.push({ bottle: b, slot: si, color: want });
+              ev.deliveries.push({ bottle: b, id: ctx.ids ? ctx.ids[b] : b, slot: si, color: want });
               ev.arrivals.push({ slot: si, color: next >= 0 ? next : null });
             }
             progress = true;
@@ -246,10 +256,26 @@
         }
       }
     }
+    if (gone) compact(ctx);
+  }
+  const GONE = -1;                                               // 届けて消えた瓶の印（詰めた形の瓶は 0 以上なので重ならない）
+
+  // GONE の瓶を取り除き、残りを並び順のまま前に詰める（id も一緒に）
+  function compact(ctx) {
+    const bots = ctx.bots, ids = ctx.ids;
+    let w = 0;
+    for (let r = 0; r < bots.length; r++) {
+      if (bots[r] === GONE) continue;
+      bots[w] = bots[r];
+      if (ids) ids[w] = ids[r];
+      w++;
+    }
+    bots.length = w;
+    if (ids) ids.length = w;
   }
 
   function cloneCtx(c) {
-    return { bots: c.bots.slice(), slots: c.slots.slice(), queue: c.queue, qi: c.qi, served: c.served, total: c.total, any: c.any };
+    return { bots: c.bots.slice(), ids: c.ids ? c.ids.slice() : null, slots: c.slots.slice(), queue: c.queue, qi: c.qi, served: c.served, total: c.total, any: c.any };
   }
 
   function ctxWon(c) { return c.served >= c.total; }
@@ -273,8 +299,9 @@
     try {
       if (!state || typeof state !== "object") return null;
       const B = state.bottles;
-      if (!Array.isArray(B) || B.length < 1 || B.length > 16) return null;
+      if (!Array.isArray(B) || B.length > 16) return null;      // 0 本もありうる（全部届けて空き瓶も無い面）
       const bots = [];
+      let ids = [];
       for (const b of B) {
         if (!b || typeof b !== "object" || !Array.isArray(b.cells)) return null;
         const cells = b.cells;
@@ -288,7 +315,10 @@
           for (let i = 0; i < h.length; i++) h[i] = false;
         }
         bots.push(packBottle(cells, h, sealed));
+        ids.push(b.id);
       }
+      // 瓶の id：0 以上の安全な整数で重なりが無ければそのまま。無い・おかしいときは今の並び順（0〜）を id にする
+      if (!ids.every((x) => isInt(x) && x >= 0) || new Set(ids).size !== ids.length) ids = bots.map((_, i) => i);
       if (!Array.isArray(state.slots) || state.slots.length !== ORDER_SLOTS) return null;
       const slots = [];
       for (const x of state.slots) {
@@ -302,7 +332,7 @@
       if (!okCount(served) || !okCount(total) || !okCount(moves) || served > total) return null;
       const p = state.params && typeof state.params === "object" ? state.params : null;
       return {
-        bots, slots, queue: state.queue.slice(), qi: 0, served, total, any: false,
+        bots, ids, slots, queue: state.queue.slice(), qi: 0, served, total, any: false,
         level: normLevel(state.level),
         params: p ? Object.freeze({ colors: p.colors, empties: p.empties, hidden: p.hidden === true, order: p.order }) : paramsFor(state.level),
         moves
@@ -313,11 +343,11 @@
   }
 
   function fromCtx(c, level, params, moves) {
-    const bottles = c.bots.map((b) => {
+    const bottles = c.bots.map((b, k) => {
       const n = len(b);
       const cells = [], hidden = [];
       for (let i = 0; i < n; i++) { cells.push(col(b, i)); hidden.push(hid(b, i) === 1); }
-      return Object.freeze({ cells: Object.freeze(cells), hidden: Object.freeze(hidden), sealed: isSealedP(b) });
+      return Object.freeze({ id: c.ids ? c.ids[k] : k, cells: Object.freeze(cells), hidden: Object.freeze(hidden), sealed: isSealedP(b) });
     });
     return Object.freeze({
       level,
@@ -357,6 +387,7 @@
     const chk = pourCheck(state, from, to);
     if (!chk.ok) return { state, outcome: { kind: "invalid", reason: chk.reason, from, to } };
     const c = toCtx(state);
+    const fromId = c.ids[from], toId = c.ids[to];
     const ev = { revealed: [], deliveries: [], arrivals: [], color: -1, count: 0, sealed: null };
     step(c, from, to, chk.count, ev);
     const ns = fromCtx(c, c.level, c.params, c.moves + 1);
@@ -365,7 +396,7 @@
     return {
       state: ns,
       outcome: {
-        kind: "pour", from, to, color: ev.color, count: ev.count,
+        kind: "pour", from, to, fromId, toId, color: ev.color, count: ev.count,
         revealed: ev.revealed, sealed: ev.sealed, deliveries: ev.deliveries, arrivals: ev.arrivals,
         won, stuck
       }
@@ -390,19 +421,55 @@
     return !hasMove(c.bots);
   }
 
+  // 瓶の id → 今の並びの位置（無ければ -1）
+  function indexOfId(state, id) {
+    if (!state || !Array.isArray(state.bottles) || !isInt(id)) return -1;
+    for (let i = 0; i < state.bottles.length; i++) {
+      const b = state.bottles[i];
+      if (b && b.id === id) return i;
+    }
+    return -1;
+  }
+
+  // id で指定した手を当てる（保存した手の再生用）。id が見つからなければ invalid（reason 'range'）
+  function moveById(state, fromId, toId) {
+    const f = indexOfId(state, fromId), t = indexOfId(state, toId);
+    if (f < 0 || t < 0) return { state, outcome: { kind: "invalid", reason: "range", from: f, to: t } };
+    return applyMove(state, f, t);
+  }
+
+  // 位置で書いた手の列（solution など）を、state から順に当てながら id の列に直す。途中で注げなければ null
+  function toIdMoves(state, moves) {
+    if (!Array.isArray(moves)) return null;
+    let s = state;
+    const out = [];
+    for (const m of moves) {
+      if (!Array.isArray(m)) return null;
+      const r = applyMove(s, m[0], m[1]);
+      if (r.outcome.kind !== "pour") return null;
+      out.push([r.outcome.fromId, r.outcome.toId]);
+      s = r.state;
+    }
+    return out;
+  }
+
   // ---------------------------------------------------------------- ソルバー
 
   // 局面のキー。瓶の並びは順不同として正規化する（小さい順に並べる）。瓶1本＝24bit を 12bit ずつ2文字に
+  // 栓をした瓶（待ち瓶）はキーに入れない：注ぐ元にも相手にもならず、届けても空きは増えない（消えるだけ）ので、
+  // 栓をした瓶があってもなくても、その先の手はまったく同じ
   const keyBuf = [], keyCodes = [];
   function keyOf(c) {
-    const b = c.bots, n = b.length;
+    const b = c.bots, n0 = b.length;
     const a = keyBuf;
-    a.length = n;
-    for (let i = 0; i < n; i++) {                                // 本数が少ないので挿入ソート
+    let n = 0;
+    for (let i = 0; i < n0; i++) {                               // 本数が少ないので挿入ソート
       const x = b[i];
-      let j = i - 1;
+      if (isSealedP(x)) continue;
+      let j = n - 1;
       while (j >= 0 && a[j] > x) { a[j + 1] = a[j]; j--; }
       a[j + 1] = x;
+      n++;
     }
     const codes = keyCodes;
     codes.length = 0;
@@ -441,7 +508,7 @@
           if (dl + k === CAP) {
             let same = true;
             for (let i = 0; i < dl; i++) if (col(d, i) !== top) { same = false; break; }
-            if (same) score += c.any || wanted ? 100 : -30;     // そろう。注文に無い色は場所をふさぐ
+            if (same) score += 100;                              // そろう（注文に無い色でも、待つだけで場所は変わらない）
           }
         } else {
           score -= 10;
@@ -491,11 +558,15 @@
     if (opts && isInt(opts.nodeLimit) && opts.nodeLimit > 0) limit = opts.nodeLimit;
     const c = toCtx(state);
     if (!c) return { solved: false, moves: null, nodes: 0, exhausted: false };
+    c.ids = null;                                                // ソルバーは id を使わない（手は位置で返す）
     if (any) {
       c.any = true;
-      for (let i = 0; i < c.bots.length; i++) {                  // 待っている瓶は、もう届けたものとして扱う
-        if (isSealedP(c.bots[i])) { c.bots[i] = 0; c.served++; }
+      const keep = [];
+      for (let i = 0; i < c.bots.length; i++) {                  // 待っている瓶は、もう届けたものとして消す
+        if (isSealedP(c.bots[i])) c.served++;
+        else keep.push(c.bots[i]);
       }
+      c.bots = keep;
     }
     return solveCtx(c, limit);
   }
@@ -582,12 +653,13 @@
     return fromCtx(c, level, params, 0);
   }
 
-  function runMoves(state, moves) {
+  // byId：手を瓶の id で書いたもの（保存の形）として当てる。省くと位置
+  function runMoves(state, moves, byId) {
     let s = state;
     for (let i = 0; i < moves.length; i++) {
       const m = moves[i];
       if (!Array.isArray(m)) return { state: s, ok: false, applied: i };
-      const r = applyMove(s, m[0], m[1]);
+      const r = byId ? moveById(s, m[0], m[1]) : applyMove(s, m[0], m[1]);
       if (r.outcome.kind !== "pour") return { state: s, ok: false, applied: i };
       s = r.state;
     }
@@ -629,7 +701,9 @@
 
     const state = buildState(lv, params, got.bots, got.queue);
     const solution = Object.freeze(got.solution.map((m) => Object.freeze([m[0], m[1]])));
-    const info = Object.freeze({ level: lv, seed, params, tries: acc.tries, nodes: acc.nodes, fallback, solution });
+    // 同じ手順を瓶の id で書いたもの（保存の形。replay にそのまま渡せる）
+    const solutionIds = Object.freeze((toIdMoves(state, solution) || []).map((m) => Object.freeze(m)));
+    const info = Object.freeze({ level: lv, seed, params, tries: acc.tries, nodes: acc.nodes, fallback, solution, solutionIds });
     const out = Object.freeze({ state, info });
     if (!override) {
       cache.set(lv, out);
@@ -660,10 +734,11 @@
 
   // ---------------------------------------------------------------- 再生と保存
 
+  // 保存した手（瓶の id の組 [fromId, toId]）を、面の最初から順に当てる
   function replay(level, moves) {
     const st = createLevel(level).state;
     if (!Array.isArray(moves)) return { state: st, ok: false, applied: 0 };
-    return runMoves(st, moves);
+    return runMoves(st, moves, true);
   }
 
   function hud(state) {
@@ -680,12 +755,16 @@
     return Number.isSafeInteger(n) && n >= 0 ? n : 0;
   }
 
+  // 保存の形 v:2 ＝ { v: 2, level, moves: [[fromId, toId], ...] }（手は瓶の id）。
+  // 古い v:1（手は瓶の位置で、届けると空き瓶が出てくる前のルール）は手を捨て、その面の最初から（level だけ使う）
+  const SAVE_V = 2;
   function validateSave(raw) {
     if (typeof raw !== "string") return null;
     let o;
     try { o = JSON.parse(raw); } catch (e) { return null; }
     if (!o || typeof o !== "object" || Array.isArray(o)) return null;
-    if (o.v !== 1) return null;
+    if (o.v === 1 && Number.isSafeInteger(o.level) && o.level >= 1) return { level: o.level, moves: [] };
+    if (o.v !== SAVE_V) return null;
     if (!Number.isSafeInteger(o.level) || o.level < 1) return null;
     if (!Array.isArray(o.moves) || o.moves.length > MAX_MOVES_SAVED) return null;
     for (const m of o.moves) if (!Array.isArray(m) || m.length !== 2 || !Number.isSafeInteger(m[0]) || !Number.isSafeInteger(m[1]) || m[0] < 0 || m[1] < 0) return null;
@@ -694,7 +773,7 @@
 
   function makeSave(level, moves) {
     const mv = Array.isArray(moves) ? moves.map((m) => (Array.isArray(m) ? [m[0], m[1]] : m)) : [];
-    return JSON.stringify({ v: 1, level, moves: mv });
+    return JSON.stringify({ v: SAVE_V, level, moves: mv });
   }
 
   function recordBest(prevBest, clearedLevel) {
@@ -731,7 +810,7 @@
     SAVE_KEY_BEST, SAVE_KEY_SAVE, SAVE_KEY_HELP, COLORS, LEVELS,
     MAX_BOTTLES, ANIMAL_KEYS,
     makeRng, seedFor, paramsFor, createLevel,
-    pourCheck, applyMove, legalMoves, isStuck,
+    pourCheck, applyMove, legalMoves, isStuck, indexOfId, moveById, toIdMoves,
     solve,
     replay, hud, validateBest, validateSave, makeSave, recordBest, validateFlag,
     animalFor, colorName,

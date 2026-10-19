@@ -44,7 +44,7 @@ export const tests = [
       // 面の表（§3.2）
       const T = (lv, colors, empties, hidden, order) => ({ lv, colors, empties, hidden, order });
       const table = [
-        T(1, 2, 1, false, 'easy'), T(2, 3, 2, false, 'easy'), T(3, 4, 2, false, 'easy'), T(4, 5, 2, false, 'easy'), T(5, 5, 2, false, 'easy'),
+        T(1, 2, 2, false, 'easy'), T(2, 3, 2, false, 'easy'), T(3, 4, 2, false, 'easy'), T(4, 5, 2, false, 'easy'), T(5, 5, 2, false, 'easy'),
         T(6, 6, 2, false, 'random'), T(9, 6, 2, false, 'random'),
         T(10, 7, 2, false, 'random'), T(11, 7, 2, false, 'random'), T(12, 7, 2, true, 'random'), T(13, 7, 2, false, 'random'), T(14, 7, 2, true, 'random'),
         T(15, 8, 2, true, 'random'), T(16, 8, 2, false, 'random'), T(23, 8, 2, true, 'random'), T(24, 8, 2, false, 'random'),
@@ -55,7 +55,7 @@ export const tests = [
         .map((r) => ({ want: r, got: L.paramsFor(r.lv) }));
       check('paramsFor が表どおり（1・2・5・6・9・10・12・14・15・24・25・39・40・1000 の境界を含む）', bad.length === 0, bad);
       const broken = [0, -3, 1.5, NaN, Infinity, null, undefined, {}, [], 1e400];
-      const bBad = broken.filter((v) => { let p; try { p = L.paramsFor(v); } catch { return true; } return !(p && p.colors === 2 && p.empties === 1 && p.hidden === false && p.order === 'easy'); })
+      const bBad = broken.filter((v) => { let p; try { p = L.paramsFor(v); } catch { return true; } return !(p && p.colors === 2 && p.empties === 2 && p.hidden === false && p.order === 'easy'); })
         .map((v) => String(v));
       check('壊れた面番号（0・負・小数・NaN・Infinity・null・undefined・object）は 1 面扱いで例外なし', bBad.length === 0, bBad);
       const mono = []; let prev = 0;
@@ -105,7 +105,7 @@ export const tests = [
     },
   },
   {
-    id: 'BL3', tier: 'smoke', node: true, title: 'いろびん：そろう・届ける・空の瓶への置き換え・待ち瓶が場所をふさぐ・お客さんが来たら自動で届く（連鎖の順）・全部届けて won',
+    id: 'BL3', tier: 'smoke', node: true, title: 'いろびん：そろう・届ける・届けた瓶は消える（瓶が1本減り、空き瓶は増えない。残りは並び順のまま詰める・id は変わらない）・待ち瓶・お客さんが来たら自動で届く（連鎖の順）・全部届けて won',
     run({ check, root }) {
       const L = load(root);
       // 色 0・1・2。お客さん [1,2]、列 [0]。b0:[0,0,0] b1:[0] b2:[1,1,1] b3:[1] b4:[2,2,2] b5:[2]
@@ -121,26 +121,31 @@ export const tests = [
       // 2) 色 1 がそろう → お客さん 0 に届く → 次のお客さん（色 0）が来る → 待ち瓶 0 が自動で届く（連鎖）→ 列が尽きる
       r = L.applyMove(s, 3, 2);
       const o = r.outcome;
-      check('色 1 がそろって sealed 2、deliveries は [瓶 2 → 枠 0 の色 1, 瓶 0 → 枠 0 の色 0] の順（連鎖）',
-        o.sealed === 2 && J(o.deliveries) === J([{ bottle: 2, slot: 0, color: 1 }, { bottle: 0, slot: 0, color: 0 }]), o.deliveries);
+      check('色 1 がそろって sealed 2、deliveries は [瓶 2（id 2）→ 枠 0 の色 1, 瓶 0（id 0）→ 枠 0 の色 0] の順（連鎖。bottle は注ぐ前の並びの位置）',
+        o.sealed === 2 && J(o.deliveries) === J([{ bottle: 2, id: 2, slot: 0, color: 1 }, { bottle: 0, id: 0, slot: 0, color: 0 }]), o.deliveries);
       check('arrivals は届けるたびに 1 件（枠 0 に色 0、次に列が尽きて color null）、起きた順', J(o.arrivals) === J([{ slot: 0, color: 0 }, { slot: 0, color: null }]), o.arrivals);
+      const emptiesBefore = s.bottles.filter((b) => b.cells.length === 0).length;   // 注ぐ前の空き瓶（瓶 1 の 1 本）
       s = r.state;
-      check('届けた瓶は同じ場所の空の瓶に置き換わる（本数は変わらない・sealed でない）', s.bottles.length === 6 && [0, 2].every((i) => s.bottles[i].cells.length === 0 && !s.bottles[i].sealed && s.bottles[i].hidden.length === 0), s.bottles);
+      check('届けた 2 本は消える：瓶は 6 → 4 本、残りは並び順のまま詰まり id は [1,3,4,5]（変わらない）', s.bottles.length === 4 && J(s.bottles.map((b) => b.id)) === '[1,3,4,5]' && J(colorsOf(s)) === J(['', '', '222', '2']), s.bottles);
+      check(`空き瓶は増えない（注ぐ前 ${emptiesBefore} 本 → 注いで空いた瓶 3 を足して 2 本。届けた分の空き瓶は出てこない）`, s.bottles.filter((b) => b.cells.length === 0).length === emptiesBefore + 1 && !s.bottles.some((b) => b.sealed), s.bottles);
       check('served 2・slots [null,2]・queue []・まだ won でない', s.served === 2 && J(s.slots) === '[null,2]' && s.queue.length === 0 && s.won === false && o.won === false, { served: s.served, slots: s.slots });
       check('hud：left は total − served（1）', J(L.hud(s)) === J({ level: 1, served: 2, total: 3, left: 1, moves: s.moves }), L.hud(s));
-      // 3) 最後の色 2 → 全部届けて won
-      r = L.applyMove(s, 5, 4);
-      check('最後の色 2 で deliveries 1 件・arrivals は枠 1 に null・won・served 3', J(r.outcome.deliveries) === J([{ bottle: 4, slot: 1, color: 2 }]) && J(r.outcome.arrivals) === J([{ slot: 1, color: null }]) && r.outcome.won === true && r.state.won === true && r.state.served === 3 && r.outcome.stuck === false, r.outcome);
-      // 4) 見えているお客さんにいる色は、そろった瞬間に届く。置き換えた枠には queue の先頭が来る
+      // 3) 最後の色 2 → 全部届けて won（位置は詰めた後の並び：瓶 3（id 5）→ 瓶 2（id 4））
+      r = L.applyMove(s, 3, 2);
+      check('最後の色 2 で deliveries 1 件（位置 2・id 4）・arrivals は枠 1 に null・won・served 3', J(r.outcome.deliveries) === J([{ bottle: 2, id: 4, slot: 1, color: 2 }]) && J(r.outcome.arrivals) === J([{ slot: 1, color: null }]) && r.outcome.won === true && r.state.won === true && r.state.served === 3 && r.outcome.stuck === false, r.outcome);
+      check('クリアの局面：瓶は 3 本（id 1・3・5）で全部空。outcome の from・to は注ぐ前の位置、fromId・toId は瓶の id', r.state.bottles.length === 3 && J(r.state.bottles.map((b) => b.id)) === '[1,3,5]' && r.state.bottles.every((b) => b.cells.length === 0) && r.outcome.from === 3 && r.outcome.to === 2 && r.outcome.fromId === 5 && r.outcome.toId === 4, { b: r.state.bottles, o: r.outcome });
+      // 4) 見えているお客さんにいる色は、そろった瞬間に届く。届けた枠には queue の先頭が来る
       const t = mk([[1, 1, 1], [1], []], { slots: [1, 0], queue: [] });
       const r4 = L.applyMove(t, 1, 0);
-      check('一致するお客さんがいれば、そろった瞬間に届く（待ち瓶ではない）', J(r4.outcome.deliveries) === J([{ bottle: 0, slot: 0, color: 1 }]) && r4.state.bottles[0].cells.length === 0, r4.outcome);
+      check('一致するお客さんがいれば、そろった瞬間に届く（待ち瓶ではない）。瓶は 3 → 2 本、空き瓶は 2 本のまま増えない',
+        J(r4.outcome.deliveries) === J([{ bottle: 0, id: 0, slot: 0, color: 1 }]) && r4.state.bottles.length === 2 && J(r4.state.bottles.map((b) => b.id)) === '[1,2]' && r4.state.bottles.every((b) => b.cells.length === 0), r4.outcome);
       // 5) 同時に候補があるときは、枠は左から・瓶は番号の小さい方から
       let u = mk([{ c: [3, 3, 3, 3], sealed: true }, { c: [4, 4, 4, 4], sealed: true }, [5, 5, 5], [5], []], { slots: [5, 7], queue: [4, 3], total: 4 });
       // お客さんに 4,3 はまだいない（列の中）。5 が届くと枠 0 に 4 が来て、瓶 1 が自動で届く → 枠 0 に 3 が来て瓶 0 が届く
       u = { ...u, slots: [5, 7] };
       const r5 = L.applyMove(u, 3, 2);
-      check('連鎖は「届ける → 来る → 合う待ち瓶を届ける」を繰り返す（色 4 の瓶 1 → 色 3 の瓶 0 の順）', J(r5.outcome.deliveries.map((d) => [d.bottle, d.color])) === '[[2,5],[1,4],[0,3]]', r5.outcome.deliveries);
+      check('連鎖は「届ける → 来る → 合う待ち瓶を届ける」を繰り返す（色 4 の瓶 1 → 色 3 の瓶 0 の順。位置は連鎖の途中でもずれない）', J(r5.outcome.deliveries.map((d) => [d.bottle, d.id, d.color])) === '[[2,2,5],[1,1,4],[0,0,3]]', r5.outcome.deliveries);
+      check('連鎖で 3 本届けると瓶は 5 → 2 本（id 3・4 の空き瓶だけ）。空き瓶は 1 本 → 2 本（注いで空いた瓶 3 の分だけ）', r5.state.bottles.length === 2 && J(r5.state.bottles.map((b) => b.id)) === '[3,4]' && r5.state.bottles.every((b) => b.cells.length === 0), r5.state.bottles);
     },
   },
   {
@@ -216,15 +221,20 @@ export const tests = [
         if (s.total !== kinds.length || s.served !== 0 || s.moves !== 0 || s.won !== false || s.slots.length !== L.ORDER_SLOTS) bad.push(`${lv}: 始めの値`);
         const orders = [...s.slots.filter((x) => x !== null), ...s.queue];
         if (orders.length !== kinds.length || new Set(orders).size !== kinds.length || !orders.every((c) => cnt[c] === 4)) bad.push(`${lv}: 注文が各色1つずつでない ${J(orders)}`);
-        const rp = L.replay(lv, info.solution);
-        if (!(rp.ok && rp.state.won)) bad.push(`${lv}: solution を再生しても won にならない（ok ${rp.ok}、applied ${rp.applied}/${(info.solution || []).length}）`);
+        if (!s.bottles.every((b, k) => b.id === k)) bad.push(`${lv}: 最初の瓶の id が並び順（0〜）でない`);
+        if (!Array.isArray(info.solutionIds) || info.solutionIds.length !== (info.solution || []).length) bad.push(`${lv}: solutionIds が solution と同じ長さでない`);
+        const rp = L.replay(lv, info.solutionIds);
+        if (!(rp.ok && rp.state.won)) bad.push(`${lv}: solutionIds を replay しても won にならない（ok ${rp.ok}、applied ${rp.applied}/${(info.solutionIds || []).length}）`);
+        else if (info.fallback === 0 && !(rp.state.bottles.length === p.empties && rp.state.bottles.every((b) => b.cells.length === 0))) bad.push(`${lv}: クリアの局面が「空き瓶 ${p.empties} 本だけ」でない（${rp.state.bottles.length} 本）`);
         if (!(info.nodes <= L.GEN_NODE_BUDGET * 1.5)) bad.push(`${lv}: nodes ${info.nodes}`);
       }
-      check(`${levels.length} 面（1〜60・1000）：決定的・各色4段・最初からそろった瓶なし・隠れの形・注文が各色1つ・solution を再生すると won`, bad.length === 0, bad.slice(0, 8));
+      check(`${levels.length} 面（1〜60・1000）：決定的・各色4段・最初からそろった瓶なし・隠れの形・注文が各色1つ・id が 0〜・solutionIds を replay すると won、残るのは空き瓶だけ（届けた瓶は全部消える）`, bad.length === 0, bad.slice(0, 8));
       check(`1〜60 面と 1000 面の生成が合計 3 秒以内（${ms}ms。目安 iPhone SE 相当で 1 面 300ms 以内）`, ms <= 3000, ms);
       check(`表のとおりに作れた面（fallback 0）が 8 割以上（0:${fb[0]} 1:${fb[1]} 2:${fb[2]}）`, fb[0] >= levels.length * 0.8, fb);
       const l1 = first[0].state;
-      check('1 面は瓶 3 本（色 2＋空き 1）・隠れなし（遊び方を覚える面）', l1.bottles.length === 3 && !l1.bottles.some((b) => b.hidden.some(Boolean)), l1.bottles.length);
+      check('1 面は瓶 4 本（色 2＋空き 2。最初の手で解けなくならない）・隠れなし（遊び方を覚える面）', l1.bottles.length === 4 && !l1.bottles.some((b) => b.hidden.some(Boolean)), l1.bottles.length);
+      const s1 = first[0].state, trap = L.legalMoves(s1).filter(([f, t]) => !L.solve(L.applyMove(s1, f, t).state).solved);
+      check(`1 面は、どの最初の手を選んでもまだ解ける（解けなくなる最初の手 ${trap.length} 個）`, trap.length === 0, trap);
       const diff = new Set(first.slice(0, 20).map((x) => J(x.state.bottles))).size;
       check('面が違えば問題も違う（1〜20 面で同じ配りが重ならない）', diff === 20, diff);
       const eq = first.slice(0, 5).every((x, i) => x.info.seed === L.seedFor(i + 1) && Number.isInteger(x.info.seed));
@@ -235,18 +245,30 @@ export const tests = [
     },
   },
   {
-    id: 'BL6', tier: 'smoke', node: true, title: 'いろびん：ソルバー（解けない盤は solved:false・注文の順のせいで解けない盤を判定・anyOrder では解ける・上限で exhausted）',
+    id: 'BL6', tier: 'smoke', node: true, title: 'いろびん：ソルバー（解けない盤は solved:false・待ち瓶がある盤の手順の位置がずれない・注文の順で解けるかどうかは変わらない・上限で exhausted）',
     run({ check, root }) {
       const L = load(root);
       // 解けない：空きがなく、どの一番上も合わない
       const dead = mk([[0, 1, 0, 1], [1, 0, 1, 0]], { slots: [0, 1], queue: [], total: 2, params: { colors: 2, empties: 0, hidden: false, order: 'random' } });
       const d = L.solve(dead);
       check('動かせる手が無い盤は solved:false・exhausted:false・moves null', d.solved === false && d.exhausted === false && d.moves === null, d);
-      // 注文の順で解けない：色 2 が先にそろって待ち瓶になり、場所をふさぐ（注文なしなら解ける）
-      const blocked = mk([[2, 2, 2], [2], [0, 1, 1, 0], [0, 1, 1, 0]], { slots: [0, 1], queue: [2] });
-      const o = L.solve(blocked), a = L.solve(blocked, { anyOrder: true });
-      check('待ち瓶が場所をふさいで解けない盤を solved:false と判定（exhausted は false＝調べ尽くした）', o.solved === false && o.exhausted === false, o);
-      check('同じ盤を anyOrder で解くと solved:true（注文を気にしない解き方は存在する）', a.solved === true && Array.isArray(a.moves) && a.moves.length > 0, a);
+      // 待ち瓶：色 2 が先にそろうが、お客さんは列の最後。待っている間は瓶がその場に残る（位置が詰まらない）。
+      // ソルバーの手順を applyMove で再生して won になる＝待ち瓶を「もう届けた」と思って位置を数え間違えていない
+      const waitB = mk([[2, 2, 2], [2], [0, 1], [1, 0], [0, 1], [1, 0], [], []], { slots: [0, 1], queue: [2] });
+      const o = L.solve(waitB);
+      let wst = waitB, wok = o.solved, waited = false;
+      if (o.solved) for (const [f, t] of o.moves) { const r = L.applyMove(wst, f, t); if (r.outcome.kind !== 'pour') { wok = false; break; } if (r.outcome.sealed !== null && !r.outcome.deliveries.length) waited = true; wst = r.state; }
+      check('待ち瓶ができる盤：solve の手順を applyMove で順に当てると、途中で待ち瓶ができ、最後は won（手の位置がずれない）', o.solved === true && wok && waited && wst.won === true, { o, waited, won: wst.won });
+      // 届けても空き瓶は増えないので、注文の順は「解けるかどうか」を変えない（待ち瓶は注ぐ元にも相手にもならない）
+      const pairs = [];
+      for (const lv of [6, 11, 18]) {
+        const st = L.createLevel(lv).state;
+        const q = [...st.slots, ...st.queue].reverse();
+        const rev = { ...JSON.parse(J(st)), slots: q.slice(0, 2), queue: q.slice(2) };
+        const a1 = L.solve(st), a2 = L.solve(rev), a3 = L.solve(st, { anyOrder: true });
+        pairs.push({ lv, a: a1.solved, rev: a2.solved, any: a3.solved });
+      }
+      check('注文の順を逆にしても、anyOrder でも、解けるかどうかは同じ（生成した 6・11・18 面）', pairs.every((x) => x.a === true && x.rev === true && x.any === true), pairs);
       // 解ける盤：moves を applyMove で再生すると won
       const easy = mk([[0, 1, 0], [1, 0, 1], [1, 0], []], { slots: [0, 1], queue: [], total: 2 });
       const e = L.solve(easy);
@@ -279,28 +301,31 @@ export const tests = [
       check('validateBest：壊れた値（""・abc・負・小数・NaN・Infinity・{}・1e400・2^53・null・object）はすべて 0', bb.length === 0, bb.map(String));
       check('validateBest：正しい値はそのまま（"0"→0、"3"→3、7→7、"9007199254740991"）', L.validateBest('0') === 0 && L.validateBest('3') === 3 && L.validateBest(7) === 7 && L.validateBest('9007199254740991') === 9007199254740991, null);
       const good = L.makeSave(5, [[0, 1], [2, 3]]);
-      check('makeSave は JSON 文字列 { v:1, level, moves }', typeof good === 'string' && J(JSON.parse(good)) === J({ v: 1, level: 5, moves: [[0, 1], [2, 3]] }), good);
+      check('makeSave は JSON 文字列 { v:2, level, moves }（手は瓶の id）', typeof good === 'string' && J(JSON.parse(good)) === J({ v: 2, level: 5, moves: [[0, 1], [2, 3]] }), good);
       check('validateSave：makeSave した文字列は { level, moves } に戻る', J(L.validateSave(good)) === J({ level: 5, moves: [[0, 1], [2, 3]] }), L.validateSave(good));
       const sv = (x) => L.validateSave(typeof x === 'string' ? x : J(x));
       const bad = [
-        ['壊れた JSON', '{not json'], ['空文字', ''], ['null', null], ['配列', '[]'], ['v が無い', { level: 1, moves: [] }], ['v が 2', { v: 2, level: 1, moves: [] }], ['v が文字', { v: '1', level: 1, moves: [] }],
-        ['level 0', { v: 1, level: 0, moves: [] }], ['level 負', { v: 1, level: -1, moves: [] }], ['level 小数', { v: 1, level: 1.5, moves: [] }], ['level 文字', { v: 1, level: '3', moves: [] }],
-        ['level 2^53', { v: 1, level: 9007199254740992, moves: [] }], ['moves が無い', { v: 1, level: 1 }], ['moves が配列でない', { v: 1, level: 1, moves: 'x' }],
-        ['手が1要素', { v: 1, level: 1, moves: [[0]] }], ['手が3要素', { v: 1, level: 1, moves: [[0, 1, 2]] }], ['手が小数', { v: 1, level: 1, moves: [[0, 1.5]] }], ['手が文字', { v: 1, level: 1, moves: [['0', '1']] }], ['手が null', { v: 1, level: 1, moves: [null] }], ['手が数', { v: 1, level: 1, moves: [3] }],
-        ['長すぎ', { v: 1, level: 1, moves: Array.from({ length: L.MAX_MOVES_SAVED + 1 }, () => [0, 1]) }],
+        ['壊れた JSON', '{not json'], ['空文字', ''], ['null', null], ['配列', '[]'], ['v が無い', { level: 1, moves: [] }], ['v が 3', { v: 3, level: 1, moves: [] }], ['v が文字', { v: '2', level: 1, moves: [] }],
+        ['level 0', { v: 2, level: 0, moves: [] }], ['level 負', { v: 2, level: -1, moves: [] }], ['level 小数', { v: 2, level: 1.5, moves: [] }], ['level 文字', { v: 2, level: '3', moves: [] }],
+        ['level 2^53', { v: 2, level: 9007199254740992, moves: [] }], ['moves が無い', { v: 2, level: 1 }], ['moves が配列でない', { v: 2, level: 1, moves: 'x' }],
+        ['手が1要素', { v: 2, level: 1, moves: [[0]] }], ['手が3要素', { v: 2, level: 1, moves: [[0, 1, 2]] }], ['手が小数', { v: 2, level: 1, moves: [[0, 1.5]] }], ['手が文字', { v: 2, level: 1, moves: [['0', '1']] }], ['手が null', { v: 2, level: 1, moves: [null] }], ['手が数', { v: 2, level: 1, moves: [3] }],
+        ['長すぎ', { v: 2, level: 1, moves: Array.from({ length: L.MAX_MOVES_SAVED + 1 }, () => [0, 1]) }],
+        ['v:1 で level 0', { v: 1, level: 0, moves: [] }], ['v:1 で level 文字', { v: 1, level: '3', moves: [] }],
       ].filter(([, x]) => sv(x) !== null).map(([n]) => n);
       check('validateSave：壊れた JSON・v 違い・level 0/負/小数/文字・moves が配列でない/手の形違い/長すぎ はすべて null', bad.length === 0, bad);
-      check('validateSave：手が MAX_MOVES_SAVED ちょうどは通る、空の手でも通る', sv({ v: 1, level: 1, moves: Array.from({ length: L.MAX_MOVES_SAVED }, () => [0, 1]) }) !== null && sv({ v: 1, level: 12, moves: [] }) !== null, null);
-      // replay
+      check('validateSave：手が MAX_MOVES_SAVED ちょうどは通る、空の手でも通る', sv({ v: 2, level: 1, moves: Array.from({ length: L.MAX_MOVES_SAVED }, () => [0, 1]) }) !== null && sv({ v: 2, level: 12, moves: [] }) !== null, null);
+      const old = sv({ v: 1, level: 7, moves: [[0, 1], [2, 3]] });
+      check('古い保存 v:1（届けると空き瓶が出てきた前のルールの手）は手を捨てて、その面の最初から（{ level: 7, moves: [] }）', J(old) === J({ level: 7, moves: [] }), old);
+      // replay（手は瓶の id）
       const r0 = L.replay(2, []);
       check('replay：手が無ければ createLevel と同じ局面、ok:true・applied 0', r0.ok === true && r0.applied === 0 && J(r0.state) === J(L.createLevel(2).state), r0.applied);
-      const sol = L.createLevel(3).info.solution;
+      const sol = L.createLevel(3).info.solutionIds;
       const rAll = L.replay(3, sol);
-      check('replay：solution を全部当てると ok:true・applied が手の数・won', rAll.ok === true && rAll.applied === sol.length && rAll.state.won === true, { ok: rAll.ok, applied: rAll.applied, n: sol.length });
+      check('replay：solutionIds（瓶の id の手）を全部当てると ok:true・applied が手の数・won', rAll.ok === true && rAll.applied === sol.length && rAll.state.won === true, { ok: rAll.ok, applied: rAll.applied, n: sol.length });
       const rBad = L.replay(3, [sol[0], [0, 0], sol[1]]);
       check('replay：注げない手（同じ瓶）で止まり ok:false・applied 1（そこまでの状態を返す）', rBad.ok === false && rBad.applied === 1 && rBad.state && rBad.state.moves === 1, { ok: rBad.ok, applied: rBad.applied });
       const rOver = L.replay(3, [[0, 99]]);
-      check('replay：範囲外の番号でも例外なし・ok:false・applied 0', rOver.ok === false && rOver.applied === 0, rOver);
+      check('replay：無い id でも例外なし・ok:false・applied 0', rOver.ok === false && rOver.applied === 0, rOver);
       // recordBest
       const rb = (p, c) => L.recordBest(p, c);
       check('recordBest：新しい面は improved:true、同じ面・小さい面は improved:false（best は下がらない）',
@@ -398,6 +423,61 @@ export const tests = [
       const card = menu.match(/\{ name: "([^"]+)"[^}]*url: "games\/irobin\/"/);
       check(`メニューのカードの名前（${card && card[1]}）が IrobinLogic.NAME（${L.NAME}）と同じ`, !!card && card[1] === L.NAME, card && card[1]);
       check('メニューの ART に irobin の絵と irobinBest がある', /\n    irobin\(ctx, w, h\) \{/.test(menu) && /function irobinBest\(\)/.test(menu), null);
+    },
+  },
+  {
+    id: 'BL11', tier: 'smoke', node: true, title: 'いろびん：届けるたびに瓶が1本減り空き瓶は増えない（生成した面を通して）・瓶の id は詰めても変わらない・保存の手（id）を再生すると同じ局面・消えた瓶の id は注げない',
+    run({ check, root }) {
+      const L = load(root);
+      const bad = [], idBad = [], saveBad = [];
+      let deliveriesSeen = 0;
+      for (const lv of [2, 6, 12, 20, 40]) {
+        const { state: s0, info } = L.createLevel(lv);
+        let st = s0;
+        const ids = [];
+        for (let k = 0; k < info.solution.length; k++) {
+          const [f, t] = info.solution[k];
+          const before = new Map(st.bottles.map((b) => [b.id, J(b.cells)]));
+          const emptyBefore = st.bottles.filter((b) => b.cells.length === 0).length;
+          const r = L.applyMove(st, f, t);
+          if (r.outcome.kind !== 'pour') { bad.push(`${lv}: ${k} 手目が注げない`); break; }
+          const o = r.outcome, ns = r.state;
+          ids.push([o.fromId, o.toId]);
+          const nd = o.deliveries.length;
+          deliveriesSeen += nd;
+          const emptyAfter = ns.bottles.filter((b) => b.cells.length === 0).length;
+          // 空き瓶の増減は、注いだことによる分だけ（元が空になれば +1、空の瓶へ注げば −1）。届けた分の空き瓶は出てこない
+          const delta = (st.bottles[f].cells.length === o.count ? 1 : 0) - (st.bottles[t].cells.length === 0 ? 1 : 0);
+          if (ns.bottles.length !== st.bottles.length - nd) bad.push(`${lv}: ${k} 手目 届け ${nd} 本で瓶が ${st.bottles.length}→${ns.bottles.length}`);
+          if (emptyAfter !== emptyBefore + delta) bad.push(`${lv}: ${k} 手目 空き瓶 ${emptyBefore}→${emptyAfter}（注いだ分の ${delta} だけ変わるはず）`);
+          if (o.fromId !== st.bottles[f].id || o.toId !== st.bottles[t].id) idBad.push(`${lv}: ${k} 手目 fromId・toId が瓶の id と違う`);
+          const goneIds = new Set(o.deliveries.map((d) => d.id));
+          if (o.deliveries.some((d) => st.bottles[d.bottle].id !== d.id)) idBad.push(`${lv}: ${k} 手目 deliveries の bottle（注ぐ前の位置）と id が合わない`);
+          if (ns.bottles.some((b) => goneIds.has(b.id))) idBad.push(`${lv}: ${k} 手目 届けた瓶の id が残っている`);
+          if (new Set(ns.bottles.map((b) => b.id)).size !== ns.bottles.length) idBad.push(`${lv}: ${k} 手目 id が重なる`);
+          const order = ns.bottles.map((b) => b.id), prevOrder = st.bottles.map((b) => b.id).filter((x) => !goneIds.has(x));
+          if (J(order) !== J(prevOrder)) idBad.push(`${lv}: ${k} 手目 残りの並び順が変わった`);
+          for (const b of ns.bottles) if (b.id !== o.fromId && b.id !== o.toId && before.get(b.id) !== J(b.cells)) idBad.push(`${lv}: ${k} 手目 さわっていない瓶 id ${b.id} の中身が変わった`);
+          if (nd && goneIds.size) {
+            const gid = [...goneIds][0], other = ns.bottles.find((b) => b.cells.length < 4 && !b.sealed);
+            const m = other ? L.moveById(ns, gid, other.id) : null;
+            if (m && !(m.outcome.kind === 'invalid' && m.outcome.reason === 'range' && m.state === ns)) idBad.push(`${lv}: 消えた瓶 id ${gid} で注げてしまう`);
+            if (L.indexOfId(ns, gid) !== -1) idBad.push(`${lv}: 消えた瓶の indexOfId が -1 でない`);
+          }
+          // 途中で保存して読み直す
+          if (k === Math.floor(info.solution.length / 2)) {
+            const sv = L.validateSave(L.makeSave(lv, ids));
+            const rp = sv && L.replay(lv, sv.moves);
+            if (!(rp && rp.ok && J(rp.state) === J(ns))) saveBad.push(`${lv}: 途中 ${k + 1} 手の保存を replay した局面が違う`);
+          }
+          st = ns;
+        }
+        if (!st.won) bad.push(`${lv}: solution で won にならない`);
+        if (J(ids) !== J(info.solutionIds) || J(L.toIdMoves(s0, info.solution)) !== J(info.solutionIds)) idBad.push(`${lv}: solutionIds が位置の手を id に直したものと違う`);
+      }
+      check(`届けるたびに瓶が届けた本数だけ減り、空き瓶は増えない（注いで空いた瓶の分だけ）。2・6・12・20・40 面の解（届け ${deliveriesSeen} 回）`, bad.length === 0 && deliveriesSeen > 0, bad.slice(0, 6));
+      check('瓶の id：fromId・toId・deliveries の id が正しく、届けた id は消え、残りは並び順のまま・中身も同じ id に付いていく。消えた id では注げない', idBad.length === 0, idBad.slice(0, 6));
+      check('途中で保存（v:2・id の手）→ validateSave → replay で、同じ局面に戻る', saveBad.length === 0, saveBad);
     },
   },
 ];

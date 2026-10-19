@@ -91,7 +91,7 @@
   let level = 1;
   let state = null;             // IrobinLogic の state（イミュータブル）
   let history = [];             // 1手もどす用（前の state の列）
-  let moves = [];               // 注いだ手 [[from,to],...]（保存する）
+  let moves = [];               // 注いだ手 [[fromId,toId],...]（瓶の固定の番号 id。届けると位置がずれるので id で保存する）
   let selected = null;
   let phase = "idle";           // idle | selected | pouring | stuck | clear
   let paused = false;           // 裏に回っている
@@ -169,7 +169,7 @@
       const rp = safeCall(() => L.replay(lv, mv), null);
       if (rp && rp.ok) {
         for (const m of mv) {
-          const r = L.applyMove(st, m[0], m[1]);
+          const r = L.moveById(st, m[0], m[1]);
           if (!r || !r.outcome || r.outcome.kind !== "pour") { return { base, st: base, hist: [], ok: [], created }; }
           hist.push(st); ok.push([m[0], m[1]]); st = r.state;
         }
@@ -235,13 +235,19 @@
   }
 
   // ===== 瓶を押した =====
-  function onPick(index, via) {
+  // index：今の並びの位置。id（任意）：押したボタンの瓶の固定の番号。届けの演出中に押すと、ボタンの位置（data-index）は
+  // 届ける前の並びのままなので、id があれば演出を終わらせた後の state で位置を引き直す（消えた瓶なら何もしない）
+  function onPick(index, via, id) {
     if (!state || overlayKind || paused) return null;
     if (phase === "clear" || state.won) return null;
     // 演出中に押したら、演出を終わらせてから判定する（見た目と判定を食い違わせない。そろった光と音は finishAll が必ず出す）
     if (phase === "pouring" && render.busy) flush();
     if (phase === "clear" || state.won) return null;
-    const i = Number(index);
+    let i = Number(index);
+    if (Number.isSafeInteger(id)) {
+      i = safeCall(() => L.indexOfId(state, id), -1);
+      if (i < 0) return null;
+    }
     const b = state.bottles[i];
     if (!Number.isInteger(i) || !b) return null;
     if (selected === null) {
@@ -277,7 +283,7 @@
     // 前の演出が残っていれば終わらせてから（速く遊ぶ人を待たせない）
     flush();
     history.push(state);
-    moves.push([from, i]);
+    moves.push([o.fromId, o.toId]);
     state = res.state;
     const wasDoomed = doomed;
     doomed = false;
@@ -561,8 +567,11 @@
       if (!b || !Array.isArray(b.cells) || b.cells.length > capN || !b.cells.every(okColor)) return null;
       const hidden = Array.isArray(b.hidden) ? b.hidden.map(Boolean) : b.cells.map(() => false);
       if (hidden.length !== b.cells.length) return null;
-      bottles.push({ cells: b.cells.slice(), hidden, sealed: !!b.sealed });
+      bottles.push({ id: b.id, cells: b.cells.slice(), hidden, sealed: !!b.sealed });
     }
+    // 瓶の id：無い・重なるときは並び順（0〜）にする（logic と同じ決まり）
+    const ids = bottles.map((b) => b.id);
+    if (!ids.every((x) => Number.isSafeInteger(x) && x >= 0) || new Set(ids).size !== ids.length) bottles.forEach((b, i) => { b.id = i; });
     const slotsIn = Array.isArray(s.slots) ? s.slots : [];
     const slots = [];
     for (let i = 0; i < (L.ORDER_SLOTS || 2); i++) {
