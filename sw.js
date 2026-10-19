@@ -2,7 +2,7 @@
 // ファイルを更新したら CACHE_VERSION を上げる（古いキャッシュを削除させるため）。
 // メニューに出す版は common/version.js と二重に持つ（sw.js 本体のバイトを変えて、iOS Safari でも更新を確実に検知させるため）。
 // 上げるときは version.js の version・date も一緒に変える（テスト L10 が一致を強制する）
-const CACHE_VERSION = "v20";
+const CACHE_VERSION = "v21";
 const APP_PREFIX = "yubiasobi-app-";
 const APP_CACHE = `${APP_PREFIX}${CACHE_VERSION}`;
 const FONT_CACHE = "yubiasobi-fonts";
@@ -49,6 +49,7 @@ const APP_FILES = [
   "./games/irobin/main.js",
   "./common/sfx.js",
   "./common/version.js",
+  "./common/debug.js",
   "./manifest.webmanifest",
   "./icons/apple-touch-icon.png",
   "./icons/icon-192.png",

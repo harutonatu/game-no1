@@ -42,6 +42,7 @@ iPhone・iPad で遊ぶための、指先ゲームの小さな集まりです。
 | `games/<名前>/` | 1ゲーム1フォルダ（`blocks` `2048` `kiritori` `irocode` `zenmai` `pikatto` `hashi` `irobin`） |
 | `common/sfx.js` | 共通の効果音 |
 | `common/version.js` | 版の表示（`version` と `date`） |
+| `common/debug.js` | 不具合を調べるためのデバッグ表示（URL に `?debug=1` を付けたときだけ動く） |
 | `sw.js` | Service Worker。ファイルを端末に保存して、オフラインでも動かす |
 | `manifest.webmanifest` `icons/` | ホーム画面に追加するための設定と画像 |
 | `tests/` | 統合テスト（Playwright） |
@@ -66,6 +67,7 @@ WebKit は初回だけ `node "$(npm root -g)/playwright/cli.js" install webkit` 
 - [CLAUDE.md](CLAUDE.md)：開発の決めごと（版の上げ方、git の運用など）
 - [docs/game-plan.md](docs/game-plan.md)：ゲーム案の記録
 - [docs/issues.md](docs/issues.md)：課題管理表
+- [docs/debug.md](docs/debug.md)：デバッグ表示（`?debug=1`）の仕組みと命令
 
 ## AI について
 

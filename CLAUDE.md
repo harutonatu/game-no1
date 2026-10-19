@@ -12,16 +12,17 @@
 | 場所 | 役割 |
 |---|---|
 | `index.html` | メニュー画面。ゲーム一覧は中の `GAMES` 配列、最下部に版と更新日を表示 |
-| `games/<名前>/` | 1ゲーム1フォルダ（`blocks` `2048` `kiritori` `irocode` `zenmai`） |
+| `games/<名前>/` | 1ゲーム1フォルダ（`blocks` `2048` `kiritori` `irocode` `zenmai` `pikatto` `hashi` `irobin` の8本） |
 | `common/sfx.js` | 共通の効果音（`YubiSfx.create("<ゲーム名>")`、音の表はゲームごと） |
 | `common/version.js` | 版の表示（`version` と `date`） |
+| `common/debug.js` | デバッグ表示（`?debug=1`。ふだんは何もしない）。仕組みと命令は [docs/debug.md](docs/debug.md) |
 | `sw.js` | Service Worker（オフライン）。`CACHE_VERSION` と `APP_FILES`（事前キャッシュ一覧） |
 | `manifest.webmanifest` `icons/` | ホーム画面に追加するための設定と画像 |
 | `tests/` | 統合テスト（Playwright）。`package.json` や `node_modules` はリポジトリに入れない |
 
 ### 新しいゲームを足すときに触る所
 
-1. `games/<名前>/index.html`（必要なら `logic.js` など。ロジックと画面は分けると並列に作りやすい）
+1. `games/<名前>/index.html`（必要なら `logic.js` など。ロジックと画面は分けると並列に作りやすい。`<head>` の `<title>` の直後で `../../common/debug.js` を読む（テスト DG1））
 2. `index.html` の `GAMES` にカードを足す（名前・説明・url・ベスト表示の保存キー・絵）
 3. `sw.js` の `APP_FILES` に新しいファイルをすべて足す（足し忘れるとオフラインで開かない）
 4. 版を上げる（5 を参照）
