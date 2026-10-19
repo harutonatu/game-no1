@@ -136,7 +136,7 @@ IrobinLogic = {
   createLevel(level, opts?) → { state, info }
   //   決定的：同じ level からは必ず同じ state（JSON で一致）
   //   info = { level, seed, params, tries, nodes, fallback: 0|1|2, solution: [[from,to],...] }
-  //     fallback 0＝表のとおり、1＝易しい側（空き瓶 +1・order 'easy'）、2＝固定の予備の面
+  //     fallback 0＝表のとおり、1＝易しい側（空き瓶 +1・order 'easy'。瓶が MAX_BOTTLES=11 を超えるときは空き瓶を増やさず色を1つ減らす）、2＝固定の予備の面
   //     solution＝この state から解ける手順（テストと、将来のヒント用。画面には出さない）
   //   作り方：
   //     1) 選んだ色を各4段ずつ混ぜ、色の数ぶんの瓶に4段ずつ配る。空き瓶を後ろに足す。
@@ -281,7 +281,7 @@ IrobinInput.attach({ board, root = document }, {
 | `#playView[data-phase]` | `idle`（選んでいない）・`selected`（1本選んでいる）・`pouring`（注ぐ演出中）・`stuck`（詰み）・`clear`（クリアのカード）・`paused`（裏に回っている） |
 | `#cust0`・`#cust1` | お客さん。`data-color`＝注文の色 id（いなければ `""`）、`data-mood`＝`wait`・`happy`・`enter`・`leave`・`empty` |
 | `.customer .tray` | 注文の色のトレイ。色と記号を描く（色だけに頼らない） |
-| `#left` | まだ来ていないお客さんの数（`queue.length`）。0 のとき「さいごの おきゃくさん」 |
+| `#left` | まだ応えていない注文の数（`hud(state).left` ＝ `total - served`。いま並んでいるお客さんも含む）。0 のときも「あと 0 にん」 |
 | `#board[data-cols]` | 1行の瓶の数（キーボードの上下移動に使う） |
 | `.bottle[data-index][data-sealed][data-selected][data-waiting]` | 瓶。`data-waiting="1"`＝栓をして注文を待っている。`aria-label` に番号・中身（隠れは「？」）・状態 |
 | `.seg[data-color][data-hidden]` | 段。隠れの段は `data-color` を出さない（`data-color=""`・`data-hidden="1"`）で「？」を描く（DOM から答えが分からないように） |
