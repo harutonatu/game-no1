@@ -4,7 +4,7 @@
 //   テスト用の公開 API（契約 §8.6）：window.IrobinGame = { getState, pick, pour, solution, skip, setLevel, setState }
 //   計算ロジックは BL（irobin-logic.mjs）で確かめ済み。ここでは画面の中の IrobinLogic を「期待値の計算機」として使う。
 //   無いときに合格にしない（空振りの合格を作らない）：IrobinGame が無ければ例外で不合格にする。
-//   smoke：BW1〜BW4。full：BW5〜BW15（BW14 は CDP のタッチ操作なので Chromium だけ、BW10 は AudioContext が要る）。
+//   smoke：BW1〜BW4。full：BW5〜BW16（BW14 は CDP のタッチ操作なので Chromium だけ、BW10 は AudioContext が要る）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -786,6 +786,89 @@ export const tests = [
       check(`16 桁の記録（${cm.best}）でもカードが画面からはみ出さない`, cm.right <= cm.iw + 0.5 && !cm.hs, cm);
       check('メニューのいろびんのカードを押すとゲームが開く', await (async () => { await page.click('a.game[href="games/irobin/"]'); await page.waitForURL('**/games/irobin/', { timeout: 5000 }).catch(() => {}); return page.url() === IR; })(), page.url());
       await ctx.close();
+    },
+  },
+  {
+    id: 'BW16', tier: 'full', title: 'いろびん 伝わる：手はあるがもう解けない局面で doomed・ヒントに「1手もどす」・目印、戻すと消える／届けの連鎖（20 面の 6 本）が 4.5 秒以内に終わる・途中でお客さんを押すと飛ばせる／クリアのカードに めやす と ★／SE 縦で遊び方の閉じるボタンがスクロールなしで見える',
+    async run({ browser, check }) {
+      // 1. 詰み予備軍：6 面を決まった乱数で進め、ソルバーが「解けない」と言い切れる局面を探す
+      const { ctx, page } = await openG(browser, 'BW16', { extra: { 'irobin.best': '5' } });
+      await page.evaluate(() => window.IrobinGame.setLevel(6)); await wait(page, 100);
+      const path6 = await page.evaluate(() => {
+        const L = window.IrobinLogic;
+        for (let sd = 1; sd <= 50; sd++) {
+          let st = L.createLevel(6).state; const mv = []; let seed = sd;
+          const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+          for (let k = 0; k < 40; k++) {
+            const ms = L.legalMoves(st); if (!ms.length || st.won) break;
+            const m = ms[Math.floor(rnd() * ms.length)]; st = L.applyMove(st, m[0], m[1]).state; mv.push([m[0], m[1]]);
+            if (st.won) break;
+            const r = L.solve(st, { nodeLimit: 3000 });
+            if (!L.isStuck(st) && !r.solved && !r.exhausted) return mv;
+          }
+        }
+        return null;
+      });
+      check(`6 面で「手はあるが解けない」局面までの手が見つかる（${path6 ? path6.length : 'なし'} 手）`, Array.isArray(path6) && path6.length > 0, path6);
+      if (path6) {
+        await playMoves(page, path6); await wait(page, 100);
+        const s1 = await gs(page), h1 = await hintText(page);
+        const a1 = await page.evaluate(() => [document.querySelector('#undoBtn').dataset.attention, document.querySelector('#restartBtn').dataset.attention]);
+        check(`doomed true・stuck false・phase idle（${s1.doomed}・${s1.stuck}・${s1.phase}）、ヒントが「1手もどす」を案内（${h1}）、お助けに data-attention="1"（${a1}）`, s1.doomed === true && s1.stuck === false && s1.phase === 'idle' && /1手もどす/.test(h1 || '') && a1[0] === '1' && a1[1] === '1', { s1, h1, a1 });
+        let s2 = s1;
+        for (let i = 0; i < path6.length && s2.doomed; i++) { await page.click('#undoBtn', { force: true }); await wait(page, 60); s2 = await gs(page); }
+        const a2 = await page.evaluate(() => [document.querySelector('#undoBtn').dataset.attention, document.querySelector('#restartBtn').dataset.attention]);
+        const solvable = await page.evaluate(() => !!window.IrobinGame.solution());
+        check(`戻して解ける局面になると doomed false・目印が消える（moves ${s2.moves}・${a2}）`, s2.doomed === false && solvable && !a2.includes('1'), { s2: s2.moves, a2 });
+        // 選んでやめても、ヒントは「解けない」案内のまま戻る（ふつうのヒントで上書きしない）
+        await playMoves(page, path6.slice(s2.moves)); await wait(page, 60);
+        const sol0 = (await gs(page)).bottles.findIndex((b) => b.cells.length && !b.sealed);
+        await page.evaluate((i) => { window.IrobinGame.pick(i); window.IrobinGame.pick(i); }, sol0); await wait(page, 60);
+        check(`選んでやめた後もヒントは「1手もどす」（${await hintText(page)}）`, /1手もどす/.test((await hintText(page)) || '') && (await gs(page)).doomed === true, await gs(page));
+      }
+      await ctx.close();
+      // 2. 届けの連鎖：20 面の解の 37 手目（index 36）は、待っていた瓶 6 本が続けて届く。実時間で 3.2 秒以内に終わる
+      const c2 = await openG(browser, 'BW16 連鎖', { opts: { clock: false }, extra: { 'irobin.best': '19' } });
+      await c2.page.evaluate(() => window.IrobinGame.setLevel(20)); await sleep(100);
+      const info = await c2.page.evaluate(() => { const L = window.IrobinLogic; const c = L.createLevel(20); let st = c.state; let at = -1, n = 0; c.info.solution.forEach((m, i) => { const r = L.applyMove(st, m[0], m[1]); if (r.outcome.deliveries.length > n) { n = r.outcome.deliveries.length; at = i; } st = r.state; }); return { sol: c.info.solution, at, n }; });
+      await playMoves(c2.page, info.sol.slice(0, info.at));
+      const ms = await c2.page.evaluate(([f, t]) => new Promise((ok) => {
+        const g = window.IrobinGame, a = performance.now();
+        g.pick(f); g.pick(t);
+        const tick = () => { const s = g.getState(); if (!s.busy && s.phase !== 'pouring') ok(performance.now() - a); else if (performance.now() - a > 12000) ok(99999); else requestAnimationFrame(tick); };
+        requestAnimationFrame(tick);
+      }), info.sol[info.at]);
+      check(`連鎖 ${info.n} 本：注ぐ（約 0.9 秒）・そろう（約 0.8 秒）・届け全体（約 2.4 秒）が 4.5 秒以内に終わる（${Math.round(ms)}ms。直す前は約 10.7 秒）`, info.n >= 4 && ms < 4500, { ms, n: info.n });
+      // 演出の途中でお客さんを押すと飛ばせる
+      await c2.ctx.close();
+      const c3 = await openG(browser, 'BW16 飛ばす', { extra: { 'irobin.best': '19' } });
+      await c3.page.evaluate(() => window.IrobinGame.setLevel(20)); await wait(c3.page, 100);
+      await playMoves(c3.page, info.sol.slice(0, info.at));
+      await c3.page.evaluate(([f, t]) => { window.IrobinGame.pick(f); window.IrobinGame.pick(t); }, info.sol[info.at]);
+      await wait(c3.page, 1500);
+      const b0 = (await gs(c3.page)).busy;
+      await c3.page.dispatchEvent('#shop', 'pointerdown');
+      const b1 = await gs(c3.page);
+      check(`連鎖の途中（busy ${b0}）でお客さんを押すと演出が飛んで idle（busy ${b1.busy}・${b1.phase}）`, b0 === true && b1.busy === false && b1.phase !== 'pouring', b1);
+      // 3. クリアのカード：めやす と ★
+      await c3.page.evaluate(() => window.IrobinGame.setLevel(1)); await wait(c3.page, 100);
+      const par = (await gs(c3.page)).par;
+      const { s } = await solveToClear(c3.page);
+      const ov = await overlayInfo(c3.page);
+      check(`クリアのカードに「めやす ${par}かい」と ★（${ov.text}）`, s.overlay === 'clear' && par > 0 && ov.text.includes(`めやす ${par}かい`) && /★/.test(ov.text), ov.text);
+      await c3.ctx.close();
+      // 4. SE 縦：初回の遊び方カードの「わかった」が、スクロールしなくても画面の中に見えて押せる
+      for (const o of ['p', 'l']) {
+        const c4 = await openG(browser, `BW16 SE ${o}`, { v: view('SE', o, 'app'), help: false });
+        const vis = await c4.page.evaluate(() => {
+          const ov = document.querySelector('#overlay'); ov.scrollTop = 0;
+          const b = ov.querySelector('[data-cmd="close"]'); const r = b.getBoundingClientRect();
+          const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return { top: Math.round(r.top), bottom: Math.round(r.bottom), ih: innerHeight, hit: !!t && (t === b || b.contains(t)), items: ov.querySelectorAll('ol.rules li').length };
+        });
+        check(`SE ${o === 'p' ? '縦' : '横'}：遊び方は ${vis.items} 項目（3 以下）、「わかった」がスクロールなしで見えて押せる（${vis.top}〜${vis.bottom} / ${vis.ih}）`, vis.items <= 3 && vis.hit && vis.bottom <= vis.ih, vis);
+        await c4.ctx.close();
+      }
     },
   },
 ];

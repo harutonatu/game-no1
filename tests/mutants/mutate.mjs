@@ -88,6 +88,8 @@ const M = [
   ['MB8 いろびん：hidden で演出を止めない（render.pause を呼ばない）', '中断', 'games/irobin/main.js', '      paused = true;\n      render.pause();\n      syncPhase();', '      paused = true;\n      syncPhase();'],
   ['MB9 いろびん：1手もどすで2手戻る', 'お助け', 'games/irobin/main.js', 'state = history.pop();\n    moves.pop();', 'state = history.pop(); if (history.length) state = history.pop();\n    moves.pop();'],
   ['MB10 いろびん：render.js を事前キャッシュから外す（オフラインで開かない）', 'オフライン', 'sw.js', '  "./games/irobin/render.js",\n', ''],
+  ['MB11 いろびん：手はあるがもう解けない局面を知らせない（詰み予備軍の判定を外す）', 'ルール', 'games/irobin/main.js', 'doomed = !!(r && r.solved === false && r.exhausted === false);', 'doomed = false;'],
+  ['MB12 いろびん：届けの連鎖を短くしない（6 本続くと約 10 秒待たされる）', '演出', 'games/irobin/render.js', 'const fast = rest > 0 ? Math.max(0.12, Math.min(0.45, Math.max(CHAIN_MIN, CHAIN_BUDGET - used) / rest)) : 1;', 'const fast = 1;'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

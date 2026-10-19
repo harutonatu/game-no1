@@ -9,7 +9,7 @@
  *   const sfx = YubiSfx.create("zenmai");   // ゼンマイさんぽ
  *   const sfx = YubiSfx.create("pikatto");  // ピカッと早押し
  *   const sfx = YubiSfx.create("hashi");    // ハシわたり（grow(ratio)/tip/land/perfect(n)/walk/splash/peek）
- *   const sfx = YubiSfx.create("irobin");   // いろびん（pick/drop/pour(count)/reveal/seal(colorId)/cork/deliver/arrive/clear/deny/undo/stuck）
+ *   const sfx = YubiSfx.create("irobin");   // いろびん（pick/drop/pour(count)/reveal/seal(colorId)/cork/deliver(n)/arrive/clear/deny/undo/stuck）
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -391,7 +391,13 @@
       // 栓の「ぽん」：弾む木の音
       cork: () => { const t = N(); partial(330, t, 0.1, { vol: 0.12, from: 210, fromT: 0.03 }); wood(300, t + 0.005, { vol: 0.09, dur: 0.05, jit: 15 }); },
       // お客さんに届ける「ちりん」：高い2音のベル
-      deliver: () => { const t = N(); bell(E6, t, { vol: 0.07, decay: 0.4 }); bell(G6, t + 0.09, { vol: 0.06, decay: 0.5 }); },
+      // n：連鎖の何本目か（0 が1本目）。続くほど五音音階で1段ずつ上がり、「続けて決まった」が耳で分かる
+      deliver: (n) => {
+        const k = Math.max(0, Math.min(PENTA.length - 1, Math.floor(Number(n)) || 0));
+        const m = Math.pow(2, PENTA[k] / 12), t = N();
+        bell(E6 * m, t, { vol: 0.07, decay: 0.4 }); bell(G6 * m, t + 0.09, { vol: 0.06, decay: 0.5 });
+        if (k > 0) bell(E6 * m * 2, t + 0.17, { vol: 0.035, decay: 0.35 });
+      },
       // 次のお客さんが来る：軽い足音2つ
       arrive: () => { const t = N(); wood(430, t, { vol: 0.045, dur: 0.03, jit: 40 }); wood(510, t + 0.07, { vol: 0.045, dur: 0.03, jit: 40 }); },
       // 面クリア：短いファンファーレ（1.2秒以内）

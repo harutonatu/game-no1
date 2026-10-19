@@ -872,10 +872,16 @@
           if (!alive()) return;
           await corkDrop(o.sealed, rec);
           if (!alive()) return;
+          // 栓の着地：「ぽん」と同時に瓶を一瞬ふくらませ、白い小さな輪を出す（ためて、ぽん）
           if (!rec.played.has("cork")) { snd.play("cork"); rec.played.add("cork"); }
           await Promise.all([pop, sh]);
           if (!alive()) return;
-          await wait(100);   // 余韻
+          const sr = rectOf(sb.querySelector(".glass") || sb);
+          addRing({ x: sr.left + sr.width / 2, y: sr.top, r0: sr.width * 0.2, r1: sr.width * 0.9, sx: 1, color: "#ffffff", width: 3, blur: 8, dur: 320, alpha: 0.9 });
+          await tween(90, (e, k) => { sb.style.transform = `scale(${(1 + 0.07 * Math.sin(Math.PI * k)).toFixed(3)})`; }, ease.linear);
+          sb.style.transform = "";
+          if (!alive()) return;
+          await wait(230);   // 余韻：栓をした瓶が光ったまま見える時間
           if (!alive()) return;
           sb.classList.remove("glow");
         } else {
@@ -886,22 +892,48 @@
       }
 
       // 5・6. 届ける・次のお客さん（起きた順）
+      // 連鎖（2本目からの届け）は短くして、全体を CHAIN_BUDGET ほどに収める。1本目は見せ場なので元の速さ
       const slotsView = prevSlots;
-      for (const step of interleave(o.deliveries || [], o.arrivals || [])) {
+      const steps = interleave(o.deliveries || [], o.arrivals || []);
+      const full = steps[0] && steps[0].d ? 1 : 0;          // 1本目の届けだけ元の速さ
+      const baseOf = (st) => (st.d ? DELIVER_MS + (st.wake ? WAKE_MS : 0) : ARRIVE_MS);
+      let chainNo = 0;
+      steps.forEach((st, i) => { if (st.d && i > 0 && steps[i - 1].a) st.wake = true; });
+      const used = steps.slice(0, full).reduce((a, st) => a + baseOf(st), 0);
+      const rest = steps.slice(full).reduce((a, st) => a + baseOf(st), 0);
+      const fast = rest > 0 ? Math.max(0.12, Math.min(0.45, Math.max(CHAIN_MIN, CHAIN_BUDGET - used) / rest)) : 1;
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        const sp = i < full ? 1 : fast;
         if (step.d) {
-          await deliver(step.d, rec, slotsView);
+          await deliver(step.d, rec, slotsView, sp, chainNo++, !!step.wake);
         } else {
-          await arrive(step.a, rec, slotsView);
+          await arrive(step.a, rec, slotsView, sp);
         }
         if (!alive()) return;
       }
     }
+    const DELIVER_MS = 460 + 480 + 260, ARRIVE_MS = 350, WAKE_MS = 220, CHAIN_BUDGET = 2400, CHAIN_MIN = 1000;   // 届け全体を約2.4秒に収める（1本目の後に最低1秒）
 
-    async function deliver(d, rec, slotsView) {
+    // sp：速さの倍率（連鎖の2本目からは小さい）。n：連鎖の何本目か（音が1段ずつ上がる）。wake：待っていた瓶（先に光らせる）
+    async function deliver(d, rec, slotsView, sp, n, wake) {
       const alive = () => rec.gen === gen;
       const btn = buttons[d.bottle];
       const c = custs[d.slot];
       if (!btn || !c || !c.el) return;
+      const k_ = sp > 0 ? sp : 1;
+      const chainN = Number.isInteger(n) && n > 0 ? n : 0;
+      // 待っていた瓶：お客さんが来たら、まず瓶が光って「来たよ」と知らせる（何が起きたか分かるように）
+      if (wake) {
+        btn.classList.add(calm ? "calm-glow" : "glow");
+        if (!calm) {
+          const gr0 = rectOf(btn.querySelector(".glass") || btn);
+          addRing({ x: gr0.left + gr0.width / 2, y: gr0.top + gr0.height / 2, r0: gr0.height * 0.3, r1: gr0.height * 0.8, sx: 0.62, color: colorInfo(d.color).hex, width: 4, blur: 12, dur: 380 });
+        }
+        await wait(calm ? D(40) : Math.round(WAKE_MS * k_));
+        btn.classList.remove("glow"); btn.classList.remove("calm-glow");
+        if (!alive()) return;
+      }
       lastServed[d.slot] = { kind: c.kind || animalKind(level, d.color), color: d.color };
       const br = rectOf(btn), tr = rectOf(c.tray || c.el);
       const bc = centerOf(br), tc = centerOf(tr);
@@ -910,14 +942,14 @@
       btn.style.transition = "none";
       if (!calm) {
         // 少し持ち上げてから、弧を描いてトレイへ。小さくなる
-        await tween(460, (e, k) => {
+        await tween(Math.round(460 * k_), (e, k) => {
           const arc = -Math.sin(Math.PI * k) * Math.min(60, Math.abs(dy) * 0.35 + 20);
           const s = lerp(1, 0.42, e);
           btn.style.transform = `translate(${(dx * e).toFixed(1)}px, ${(dy * e + arc).toFixed(1)}px) scale(${s.toFixed(3)})`;
         }, ease.inOut);
         if (!alive()) return;
       }
-      snd.play("deliver");
+      snd.play("deliver", chainN);
       rec.played.add("deliver");
       // お客さんが喜ぶ（跳ねる＋ハート）
       setMood(d.slot, "happy");
@@ -926,14 +958,15 @@
         for (let i = 0; i < 5; i++) {
           addPart({ x: tc.x + (Math.random() - 0.5) * tr.width * 0.8, y: tr.top - 4, vx: (Math.random() - 0.5) * 40, vy: -90 - Math.random() * 70, g: -30, drag: 0.99, life: 0.9, size: 5 + Math.random() * 3, color: i % 2 ? "#ff7a98" : "#ffb3c4", shape: "heart" });
         }
-        for (let i = 0; i < 8; i++) {
-          const a = (i / 8) * Math.PI * 2;
+        const nStar = 8 + Math.min(4, chainN) * 4;   // 連鎖が続くほど、星が増える
+        for (let i = 0; i < nStar; i++) {
+          const a = (i / nStar) * Math.PI * 2;
           addPart({ x: tc.x, y: tr.top + tr.height / 2, vx: Math.cos(a) * 140, vy: Math.sin(a) * 140 - 40, g: 300, life: 0.5, size: 2.5, color: i % 2 ? "#ffffff" : hex, shape: "star", vr: 6 });
         }
       }
       // 瓶は消えて、同じ場所に空の瓶がふわっと現れる
-      const fade = calm ? Promise.resolve() : tween(140, (e) => { btn.style.opacity = String(1 - e); }, ease.in);
-      const hop = calm ? Promise.resolve() : tween(480, (e, k) => {
+      const fade = calm ? Promise.resolve() : tween(Math.round(140 * k_), (e) => { btn.style.opacity = String(1 - e); }, ease.in);
+      const hop = calm ? Promise.resolve() : tween(Math.round(480 * k_), (e, k) => {
         c.el.style.transform = `translateY(${(-Math.abs(Math.sin(k * Math.PI * 2)) * 10 * (1 - k * 0.5)).toFixed(1)}px)`;
         drawCust(d.slot, clock / 1000);
       }, ease.linear);
@@ -952,7 +985,7 @@
       // 手を振って帰る
       setMood(d.slot, "leave");
       if (!calm) {
-        await tween(260, (e) => { c.el.style.transform = `translateY(${(e * 110).toFixed(1)}%)`; c.el.style.opacity = String(1 - e * 0.9); }, ease.in);
+        await tween(Math.round(260 * k_), (e) => { c.el.style.transform = `translateY(${(e * 110).toFixed(1)}%)`; c.el.style.opacity = String(1 - e * 0.9); }, ease.in);
         if (!alive()) return;
       } else {
         await wait(D(40));
@@ -963,8 +996,9 @@
       c.el.style.transform = ""; c.el.style.opacity = "";
     }
 
-    async function arrive(a, rec, slotsView) {
+    async function arrive(a, rec, slotsView, sp) {
       const alive = () => rec.gen === gen;
+      const k_ = sp > 0 ? sp : 1;
       const c = custs[a.slot];
       if (!c || !c.el) return;
       const color = a.color === undefined ? null : a.color;
@@ -975,7 +1009,7 @@
       rec.played.add("arrive");
       setMood(a.slot, "enter");
       if (!calm) {
-        await tween(350, (e) => { c.el.style.transform = `translateY(${((1 - e) * 110).toFixed(1)}%)`; c.el.style.opacity = String(Math.min(1, 0.2 + e)); }, ease.back);
+        await tween(Math.round(350 * k_), (e) => { c.el.style.transform = `translateY(${((1 - e) * 110).toFixed(1)}%)`; c.el.style.opacity = String(Math.min(1, 0.2 + e)); }, ease.back);
         if (!alive()) return;
       } else {
         await wait(D(40));
@@ -983,7 +1017,7 @@
       }
       c.el.style.transform = ""; c.el.style.opacity = "";
       setMood(a.slot, "wait");
-      // 待ち瓶が光って「来たよ」と知らせる（次の届けの前ぶれ）
+      // 待ち瓶が光って「来たよ」と知らせるのは、次の deliver（wake）で行う
     }
 
     // ---------- 注げない ----------

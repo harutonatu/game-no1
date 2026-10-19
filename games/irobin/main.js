@@ -26,9 +26,12 @@
   const BOARD_BLOCK_MS = 300;   // カードを閉じた直後、瓶の押下を受けない時間
 
   const HINT_IDLE = "びんを えらんで、べつの びんに そそいでね";
-  const HINT_FIRST = "おなじ いろを 1ぽんに あつめよう。びんを おしてね";
+  const HINT_FIRST = "うえの トレイと おなじ いろを、1ぽんに 4つ あつめよう。びんを おしてね";
   const HINT_SELECTED = "どの びんに そそぐ？（もう一度 おすと やめる）";
   const HINT_STUCK = "うごかせる びんが ないよ。「1手もどす」か「やりなおし」を おしてね";
+  // 手は残っているが、もう全部は届けられない（ソルバーが上限内で「解けない」と言い切れたときだけ）
+  const HINT_DOOMED = "この ままだと ぜんぶは とどけられないよ。「1手もどす」を おしてみてね";
+  const DOOM_NODE_LIMIT = 3000;   // 詰み予備軍を調べる上限（局面の数。上限に届いたら何も言わない）
   const DENY_HINT = {
     mismatch: "いろが ちがうよ。うえの いろが おなじ びんか、からの びんに そそげるよ",
     full: "その びんは いっぱいだよ",
@@ -98,7 +101,9 @@
   let blockUntil = -Infinity;
   let pending = null;           // 演出が終わったら続ける処理 { token, fn }
   let pourSeq = 0;
-  let lastClear = null;         // { level, moves, improved }
+  let lastClear = null;         // { level, moves, improved, par }
+  let par = 0;                  // この面の目安の手数（生成時にソルバーが見つけた解の長さ。最短とは限らない）
+  let doomed = false;           // 手はあるが、もう解けない（ソルバーが言い切れたとき）
 
   const reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
   const render = R.create({ board: el.board, shop: el.shop, fx: el.fx }, { calm: !!reduceMotion.matches, sfx });
@@ -109,7 +114,7 @@
   function syncPhase() { el.playView.dataset.phase = shownPhase(); }
   function setPhase(p) { phase = p; syncPhase(); renderTools(); }
   function setHint(text) { const t = text || ""; if (el.hint.textContent !== t) el.hint.textContent = t; }
-  const idleHint = () => (level <= 2 && moves.length === 0 ? HINT_FIRST : HINT_IDLE);
+  const idleHint = () => (doomed ? HINT_DOOMED : level <= 2 && moves.length === 0 ? HINT_FIRST : HINT_IDLE);
   const isStuckNow = () => !!(state && !state.won && safeCall(() => L.isStuck(state), false));
   const restPhase = () => (state && state.won ? "clear" : isStuckNow() ? "stuck" : selected !== null ? "selected" : "idle");
 
@@ -130,9 +135,22 @@
   }
   function renderTools() {
     el.undoBtn.disabled = !(history.length > 0) || phase === "clear";
-    const stuck = phase === "stuck";
-    el.undoBtn.dataset.attention = stuck ? "1" : "0";
-    el.restartBtn.dataset.attention = stuck ? "1" : "0";
+    const need = phase === "stuck" || (doomed && phase !== "clear" && phase !== "pouring");
+    // 押しても何も起きないボタンは目立たせない（戻す履歴が無い・手が0でやりなおす意味が無い）
+    el.undoBtn.dataset.attention = need && !el.undoBtn.disabled ? "1" : "0";
+    el.restartBtn.dataset.attention = need && moves.length > 0 ? "1" : "0";
+    // 最初の2面は、注文（トレイ）を指さす
+    el.shop.dataset.tip = level <= 2 && moves.length === 0 && phase !== "clear" ? "1" : "0";
+  }
+  // 手は残っているのに、もう全部は届けられない局面かどうか（注ぎ終わって落ち着いたときに1回だけ調べる）。
+  // 上限に届いた（exhausted）ときは言い切れないので何も言わない。setState の局面（テスト用・色が4段そろわないこともある）は調べない
+  function checkDoomed() {
+    doomed = false;
+    if (custom || !state || state.won || phase === "stuck" || phase === "clear" || phase === "pouring") return false;
+    if (!moves.length) return false;   // 面の最初は必ず解ける（生成で確かめ済み）
+    const r = safeCall(() => L.solve(state, { nodeLimit: DOOM_NODE_LIMIT }), null);
+    doomed = !!(r && r.solved === false && r.exhausted === false);
+    return doomed;
   }
   function save() {
     if (custom || !state) return;
@@ -152,12 +170,12 @@
       if (rp && rp.ok) {
         for (const m of mv) {
           const r = L.applyMove(st, m[0], m[1]);
-          if (!r || !r.outcome || r.outcome.kind !== "pour") { return { base, st: base, hist: [], ok: [] }; }
+          if (!r || !r.outcome || r.outcome.kind !== "pour") { return { base, st: base, hist: [], ok: [], created }; }
           hist.push(st); ok.push([m[0], m[1]]); st = r.state;
         }
       }
     }
-    return { base, st, hist, ok };
+    return { base, st, hist, ok, created };
   }
   const ordersOf = (s) => [].concat(s && s.slots || [], s && s.queue || []).filter((x) => x !== null && x !== undefined);
   function startLevel(lv, mv) {
@@ -180,6 +198,8 @@
     moves = b.ok;
     custom = null;
     selected = null;
+    doomed = false;
+    par = b.created && b.created.info && Array.isArray(b.created.info.solution) ? b.created.info.solution.length : 0;
     render.build(state, { orders: ordersOf(b.base) });
     render.update(state, { selected: null });
     if (state.won) {   // 最後の手まで保存されていた（クリアの記録の前に閉じた）
@@ -190,6 +210,8 @@
     save();
     hud();
     setPhase(restPhase());
+    checkDoomed();
+    renderTools();
     setHint(phase === "stuck" ? HINT_STUCK : idleHint());
     return true;
   }
@@ -215,6 +237,9 @@
   // ===== 瓶を押した =====
   function onPick(index, via) {
     if (!state || overlayKind || paused) return null;
+    if (phase === "clear" || state.won) return null;
+    // 演出中に押したら、演出を終わらせてから判定する（見た目と判定を食い違わせない。そろった光と音は finishAll が必ず出す）
+    if (phase === "pouring" && render.busy) flush();
     if (phase === "clear" || state.won) return null;
     const i = Number(index);
     const b = state.bottles[i];
@@ -254,15 +279,19 @@
     history.push(state);
     moves.push([from, i]);
     state = res.state;
+    const wasDoomed = doomed;
+    doomed = false;
     save();
     hud();
     setPhase("pouring");
-    const p = setPending(() => afterPour(o));
+    // 注いでいる間は、前のヒント（「どの びんに そそぐ？」）を残さない。そろった・届いた などは演出のあとに出す
+    setHint("");
+    const p = setPending(() => afterPour(o, wasDoomed));
     render.pour(o, state).then(() => p.run());
     return "pour";
   }
 
-  function afterPour(o) {
+  function afterPour(o, wasDoomed) {
     if (state.won) { onClear(); return; }
     if (o.stuck || isStuckNow()) {
       selected = null;
@@ -273,9 +302,18 @@
       return;
     }
     setPhase(selected !== null ? "selected" : "idle");
+    if (checkDoomed()) {
+      renderTools();
+      if (selected === null) setHint(HINT_DOOMED);
+      if (!wasDoomed) sfx.play("stuck");   // 知らせる音は、解けなくなった最初の1回だけ
+      return;
+    }
     if (selected !== null) { setHint(HINT_SELECTED); return; }
     const del = Array.isArray(o.deliveries) ? o.deliveries : [];
-    if (del.length) {
+    const auto = del.filter((d) => d.bottle !== o.sealed);   // まっていた びんが、来たお客さんに じどうで届いた
+    if (auto.length) {
+      setHint(`${auto.map((d) => colorName(d.color)).join("・")}の びんが じどうで とどいたよ！`);
+    } else if (del.length) {
       setHint(`${del.map((d) => colorName(d.color)).join("・")}の びんを とどけたよ！`);
     } else if (o.sealed !== null && o.sealed !== undefined) {
       setHint(`${colorName(o.color)}が そろった！ ${colorName(o.color)}の おきゃくさんを まってるよ`);
@@ -294,7 +332,7 @@
     best = r.best;
     writeKey(KEY_BEST, String(best));
     const h = L.hud(state);
-    lastClear = { level, moves: h.moves, improved };
+    lastClear = { level, moves: h.moves, improved, par };
     writeKey(KEY_SAVE, L.makeSave(level + 1, []));
     setHint(`${level} めん クリア！`);
     sfx.play("clear");
@@ -302,16 +340,23 @@
     render.celebrate().then(() => p.run());
   }
   function showClearCard() {
-    const c = lastClear || { level, moves: moves.length, improved: false };
+    const c = lastClear || { level, moves: moves.length, improved: false, par };
+    // 上達が見えるように、目安の手数と比べて星1〜3（責めない言い方。目安は最短とは限らないので「めやす」と書く）
+    const p = Number(c.par) || 0;
+    const star = !p ? 0 : c.moves <= p ? 3 : c.moves <= Math.ceil(p * 1.5) ? 2 : 1;
+    const starText = star === 3 ? "★★★ すごい！" : star === 2 ? "★★☆ いいね！" : star === 1 ? "★☆☆ つぎは めやすを めざそう" : "";
     showCard(`
       <h2 id="cardTitle" data-f="h"></h2>
+      <p class="stars" data-f="s"></p>
       <p data-f="m"></p>
       <p class="best-new" data-f="b"></p>
       <div class="btns">
         <button class="cta primary" type="button" data-cmd="next">つぎの めんへ</button>
         <button class="cta" type="button" data-cmd="menu">メニューへ</button>
-      </div>`, { h: `${c.level} めん クリア！`, m: `${c.moves} て で とどけたよ`, b: c.improved ? "はじめて クリア！" : "" }, "clear");
+      </div>`, { h: `${c.level} めん クリア！`, s: starText, m: p ? `${c.moves}かい そそいで とどけたよ（めやす ${p}かい）` : `${c.moves}かい そそいで とどけたよ`, b: c.improved ? "あたらしい きろく！" : "" }, "clear");
     if (!c.improved) { const b = el.card.querySelector(".best-new"); if (b) b.hidden = true; }
+    if (!starText) { const sEl = el.card.querySelector(".stars"); if (sEl) sEl.hidden = true; }
+    else { const sEl = el.card.querySelector(".stars"); if (sEl) { sEl.dataset.stars = String(star); sEl.setAttribute("aria-label", `ほし ${star}つ`); } }
     cardShownAt = now();
     el.card.querySelectorAll(".btns button").forEach((btn) => btn.setAttribute("aria-disabled", "true"));
     later(() => el.card.querySelectorAll(".btns button[aria-disabled]").forEach((btn) => btn.removeAttribute("aria-disabled")), CARD_LOCK_MS);
@@ -327,11 +372,14 @@
     state = history.pop();
     moves.pop();
     selected = null;
+    doomed = false;
     render.update(state, { selected: null });
     save();
     hud();
     sfx.play("undo");
     setPhase(restPhase());
+    checkDoomed();
+    renderTools();
     setHint(phase === "stuck" ? HINT_STUCK : idleHint());
   }
   function askRestart() {
@@ -353,7 +401,7 @@
     if (custom) {
       const base = custom;
       flush();
-      state = base; history = []; moves = []; selected = null;
+      state = base; history = []; moves = []; selected = null; doomed = false;
       render.build(state, { orders: ordersOf(base) });
       hud();
       setPhase(restPhase());
@@ -399,14 +447,11 @@
     showCard(`
       <h2 id="cardTitle">あそびかた</h2>
       <ol class="rules">
-        <li>びんを おして えらび、べつの びんを おすと <b>そそげる</b>よ。</li>
-        <li>そそげるのは、あいての いちばん うえが <b>おなじ いろ</b> か、<b>からの びん</b> の とき。</li>
-        <li>4つ おなじ いろが そろうと <b>せん</b>が されて、その いろの トレイを もった おきゃくさんに とどくよ。</li>
-        <li>その いろの おきゃくさんが まだ いないと、びんは その ばしょで まつよ。じゅんばんも かんがえてね。</li>
-        <li>「？」の いろは、うえを どかすと みえるよ。</li>
-        <li>こまったら「1手もどす」「やりなおし」。なんかいでも つかえるよ。</li>
+        <li>びんを おして、べつの びんを おすと <b>そそげる</b>よ（<b>おなじ いろ</b>の うえ か、<b>からの びん</b>に）。</li>
+        <li>4つ そろうと <b>せん</b>。うえの <b>トレイと おなじ いろ</b>なら おきゃくさんに とどくよ。まだ いない いろは、その ばしょで まつよ。</li>
+        <li>「？」は うえを どかすと みえる。こまったら「1手もどす」「やりなおし」（なんかいでも）。</li>
       </ol>
-      <p class="note">キーボード：やじるし と エンターで えらぶ。すうじキーでも えらべる。U で もどす、M で おと。</p>
+      <p class="note">キー：やじるし・エンター・すうじ（10ぽんめまで）で えらぶ。U もどす、M おと。</p>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");
   }
   function closeCard() {
@@ -425,7 +470,7 @@
   function goNext() {
     sfx.unlock();
     hideOverlay();
-    startLevel(level + 1, []);
+    startLevel(level < Number.MAX_SAFE_INTEGER ? level + 1 : level, []);
     sfx.play("start");
   }
   function goMenu() {
@@ -444,6 +489,8 @@
     else if (cmd === "restartYes") doRestart();
   });
   el.helpBtn.addEventListener("click", () => { sfx.unlock(); showHelp(); });
+  // 届ける演出の途中でお客さんを押したら、演出を飛ばす（連鎖が長いときに待たせない）
+  el.shop.addEventListener("pointerdown", () => { if (phase === "pouring" && render.busy && !overlayKind && !paused) flush(); });
   el.undoBtn.addEventListener("click", () => undo());
   el.restartBtn.addEventListener("click", () => askRestart());
 
@@ -540,7 +587,7 @@
         phase: shownPhase(), level, best,
         served: h ? h.served : 0, total: h ? h.total : 0, left: h ? h.left : 0, moves: h ? h.moves : 0,
         bottles: state ? cloneState(state.bottles) : [], slots: state ? cloneState(state.slots) : [], queue: state ? cloneState(state.queue) : [],
-        selected, stuck: isStuckNow(), won: !!(state && state.won),
+        selected, stuck: isStuckNow(), doomed, par, won: !!(state && state.won),
         overlay: overlayKind, busy: !!render.busy, paused, timers: timers.size, runId,
         canUndo: history.length > 0, calm: !!render.calm
       };
@@ -577,7 +624,7 @@
       render.finishAll();
       custom = st;
       level = st.level;
-      state = st; history = []; moves = []; selected = null;
+      state = st; history = []; moves = []; selected = null; doomed = false; par = 0;
       render.build(state, { orders: ordersOf(st) });
       hud();
       setPhase(restPhase());

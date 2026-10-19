@@ -207,6 +207,14 @@
   .tray::after { right: -7px; }
   .tray .mark { height: 78%; width: auto; aspect-ratio: 1; }
   .customer[data-mood="empty"] .tray, .customer[data-color=""] .tray { display: none; }
+  /* 最初の2面：トレイが注文だと分かるように、ふちを光らせて指さす（動きを減らす設定では止まる） */
+  .shop[data-tip="1"] .tray { animation: trayTip 1.6s ease-in-out infinite; }
+  .shop[data-paused="1"] .tray { animation-play-state: paused; }
+  .shop[data-calm="1"] .tray { animation: none; }
+  @keyframes trayTip {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 3px 0 rgba(0, 0, 0, 0.25); }
+    50% { box-shadow: 0 0 0 3px #fff, 0 0 14px 4px rgba(255, 255, 255, 0.75), 0 3px 0 rgba(0, 0, 0, 0.25); }
+  }
   .queue {
     grid-area: q;
     align-self: center;
@@ -466,9 +474,12 @@
   .card p { margin: 0; color: var(--ink); font: 16px/1.6 var(--font-text); overflow-wrap: anywhere; }
   .card p.note { color: var(--muted); font-size: 14px; }
   .card p.best-new { color: var(--accent); font-weight: 700; }
+  .card p.stars { color: #ffd84d; font-weight: 700; font-size: 20px; letter-spacing: 0.06em; }
   .card ol.rules { margin: 0; padding-left: 1.4em; text-align: left; font: 16px/1.6 var(--font-text); display: flex; flex-direction: column; gap: 4px; }
   .card ol.rules b { color: var(--accent); }
   .card .btns { display: flex; flex-direction: column; gap: 10px; }
+  /* 閉じるボタンは、カードが長くても画面の下に見えたままにする（スクロールしなくても押せる） */
+  .card .btns { position: sticky; bottom: 0; z-index: 1; background: var(--panel); padding-top: 6px; margin-bottom: -6px; padding-bottom: 6px; }
   .card .btns button {
     box-sizing: border-box;
     width: 100%;

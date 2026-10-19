@@ -26,6 +26,7 @@
 - **処理の順（決定的）**：注ぐ → 相手がそろえば栓 → 届けられるものを届ける。届けた後に来たお客さんに合う待ち瓶があれば、また届ける（連鎖）。同時に候補があるときは、**枠は左（0）から、瓶は番号の小さい方から**。
 - **面クリア**：全部の注文に応えた（`served === total`）。
 - **詰み**：動かせる手が1つも無く、クリアでもない。そのことを伝え、「1手もどす」「やりなおし」を案内する（ゲームオーバーにはしない）。
+- **詰み予備軍（doomed）**：手は残っているが、もう全部は届けられない。注ぎ終わって落ち着いたとき（と、1手もどした後・途中から再開したとき）に `solve(state, { nodeLimit: 3000 })` を1回流し、`solved:false` かつ `exhausted:false`（言い切れた）ときだけ、ヒント「この ままだと ぜんぶは とどけられないよ。「1手もどす」を おしてみてね」とお助けの `data-attention="1"` を出す。phase は idle／selected のまま（新しい phase は作らない）。上限に届いたときは何も言わない。setState の局面は調べない。
 - **お助け（無料・回数制限なし）**：1手もどす（何回でも、面の最初まで）、やりなおし（面の最初から。確認カードあり）。
 
 ## 2. ファイル構成と担当（衝突しないよう、編集してよいファイルを限定）
@@ -288,7 +289,7 @@ IrobinInput.attach({ board, root = document }, {
 | `.cork` | 栓（sealed のときだけ見える） |
 | `canvas#fx` | 光と粒（ポインターを通す。`pointer-events: none`） |
 | `#hint` | 1行の案内。2行分の高さに固定し、文言が変わっても配置が動かない |
-| `#undoBtn`・`#restartBtn` | お助け。最初の状態では「1手もどす」は `disabled`。詰みのとき両方に `data-attention="1"`（目立たせる） |
+| `#undoBtn`・`#restartBtn` | お助け。最初の状態では「1手もどす」は `disabled`。詰み・詰み予備軍のとき、押して意味のあるほうに `data-attention="1"`（目立たせる。disabled の「1手もどす」と手が0の「やりなおし」には付けない） |
 | `#overlay`・`#card` | 遊び方・面クリア・やりなおしの確認のカード |
 | `.overlay [data-cmd="next"/"menu"/"close"/"restartYes"]` | つぎの めんへ・メニューへ・とじる・やりなおす |
 
@@ -388,7 +389,7 @@ IrobinRender.drawAnimal(ctx, kind, { w, h, mood, t })   // メニューの絵で
 
 ```js
 window.IrobinGame = Object.freeze({
-  getState(),   // { phase, level, best, served, total, left, moves, bottles, slots, queue, selected, stuck, won,
+  getState(),   // { phase, level, best, served, total, left, moves, bottles, slots, queue, selected, stuck, doomed, par, won,
                 //   overlay: null|'help'|'clear'|'confirm', busy, paused, timers, runId, canUndo, calm }
                 //   bottles・slots・queue は logic の state の写し（JSON にできる形）
   pick(index),  // 瓶を押したのと同じ（onPick と同じ道を通る）。戻り値なし
@@ -470,6 +471,7 @@ full（smoke に加えて）：
 - BW5：SE 縦・SE 横（568×320 と 667×375）・iPad 縦横、11本の面（40 面）でも、ボタンと瓶が 44×44 以上で safe-area 内、`.head`・`#shop`・`#board`・`#hint`・`#tools` が重ならずはみ出さない。16 桁の面番号でもはみ出さない。
 - BW6：お助け。1手もどすを手の数だけ押すと最初の局面、最初は disabled。やりなおしは確認カード → `restartYes` で最初から・手0。
 - BW7：詰み。`setState` で詰みの局面を作り、1手注ぐと `stuck`、ヒントに「1手もどす」、お助けに `data-attention="1"`。
+- BW16：詰み予備軍（doomed）・届けの連鎖が短い（20面の6本で4.5秒以内）・演出中にお客さんを押すと飛ばせる・クリアのカードに「めやす」と★・SE 縦横で遊び方の「わかった」がスクロールなしで押せる。
 - BW8：キーボード。矢印でフォーカスが動き、Enter・数字キーで注げる。U で戻る、Esc で選ぶのをやめる、M で音のオン/オフ。カードが開いているときは瓶が反応しない。
 - BW9：中断。注ぐ演出の途中で hidden にすると `paused`、`timers` は増えない、visible で演出が終わって `idle`。
 - BW10：効果音。`pick`・`pour`・`seal`・`cork`・`deliver`・`arrive`・`clear` が起きた順に鳴る。音の名前がすべて sfx.js の表にある。
