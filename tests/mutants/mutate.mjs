@@ -65,9 +65,9 @@ const M = [
   ['MH5 ハシわたり：隠れたとき（visibilitychange で hidden）押下を取り消さない', '中断', 'games/hashi/main.js', 'if (phase === "growing") abortHold();', ''],
   ['MH6 ハシわたり：「もう一度」で clearLater() を呼ばない（古い回のタイマーが残る）', 'タイマー', 'games/hashi/main.js', 'clearLater();   // 前の回のタイマーを片付ける（もう一度・起動）', ''],
   // ---- 版の表示（メニュー）。版を上げる手順が崩れたときの検出 ----
-  ['MV1 版の数字だけ上げ忘れる（version.js が古いまま。sw.js は v19）', '更新', 'common/version.js', 'version: "v19"', 'version: "v18"'],
+  ['MV1 版の数字だけ上げ忘れる（version.js が古いまま。sw.js は v20）', '更新', 'common/version.js', 'version: "v20"', 'version: "v19"'],
   ['MV2 version.js を事前キャッシュから外す（オフラインで版が出ない）', 'オフライン', 'sw.js', '  "./common/version.js",\n', ''],
-  ['MV3 更新日が YYYY-MM-DD でない', '表示', 'common/version.js', 'date: "2026-10-18"', 'date: "2026/10/18"'],
+  ['MV3 更新日が YYYY-MM-DD でない', '表示', 'common/version.js', 'date: "2026-10-19"', 'date: "2026/10/19"'],
   // ---- 日付・時刻（いろコード）。日付の処理を足したら、ここにも変異を足す（tests/README.md「日付・時計」）----
   ['MD1 いろコード：todayStr を UTC の日付にする（toISOString 由来。日本の0〜9時台に前日になる）', '日付', 'games/irocode/logic.js', 'return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());', 'return d.toISOString().slice(0, 10);'],
   ['MD2 いろコード：todayStr の月が 1 ずれる（getMonth() + 1 を外す）', '日付', 'games/irocode/logic.js', 'pad2(d.getMonth() + 1)', 'pad2(d.getMonth())'],
@@ -77,6 +77,17 @@ const M = [
   ['MD6 いろコード：0時をまたいで確定した結果を、始めた日でなく確定時の日付で記録する', '日付', 'games/irocode/index.html', 'daily = { date: state.date, done: true, win, tries };', 'daily = { date: today(), done: true, win, tries };'],
   ['MD7 いろコード：結果カードが0時をまたいでも「次は明日」のまま', '日付', 'games/irocode/index.html', 'const sameDay = state.date === today();', 'const sameDay = true;'],
   ['MD8 いろコード：起動時に日付が違う途中の問題を捨てるとき、負けとして記録しない（れんしゅう切り替えと食い違う）', '日付/成績', 'games/irocode/index.html', '{ abandonDaily(state); state = null; }', '{ state = null; }'],
+  // ---- いろびん（games/irobin/）。注ぐ規則・そろい判定・届ける・隠れ・ソルバー・保存・中断の仕組みを変えたときだけ流す ----
+  ['MB1 いろびん：色違いの瓶にも注げる（mismatch の判定を外す）', 'ルール', 'games/irobin/logic.js', 'if (dl > 0 && col(d, dl - 1) !== c) return R_MISMATCH;', ''],
+  ['MB2 いろびん：注ぐ量が相手の空きを超える（空きで丸めない）', 'ルール', 'games/irobin/logic.js', 'return Math.min(run, CAP - dl);', 'return run;'],
+  ['MB3 いろびん：そろった瓶を、注文の色と違うお客さんにも届ける', 'ルール', 'games/irobin/logic.js', 'if (isSealedP(x) && col(x, 0) === want) {', 'if (isSealedP(x)) {'],
+  ['MB4 いろびん：届けた後、空の瓶に置き換えない（栓をした瓶が残って場所をふさぐ）', 'ルール', 'games/irobin/logic.js', 'bots[b] = 0;                                         // 届けた瓶は空の瓶に置き換わる', 'bots[b] = bots[b];                                   // (変異)'],
+  ['MB5 いろびん：注いでも隠れた段が見えるようにならない', 'ルール', 'games/irobin/logic.js', 'ns &= ~(1 << (8 + 5 * (nsl - 1)));', ''],
+  ['MB6 いろびん：ソルバーが注文の順を無視する（いつも anyOrder）', 'ルール/生成', 'games/irobin/logic.js', 'const any = !!(opts && opts.anyOrder);', 'const any = true;'],
+  ['MB7 いろびん：validateSave が手の形を確かめない（3 要素の手も通る）', '保存データ互換', 'games/irobin/logic.js', 'for (const m of o.moves) if (!Array.isArray(m) || m.length !== 2 ||', 'for (const m of o.moves) if (false ||'],
+  ['MB8 いろびん：hidden で演出を止めない（render.pause を呼ばない）', '中断', 'games/irobin/main.js', '      paused = true;\n      render.pause();\n      syncPhase();', '      paused = true;\n      syncPhase();'],
+  ['MB9 いろびん：1手もどすで2手戻る', 'お助け', 'games/irobin/main.js', 'state = history.pop();\n    moves.pop();', 'state = history.pop(); if (history.length) state = history.pop();\n    moves.pop();'],
+  ['MB10 いろびん：render.js を事前キャッシュから外す（オフラインで開かない）', 'オフライン', 'sw.js', '  "./games/irobin/render.js",\n', ''],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

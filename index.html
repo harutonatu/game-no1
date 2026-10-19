@@ -174,7 +174,8 @@
     { name: "いろコード", desc: "4つの色の並びを推理する", url: "games/irocode/", stats: "irocode.stats", art: "code" },
     { name: "ゼンマイさんぽ", desc: "ネジを巻いて、崖の手前でぴたりと止める", url: "games/zenmai/", bestText: () => zenmaiBest(), art: "zenmai" },
     { name: "ピカッと早押し", desc: "ひかったら タップ！ いちばん はやいのは だれ？", url: "games/pikatto/", bestText: () => pikattoBest(), art: "pikatto" },
-    { name: "ハシわたり", desc: "ながおしで くきを のばして、つぎの葉へ", url: "games/hashi/", best: "hashi.best", art: "hashi" }
+    { name: "ハシわたり", desc: "ながおしで くきを のばして、つぎの葉へ", url: "games/hashi/", best: "hashi.best", art: "hashi" },
+    { name: "いろびん", desc: "いろみずを そろえて、どうぶつに とどけよう", url: "games/irobin/", bestText: () => irobinBest(), art: "irobin" }
   ];
 
   // ===== 小さな絵（Canvas で描く。画像ファイルは使わない） =====
@@ -416,6 +417,51 @@
       ctx.fillStyle = "rgba(240,164,58,0.55)";
       ctx.beginPath(); ctx.arc(fx + fr * 0.75, fy + fr * 0.1, fr * 0.16, 0, Math.PI * 2); ctx.fill();
     },
+    // 色の違う液の瓶3本（まん中は栓つきでそろって光る）と、トレイを持った丸い動物の顔
+    irobin(ctx, w, h) {
+      const u = Math.min(w, h);
+      // 瓶（角丸のガラス。下から色の段）
+      const bottle = (cx, top, bw, bh, cols, sealed) => {
+        const x = cx - bw / 2;
+        if (sealed) {
+          ctx.save();
+          ctx.shadowColor = "rgba(255,244,170,0.95)"; ctx.shadowBlur = u * 0.14;
+          ctx.fillStyle = "rgba(255,244,170,0.35)";
+          roundRect(ctx, x - 2, top - 2, bw + 4, bh + 4, bw * 0.3); ctx.fill();
+          ctx.restore();
+        }
+        ctx.fillStyle = "rgba(255,255,255,0.10)";
+        roundRect(ctx, x, top, bw, bh, bw * 0.28); ctx.fill();
+        const sh = (bh - 4) / 4;
+        ctx.save();
+        roundRect(ctx, x + 1.5, top + 1.5, bw - 3, bh - 3, bw * 0.25); ctx.clip();
+        cols.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(x, top + bh - 2 - sh * (i + 1), bw, sh + 0.5); });
+        ctx.restore();
+        ctx.strokeStyle = sealed ? "#fff4aa" : "rgba(255,255,255,0.55)";
+        ctx.lineWidth = Math.max(1.5, u * 0.02);
+        roundRect(ctx, x, top, bw, bh, bw * 0.28); ctx.stroke();
+        if (sealed) { ctx.fillStyle = "#b9824a"; ctx.beginPath(); ctx.ellipse(cx, top - u * 0.01, bw * 0.36, u * 0.035, 0, 0, Math.PI * 2); ctx.fill(); }
+      };
+      const bw = u * 0.2, bh = u * 0.46, by = h * 0.5;
+      bottle(w * 0.2, by, bw, bh, ["#56b4e9", "#e69f00", "#56b4e9", "#009e73"], false);
+      bottle(w * 0.5, by, bw, bh, ["#d55e00", "#d55e00", "#d55e00", "#d55e00"], true);
+      bottle(w * 0.8, by, bw, bh, ["#cc79a7", "#f0e442", "#009e73", "#e69f00"], false);
+      // 動物（まん中の上。丸い顔・耳・トレイ）
+      const fx = w * 0.5, fy = h * 0.27, fr = u * 0.15;
+      ctx.fillStyle = "#c79a64";
+      [-1, 1].forEach((d) => { ctx.beginPath(); ctx.arc(fx + d * fr * 0.78, fy - fr * 0.78, fr * 0.36, 0, Math.PI * 2); ctx.fill(); });
+      ctx.beginPath(); ctx.arc(fx, fy, fr, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#efd2a8";
+      ctx.beginPath(); ctx.ellipse(fx, fy + fr * 0.3, fr * 0.5, fr * 0.36, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#231705";
+      [-1, 1].forEach((d) => { ctx.beginPath(); ctx.arc(fx + d * fr * 0.38, fy - fr * 0.12, fr * 0.1, 0, Math.PI * 2); ctx.fill(); });
+      ctx.beginPath(); ctx.ellipse(fx, fy + fr * 0.15, fr * 0.12, fr * 0.08, 0, 0, Math.PI * 2); ctx.fill();
+      // トレイ（注文の色。動物の右に小さく）
+      ctx.fillStyle = "#d55e00";
+      roundRect(ctx, fx + fr * 1.25, fy + fr * 0.1, fr * 0.95, fr * 0.55, fr * 0.14); ctx.fill();
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = Math.max(1.5, u * 0.02);
+      roundRect(ctx, fx + fr * 1.25, fy + fr * 0.1, fr * 0.95, fr * 0.55, fr * 0.14); ctx.stroke();
+    },
     // 絵が用意されていないゲーム用：頭文字のタイル
     fallback(ctx, w, h, game) {
       const m = Math.round(w * 0.12);
@@ -484,6 +530,16 @@
       if (raw === null) return "";
       const n = Number(raw);
       return Number.isInteger(n) && n >= 50 && n <= 5000 ? n + " ms" : "";
+    } catch (e) { return ""; }
+  }
+
+  // いろびん：irobin.best（クリアした一番大きい面）。安全な整数で 1 以上のときだけ「N めん クリア」、それ以外は空
+  function irobinBest() {
+    try {
+      const raw = localStorage.getItem("irobin.best");
+      if (raw === null) return "";
+      const n = Number(raw);
+      return Number.isSafeInteger(n) && n >= 1 ? n + " めん クリア" : "";
     } catch (e) { return ""; }
   }
 

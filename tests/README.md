@@ -65,6 +65,7 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | ゼンマイさんぽ（games/zenmai/）の変更 | smoke ＋ `ONLY=ZL1,ZL2,ZL3,ZL4,ZL5,ZL6,ZL7,ZU6,ZU7,ZU8,ZU9,ZU10,ZU11,ZU12,ZU13,ZU14 node tests/run.mjs full`（ステージの数値は ZL、画面は ZU） |
 | ピカッと早押し（games/pikatto/）の変更 | smoke ＋ `ONLY=PK5,PK6,PK7,PK8,PK9,PK12,PK14,PK16,PK17,PK18 node tests/run.mjs full`（ルール・保存を変えたら `ONLY=PK1,PK3,PK9,PK15,PK16 M=MP1,MP2,MP3,MP4,MP5,MP6,MP7 node tests/mutants/mutate.mjs both`） |
 | ハシわたり（games/hashi/）の変更 | smoke ＋ `ONLY=HW5,HW6,HW7,HW8,HW9,HW10,HW11,HW12,HW13 node tests/run.mjs full`（ロジックだけなら `ONLY=HL1,HL2,HL3,HL4,HL5,HL6,HL7,HL8 node tests/run.mjs smoke`、0 秒） |
+| いろびん（games/irobin/）の変更 | smoke ＋ `ONLY=BW5,BW6,BW7,BW8,BW9,BW10,BW11,BW12,BW13,BW14,BW15 node tests/run.mjs full`（ロジックだけなら `ONLY=BL1,BL2,BL3,BL4,BL5,BL6,BL7,BL8,BL9,BL10 node tests/run.mjs smoke`、2 秒。ルール・保存・生成を変えたら `ONLY=BL1,…,BL10,BW1,…,BW15 M=MB1,MB2,MB3,MB4,MB5,MB6,MB7,MB8,MB9,MB10 node tests/mutants/mutate.mjs full`） |
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
 | テストを変えたとき・中身の仕組み（点数計算・保存・日付・ルール）を変えたとき | `node tests/mutants/mutate.mjs both`（そのゲームの分だけ。テストがわざと入れた不具合を見つけられるか） |
 
@@ -90,6 +91,8 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | PK | ピカッと早押し | logic.js（Node：勝ち・フライング・負の時刻・3点先取・5回・引き分け・redoRound・validateBestSolo）、input.js（Node：受付の窓・pointerId・キー・timeStamp）、静的（APP_FILES・読み込み順・音名）、画面（よーい・一時停止・回数表示・ベスト更新・終わり方）、保存（bestSolo）、戻れる、配置（隅が重ならない・2人は対角）、最大桁、効果音、ダブルタップ抑止、オフライン、実イベント（pointercancel・Enter／Space）（PK1〜PK18）。勝ち負けは pressFor(idx, ts) で確かめ、早送り中の実タップでは見ない（event.timeStamp は早送りされないため） |
 | HL | ハシわたり 計算ロジック（Node） | `games/hashi/logic.js`・`course.js` を直接呼ぶ：押した時間⇔茎の長さの境界と逆関数、resolve の端ちょうど・ぴったり・missBy・おしい、ボーナス 1→2→4→8→16→16、いのちと over、イミュータブル、コースの公平さ、validateBest・recordBest・validateFlag、読み込み順の誤り（HL1〜HL8、hashi-logic.mjs） |
 | HW | ハシわたり 画面 | DOM と `window.HashiGame`（getState・holdFor・lenToCross・setRandom・skip）で：渡る・表示の一致、落ちる・いのち・もう一度、ベストの保存、戻れる、画面内・横向きの重なり、中断（hidden・遊び方）、キーボード、タイマーの片付け、時計、効果音、ダブルタップ抑止、設定、オフライン（HW1〜HW13、hashi-ui.mjs） |
+| BL | いろびん 計算ロジック（Node） | `games/irobin/logic.js` を直接呼ぶ：定数・COLORS（9色で色と記号がすべて違う）・paramsFor が面の表どおり（境界と壊れた値）、pourCheck・applyMove の決まりと reason の順・注ぐ量（見えている同じ色の続きと空きの小さい方）、そろう・届ける・空の瓶への置き換え・待ち瓶が場所をふさぐ・連鎖の順・全部届けて won、イミュータブルとおかしな引数、生成（1〜60 面と 1000 面が決定的・各色4段・最初からそろった瓶なし・隠れの形・solution が解ける・合計3秒以内）、ソルバー（解けない盤・注文の順で解けない盤・anyOrder・上限で exhausted）、保存の検証（validateBest・validateSave・makeSave・recordBest・validateFlag・replay）、詰み、隠れた色、静的（音名・読み込み順・APP_FILES・メニューの名前が NAME と同じ）（BL1〜BL10、irobin-logic.mjs） |
+| BW | いろびん 画面 | DOM と `window.IrobinGame`（getState・pick・pour・solution・skip・setLevel・setState）で：注ぐ・表示の一致（隠れの段は data-color が空）、solution() で1面クリア・ベスト保存・next、途中の再読み込みと壊れた保存・ほかのゲームのキー、メニューへ戻れる、画面内（SE 縦横・iPad・11本の面・16桁・ヒントの高さ・カード）、お助け（1手もどす・やりなおし）、詰み、キーボード、中断（hidden・遊び方）、効果音の順、色覚（記号）、動きを減らす、オフライン、ダブルタップ抑止（CDP）、メニューのカード（BW1〜BW15、irobin-ui.mjs） |
 | X1 | 共通 | 全ページでコンソールエラー 0（最後に 1 回） |
 
 ## 構成
@@ -283,6 +286,16 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | MH4 ハシわたり：落ちてもいのちを減らさない | 検出（HL4。HL だけを直接流して確認。HW2 は未計測） | （未計測） |
 | MH5 ハシわたり：隠れたとき押下を取り消さない | （未計測。smoke では見逃す設計） | （未計測。HW6 で検出する設計） |
 | MH6 ハシわたり：「もう一度」で clearLater() を呼ばない | （未計測。smoke では見逃す設計） | （未計測。HW8 で検出する設計） |
+| MB1 いろびん：色違いの瓶にも注げる | （未計測） | 検出（BL2, BL5, BL6, BL8, BW5, BW7） |
+| MB2 いろびん：注ぐ量が相手の空きを超える | （未計測） | 検出（BL2, BL5, BL6, BL9, BW5, BW11, BW14） |
+| MB3 いろびん：そろった瓶を注文の色と違うお客さんにも届ける | （未計測） | 検出（BL2, BL3, BL6, BL9） |
+| MB4 いろびん：届けた後、空の瓶に置き換えない | （未計測） | 検出（BL3） |
+| MB5 いろびん：注いでも隠れた段が見えるようにならない | （未計測） | 検出（BL5, BL9, BW5, BW11） |
+| MB6 いろびん：ソルバーが注文の順を無視する | （未計測） | 検出（BL6） |
+| MB7 いろびん：validateSave が手の形を確かめない | （未計測） | 検出（BL7） |
+| MB8 いろびん：hidden で演出を止めない | （未計測。smoke では見逃す設計） | 検出（BW9） |
+| MB9 いろびん：1手もどすで2手戻る | （未計測） | 検出（BW6, BW8） |
+| MB10 いろびん：render.js を事前キャッシュから外す | （未計測） | 検出（BL10, BW13） |
 
 ※ M19 は本来 full の P9 で見つけるもの。smoke で P8 が落ちたのは、同時に 2 つの的を切った・落としたときに P8 が 1 つずつ前提で判定していたため（負荷の高いときだけ起きる）。P8 を「切った数・落とした数に合わせて判定」と「軌跡の 0.2 秒はページの時間を止めて進める」に直した。直した後に M19 を smoke で流し直し、見逃し（設計どおり full のみ）を確認した。
 

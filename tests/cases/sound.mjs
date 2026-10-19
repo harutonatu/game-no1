@@ -7,7 +7,7 @@ import vm from 'node:vm';
 import { BASE, T48, BLK, KIRI, custom, newPage, seed, ST, sleep, wait, SFX_SPY, plays, starts, kiriStart, kiriWaitObj, kiriSlash, kiriSnap } from '../lib.mjs';
 
 const V = () => custom(390, 844, null, 'iPhone 13');
-const PAGES = [['games/blocks/index.html', 'blocks'], ['games/2048/index.html', 'tiles'], ['games/kiritori/index.html', 'kiritori'], ['games/irocode/index.html', 'irocode'], ['games/zenmai/index.html', 'zenmai'], ['games/pikatto/index.html', 'pikatto'], ['index.html', 'menu']];
+const PAGES = [['games/blocks/index.html', 'blocks'], ['games/2048/index.html', 'tiles'], ['games/kiritori/index.html', 'kiritori'], ['games/irocode/index.html', 'irocode'], ['games/zenmai/index.html', 'zenmai'], ['games/pikatto/index.html', 'pikatto'], ['games/irobin/index.html', 'irobin', ['games/irobin/render.js', 'games/irobin/main.js', 'games/irobin/input.js']], ['index.html', 'menu']];
 
 export const tests = [
   {
@@ -17,8 +17,9 @@ export const tests = [
       const sandbox = { localStorage: { getItem: () => null, setItem() {} }, navigator: {} };
       sandbox.globalThis = sandbox; vm.createContext(sandbox); vm.runInContext(src, sandbox);
       check('common/sfx.js が window.YubiSfx.create を定義する', typeof sandbox.YubiSfx?.create === 'function');
-      for (const [page, game] of PAGES) {
-        const html = fs.readFileSync(path.join(root, page), 'utf8');
+      for (const [page, game, extra] of PAGES) {
+        // extra：音を鳴らすコードが別の .js にある画面（いろびん）。音名の検査は BL10 が play("名前") を読んで行うので、ここでは読み込み順と create だけ見る
+        const html = fs.readFileSync(path.join(root, page), 'utf8') + (extra || []).map((f) => '\n' + fs.readFileSync(path.join(root, f), 'utf8')).join('');
         const names = sandbox.YubiSfx.create(game).names || [];
         const calls = [...html.matchAll(/sfx\.play\(\s*(["'`])([^"'`]+)\1/g)].map((m) => m[2]);
         // 文字列2つの三項演算子（例 sfx.play(a ? "tick" : "unwind")）は両方の音名を検査する。それ以外の変数での呼び出しは不可
@@ -26,10 +27,11 @@ export const tests = [
         ternary.forEach((m) => calls.push(m[2], m[4]));
         const dynamic = [...html.matchAll(/sfx\.play\(\s*(?!["'`])/g)].length - ternary.length;
         const missing = calls.filter((n) => !names.includes(n));
-        check(`${page}: sfx.play ${calls.length} か所 [${[...new Set(calls)].join(', ')}] がすべて "${game}" の音名にある（変数での呼び出しなし）`, calls.length > 0 && !missing.length && !dynamic, { missing, dynamic, names });
+        if (!extra) check(`${page}: sfx.play ${calls.length} か所 [${[...new Set(calls)].join(', ')}] がすべて "${game}" の音名にある（変数での呼び出しなし）`, calls.length > 0 && !missing.length && !dynamic, { missing, dynamic, names });
+        else check(`${page}: "${game}" の音の表に ${names.length} 個の音があり、画面のコードが YubiSfx.create("${game}") を使う（音名の検査は BL10）`, names.length >= 12 && html.includes(`YubiSfx.create("${game}")`), { names });
         const own = /const sfx = \(\(\) =>|new (window\.)?(webkit)?AudioContext|createOscillator/.test(html);
         const rel = page === 'index.html' ? 'common/sfx.js' : '../../common/sfx.js';
-        const sIdx = html.indexOf(`<script src="${rel}"></script>`), mainIdx = html.indexOf('<script>');
+        const sIdx = html.indexOf(`<script src="${rel}"></script>`), mainIdx = extra ? html.indexOf('<script src="logic.js"></script>') : html.indexOf('<script>');
         check(`${page}: 古い自前の音モジュールがなく、${rel} を本体より前に読み込み、YubiSfx.create("${game}") を使う`, !own && sIdx > 0 && sIdx < mainIdx && html.includes(`YubiSfx.create("${game}")`), { own, sIdx, mainIdx });
       }
     },

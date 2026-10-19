@@ -41,6 +41,8 @@
 | PK ピカッと早押し | ロジックの誤り（4）・保存データ消失（6）・メニューへ戻れない（6）・ボタン画面外（6）・オフライン不可（6）・ダブルタップ拡大（6）・裏に回すと進む（4）・同時押しの判定（4） | PK1（Node：勝ち・フライング・負の時刻はフライング・3点先取・5回で終わり・同点は引き分け・redoRound・validateBestSolo）, PK10（静的：APP_FILES に pikatto の全ファイル・読み込み順・音名）, PK2（画面：最初から2人・よーい中は無視・forceSignal→pressFor で勝ち・よーいの後のフライング・実タップでも進む）, PK3（データ：bestSolo が保存されなければ不合格・壊れた保存は 0 扱い）, PK4（戻れる）, PK11（回数表示が「1」から・aria-live は #hint だけ）, PK13（裏に回す・「？」で止まり、点数も回数も変わらない、「つづける」で同じ回のよーいから）, PK15（ベスト更新の data-best と「ベスト更新！」、ラベル「ベスト」）。V1・V2 にピカッと（4人）、A1 にピカッとの音名 | PK5（SE 縦・iPad 横で .corner が 44px・safe-area 内・交わらない）, PK6（signal・foul・win・finish・toggle）, PK7（CDP：ダブルタップ抑止）, PK8（APP_FILES に無ければ不合格、オフラインで開けて合図まで進む）, PK9（境界：signalDelay 1000〜4000、redoRound も同じ範囲、waiting 中はどの playerIdx も foul）, PK12（SE 横・iPad 横・SE 縦で 2〜4人の隅が交わらない、2人は対角、れんしゅうはフィールドのどこでも押せる）, PK14（Node：受付の窓・pointerId・cancel・reset・keyAction・normalizeTs）, PK16（5回で同点は「ひきわけ」・data-final、3点のときだけ「3点とった」、finalTimer が残らない）, PK17（最大桁：5000 ms・「0.23びょう」・4人、#hint の高さが変わらない）, PK18（早送りなしの実イベント：pointercancel 後も勝ち有効・Enter／Space・repeat 無視・detach で style が戻る） |
 | HL ハシわたり 計算ロジック（Node） | 判定・点数の誤り（4）・いのちが減らない（6）・保存データ消失（6）・届かない葉（4） | HL1〜HL8（Node：lengthFromHold・holdForLength の境界と逆関数、resolve の端ちょうど・perfect・missBy・near、ボーナス 1→2→4→8→16→16、いのちと over・ignore、イミュータブル、コースの公平さ（random 0・0.5・0.999999・1000 回）、validateBest・validateFlag・recordBest の同点、HL8 は読み込み順の誤りで意味の分かる例外） | （smoke と同じ。0 秒） |
 | HW ハシわたり 画面 | 表示の1ずれ（4）・保存データ消失（6）・メニューへ戻れない（6）・ボタン画面外と横向きの重なり（6）・中断で落ちる（4）・古いタイマー（4）・キーボード（3）・拡大（6）・オフライン不可（6） | HW1（lenToCross で渡る・DOM と getState の一致）, HW2（落ちて lives −1・同じ葉から・3 回で over・again）, HW3（hashi.best の途中更新・壊れた保存は 0）, HW4（プレイ中・結果・遊び方・一時停止から a#back） | HW5（SE 縦横・iPad の 44px・safe-area・矩形の重なり・16 桁）, HW6（growing／walking 中の hidden・遊び方）, HW7（Space・Enter・repeat・フォーカス）, HW8（again 連打で古い音が鳴らない・runId・400ms）, HW9（page.clock で長さ・ゆっくり）, HW10（効果音の順と音名）, HW11（ダブルタップ・カード直後の連打）, HW12（設定の保存）, HW13（Wave 4 後：APP_FILES とオフライン。無ければ不合格） |
+| BL いろびん 計算ロジック（Node） | 注ぐ規則の誤り（4）・そろい判定と注文の一致の誤り（4）・解けない面が出る（4）・保存データ消失（6）・隠れの答え漏れ（3） | BL1〜BL10（Node：定数・paramsFor の表、pourCheck の reason の順、届ける連鎖の順、イミュータブル、1〜60 面と 1000 面の決定的な生成と solution の再生、ソルバー、validateSave、隠れ、静的） | なし（Node だけ。smoke に全部入れる） |
+| BW いろびん 画面 | 表示の1ずれ（4）・保存データ消失（6）・メニューへ戻れない（6）・ボタン画面外と横向きの重なり（6）・中断で止まらない（4）・色だけに頼る（3）・キーボード（3）・拡大（6）・オフライン不可（6） | BW1（画面＝state、隠れは data-color 空）, BW2（1面クリア・best・next）, BW3（保存・壊れた保存・ほかのキー）, BW4（どこからでも戻れる） | BW5〜BW15（画面内・お助け・詰み・キーボード・中断・効果音・色覚・動きを減らす・オフライン・ダブルタップ抑止・メニュー） |
 | X1 | 全ページのコンソールエラー（4） | 最後に 1 回だけ | 同左 |
 
 ## 4. 同値クラスと境界値
@@ -196,7 +198,7 @@ smoke/full の L・D・E・S・V・P はそのまま移した。変えたのは�
 
 ## 10. 変異テスト
 
-`node tests/mutants/mutate.mjs both`：アプリを一時フォルダにコピーし、不具合を 1 つずつ入れて smoke・full を流す（M1〜M23・MD1〜MD8・MZ1〜MZ4・MP1〜MP9・MH1〜MH6。M17〜M19 はキリトリ道場、M20〜M23 はいろコード、MD1〜MD8 はいろコードの日付、MZ1〜MZ4 はゼンマイさんぽ、MH1〜MH6 はハシわたり）。M20（いろコードの score が重複を数え過ぎる）は I1、M21（logic.js を事前キャッシュから外す）は L5・I9・I8、M22（成績を 10 億で止めない）は I15、M23（結果カードの連続タップが下の色ボタンに届く）は I13 が検出する。MD1〜MD8（todayStr を UTC 由来／月のずれ／自動差し替えの無効化／カードを閉じたときの見直しなし／未来の daily／確定時の日付で記録／文言が「次は明日」のまま／起動時の破棄で負けを数えない）は I2・I14・I19・I3 が検出する。MP1〜MP7 はピカッと早押し：MP1（waiting 中の押下がフライングにならない）・MP2（2点先取）・MP3（範囲外のベストを通す）・MP4（redoRound で回数が進む）・MP5（合図より前の時刻でも勝ち）・MP6（5回で終わらない）は PK1（MP1 は PK9 も）、MP7（ベストを保存しない）は PK3・PK15 が検出する。MH1〜MH6（判定の端を開区間／recordBest の同点更新／ボーナスの上限なし／落ちてもいのちが減らない／hidden で押下を取り消さない／もう一度で clearLater を呼ばない）は HL2・HL7・HL3・HL4（と HW2）・HW6・HW8 が検出する設計。テストを変えたとき・月 1 回。結果は README の表。
+`node tests/mutants/mutate.mjs both`：アプリを一時フォルダにコピーし、不具合を 1 つずつ入れて smoke・full を流す（M1〜M23・MD1〜MD8・MZ1〜MZ4・MP1〜MP9・MH1〜MH6・MB1〜MB10。MB1〜MB10 はいろびん（注ぐ規則・届ける・隠れ・ソルバー・保存・中断・お助け・オフライン）。M17〜M19 はキリトリ道場、M20〜M23 はいろコード、MD1〜MD8 はいろコードの日付、MZ1〜MZ4 はゼンマイさんぽ、MH1〜MH6 はハシわたり）。M20（いろコードの score が重複を数え過ぎる）は I1、M21（logic.js を事前キャッシュから外す）は L5・I9・I8、M22（成績を 10 億で止めない）は I15、M23（結果カードの連続タップが下の色ボタンに届く）は I13 が検出する。MD1〜MD8（todayStr を UTC 由来／月のずれ／自動差し替えの無効化／カードを閉じたときの見直しなし／未来の daily／確定時の日付で記録／文言が「次は明日」のまま／起動時の破棄で負けを数えない）は I2・I14・I19・I3 が検出する。MP1〜MP7 はピカッと早押し：MP1（waiting 中の押下がフライングにならない）・MP2（2点先取）・MP3（範囲外のベストを通す）・MP4（redoRound で回数が進む）・MP5（合図より前の時刻でも勝ち）・MP6（5回で終わらない）は PK1（MP1 は PK9 も）、MP7（ベストを保存しない）は PK3・PK15 が検出する。MH1〜MH6（判定の端を開区間／recordBest の同点更新／ボーナスの上限なし／落ちてもいのちが減らない／hidden で押下を取り消さない／もう一度で clearLater を呼ばない）は HL2・HL7・HL3・HL4（と HW2）・HW6・HW8 が検出する設計。テストを変えたとき・月 1 回。結果は README の表。
 
 ## 10.5 ゼンマイさんぽ（games/zenmai/）
 
@@ -215,6 +217,17 @@ smoke/full の L・D・E・S・V・P はそのまま移した。変えたのは�
 | ダブルタップ拡大 | ZU10（CDP）：ネジ・舞台・＋の連続タップで 2 回目の touchend を止め、拡大せず、＋は 2 回効く。dblclick・gesture・contextmenu・文字選択 | full（Chromium） |
 
 観察した不具合（テストは不合格のまま。画面担当へ）：SE Safari 縦（320×454）でプレイ中の「歩かせる」が画面下にはみ出す／iPhone 13・15 Pro Max の Safari 横（高さ 340・380）で舞台が画面下にはみ出す（body が overflow hidden でスクロールもできない）。
+
+## 10.6 いろびん（games/irobin/）
+
+ロジックと画面を分けて確かめる。計算は Node で直接（BL、`irobin-logic.mjs`）、画面は契約の DOM と `window.IrobinGame`（`getState()`・`pick(i)`・`pour(f,t)`・`solution()`・`skip()`・`setLevel(n)`・`setState(s)`）で（BW、`irobin-ui.mjs`）。画面側は「期待値の計算機」として、ページの中の `IrobinLogic`（`solve`・`createLevel`・`pourCheck`・`replay`）を使う。
+
+- **局面は手で組む**：BL は契約 §4.1 の形（`mk()`）で局面を作り、公開された関数の結果（reason の順・注ぐ量・届ける連鎖の順・outcome の形）だけを確かめる。注文の順で解けない盤は、全探索で見つけた `瓶 [2,2,2] [2] [0,1,1,0] [0,1,1,0]・お客さん [0,1]・列 [2]` を使う（通常は solved:false、anyOrder では solved:true）。
+- **1面を通す**：`solution()` を `pick` で進めてクリアのカードまで（BW2）。保存の再生・やりなおし・1手もどす・詰みも、この手順から作る。
+- **答えが見えない**：隠れの段は `data-color` を出さず、記号は「？」の1種類だけ、`aria-label` にも隠れた色の名前を出さない（BW1・BW11）。
+- **#left**：画面の「あと N にん」は `hud(state).left`（= total − served）。契約 §6 の表は `queue.length` とも読めるが、BW1 は §12.3 に合わせて `getState().left`（hud）と比べる。
+- **効果音（BW10）**：動きを減らす設定（演出が極端に短い）で全体を通し、1手ごとに実時間で待つ（そろった後は 0.9 秒）。同時発音の上限（36）に当たると、そろった直後の栓の音が落ちるため。`seal`・`cork`・`deliver`・`clear` は「すべての呼び出しで音の部品が start」を要求する。
+- **中断（BW9）**：hidden を再現し、`document.getAnimations()` の running が 0、実時間 2.8 秒待っても `busy` のまま（止めていなければ演出が終わってしまう）。MB8 の検出に使う。
 
 ## 11. 減らしたことで見落とす可能性があるもの
 

@@ -32,6 +32,8 @@ export const GROUPS = [
   { key: 'PK', title: 'PK ピカッと早押し（ロジック・画面・保存・オフライン・音・タッチ）', file: 'pikatto.mjs', weight: { smoke: 8, full: 35 } },
   { key: 'HL', title: 'HL ハシわたり 計算ロジック(Node)', file: 'hashi-logic.mjs', weight: { smoke: 0, full: 0 } },
   { key: 'HW', title: 'HW ハシわたり 画面（データ・戻る・画面内・横向き・中断・キーボード・音・オフライン）', file: 'hashi-ui.mjs', weight: { smoke: 8, full: 40 } },
+  { key: 'BL', title: 'BL いろびん 計算ロジック(Node)', file: 'irobin-logic.mjs', weight: { smoke: 0, full: 0 } },
+  { key: 'BW', title: 'BW いろびん 画面（遊べる・保存・戻る・画面内・横向き・中断・キーボード・音・色覚・オフライン）', file: 'irobin-ui.mjs', weight: { smoke: 8, full: 40 } },
 ];
 
 const args = process.argv.slice(2);
@@ -150,7 +152,7 @@ async function main() {
     errors.push(...r.errors);
   }
   // 全ページ共通の確認は最後に1回だけ（各グループで集めたコンソールエラーをまとめる）
-  if (plan.some((g) => !['L', 'ZL'].includes(g.key))) {
+  if (plan.some((g) => !['L', 'ZL', 'HL', 'BL'].includes(g.key))) {
     const ok = errors.length === 0;
     items.push({ id: 'X1', title: '全ページでコンソールエラー・ページエラー 0', ok, ms: 0, checks: [{ name: `コンソールエラー・ページエラー ${errors.length} 件`, ok, detail: ok ? undefined : errors.slice(0, 20) }] });
     console.log(`■ 共通\n  ${ok ? 'PASS' : 'FAIL'}  X1  全ページでコンソールエラー・ページエラー 0${ok ? '' : '\n        ' + JSON.stringify(errors.slice(0, 10))}`);

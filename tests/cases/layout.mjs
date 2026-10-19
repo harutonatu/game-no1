@@ -37,6 +37,12 @@ const SCREENS = {
     // 4つの隅は互いに重ならない（PK-02）。スコア欄・ヒント・ヘッダとも重ならない
     probe: (page, safe) => layoutProbe(page, '.back, .tool, #scores, .corner, #hint', safe, { overlapSel: '.back, .tool, #scores, .corner, #hint', minSel: '.back, .tool, .corner' }),
   },
+  irobin: {
+    label: 'いろびん（プレイ中・11本の面）',
+    async open(page) { await seed(page, { 'irobin.help': '1', 'irobin.save': JSON.stringify({ v: 1, level: 40, moves: [] }) }); await page.goto(BASE + 'games/irobin/'); await wait(page, 200); },
+    // 詳しい画面内の確認（横向き・iPad・16桁）は BW5。ここは他のゲームと同じ画面ごとの共通確認
+    probe: (page, safe) => layoutProbe(page, 'a#back, .tool, .bottle, .cta, .head, #shop, #board, #hint, #tools', safe, { overlapSel: '.head, #shop, #board, #hint, #tools', minSel: 'a#back, .tool, .bottle, .cta' }),
+  },
 };
 // キリトリ道場のスコア欄：SCORE・BEST に 7 桁（1,234,567）を入れても「…」で省略されず、欄の高さ・道場の大きさが変わらない
 async function kiriStatsProbe(page) {
@@ -140,6 +146,7 @@ export const tests = [
         check('SE縦 キリトリの一時停止カードの全ボタンに届く', c.ok, c);
       });
       await screenCheck(browser, check, v, 'pikatto');
+      await screenCheck(browser, check, v, 'irobin');
       const { ctx, page } = await newPage(browser, v, 'V1 桁数', { clock: true });
       const d = await blocksStatsProbe(page, v.safe);
       check('SE縦 ブロック：SCORE 1,234,567・LINES 9,999・LEVEL 99 が「…」で省略されず、盤面・欄の高さも変わらない', d.ok, d);
@@ -159,6 +166,7 @@ export const tests = [
       await screenCheck(browser, check, v, 't2048');
       await screenCheck(browser, check, v, 'kiri');
       await screenCheck(browser, check, v, 'pikatto');
+      await screenCheck(browser, check, v, 'irobin');
       // K1（SE を Safari で横持ち 568×270：DROP が LEVEL/LINES に、HOLD が NEXT に重なっていた）を smoke でも確かめる
       await screenCheck(browser, check, view('SE', 'l', 'safari'), 'blocks');
     },

@@ -9,6 +9,7 @@
  *   const sfx = YubiSfx.create("zenmai");   // ゼンマイさんぽ
  *   const sfx = YubiSfx.create("pikatto");  // ピカッと早押し
  *   const sfx = YubiSfx.create("hashi");    // ハシわたり（grow(ratio)/tip/land/perfect(n)/walk/splash/peek）
+ *   const sfx = YubiSfx.create("irobin");   // いろびん（pick/drop/pour(count)/reveal/seal(colorId)/cork/deliver/arrive/clear/deny/undo/stuck）
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -24,7 +25,7 @@
   // 同じ処理の中で続けて鳴らすとき、鳴らす時刻をこの秒数ずつずらす（currentTime は1つの処理の中では進まないため、間引かずに順に鳴らす）
   const STAGGER = { slice: 0.03 };
   const STAGGER_MAX = 0.24;
-  const GAP = { move: 0.03, rotate: 0.03, hold: 0.05, merge: 0.03, tap: 0.04, undo: 0.06, launch: 0.07, miss: 0.08, tick: 0.045, unwind: 0.045, limit: 0.25, step: 0.08, grow: 0.05, walk: 0.08 };
+  const GAP = { move: 0.03, rotate: 0.03, hold: 0.05, merge: 0.03, tap: 0.04, undo: 0.06, launch: 0.07, miss: 0.08, tick: 0.045, unwind: 0.045, limit: 0.25, step: 0.08, grow: 0.05, walk: 0.08, pour: 0.05, pick: 0.03, arrive: 0.08 };
 
   function create(game, opts) {
     opts = opts || {};
@@ -362,8 +363,54 @@
       peek: () => { const t = N(); partial(A5, t, 0.08, { vol: 0.06, from: 520, fromT: 0.04 }); mallet(C6, t + 0.06, { vol: 0.07, decay: 0.12, bright: 0.5 }); }
     };
 
+    // いろびん：ガラスの瓶と水の音。「そろう（seal）」が一番気持ちいい瞬間なので、上がる和音＋きらきらを厚めにする
+    const IROBIN = {
+      // 瓶を持ち上げる「こっ」：軽いガラス
+      pick: () => { const t = N(); wood(980, t, { vol: 0.05, dur: 0.03, jit: 25 }); partial(C6 * jit(8), t + 0.012, 0.07, { vol: 0.045 }); },
+      // 置く「ことっ」：pick より低く
+      drop: () => { const t = N(); wood(540, t, { vol: 0.06, dur: 0.04, jit: 25 }); partial(G5 * jit(8), t + 0.012, 0.06, { vol: 0.04 }); },
+      // 注ぐ「とくとく」：count（1〜4）が多いほど長く。小さな水滴を重ねる
+      pour: (count) => {
+        const n = Math.max(1, Math.min(4, Math.floor(Number(count)) || 1)), t = N();
+        noise(t, 0.1 + n * 0.06, { type: "lowpass", freq: 1500, to: 900, q: 0.7, vol: 0.035, a: 0.02 });
+        for (let i = 0; i < n + 1; i++) partial(520 + i * 70, t + i * 0.07, 0.07, { vol: 0.04, from: 380 + i * 50, fromT: 0.03 });
+      },
+      // 隠れていた色が見える「ぽわん」
+      reveal: () => { const t = N(); partial(C5, t, 0.2, { vol: 0.07, from: 330, fromT: 0.07 }); mallet(G5, t + 0.05, { vol: 0.07, decay: 0.16, bright: 0.3 }); },
+      // そろった！ 根音から長三和音がかけ上がり、長い和音とベルのきらきらが重なる。colorId で根音を五音音階の中で少し変える
+      // （同時発音の上限 36 を使い切らないよう、部品は 20 個ほどに抑える。直後の栓・届ける音が落ちないように）
+      seal: (colorId) => {
+        const k = Math.max(0, Math.floor(Number(colorId)) || 0) % 5;
+        const r = C5 * Math.pow(2, PENTA[k] / 12), t = N();
+        [1, 1.26, 1.5].forEach((m, i) => mallet(r * m, t + i * 0.055, { vol: 0.12 + i * 0.01, decay: 0.2, bright: 0.55, jit: 3 }));
+        mallet(r * 2, t + 0.165, { vol: 0.13, decay: 0.42, bright: 0.6, jit: 3 });
+        [1, 1.26, 1.5].forEach((m) => partial(r * m, t + 0.2, 0.55, { vol: 0.04, a: 0.01 }));
+        bell(r * 4, t + 0.13, { vol: 0.045, decay: 0.5 });
+        bell(r * 6, t + 0.27, { vol: 0.032, decay: 0.55 });
+      },
+      // 栓の「ぽん」：弾む木の音
+      cork: () => { const t = N(); partial(330, t, 0.1, { vol: 0.12, from: 210, fromT: 0.03 }); wood(300, t + 0.005, { vol: 0.09, dur: 0.05, jit: 15 }); },
+      // お客さんに届ける「ちりん」：高い2音のベル
+      deliver: () => { const t = N(); bell(E6, t, { vol: 0.07, decay: 0.4 }); bell(G6, t + 0.09, { vol: 0.06, decay: 0.5 }); },
+      // 次のお客さんが来る：軽い足音2つ
+      arrive: () => { const t = N(); wood(430, t, { vol: 0.045, dur: 0.03, jit: 40 }); wood(510, t + 0.07, { vol: 0.045, dur: 0.03, jit: 40 }); },
+      // 面クリア：短いファンファーレ（1.2秒以内）
+      clear: () => {
+        const t = N();
+        [C5, E5, G5, C6].forEach((f, i) => mallet(f, t + i * 0.09, { vol: 0.1, decay: i === 3 ? 0.4 : 0.16 }));
+        [C5, E5, G5].forEach((f) => partial(f, t + 0.4, 0.6, { vol: 0.04, a: 0.01 }));
+        bell(G6, t + 0.46, { vol: 0.05, decay: 0.5 });
+      },
+      // 注げない：小さく低い「こつ」（責めない）
+      deny: () => wood(210, N(), { vol: 0.07, dur: 0.05, jit: 20 }),
+      // 1手もどす：逆回しの短い音
+      undo: () => { const t = N(); noise(t, 0.08, { freq: 700, to: 1800, q: 0.7, vol: 0.035, a: 0.05 }); mallet(A5, t + 0.02, { vol: 0.07, decay: 0.06, bright: 0.3 }); mallet(E5, t + 0.07, { vol: 0.07, decay: 0.09, bright: 0.3 }); },
+      // 詰み：下がる2音をやさしい和音で止める
+      stuck: () => { const t = N(); mallet(G5, t, { vol: 0.08, decay: 0.16, bright: 0.25 }); mallet(E5, t + 0.14, { vol: 0.08, decay: 0.3, bright: 0.2 }); mallet(C5, t + 0.14, { vol: 0.04, decay: 0.4, bright: 0.2 }); }
+    };
+
     const table = Object.assign({}, COMMON,
-      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : game === "hashi" ? HASHI : {});
+      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : game === "hashi" ? HASHI : game === "irobin" ? IROBIN : {});
 
     return {
       get on() { return on; },
