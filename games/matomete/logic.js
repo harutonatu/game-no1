@@ -1,6 +1,6 @@
 /*
  * まとめてポン — ロジック（DOM・時計・Math.random・localStorage に触れない純粋な計算だけ）
- * 契約：docs/matomete-contract.md §1（ルール）・§3（API）
+ * 契約：docs/matomete-contract.md §1（ルール）・§3（API）・§9・§10（7こ以上で まわりも消える・れんぞく。§1 より優先）
  * 担当A（ロジック）だけが編集する。
  *
  * UMD: ブラウザでは window.MatometeLogic、Node では module.exports と globalThis.MatometeLogic。
@@ -21,7 +21,12 @@
   const MODES = Object.freeze({ easy: 3, normal: 4, hard: 5 });
   const ALL_CLEAR_BONUS = 1000;
   const MAX_MOVES_SAVED = 200;
-  const SAVE_V = 1;
+  const SAVE_V = 2;                                // §10 でルールが変わったので 2。v:1 は手を捨てて同じ種の最初から
+  // §10：大きく消すと、まわりも消える
+  const BIG = 7;                                  // この数以上のかたまりで、まわりも消える
+  const STREAK_WIDE = 3;                          // れんぞく（7こ以上が続いた回数）がこの数以上の消し方は、まわりが広い
+  const RADIUS = Object.freeze({ near: 1, wide: 2 });   // まわりの範囲（上下左右に数えたマスの数）
+  const EXTRA_POINT = 1;                          // まわりで消えたマス 1 こあたりの点
   const SAVE_KEY_SAVE = "matomete.save";
   const SAVE_KEY_BEST = "matomete.best";
   const SAVE_KEY_BEST_HARD = "matomete.bestHard";
@@ -111,6 +116,7 @@
       if (made.has(s)) return true;
       if (!isInt(s.colors) || s.colors < 1 || s.colors > COLORS.length) return false;
       if (!isInt(s.score) || s.score < 0 || !isInt(s.moves) || s.moves < 0 || !isInt(s.cleared) || s.cleared < 0) return false;
+      if (s.streak !== undefined && (!isInt(s.streak) || s.streak < 0)) return false;   // 無いときは 0 とみなす（§10 より前の形）
       return okGrid(s.grid, s.colors);
     } catch (e) { return false; }
   }
@@ -118,7 +124,8 @@
   function makeState(base, grid, extra) {
     const st = Object.freeze({
       seed: base.seed, mode: base.mode, colors: base.colors, grid: freezeGrid(grid),
-      score: extra.score, moves: extra.moves, cleared: extra.cleared, over: extra.over, allClear: extra.allClear
+      score: extra.score, moves: extra.moves, cleared: extra.cleared, over: extra.over, allClear: extra.allClear,
+      streak: extra.streak || 0
     });
     made.add(st);
     return st;
@@ -171,6 +178,38 @@
     return out.map((k) => { const cx = (k / ROWS) | 0; return [cx, k - cx * ROWS]; });
   }
 
+  // まわりの範囲 r（§10）：かたまり n こ・消す前の れんぞく streak から。7こ未満は 0
+  function radiusFor(n, streak) {
+    if (!isInt(n) || n < BIG) return 0;
+    const st = isInt(streak) && streak > 0 ? streak : 0;
+    return st + 1 >= STREAK_WIDE ? RADIUS.wide : RADIUS.near;
+  }
+
+  // まわりのマス：かたまり cells のどれかから上下左右に数えて 1〜r マス（マンハッタン距離）にある、かたまりの外の色のあるマス。
+  // 並びは x の小さい順、同じ x は y の小さい順
+  function gridAround(g, cells, r) {
+    if (!(r > 0)) return [];
+    const inG = new Uint8Array(COLS * ROWS);
+    for (const [x, y] of cells) inG[x * ROWS + y] = 1;
+    const hit = new Uint8Array(COLS * ROWS);
+    for (const [x, y] of cells) {
+      for (let dx = -r; dx <= r; dx++) {
+        const nx = x + dx;
+        if (nx < 0 || nx >= COLS) continue;
+        const rest = r - Math.abs(dx);
+        for (let dy = -rest; dy <= rest; dy++) {
+          const ny = y + dy;
+          if (ny < 0 || ny >= ROWS) continue;
+          const k = nx * ROWS + ny;
+          if (!inG[k] && g[nx][ny] !== null) hit[k] = 1;
+        }
+      }
+    }
+    const out = [];
+    for (let k = 0; k < COLS * ROWS; k++) if (hit[k]) { const cx = (k / ROWS) | 0; out.push([cx, k - cx * ROWS]); }
+    return out;
+  }
+
   // ---------------------------------------------------------------- 公開する関数
 
   function newGame(seed, mode) {
@@ -192,7 +231,7 @@
         if (gridHasMoves(g)) break;
       }
       if (!gridHasMoves(g)) g[0][1] = g[0][0];       // 実際には起きないが、念のため決定的に直す
-      return makeState({ seed: s, mode: m, colors }, g, { score: 0, moves: 0, cleared: 0, over: false, allClear: false });
+      return makeState({ seed: s, mode: m, colors }, g, { score: 0, moves: 0, cleared: 0, over: false, allClear: false, streak: 0 });
     } catch (e) { return null; }
   }
 
@@ -230,8 +269,16 @@
       const cells = gridGroup(g0, x, y);
       if (cells.length < 2) return invalid(state, "single");
 
+      // §10：7こ以上なら まわりも同時に消す（れんぞく 3 回目からは広い）
+      const streak0 = isInt(state.streak) && state.streak > 0 ? state.streak : 0;
+      const big = cells.length >= BIG;
+      const radius = radiusFor(cells.length, streak0);
+      const extra = gridAround(g0, cells, radius);
+      const streak = big ? streak0 + 1 : 0;
+
       const g = copyGrid(g0);
       for (const [cx, cy] of cells) g[cx][cy] = null;
+      for (const [cx, cy] of extra) g[cx][cy] = null;
 
       // 列の中で落とす（左詰めの前の座標で記録）
       const falls = [];
@@ -260,17 +307,19 @@
       while (g2.length < COLS) g2.push(new Array(ROWS).fill(null));
 
       const count = cells.length;
-      const points = scoreFor(count);
+      const extraPoints = extra.length * EXTRA_POINT;
+      const points = scoreFor(count) + extraPoints;
       const remaining = gridRemaining(g2);
       const allClear = remaining === 0;
       const bonus = allClear ? ALL_CLEAR_BONUS : 0;
       const over = allClear || !gridHasMoves(g2);
       const ns = makeState(state, g2, {
-        score: state.score + points + bonus, moves: state.moves + 1, cleared: state.cleared + count,
-        over, allClear
+        score: state.score + points + bonus, moves: state.moves + 1, cleared: state.cleared + count + extra.length,
+        over, allClear, streak
       });
       const outcome = Object.freeze({
         kind: "remove", cells: Object.freeze(cells.map((c) => Object.freeze(c))), count, color, points,
+        extra: Object.freeze(extra.map((c) => Object.freeze(c))), radius, streak, extraPoints,
         falls: Object.freeze(falls), shifts: Object.freeze(shifts),
         allClear, bonus, over, remaining
       });
@@ -278,6 +327,26 @@
     } catch (e) {
       return invalid(state, "range");
     }
+  }
+
+  // 選んだときの予告（§10）：押したマスのかたまりを消したら、どこまで消えて何点になるか（盤は変えない）。
+  // → { cells, count, extra, radius, points（合計）, extraPoints, streak（消したあとの値） } か null（消せない）
+  function preview(state, x, y) {
+    try {
+      if (!okState(state) || state.over === true || !inRange(x, y)) return null;
+      const g = state.grid;
+      if (g[x][y] === null) return null;
+      const cells = gridGroup(g, x, y);
+      if (cells.length < 2) return null;
+      const streak0 = isInt(state.streak) && state.streak > 0 ? state.streak : 0;
+      const radius = radiusFor(cells.length, streak0);
+      const extra = gridAround(g, cells, radius);
+      const extraPoints = extra.length * EXTRA_POINT;
+      return {
+        cells, count: cells.length, extra, radius, extraPoints, points: scoreFor(cells.length) + extraPoints,
+        streak: cells.length >= BIG ? streak0 + 1 : 0
+      };
+    } catch (e) { return null; }
   }
 
   function hasMoves(state) {
@@ -324,13 +393,15 @@
       let o;
       try { o = JSON.parse(raw); } catch (e) { return null; }
       if (!o || typeof o !== "object" || Array.isArray(o)) return null;
-      if (o.v !== SAVE_V) return null;
+      if (o.v !== SAVE_V && o.v !== 1) return null;
       if (!isInt(o.seed) || o.seed < -2147483648 || o.seed > 4294967295) return null;
       if (typeof o.mode !== "string" || !Object.prototype.hasOwnProperty.call(MODES, o.mode)) return null;
       if (!Array.isArray(o.moves) || o.moves.length > MAX_MOVES_SAVED) return null;
       for (const m of o.moves) {
         if (!Array.isArray(m) || m.length !== 2 || !isInt(m[0]) || !isInt(m[1])) return null;
       }
+      // 前の版（v:1）の途中保存は、ルールが違うので手を捨てて同じ種の最初から（§10）
+      if (o.v === 1) return { seed: o.seed, mode: o.mode, moves: [] };
       return { seed: o.seed, mode: o.mode, moves: o.moves.map((m) => [m[0], m[1]]) };
     } catch (e) { return null; }
   }
@@ -386,8 +457,8 @@
   const api = Object.freeze({
     NAME, COLS, ROWS, MODES, ALL_CLEAR_BONUS, MAX_MOVES_SAVED,
     SAVE_KEY_SAVE, SAVE_KEY_BEST, SAVE_KEY_BEST_HARD, SAVE_KEY_BEST_EASY, SAVE_KEY_HELP, SAVE_KEY_MODE, SAVE_KEY_LEAST,
-    NEAR_CLEAR, CHEER_LINE, COLORS,
-    makeRng, newGame, groupAt, scoreFor, canRemove, applyRemove, hasMoves, remaining,
+    NEAR_CLEAR, CHEER_LINE, COLORS, BIG, STREAK_WIDE, RADIUS, EXTRA_POINT, SAVE_V,
+    makeRng, newGame, groupAt, scoreFor, canRemove, applyRemove, preview, hasMoves, remaining,
     replay, makeSave, validateSave, validateBest, recordBest, validateFlag, validateMode, validateLeast, recordLeast, isNear, colorName
   });
   root.MatometeLogic = api;

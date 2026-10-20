@@ -10,7 +10,7 @@
  *   const sfx = YubiSfx.create("pikatto");  // ピカッと早押し
  *   const sfx = YubiSfx.create("hashi");    // ハシわたり（grow(ratio)/tip/land/perfect(n)/walk/splash/peek）
  *   const sfx = YubiSfx.create("irobin");   // いろびん（pick/drop/pour(count)/reveal/seal(colorId)/cork/deliver(n)/arrive/clear/deny/undo/stuck/unveil）
- *   const sfx = YubiSfx.create("matomete"); // まとめてポン（select(n)/pop(n)/fall/allclear/over/deny/undo）
+ *   const sfx = YubiSfx.create("matomete"); // まとめてポン（select(n)/pop(n)/fall/allclear/over/deny/undo/blast(r)/streak(n)）
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -429,6 +429,7 @@
     const POP_STEPS = [2, 3, 4, 5, 6, 8, 10, 13, 16, 20];   // この数以上で 1 段上がる（2個＝ド … 20個以上＝2オクターブ目のラ）
     const popStep = (n) => { const k = Math.floor(Number(n)) || 2; let i = 0; while (i < POP_STEPS.length - 1 && k >= POP_STEPS[i + 1]) i++; return i; };
     const popFreq = (i) => C5 * Math.pow(2, (12 * Math.floor(i / 5) + PENTA[i % 5]) / 12);
+    const mtLast = { blast: -1, streak: -1 };   // まとめてポン：blast・streak を同じ瞬間に重ねて鳴らさないための最後の時刻
     const MATOMETE = {
       // 選ぶ「こつ」：軽い木の音。大きなかたまりほど少しだけ高い
       select: (n) => {
@@ -466,7 +467,34 @@
       // 1個だけで消せない：小さく低い「こつ」
       deny: () => wood(210, N(), { vol: 0.07, dur: 0.05, jit: 20 }),
       // 1手もどす：逆回しの短い音
-      undo: () => { const t = N(); noise(t, 0.08, { freq: 700, to: 1800, q: 0.7, vol: 0.035, a: 0.05 }); mallet(A5, t + 0.02, { vol: 0.07, decay: 0.06, bright: 0.3 }); mallet(E5, t + 0.07, { vol: 0.07, decay: 0.09, bright: 0.3 }); }
+      undo: () => { const t = N(); noise(t, 0.08, { freq: 700, to: 1800, q: 0.7, vol: 0.035, a: 0.05 }); mallet(A5, t + 0.02, { vol: 0.07, decay: 0.06, bright: 0.3 }); mallet(E5, t + 0.07, { vol: 0.07, decay: 0.09, bright: 0.3 }); },
+      // 7こ以上で まわりも消える「ドン → ポポポン」：低いふくらみの「ドン」と、まわりが外へ順にはじける小さな泡の音。
+      // r=2（ひろがる）は泡が多く、一段（五音音階で2つ）高い。部品は r=1 で 6 個・r=2 で 8 個（pop と重なっても同時発音の上限に収める）。
+      // 同じ瞬間に続けて呼ばれたら（演出を飛ばして続けて消したときなど）2つ目からは鳴らさない
+      blast: (r) => {
+        const t = N();
+        if (t - mtLast.blast < 0.05) return;
+        mtLast.blast = t;
+        const wide = Number(r) >= 2;
+        partial(110, t, 0.22, { vol: 0.09, from: 220, fromT: 0.06, a: 0.004 });
+        noise(t, 0.16, { type: "lowpass", freq: 900, to: 260, vol: wide ? 0.06 : 0.045, a: 0.004 });
+        const n = wide ? 6 : 4, base = wide ? 2 : 0;
+        for (let i = 0; i < n; i++) {
+          const k = base + i, f = Math.min(1760, C5 * Math.pow(2, (12 * Math.floor(k / 5) + PENTA[k % 5]) / 12));
+          partial(f, t + 0.05 + i * (wide ? 0.034 : 0.045), 0.07, { vol: 0.05, from: f * 0.6, fromT: 0.02, a: 0.002 });
+        }
+      },
+      // れんぞく：n=2 は上がる2音、n>=3（ひろがる！）は3音＋高いきらりで一段上がる。耳に痛くないよう基音は 1400Hz まで
+      streak: (n) => {
+        const t = N() + 0.16;
+        if (t - mtLast.streak < 0.05) return;
+        mtLast.streak = t;
+        const k = Math.max(2, Math.min(6, Math.floor(Number(n)) || 2));
+        const lift = Math.pow(2, Math.min(4, k - 2) * 2 / 12);   // れんぞくが増えるほど全音ずつ上がる（4 段まで）
+        const notes = k >= 3 ? [G5, C6, E6] : [E5, A5];
+        notes.forEach((f, i) => partial(Math.min(1400, f * lift), t + i * 0.07, 0.16, { vol: 0.05, a: 0.004 }));
+        if (k >= 3) partial(Math.min(2100, G6 * lift), t + 0.21, 0.4, { vol: 0.035, a: 0.002 });
+      }
     };
 
     const table = Object.assign({}, COMMON,

@@ -9,6 +9,8 @@
  *   2回目は指がずれやすいので、選んだかたまりのマスから半マス以内なら（ほかのかたまりの上でも）選んだ方を押したことにする
  * - モードは やさしい（3色）・ふつう（4色）・むずかしい（5色）。最後に遊んだモードを matomete.mode に覚える
  * - 演出の順番は render の Promise で進める（タイマーで進めない）。演出中に押したら、演出を終わらせてから判定する
+ * - §10：7こ以上を選ぶと、まわりで消えるマスも光らせて予告し、札に合計（マスの数・点）と「まわりも ポン！」を出す。
+ *   7こ以上が続いた回数（れんぞく）は state.streak。盤の上の #streak に出し、3 回目からは「ひろがる！」
  */
 (() => {
   "use strict";
@@ -42,13 +44,18 @@
   const HINT_SELECTED = "もういちど おすと ポン！";
   const HINT_SINGLE = "2こ いじょう つながると けせるよ";
   const HINT_PORTRAIT = "たてむきの ほうが あそびやすいよ";
+  const BIG = L.BIG || 7;
+  const WIDE_AT = L.STREAK_WIDE || 3;
+  const HINT_BIG_FIRST = `${BIG}こ いじょうだと まわりも けせるよ。もういちど おすと ポン！`;
+  const HINT_BIG = "もういちど おすと まわりも ポン！";
+  const HINT_WIDE = "もういちど おすと ひろがって ポン！";
 
   const now = () => performance.now();
   const $ = (id) => document.getElementById(id);
   const el = {
     title: $("gameTitle"), modeChip: $("modeChip"), helpBtn: $("helpBtn"), soundBtn: $("soundBtn"),
     score: $("score"), best: $("best"), left: $("left"), playView: $("playView"), board: $("board"), canvas: $("boardCanvas"),
-    tag: $("tag"), cellInfo: $("cellInfo"), fx: $("fx"), banner: $("banner"), hint: $("hint"),
+    tag: $("tag"), cellInfo: $("cellInfo"), fx: $("fx"), banner: $("banner"), hint: $("hint"), streak: $("streak"), burst: $("burst"),
     undoBtn: $("undoBtn"), restartBtn: $("restartBtn"), overlay: $("overlay"), card: $("card")
   };
   const missing = Object.keys(el).filter((k) => !el[k]);
@@ -114,15 +121,24 @@
   let portraitTipShown = false;
   let portraitTipAgain = 0;     // 1個のマスを押したときに「たてむき」を出し直した回数
   let portraitTipAt = -Infinity;
+  let bigTipShown = false;      // 「7こ いじょうだと まわりも けせるよ」を出したか（開くたびに1回）
 
   const reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
-  const render = R.create({ board: el.board, canvas: el.canvas, tag: el.tag, fx: el.fx, banner: el.banner }, { calm: !!reduceMotion.matches, sfx });
+  const render = R.create({ board: el.board, canvas: el.canvas, tag: el.tag, fx: el.fx, banner: el.banner, burst: el.burst }, { calm: !!reduceMotion.matches, sfx });
   if (reduceMotion.addEventListener) reduceMotion.addEventListener("change", () => render.setCalm(!!reduceMotion.matches));
   else if (reduceMotion.addListener) reduceMotion.addListener(() => render.setCalm(!!reduceMotion.matches));
 
   function setPhase(p) { phase = p; el.playView.dataset.phase = p; renderTools(); }
   function setHint(text) { const t = text || ""; if (el.hint.textContent !== t) el.hint.textContent = t; }
-  const idleHint = () => (moves.length === 0 ? HINT_FIRST : HINT_IDLE);
+  const streakOf = () => (state && Number.isInteger(state.streak) && state.streak > 0 ? state.streak : 0);
+  // ふだんのヒント。れんぞく中は、あと何回で ひろがるかを出す（上達が目に見える）
+  function idleHint() {
+    if (moves.length === 0) return HINT_FIRST;
+    const st = streakOf();
+    if (st >= WIDE_AT) return `ひろがり ちゅう！ ${BIG}こ いじょうを つづけて けそう`;
+    if (st > 0) return `つづけて ${BIG}こ いじょう けすと ひろがるよ（あと ${WIDE_AT - st}かい）`;
+    return HINT_IDLE;
+  }
 
   // ===== 表示 =====
   const sizeOf = (text) => (text.length <= 5 ? "s" : text.length <= 6 ? "m" : "l");
@@ -139,7 +155,17 @@
     el.score.dataset.overBest = bestShown > 0 && state.score > bestShown ? "1" : "0";
     el.modeChip.textContent = `ベスト（${MODE_NAME[mode] || MODE_NAME.normal}）`;
     el.modeChip.dataset.mode = mode;
+    renderStreak();
     renderTools();
+  }
+  // れんぞくの表示（盤の上）：0 なら出さない、3 回目からは「ひろがる！」
+  function renderStreak() {
+    const st = streakOf();
+    if (st <= 0) { el.streak.hidden = true; el.streak.textContent = ""; delete el.streak.dataset.wide; return; }
+    const t = st >= WIDE_AT ? `ひろがる！ れんぞく ${st}` : `れんぞく ${st}`;
+    if (el.streak.textContent !== t) el.streak.textContent = t;
+    el.streak.dataset.wide = st >= WIDE_AT ? "1" : "0";
+    el.streak.hidden = false;
   }
   function bumpScore() {
     if (render.calm) return;
@@ -150,18 +176,31 @@
   function renderTools() {
     el.undoBtn.disabled = !(history.length > 0) || phase === "over";
   }
-  function tagText(n, p) { return `${n} こ ＋${p} てん`; }
+  // 札：6こ以下は「n こ ＋p てん」。7こ以上は「まわりも！Nこ ＋pてん」（N・p は まわりも入れた合計。広いときは「ひろがる！」）。
+  // SE 縦（マス 18px）でも盤の幅の 8 割に収まるよう、7こ以上の札は空白を詰める
+  function tagText(sel) {
+    if (!sel.extra.length) return `${sel.n} こ ＋${sel.points} てん`;
+    return `${sel.radius >= 2 ? "ひろがる！" : "まわりも！"}${sel.n + sel.extra.length}こ ＋${sel.points}てん`;
+  }
   function draw() {
     const sel = selected ? selected.cells : null;
     if (selected) {
       el.tag.innerHTML = "";
-      const a = document.createElement("span"); a.textContent = `${selected.n} こ `;
-      const b = document.createElement("span"); b.className = "pts"; b.textContent = `＋${selected.points} てん`;
+      if (selected.extra.length) {
+        const k = document.createElement("span"); k.className = "kick"; k.textContent = selected.radius >= 2 ? "ひろがる！" : "まわりも！";
+        el.tag.append(k);
+        el.tag.dataset.blast = String(selected.radius);
+      } else {
+        delete el.tag.dataset.blast;
+      }
+      const ex = selected.extra.length > 0;
+      const a = document.createElement("span"); a.textContent = ex ? `${selected.n + selected.extra.length}こ ` : `${selected.n} こ `;
+      const b = document.createElement("span"); b.className = "pts"; b.textContent = ex ? `＋${selected.points}てん` : `＋${selected.points} てん`;
       el.tag.append(a, b);
       el.tag.dataset.zero = selected.points > 0 ? "0" : "1";
-      el.tag.setAttribute("aria-label", tagText(selected.n, selected.points));
+      el.tag.setAttribute("aria-label", selected.extra.length ? `${selected.n} こと まわり ${selected.extra.length} こで ＋${selected.points} てん` : tagText(selected));
     }
-    render.show(state, { selected: sel, cursor });
+    render.show(state, { selected: sel, extra: selected ? selected.extra : null, cursor });
   }
   function describeCursor() {
     if (!cursor || !state) { el.cellInfo.textContent = ""; return; }
@@ -277,12 +316,16 @@
       return "invalid";
     }
     const n = cells.length;
-    const points = safeCall(() => L.scoreFor(n), 0);
-    selected = { cells: cells.map((c) => [c[0], c[1]]), n, points, x, y };
+    // 消したらどうなるかの予告（まわりのマス・合計の点）。予告が作れないときは かたまりだけ
+    const pv = safeCall(() => (typeof L.preview === "function" ? L.preview(state, x, y) : null), null);
+    const extra = pv && Array.isArray(pv.extra) ? pv.extra.map((c) => [c[0], c[1]]) : [];
+    const points = pv ? pv.points : safeCall(() => L.scoreFor(n), 0);
+    selected = { cells: cells.map((c) => [c[0], c[1]]), n, points, extra, radius: pv ? pv.radius : 0, x, y };
     sfx.play("select", n);
     setPhase("selected");
     draw();
-    setHint(HINT_SELECTED);
+    if (extra.length && !bigTipShown) { bigTipShown = true; setHint(HINT_BIG_FIRST); }
+    else setHint(extra.length ? (selected.radius >= 2 ? HINT_WIDE : HINT_BIG) : HINT_SELECTED);
     return "select";
   }
 
@@ -301,7 +344,13 @@
     bumpScore();
     setPhase("anim");
     const n = o.count;
-    setHint(n >= 20 ? `すごい！ ${n}こ まとめて ＋${o.points}てん！` : n >= 10 ? `やった！ ${n}こで ＋${o.points}てん` : "");
+    const ex = Array.isArray(o.extra) ? o.extra.length : 0;
+    // まわりも消えたときは、あと何回で ひろがるかも出す（れんぞくの目標が見える）
+    const left = WIDE_AT - (o.streak || 0);
+    setHint(o.radius >= 2 ? `ひろがる！ まわり ${ex}こも ポン！ ＋${o.points}てん`
+      : ex && left === 1 ? `れんぞく ${o.streak}！ ＋${o.points}てん。つぎも ${BIG}こ いじょうで ひろがる！`
+      : ex ? `まわりも ポン！ ＋${o.points}てん（あと ${left}かい つづけると ひろがる）`
+      : n >= 20 ? `すごい！ ${n}こ まとめて ＋${o.points}てん！` : n >= 10 ? `やった！ ${n}こで ＋${o.points}てん` : "");
     const p = setPending(() => afterRemove(o));
     render.remove(o, prev, state).then(() => p.run());
     return "remove";
@@ -333,7 +382,7 @@
       return;
     }
     setPhase("idle");
-    if (!o || o.count < 10) setHint(idleHint());
+    if (!o || (o.count < 10 && !(o.extra && o.extra.length))) setHint(idleHint());
     describeCursor();
   }
 
@@ -470,7 +519,7 @@
       <h2 id="cardTitle">あそびかた</h2>
       <ol class="rules">
         <li><b>おなじ いろ</b>が 2こ いじょう つながった ところを おす。<b>1かいめは えらぶ（ひかる）、2かいめで ポン！</b></li>
-        <li><b>たくさん まとめて</b> けすほど てんが ふえる。ぜんぶ けすと <b>＋1000</b>。</li>
+        <li><b>たくさん</b> けすほど てんが ふえる。<b>7こ いじょう けすと まわりも ポン！ 3かい つづけると もっと ひろく</b>。ぜんぶ けすと ＋1000。</li>
         <li>けせる ところが なくなったら おしまい。<b>とちゅうで やめても つづきから あそべるよ。</b></li>
       </ol>
       <p class="note">「1手もどす」は なんかいでも。キー：やじるしで うごかす、エンターで えらぶ・けす、U もどす、M おと</p>
@@ -625,8 +674,9 @@
         seed: state ? state.seed : null, mode, colors: state ? state.colors : 0, grid: state ? cloneGrid(state.grid) : [],
         score: state ? state.score : 0, moves: state ? state.moves : 0, cleared: state ? state.cleared : 0,
         over: !!(state && state.over), allClear: !!(state && state.allClear),
-        remaining: state ? safeCall(() => L.remaining(state), 0) : 0, best,
+        remaining: state ? safeCall(() => L.remaining(state), 0) : 0, best, streak: streakOf(),
         selected: selected ? selected.n : null, selectedCells: selected ? selected.cells.map((c) => c.slice()) : [],
+        extraCells: selected ? selected.extra.map((c) => c.slice()) : [], radius: selected ? selected.radius : 0, animMs: render.lastAnimMs,
         history: moves.map((m) => m.slice()), cursor: cursor ? { x: cursor.x, y: cursor.y } : null,
         phase, overlay: overlayKind, busy: !!render.busy, cell: render.cell, calm: !!render.calm,
         timers: timers.size, runId, frames: render.frames, fxDraws: render.fxDraws, bestShown

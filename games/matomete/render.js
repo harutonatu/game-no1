@@ -5,17 +5,21 @@
  *
  * UMD: window.MatometeRender と module.exports。
  *
- * MatometeRender.create({ board, canvas, tag, fx, banner }, { calm, sfx }) → {
+ * MatometeRender.create({ board, canvas, tag, fx, banner, burst }, { calm, sfx }) → {
  *   layout({ availW, availH }) → cell   盤の大きさを決めて描き直す（マス = min(幅/10, 高さ/20)、整数 px）
- *   show(state, { selected, cursor })     いまの局面を描く（selected：選んでいるかたまり [[x,y]...] か null。cursor：{x,y} か null）
- *   remove(outcome, prevState, nextState) → Promise   ふくらむ→ポン（粒・輪・点数）→ストンと落ちる→すっと左へ寄る
+ *   show(state, { selected, extra, cursor })  いまの局面を描く（selected：選んでいるかたまり [[x,y]...] か null。
+ *                                         extra：消すと まわりも消えるマスの予告 [[x,y]...]（§10）。cursor：{x,y} か null）
+ *   remove(outcome, prevState, nextState) → Promise   ふくらむ→ポン（粒・輪・点数）→ストンと落ちる→すっと左へ寄る。
+ *       outcome.extra があれば（7こ以上・§10）：ポンのあと衝撃の輪が広がり、まわりのマスが内から外へ波のように順に「ポポポン」
+ *       （1 マス 34ms ずつ。r=2 は輪が2重・画面が少し揺れる・「ひろがる！」）。演出全体は 0.9 秒以内
  *   deny(x, y)                            1個だけのマス：軽く揺らす（動きを減らす設定では、ふちを一瞬出すだけ）
  *   celebrate() → Promise                 全部消しのお祝い（大きな文字と紙ふぶき）
  *   cheer() → Promise                     のこりが少なく終わったときの小さなお祝い（少しの紙ふぶき。文字・光なし）
  *   delay(ms) → Promise                   演出の時計で待つ（finishAll ですぐ終わる）
  *   finishAll()                           動いている演出を一瞬で終わらせる。ポンの粒と音がまだなら、ここで出す
  *   hideBanner(), setCalm(b), cellAt(clientX, clientY) → {x,y}|null, cellRect(x, y) → {left,top,width,height}
- *   busy（演出中）, calm, cell（マスの大きさ px）, frames（描いたコマの数）, fxDraws（fx を描き直した回数。テスト用）
+ *   busy（演出中）, calm, cell（マスの大きさ px）, frames（描いたコマの数）, fxDraws（fx を描き直した回数。テスト用）,
+ *   lastAnimMs（最後の消す演出の長さ ms。テスト用）
  * - 演出は requestAnimationFrame の自前の時計で進める（setTimeout は使わない）。何も動いていない間は rAF を回さない。
  * - 選んだふちの明滅は PULSE_MS だけ（そのあとは明るいまま止める）。fx に何も無いときは fx を描かない（消すのも1回だけ）。
  * - 盤の座標は grid[x][y]（x=0 が左、y=0 が下）。画面の上から数える行は ROWS-1-y。
@@ -30,6 +34,13 @@
   const CALM_FADE_MS = 120;       // 動きを減らす設定：消えるまでの時間
   const COL_GLOW_MS = 260;        // 寄った列が光り終わるまで
   const PULSE_MS = 2400;          // 選んだふちが明滅する時間（そのあとは止めて、rAF も止める）
+  // §10 まわりも消える（7こ以上）
+  const WAVE_STEP_MS = 34;        // 波：中心からの距離 1 マスごとの遅れ
+  const WAVE_MAX_MS = 230;        // 波の長さの上限（広いときは間を詰める）
+  const WAVE_LEAD_MS = 40;        // かたまりのポンから、いちばん近いまわりのマスがはじけるまで
+  const EXTRA_POP_MS = 50;        // まわりのマスが はじけきるまで（最後のマスのあと落下を始める）
+  const BLAST_FALL_MAX = 230;     // まわりも消えたときの落下の上限（演出全体を 0.9 秒以内に）
+  const BURST_MS = 900;           // 「れんぞく 2」「ひろがる！」の大きな文字を出しておく時間
 
   // logic.js が無いときの予備（契約 §3 と同じ）
   const FALLBACK_COLORS = [
@@ -104,7 +115,7 @@
   // els = { board, canvas, tag, fx, banner }
   function create(els, opts) {
     const o = opts || {};
-    const board = els.board, canvas = els.canvas, tagEl = els.tag, fx = els.fx, banner = els.banner;
+    const board = els.board, canvas = els.canvas, tagEl = els.tag, fx = els.fx, banner = els.banner, burstEl = els.burst || null;
     const ctx = canvas && canvas.getContext ? canvas.getContext("2d") : null;
     const fctx = fx && fx.getContext ? fx.getContext("2d") : null;
     const sfx = o.sfx || null;
@@ -115,7 +126,7 @@
     let calm = !!o.calm;
     let cell = 20;
     let dpr = 1;
-    let view = { state: null, selected: null, selKeys: null, cursor: null, selSig: "" };
+    let view = { state: null, selected: null, selKeys: null, extra: null, extraKeys: null, cursor: null, selSig: "" };
     let anim = null;              // 消す演出（1つだけ）
     let waits = [];               // delay / celebrate の待ち { until, resolve }
     let parts = [], rings = [], popups = [], flash = null, shake = null, denyFx = null;
@@ -123,7 +134,8 @@
     let colGlow = null;           // 左へ寄った列の光 { cols:Set, t0 }（演出が終わったあと、少しだけ残る）
     let selAt = 0;                // 選んだ時刻（明滅を PULSE_MS で止める）
     let fxClean = true;           // fx がもう空に消してあるか（空のときは何度も消さない）
-    let frames = 0, fxDraws = 0;
+    let frames = 0, fxDraws = 0, lastAnimMs = 0;
+    let burstT = null;            // 「ひろがる！」などの大きな文字を出した時刻
     let raf = 0, lastTs = 0;
     let sprites = {};             // 色ごとのマスの絵（マスの大きさが変わったら作り直す）
 
@@ -240,6 +252,8 @@
       view.state = state || null;
       view.selected = Array.isArray(op.selected) && op.selected.length ? op.selected.map((c) => [c[0], c[1]]) : null;
       view.selKeys = view.selected ? new Set(view.selected.map((c) => key(c[0], c[1]))) : null;
+      view.extra = view.selected && Array.isArray(op.extra) && op.extra.length ? op.extra.map((c) => [c[0], c[1]]) : null;
+      view.extraKeys = view.extra ? new Set(view.extra.map((c) => key(c[0], c[1]))) : null;
       const sig = view.selected ? view.selected.map((c) => key(c[0], c[1])).join(",") : "";
       if (sig !== view.selSig) { view.selSig = sig; selAt = nowMs(); }
       view.cursor = op.cursor && Number.isInteger(op.cursor.x) ? { x: op.cursor.x, y: op.cursor.y } : null;
@@ -279,7 +293,7 @@
       ctx.fillStyle = "rgba(255,255,255,0.025)";
       for (let x = 1; x < cols; x += 2) ctx.fillRect(x * s, 0, s, rows * s);
     }
-    function outline(cells, alpha, color) {
+    function outline(cells, alpha, color, thin) {
       const { rows } = dims();
       const s = cell * dpr;
       const set = new Set(cells.map((c) => key(c[0], c[1])));
@@ -294,7 +308,7 @@
         if (!set.has(key(x, y - 1))) { ctx.moveTo(l, b); ctx.lineTo(r, b); }
       }
       // 下に濃い影の線、上に白い線（どの色の上でも、ふちがはっきり見える）
-      const w = Math.max(2 * dpr, s * 0.12);
+      const w = Math.max(2 * dpr, s * 0.12) * (thin || 1);
       ctx.globalAlpha = Math.min(1, alpha + 0.2) * 0.7;
       ctx.strokeStyle = "#0d111d";
       ctx.lineWidth = w + 2.5 * dpr;
@@ -311,6 +325,8 @@
       const { cols, rows } = dims();
       const sel = view.selKeys;
       let shakeX = 0;
+      // 予告の光：選んだふちと同じ間だけ ゆっくり明滅（動きを減らす設定・明滅のあとは一定）
+      const exGlow = calm || t - selAt >= PULSE_MS ? 0.3 : 0.24 + 0.12 * Math.sin(t / 150);
       for (let x = 0; x < cols; x++) {
         const col = st.grid[x];
         if (!col) continue;
@@ -325,13 +341,17 @@
           }
           if (sel) {
             const on = sel.has(key(x, y));
-            drawCell(v, gx, y, 1, on ? 1 : 0.42, on ? 0.18 : 0);
+            // まわりも消えるマス（予告）は、選んだかたまりより少し暗く、ほかのマスより明るく、白っぽく光る
+            const ex = !on && view.extraKeys && view.extraKeys.has(key(x, y));
+            drawCell(v, gx, y, 1, on ? 1 : ex ? 0.9 : 0.42, on ? 0.18 : ex ? exGlow : 0);
           } else {
             drawCell(v, gx, y, 1, 1, colGlow && colGlow.cols.has(x) ? 0.35 * (1 - clamp01((t - colGlow.t0) / COL_GLOW_MS)) : 0);
           }
         }
       }
       if (view.selected) {
+        // まわりの予告は、だいだいの細いふち（かたまりの白いふちと見分けられる）
+        if (view.extra) outline(view.extra, 0.75, "#ffb347", 0.55);
         // ふち：動きを減らす設定では明るさを変えない（太い白いふちだけで分かる）
         const pulse = calm || t - selAt >= PULSE_MS ? 1 : 0.82 + 0.18 * Math.sin(t / 150);
         outline(view.selected, pulse, "#ffffff");
@@ -355,30 +375,46 @@
       const a = anim;
       const el = t - a.t0;
       if (a.calm) {
-        // 動きを減らす設定：消えるマスは薄くなるだけ。ほかは動かない（すぐ新しい局面になる）
+        // 動きを減らす設定：消えるマス（まわりも）は同時に薄くなって光るだけ。ほかは動かない（すぐ新しい局面になる）
         const k = clamp01(el / CALM_FADE_MS);
         const g = a.prev.grid;
         const { cols, rows } = dims();
         for (let x = 0; x < cols; x++) for (let y = 0; y < rows; y++) {
           const v = g[x] && g[x][y];
           if (v === null || v === undefined) continue;
-          if (a.removed.has(key(x, y))) drawCell(v, x, y, 1, 1 - k, 0.4 * (1 - k));
+          if (a.removed.has(key(x, y))) drawCell(v, x, y, 1, 1 - k, (a.extraKeys.has(key(x, y)) ? 0.7 : 0.4) * (1 - k));
           else drawCell(v, x, y, 1, 1, 0);
         }
         return;
       }
+      // まわりのマス：はじける直前に白く光ってふくらみ、はじけたら消える（粒は fx）
+      const drawExtras = () => {
+        for (const e of a.extraCells) {
+          if (e.popped) continue;
+          const until = e.at - el;   // はじけるまでの ms
+          const k = clamp01(1 - until / 90);
+          drawCell(e.c, e.x, e.y, 1 + 0.16 * k * k, 1, Math.min(0.75, 0.12 + 0.63 * k * k));
+        }
+      };
       if (el < a.popAt) {
-        // ふくらむ（ほかのマスはそのまま）
+        // ふくらむ（ほかのマスはそのまま。まわりのマスは少しずつ明るく）
         const p = easeOut(clamp01(el / a.popAt));
         for (const m of a.movers) drawCell(m.c, m.fx, m.fy, 1, 1, 0);
         for (const [x, y, c] of a.removedCells) drawCell(c, x, y, 1 + 0.2 * p, 1, 0.55 * p);
+        drawExtras();
         return;
       }
-      const fe = a.popAt + a.fallMs;
+      if (el < a.fallAt) {
+        // 波：まわりのマスが内から外へ順にはじける（ほかのマスはまだ動かない）
+        for (const m of a.movers) drawCell(m.c, m.fx, m.fy, 1, 1, 0);
+        drawExtras();
+        return;
+      }
+      const fe = a.fallAt + a.fallMs;
       for (const m of a.movers) {
         let gx = m.fx, gy = m.fy;
         if (el < fe) {
-          const p = easeIn(clamp01((el - a.popAt) / Math.max(1, a.fallMs)));
+          const p = easeIn(clamp01((el - a.fallAt) / Math.max(1, a.fallMs)));
           gy = m.fy + (m.my - m.fy) * p;
         } else {
           gy = m.my;
@@ -501,6 +537,7 @@
         fctx.fillRect(0, 0, fx.width / dpr, fx.height / dpr);
       }
       for (const g of rings) {
+        if (g.age < 0) continue;   // 遅れて出る輪（2重の輪の外側）
         const k = g.age / g.life;
         fctx.globalAlpha = (1 - k) * 0.9;
         fctx.strokeStyle = g.color;
@@ -543,6 +580,7 @@
       if (denyFx && t - denyFx.t0 < 300) return true;
       if (shake && t - shake.t0 < shake.ms) return true;
       if (colGlow && t - colGlow.t0 < COL_GLOW_MS) return true;
+      if (burstT !== null) return true;
       return false;
     }
     function kick() {
@@ -565,6 +603,7 @@
       if (denyFx && t - denyFx.t0 >= 300) denyFx = null;
       if (shake && t - shake.t0 >= shake.ms) shake = null;
       if (colGlow && t - colGlow.t0 >= COL_GLOW_MS) colGlow = null;
+      if (burstT !== null && t - burstT >= BURST_MS) hideBurst();
       drawBoard(t);
       drawFx();
       if (needFrames(t)) raf = root.requestAnimationFrame ? root.requestAnimationFrame(frame) : 0;
@@ -574,19 +613,75 @@
       const a = anim;
       const el = t - a.t0;
       if (!a.popped && el >= (a.calm ? 0 : a.popAt)) doPop(a);
-      if (!a.landed && !a.calm && a.hasFalls && el >= a.popAt + a.fallMs) { a.landed = true; snd("fall"); }
+      if (!a.calm) for (const e of a.extraCells) if (!e.popped && el >= e.at) popExtra(a, e);
+      if (!a.landed && !a.calm && a.hasFalls && el >= a.fallAt + a.fallMs) { a.landed = true; snd("fall"); }
       if (el >= a.end) endAnim();
     }
     function doPop(a) {
       a.popped = true;
       snd("pop", a.removedCells.length);
-      buzz(a.removedCells.length >= 10 ? [18, 40, 24] : 10);
+      if (a.extraCells.length) {
+        snd("blast", a.radius);
+        if (a.streak >= 2) snd("streak", a.streak);
+      }
+      buzz(a.radius >= 2 ? [24, 30, 18, 30, 30] : a.extraCells.length || a.removedCells.length >= 10 ? [18, 40, 24] : 10);
       if (a.calm) spawnCalmPopup(a); else spawnPop(a);
+      if (a.extraCells.length) {
+        if (!a.calm) spawnShock(a);
+        if (a.streak >= 2) showBurst(a.streak);
+      }
+    }
+    // まわりのマスが1つはじける：小さな粒（丸。回さないので軽い）と小さな輪
+    function popExtra(a, e) {
+      e.popped = true;
+      const cr = cellRect(e.x, e.y);
+      const cx = cr.left + cell / 2, cy = cr.top + cell / 2;
+      const hex = colorInfo(e.c).hex;
+      const k = Math.min(a.extraPer, Math.max(0, MAX_PARTS - parts.length));
+      for (let j = 0; j < k; j++) {
+        const ang = Math.atan2(cy - a.cy, cx - a.cx) + (Math.random() - 0.5) * 1.6;   // 中心から外へ向かって飛ぶ
+        const sp = cell * (6 + Math.random() * 5);
+        parts.push({
+          x: cx, y: cy, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - cell * 2.5,
+          g: cell * 24, size: cell * (0.14 + Math.random() * 0.12), rot: 0, vr: 0,
+          color: j === 0 ? "#ffffff" : hex, life: 0.35 + Math.random() * 0.25, age: 0, sq: false
+        });
+      }
+      if (rings.length < 90) rings.push({ x: cx, y: cy, r0: cell * 0.2, r1: cell * 0.7, age: 0, life: 0.22, color: "#ffe2b0", w: Math.max(1.2, cell * 0.07) });
+    }
+    // 衝撃の輪（r=2 は2重）・光・揺れ
+    function spawnShock(a) {
+      const reach = cell * (a.reach + 0.8);
+      rings.push({ x: a.cx, y: a.cy, r0: cell * 0.6, r1: reach, age: 0, life: 0.34, color: "#ffd27a", w: Math.max(2.5, cell * 0.22) });
+      if (a.radius >= 2) {
+        rings.push({ x: a.cx, y: a.cy, r0: cell * 0.3, r1: reach * 1.35, age: -0.07, life: 0.42, color: "#ffffff", w: Math.max(2, cell * 0.16) });
+        flash = { age: 0, life: 0.3, alpha: 0.24 };
+        shake = { t0: nowMs(), ms: 300, amp: 4.5 };
+      } else if (!flash) {
+        flash = { age: 0, life: 0.22, alpha: 0.12 };
+      }
+    }
+    // 「れんぞく 2」「ひろがる！」の大きな文字（DOM。CSS のアニメーションで動かすので canvas の負担にならない）
+    function showBurst(n) {
+      if (!burstEl) return;
+      burstEl.textContent = n >= 3 ? "ひろがる！" : `れんぞく ${n}`;
+      burstEl.dataset.kind = n >= 3 ? "wide" : "streak";
+      burstEl.dataset.calm = calm ? "1" : "0";
+      burstEl.hidden = false;
+      burstEl.classList.remove("go");
+      void burstEl.offsetWidth;   // 出し直すたびにアニメーションを最初から
+      burstEl.classList.add("go");
+      burstT = nowMs();
+    }
+    function hideBurst() {
+      burstT = null;
+      if (burstEl) { burstEl.hidden = true; burstEl.classList.remove("go"); }
     }
     function endAnim() {
       const a = anim;
       if (!a) return;
       if (!a.popped) doPop(a);
+      if (!a.calm) for (const e of a.extraCells) if (!e.popped) popExtra(a, e);
       if (!a.landed && a.hasFalls && !a.calm) { a.landed = true; snd("fall"); }
       anim = null;
       const moved = new Set(a.movers.filter((m) => m.tx !== m.fx).map((m) => m.tx));
@@ -604,8 +699,21 @@
         if (anim) endAnim();
         const { cols, rows } = dims();
         const cells = outcome && Array.isArray(outcome.cells) ? outcome.cells : [];
+        const extra = outcome && Array.isArray(outcome.extra) ? outcome.extra : [];
         const removed = new Set(cells.map((c) => key(c[0], c[1])));
+        const extraKeys = new Set(extra.map((c) => key(c[0], c[1])));
+        extraKeys.forEach((k) => removed.add(k));
         const removedCells = cells.map((c) => [c[0], c[1], prev.grid[c[0]][c[1]]]);
+        // 波の中心：かたまりの重心（マスの単位）。まわりのマスは中心からの距離の順に、内から外へはじける
+        let gcx = 0, gcy = 0;
+        for (const [x, y] of cells) { gcx += x + 0.5; gcy += y + 0.5; }
+        gcx /= Math.max(1, cells.length); gcy /= Math.max(1, cells.length);
+        const extraCells = extra.map((c) => ({ x: c[0], y: c[1], c: prev.grid[c[0]][c[1]], d: Math.hypot(c[0] + 0.5 - gcx, c[1] + 0.5 - gcy), at: 0, popped: false }));
+        let dmin = Infinity, dmax = 0;
+        for (const e of extraCells) { if (e.d < dmin) dmin = e.d; if (e.d > dmax) dmax = e.d; }
+        const span = extraCells.length ? dmax - dmin : 0;
+        const waveMs = Math.min(WAVE_MAX_MS, Math.round(WAVE_STEP_MS * span));
+        for (const e of extraCells) e.at = SWELL_MS + WAVE_LEAD_MS + (span > 0 ? ((e.d - dmin) / span) * waveMs : 0);
         // 残ったマスの行き先：列の中で下へ詰める → 空の列を左へ詰める（logic の falls / shifts と同じ規則）
         const movers = [];
         let maxFall = 0;
@@ -628,15 +736,24 @@
         let ok = true;
         for (const m of movers) { const v = next.grid[m.tx] && next.grid[m.tx][m.my]; if (v !== m.c) { ok = false; break; } }
         const hasShift = movers.some((m) => m.tx !== m.fx);
-        const fallMs = maxFall > 0 ? Math.round(Math.min(260, 120 + 26 * Math.sqrt(maxFall))) : 0;
+        const blast = extraCells.length > 0;
+        const fallMs = maxFall > 0 ? Math.round(Math.min(blast ? BLAST_FALL_MAX : 260, 120 + 26 * Math.sqrt(maxFall))) : 0;
         const shiftMs = hasShift ? SHIFT_MS : 0;
+        const fallAt = blast ? SWELL_MS + WAVE_LEAD_MS + waveMs + EXTRA_POP_MS : SWELL_MS;
+        // 粒の数：まわりのマスが多いほど 1 マスあたりを減らす（粒の上限の中で、最後のマスまで散る）
+        const extraPer = extraCells.length > 30 ? 2 : extraCells.length > 16 ? 3 : 4;
+        const { rows: R } = dims();
+        const cr0 = cellRect(0, R - 1);
         const a = {
           t0: nowMs(), calm, prev, next, removed, removedCells, movers, points: outcome.points || 0,
-          popAt: calm ? 0 : SWELL_MS, fallMs, shiftMs, hasFalls: maxFall > 0,
+          extraCells, extraKeys, extraPer, radius: outcome.radius || 0, streak: outcome.streak || 0,
+          cx: cr0.left + gcx * cell, cy: cr0.top + (R - gcy) * cell, reach: dmax,
+          popAt: calm ? 0 : SWELL_MS, fallAt, fallMs, shiftMs, hasFalls: maxFall > 0,
           popped: false, landed: false, resolve
         };
-        a.end = calm || !ok ? CALM_FADE_MS : SWELL_MS + fallMs + shiftMs;
+        a.end = calm || !ok ? CALM_FADE_MS : fallAt + fallMs + shiftMs;
         if (!ok) a.calm = true;
+        lastAnimMs = a.end;
         anim = a;
         view.selected = null; view.selKeys = null;
         placeTag();
@@ -682,6 +799,7 @@
       if (anim) endAnim();
       if (waits.length) { const w = waits; waits = []; w.forEach((x) => x.resolve()); }
       denyFx = null; shake = null; colGlow = null;
+      hideBurst();
       kick();
     }
 
@@ -698,6 +816,7 @@
       get fxCount() { return parts.length + rings.length + popups.length; },
       get frames() { return frames; },
       get fxDraws() { return fxDraws; },
+      get lastAnimMs() { return lastAnimMs; },
       get celebratedAt() { return celebrateT; }
     };
   }
