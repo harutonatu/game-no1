@@ -12,6 +12,7 @@
  *   const sfx = YubiSfx.create("irobin");   // いろびん（pick/drop/pour(count)/reveal/seal(colorId)/cork/deliver(n)/arrive/clear/deny/undo/stuck/unveil）
  *   const sfx = YubiSfx.create("matomete"); // まとめてポン（select(n)/pop(n)/fall/allclear/over/deny/undo/blast(r)/streak(n)）
  *   const sfx = YubiSfx.create("michibiki"); // ミチビキ空港（warn/pick/lock/land(n)/near/crash/bounce/open(color)/over）
+ *   const sfx = YubiSfx.create("seizai");   // もくもくこうば（chop/saw/sell/buy/hire/cheer/deny/order/deliver(kind)/stage(n)/away）
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -30,6 +31,9 @@
   const GAP = { move: 0.03, rotate: 0.03, hold: 0.05, merge: 0.03, tap: 0.04, undo: 0.06, launch: 0.07, miss: 0.08, tick: 0.045, unwind: 0.045, limit: 0.25, step: 0.08, grow: 0.05, walk: 0.08, pour: 0.05, pick: 0.03, arrive: 0.08, select: 0.03, pop: 0.03 };
   // ミチビキ空港だけの間引き（lock・land は ブロック・ハシわたりにも同じ名前の音があるので、全体の GAP に入れずにこのゲームだけに効かせる）
   const GAP_MICHIBIKI = { warn: 0.2, near: 0.5, bounce: 0.15, land: 0.05, lock: 0.1 };
+  // もくもくこうばだけの間引き。作業音（chop・saw）は「合わせて」0.4 秒に 1 回まで（同じ組 work で最後に鳴った時刻を共有する）、売れた音は 1 秒に 2 回まで
+  const GAP_SEIZAI = { chop: 0.4, saw: 0.4, sell: 0.5, buy: 0.06, deny: 0.2, cheer: 0.15 };
+  const GROUP_SEIZAI = { chop: "work", saw: "work" };
 
   function create(game, opts) {
     opts = opts || {};
@@ -542,9 +546,63 @@
       }
     };
 
+    // もくもくこうば：ずっと聞いても疲れないよう、作業音（chop・saw）はごく小さく短く、高すぎない音にする。
+    // お祝い（hire・stage）だけ少し華やかに。deny はやさしく下がる2音（責めない）
+    const SEIZAI = {
+      // 木が倒れた「こつん…ぼすっ」：低めの木の音と、地面に倒れるやわらかいノイズ
+      chop: () => {
+        const t = N();
+        wood(300, t, { vol: 0.045, dur: 0.05, jit: 30 });
+        noise(t + 0.06, 0.1, { type: "lowpass", freq: 700, to: 300, vol: 0.025, a: 0.01 });
+      },
+      // 台で1つできた「しゅっ・こ」：のこぎりのこすれる音を短く、最後に小さな木の音
+      saw: () => {
+        const t = N();
+        noise(t, 0.07, { freq: 1800, to: 1200, q: 1.6, vol: 0.02, a: 0.01 });
+        wood(560, t + 0.07, { vol: 0.03, dur: 0.035, jit: 30 });
+      },
+      // 売れた「ちゃりん」：小さなベル2つ（高すぎない E6・G6）
+      sell: () => { const t = N(); bell(E6, t, { vol: 0.03, decay: 0.2 }); bell(G6, t + 0.05, { vol: 0.025, decay: 0.28 }); },
+      // 買えた：明るい上がり2音
+      buy: () => { const t = N(); mallet(G5, t, { vol: 0.11, decay: 0.14 }); mallet(C6, t + 0.07, { vol: 0.12, decay: 0.24 }); },
+      // マネージャーを雇った：buy より華やか（3音のかけ上がり＋ベル）
+      hire: () => {
+        const t = N();
+        [C5, E5, G5, C6].forEach((f, i) => mallet(f, t + i * 0.06, { vol: 0.1 + i * 0.01, decay: i === 3 ? 0.35 : 0.15 }));
+        bell(G6, t + 0.24, { vol: 0.04, decay: 0.4 });
+      },
+      // 応援「ぽんぽん」：短い2音
+      cheer: () => { const t = N(); mallet(A5, t, { vol: 0.09, decay: 0.08, bright: 0.4 }); mallet(C6, t + 0.06, { vol: 0.09, decay: 0.1, bright: 0.4 }); },
+      // お金が足りない・使えない：やさしく下がる2音（小さく、低すぎない）
+      deny: () => { const t = N(); mallet(E5, t, { vol: 0.07, decay: 0.1, bright: 0.2 }); mallet(C5, t + 0.08, { vol: 0.065, decay: 0.16, bright: 0.2 }); },
+      // 大口の注文が来た：呼び鈴「ちりりん」
+      order: () => { const t = N(); [0, 0.07, 0.14].forEach((d, i) => bell(i === 1 ? G6 : E6, t + d, { vol: 0.04, decay: 0.3 })); },
+      // 注文を届けた・船が出た：汽笛「ぼーー」（低い2つの音を少し揺らして重ね、最後に小さなお礼の和音）。kind が 'ship' なら長め
+      deliver: (kind) => {
+        const t = N(), long = kind === "ship" ? 1 : 0.6;
+        partial(196, t, 0.9 * long, { vol: 0.07, from: 185, fromT: 0.08, a: 0.06 });
+        partial(246.9, t, 0.9 * long, { vol: 0.045, from: 234, fromT: 0.08, a: 0.06 });
+        partial(392, t, 0.6 * long, { vol: 0.015, a: 0.06 });
+        [C5, E5, G5].forEach((f, i) => mallet(f, t + 0.9 * long + i * 0.07, { vol: 0.08, decay: 0.2 }));
+      },
+      // 節目（広げた・エンディング）：いちばん大きなお祝い（約 1.2 秒）。n（新しい段）で少しだけ高くする
+      stage: (n) => {
+        const t = N(), lift = [1, 1, 1.06, 1.125, 1.19][Math.floor(Number(n))] || 1;
+        [C5, E5, G5, C6].forEach((f, i) => mallet(f * lift, t + i * 0.09, { vol: 0.11, decay: 0.18 }));
+        [C5, E5, G5].forEach((f) => mallet(f * lift, t + 0.4, { vol: 0.07, decay: 0.6, bright: 0.3 }));
+        mallet(C6 * lift, t + 0.4, { vol: 0.12, decay: 0.6 });
+        [C5, G5].forEach((f) => partial(f * lift, t + 0.4, 0.8, { vol: 0.03, a: 0.02 }));
+        bell(Math.min(G6 * lift, 2100), t + 0.5, { vol: 0.045, decay: 0.5 });
+        bell(Math.min(C6 * 2 * lift, 2400), t + 0.65, { vol: 0.04, decay: 0.6 });
+      },
+      // おかえりカード：やわらかい2音（ゆっくり立ち上がる）
+      away: () => { const t = N(); partial(G5, t, 0.5, { vol: 0.05, a: 0.04 }); partial(C6, t + 0.12, 0.6, { vol: 0.05, a: 0.05 }); mallet(E5, t, { vol: 0.06, decay: 0.3, bright: 0.2 }); }
+    };
+
     const table = Object.assign({}, COMMON,
-      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : game === "hashi" ? HASHI : game === "irobin" ? IROBIN : game === "matomete" ? MATOMETE : game === "michibiki" ? MICHIBIKI : {});
-    const gap = game === "michibiki" ? Object.assign({}, GAP, GAP_MICHIBIKI) : GAP;
+      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : game === "hashi" ? HASHI : game === "irobin" ? IROBIN : game === "matomete" ? MATOMETE : game === "michibiki" ? MICHIBIKI : game === "seizai" ? SEIZAI : {});
+    const gap = game === "michibiki" ? Object.assign({}, GAP, GAP_MICHIBIKI) : game === "seizai" ? Object.assign({}, GAP, GAP_SEIZAI) : GAP;
+    const group = game === "seizai" ? GROUP_SEIZAI : {};
 
     return {
       get on() { return on; },
@@ -560,8 +618,9 @@
         if (!on || !ready()) return;
         try {
           const now = ctx.currentTime;
-          if (gap[name] && last[name] != null && now - last[name] < gap[name]) return; // 連打の間引き
-          last[name] = now;
+          const key = group[name] || name;   // 組（もくもくこうばの作業音）は最後に鳴った時刻を共有する
+          if (gap[name] && last[key] != null && now - last[key] < gap[name]) return; // 連打の間引き
+          last[key] = now;
           let off = 0;
           if (STAGGER[name]) {
             const base = now + 0.005;

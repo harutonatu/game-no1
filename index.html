@@ -179,7 +179,8 @@
     { name: "ハシわたり", desc: "ながおしで くきを のばして、つぎの葉へ", url: "games/hashi/", best: "hashi.best", art: "hashi" },
     { name: "いろびん", desc: "いろみずを そろえて、どうぶつに とどけよう", url: "games/irobin/", bestText: () => irobinBest(), art: "irobin" },
     { name: "まとめてポン", desc: "おなじ いろを まとめて ポン！ たくさん けすほど たかいてん", url: "games/matomete/", bestText: () => matometeBest(), art: "matomete" },
-    { name: "ミチビキ空港", desc: "ゆびで みちを かいて、おなじ いろの かっそうろへ", url: "games/michibiki/", bestText: () => michibikiBest(), art: "michibiki" }
+    { name: "ミチビキ空港", desc: "ゆびで みちを かいて、おなじ いろの かっそうろへ", url: "games/michibiki/", bestText: () => michibikiBest(), art: "michibiki" },
+    { name: "もくもくこうば", desc: "もりの きを きって、いたに して うろう。もくもく はたらく みんなを そだてよう", url: "games/seizai/", bestText: () => seizaiBest(), art: "seizai" }
   ];
 
   // ===== 小さな絵（Canvas で描く。画像ファイルは使わない） =====
@@ -570,6 +571,71 @@
       plane(0.13, 0.62, 0.13, 0.5, RED);
       plane(0.87, 0.38, 0.87, 0.5, BLUE);
     },
+    // 横から見た森と作業場：左に木2本と切り株、まん中で木こりさんが斧をふり、右で板を運ぶ人と積まれた板
+    seizai(ctx, w, h) {
+      const u = Math.min(w, h), ox = (w - u) / 2, oy = (h - u) / 2;
+      const P = (x, y) => [ox + x * u, oy + y * u];
+      const GY = 0.8;                                   // 地面の高さ
+      // 地面
+      ctx.fillStyle = "#5b4630";
+      ctx.fillRect(...P(0.04, GY), u * 0.92, u * 0.12);
+      ctx.fillStyle = "#3f8f4e";
+      ctx.fillRect(...P(0.04, GY), u * 0.92, u * 0.03);
+      // 木（幹と、丸を3つ重ねた葉）
+      const tree = (x, s) => {
+        ctx.fillStyle = "#8a5a32";
+        ctx.fillRect(...P(x - 0.025 * s, GY - 0.22 * s), u * 0.05 * s, u * 0.22 * s);
+        ctx.fillStyle = "#2f8a4c";
+        [[0, -0.36, 0.13], [-0.08, -0.27, 0.1], [0.08, -0.27, 0.1]].forEach(([dx, dy, r]) => {
+          ctx.beginPath(); ctx.arc(...P(x + dx * s, GY + dy * s), u * r * s, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.fillStyle = "rgba(255,255,255,0.18)";
+        ctx.beginPath(); ctx.arc(...P(x - 0.04 * s, GY - 0.4 * s), u * 0.04 * s, 0, Math.PI * 2); ctx.fill();
+      };
+      tree(0.2, 1.0);
+      tree(0.37, 0.78);
+      // 切り株（年輪が見える）
+      const [sx, sy] = P(0.27, GY - 0.05);
+      ctx.fillStyle = "#8a5a32"; ctx.fillRect(sx - u * 0.035, sy, u * 0.07, u * 0.05);
+      ctx.fillStyle = "#e3b77a"; ctx.beginPath(); ctx.ellipse(sx, sy, u * 0.035, u * 0.014, 0, 0, Math.PI * 2); ctx.fill();
+      // 小さな人（丸い頭と胴。帽子の色で担当が分かる）
+      const person = (x, hat, lean) => {
+        const [px, py] = P(x, GY);
+        const s = u * 0.05;
+        ctx.fillStyle = "#3a4054";                                   // 足
+        ctx.fillRect(px - s * 0.45, py - s * 0.9, s * 0.35, s * 0.9);
+        ctx.fillRect(px + s * 0.1, py - s * 0.9, s * 0.35, s * 0.9);
+        ctx.fillStyle = hat;                                         // 胴（帽子と同じ色）
+        roundRect(ctx, px - s * 0.6 + lean, py - s * 2.1, s * 1.2, s * 1.3, s * 0.35); ctx.fill();
+        ctx.fillStyle = "#f2c9a0";                                   // 頭
+        ctx.beginPath(); ctx.arc(px + lean * 1.3, py - s * 2.65, s * 0.55, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = hat;                                         // 帽子
+        ctx.beginPath(); ctx.arc(px + lean * 1.3, py - s * 2.8, s * 0.56, Math.PI, 0); ctx.fill();
+        return [px + lean * 1.3, py - s * 2.65, s];
+      };
+      // 木こりさん（斧をふり上げる）
+      const [hx, hy, hs] = person(0.5, "#D55E00", -u * 0.01);
+      ctx.strokeStyle = "#8a5a32"; ctx.lineWidth = Math.max(1.5, u * 0.018); ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(hx + hs * 0.3, hy + hs * 1.1); ctx.lineTo(hx - hs * 1.3, hy - hs * 0.6); ctx.stroke();
+      ctx.fillStyle = "#c8ced8";
+      ctx.beginPath(); ctx.moveTo(hx - hs * 1.3, hy - hs * 0.6); ctx.lineTo(hx - hs * 1.9, hy - hs * 0.2); ctx.lineTo(hx - hs * 1.55, hy - hs * 1.2); ctx.closePath(); ctx.fill();
+      // 積まれた板（右下）
+      const plank = (x, y, len) => {
+        const [bx, by] = P(x, y);
+        ctx.fillStyle = "#e3b77a"; roundRect(ctx, bx, by, len * u, u * 0.04, u * 0.008); ctx.fill();
+        ctx.strokeStyle = "#a9773f"; ctx.lineWidth = Math.max(1, u * 0.008);
+        roundRect(ctx, bx, by, len * u, u * 0.04, u * 0.008); ctx.stroke();
+      };
+      plank(0.72, GY - 0.04, 0.22);
+      plank(0.74, GY - 0.08, 0.2);
+      plank(0.73, GY - 0.12, 0.21);
+      // 板を運ぶ人（頭の上に1まい）
+      const [cx, cy, cs] = person(0.66, "#0072B2", 0);
+      plank(0.58, (cy - cs * 0.8 - oy) / u - 0.04, 0.17);
+      // もくもくの煙（右上。作業場の気配）
+      ctx.fillStyle = "rgba(255,255,255,0.22)";
+      [[0.8, 0.3, 0.05], [0.86, 0.22, 0.065], [0.78, 0.15, 0.045]].forEach(([x, y, r]) => { ctx.beginPath(); ctx.arc(...P(x, y), u * r, 0, Math.PI * 2); ctx.fill(); });
+    },
     // 絵が用意されていないゲーム用：頭文字のタイル
     fallback(ctx, w, h, game) {
       const m = Math.round(w * 0.12);
@@ -658,6 +724,18 @@
       if (raw === null) return "";
       const n = Number(raw);
       return Number.isSafeInteger(n) && n >= 1 ? n.toLocaleString() + " てん" : "";
+    } catch (e) { return ""; }
+  }
+
+  // もくもくこうば：seizai.best（届いた段の最大。1〜4、エンディングで 5）。1〜4 の整数なら段の名前（例「BEST こうじょう」）、5 なら「クリア！」、それ以外は空。
+  // 約束 §10 の例「こうば まで そだった」「みなと クリア！」は iPhone SE 幅（値の欄 120px、かなは 1 字 約 17px）で「…」に欠けるため短くした
+  function seizaiBest() {
+    try {
+      const raw = localStorage.getItem("seizai.best");
+      if (raw === null) return "";
+      const n = Number(raw);
+      if (n === 5) return "クリア！";
+      return Number.isInteger(n) && n >= 1 && n <= 4 ? ["こや", "こうば", "こうじょう", "みなと"][n - 1] : "";
     } catch (e) { return ""; }
   }
 
