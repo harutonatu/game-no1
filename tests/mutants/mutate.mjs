@@ -132,6 +132,16 @@ const M = [
   ['MQ16 まとめてポン：むずかしいのベストも ふつうのキーに書く', 'データ', 'games/matomete/main.js', 'writeKey(KEY_BEST[mode], String(best));', 'writeKey(KEY_BEST.normal, String(best));'],
   ['MQ17 まとめてポン：メニューのベストが壊れた値（負・小数）も表示する', '保存データ互換', 'index.html', 'return Number.isSafeInteger(n) && n >= 1 ? n.toLocaleString() + " てん" : "";', 'return n !== 0 ? n.toLocaleString() + " てん" : "";'],
   ['MQ18 まとめてポン：消える音 pop に消した数を渡さない（いつも同じ高さ）', '効果音', 'games/matomete/render.js', 'snd("pop", a.removedCells.length);', 'snd("pop", 2);'],
+  ['MQ19 まとめてポン：やさしいの色の数が 4（3色にならない）', 'ルール', 'games/matomete/logic.js', 'const MODES = Object.freeze({ easy: 3,', 'const MODES = Object.freeze({ easy: 4,'],
+  ['MQ20 まとめてポン：最後のモードを覚えない（開き直すと ふつう）', '保存データ', 'games/matomete/main.js', 'if (!ok) ok = startGame(newSeed(), safeCall(() => L.validateMode(readKey(KEY_MODE)), "normal"), []);', 'if (!ok) ok = startGame(newSeed(), "normal", []);'],
+  ['MQ21 まとめてポン：いちばん少ない のこりを書かない', '保存データ', 'games/matomete/main.js', 'if (lr.least !== null && lr.least !== undefined) writeKey(KEY_LEAST[mode], String(lr.least));', ''],
+  ['MQ22 まとめてポン：2回目のずれの許容（半マス）がない', '操作', 'games/matomete/main.js', 'if (selected && phase === "selected") {', 'if (false) {'],
+  ['MQ23 まとめてポン：validateLeast が壊れた値（負・小数・200 超）を通す', '保存データ互換', 'games/matomete/logic.js', 'return Number.isSafeInteger(n) && n >= 0 && n <= COLS * ROWS ? n : null;', 'return Number.isFinite(n) ? n : null;'],
+  ['MQ24 まとめてポン：最後の手でベストの数字がポンの前に変わる', '表示', 'games/matomete/main.js', 'setNum(el.best, bestShown);', 'setNum(el.best, best);'],
+  ['MQ25 まとめてポン：選んだふちの明滅が止まらない（rAF が回り続ける）', '性能', 'games/matomete/render.js', 'if (view.selected && !calm && t - selAt < PULSE_MS + 50) return true;', 'if (view.selected && !calm) return true;'],
+  ['MQ26 まとめてポン：「おしい」の線がモード別でない（どれも 10）', 'ルール', 'games/matomete/logic.js', 'const NEAR_CLEAR = Object.freeze({ easy: 5, normal: 10, hard: 15 });', 'const NEAR_CLEAR = Object.freeze({ easy: 10, normal: 10, hard: 10 });'],
+  ['MQ27 まとめてポン：のこり 5 こ以下でも小さなお祝いをしない', '演出', 'games/matomete/main.js', 'if (left <= CHEER_LINE) {', 'if (false) {'],
+  ['MQ28 まとめてポン：fx が空でも毎コマ全画面を消し直す', '性能', 'games/matomete/render.js', 'if (!any && fxClean) return;', ''],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

@@ -5,7 +5,9 @@
  *
  * 読み込み順：../../common/sfx.js → logic.js → render.js → input.js → main.js
  * - ルールは logic.js（MatometeLogic）だけが知っている。ここは押された所を渡し、結果を render に渡すだけ
- * - 2回タップ：1回目でかたまりを選ぶ（札「n こ ＋p てん」）、選んだかたまりの中をもう一度押すと消える
+ * - 2回タップ：1回目でかたまりを選ぶ（札「n こ ＋p てん」）、選んだかたまりの中をもう一度押すと消える。
+ *   2回目は指がずれやすいので、選んだかたまりのマスから半マス以内なら（ほかのかたまりの上でも）選んだ方を押したことにする
+ * - モードは やさしい（3色）・ふつう（4色）・むずかしい（5色）。最後に遊んだモードを matomete.mode に覚える
  * - 演出の順番は render の Promise で進める（タイマーで進めない）。演出中に押したら、演出を終わらせてから判定する
  */
 (() => {
@@ -20,17 +22,24 @@
   const NAME = typeof L.NAME === "string" && L.NAME ? L.NAME : "まとめてポン";
   const COLS = L.COLS || 10, ROWS = L.ROWS || 20;
   const KEY_SAVE = L.SAVE_KEY_SAVE || "matomete.save";
-  const KEY_BEST = { normal: L.SAVE_KEY_BEST || "matomete.best", hard: L.SAVE_KEY_BEST_HARD || "matomete.bestHard" };
+  const KEY_BEST = { easy: L.SAVE_KEY_BEST_EASY || "matomete.bestEasy", normal: L.SAVE_KEY_BEST || "matomete.best", hard: L.SAVE_KEY_BEST_HARD || "matomete.bestHard" };
+  const KEY_LEAST = L.SAVE_KEY_LEAST || { easy: "matomete.leastEasy", normal: "matomete.least", hard: "matomete.leastHard" };
   const KEY_HELP = L.SAVE_KEY_HELP || "matomete.help";
-  const MODE_NAME = { normal: "ふつう", hard: "むずかしい" };
+  const KEY_MODE = L.SAVE_KEY_MODE || "matomete.mode";
+  const MODE_NAME = { easy: "やさしい", normal: "ふつう", hard: "むずかしい" };
+  const MODE_LIST = ["easy", "normal", "hard"];
+  const validMode = (m) => (MODE_LIST.includes(m) ? m : "normal");
+  // 終わりのカード・さいしょからの確認で出す「ほかのモード」（1つめが #modeBtn）
+  const OTHER_MODES = { easy: ["normal", "hard"], normal: ["hard", "easy"], hard: ["normal", "easy"] };
+  const CHEER_LINE = L.CHEER_LINE || 5;   // のこりがこれ以下で終わったら、小さなお祝い
   const CARD_LOCK_MS = 600;     // 終わりのカードを出してから押せない時間（連打の誤タップ防止）
   const BOARD_BLOCK_MS = 300;   // カードを閉じた直後、盤の押下を受けない時間
   const OVER_PAUSE_MS = 450;    // 終わった盤を少し見せてからカードを出す
   const SMALL_CELL = 22;        // これより小さいマスの横画面では「たてむき」をすすめる
 
   const HINT_IDLE = "おなじ いろが つながった ところを おしてね";
-  const HINT_FIRST = "おなじ いろが つながった ところを 2かい おすと ポン！";
-  const HINT_SELECTED = "もう一度 おすと ポン！";
+  const HINT_FIRST = "おなじ いろを 2かい おすと ポン！";
+  const HINT_SELECTED = "もういちど おすと ポン！";
   const HINT_SINGLE = "2こ いじょう つながると けせるよ";
   const HINT_PORTRAIT = "たてむきの ほうが あそびやすいよ";
 
@@ -73,6 +82,7 @@
   function writeKey(key, val) { try { localStorage.setItem(key, val); return true; } catch (e) { return false; } }
   function removeKey(key) { try { localStorage.removeItem(key); } catch (e) { /* 無視 */ } }
   const bestOf = (mode) => safeCall(() => L.validateBest(readKey(KEY_BEST[mode] || KEY_BEST.normal)), 0) || 0;
+  const leastOf = (mode) => safeCall(() => L.validateLeast(readKey(KEY_LEAST[mode] || KEY_LEAST.normal)), null);
 
   // ===== タイマー（later / clearLater / runId） =====
   let runId = 0;
@@ -94,13 +104,16 @@
   let cursor = null;            // キーボードのカーソル { x, y } か null（指で押したら消える）
   let phase = "idle";           // idle | selected | anim | over
   let overlayKind = null;       // null | help | over | confirm
-  let best = 0;
+  let best = 0;                 // 記録したベスト
+  let bestShown = 0;            // 画面のベスト（最後の手では、ポンの演出が終わってから記録に合わせる）
   let lastOver = null;          // { score, improved, remaining, allClear, mode }
   let cardShownAt = -Infinity;
   let blockUntil = -Infinity;
   let pending = null;           // 演出が終わったら続ける処理
   let seq = 0;
   let portraitTipShown = false;
+  let portraitTipAgain = 0;     // 1個のマスを押したときに「たてむき」を出し直した回数
+  let portraitTipAt = -Infinity;
 
   const reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
   const render = R.create({ board: el.board, canvas: el.canvas, tag: el.tag, fx: el.fx, banner: el.banner }, { calm: !!reduceMotion.matches, sfx });
@@ -121,10 +134,10 @@
   function hud() {
     if (!state) return;
     setNum(el.score, state.score);
-    setNum(el.best, best);
+    setNum(el.best, bestShown);
     setNum(el.left, safeCall(() => L.remaining(state), 0));
-    el.score.dataset.overBest = best > 0 && state.score > best ? "1" : "0";
-    el.modeChip.textContent = `ベスト・${MODE_NAME[mode] || MODE_NAME.normal}`;
+    el.score.dataset.overBest = bestShown > 0 && state.score > bestShown ? "1" : "0";
+    el.modeChip.textContent = `ベスト（${MODE_NAME[mode] || MODE_NAME.normal}）`;
     el.modeChip.dataset.mode = mode;
     renderTools();
   }
@@ -176,7 +189,7 @@
   }
   function startGame(seed, md, mv) {
     stopAll();
-    const m = md === "hard" ? "hard" : "normal";
+    const m = validMode(md);
     const base = safeCall(() => L.newGame(seed, m), null);
     if (!base) return false;
     let st = base;
@@ -193,7 +206,9 @@
       }
     }
     mode = m;
+    writeKey(KEY_MODE, mode);
     best = bestOf(mode);
+    bestShown = best;
     state = st; history = hist; moves = ok;
     selected = null;
     lastOver = null;
@@ -258,7 +273,7 @@
       render.deny(x, y);
       sfx.play("deny");
       setPhase("idle");
-      setHint(HINT_SINGLE);
+      setHint(portraitTipDue() ? `${HINT_SINGLE}。${HINT_PORTRAIT}` : HINT_SINGLE);
       return "invalid";
     }
     const n = cells.length;
@@ -293,6 +308,7 @@
   }
 
   function afterRemove(o) {
+    if (o.over || o.allClear || state.over) { bestShown = best; hud(); }   // ベストの数字は、ポンの演出が終わってから
     if (o.allClear) {
       setHint(`ぜんぶ けし！ ＋${o.bonus || L.ALL_CLEAR_BONUS || 1000}てん`);
       setPhase("over");
@@ -302,6 +318,14 @@
     }
     if (o.over || state.over) {
       setPhase("over");
+      const left = safeCall(() => L.remaining(state), 99);
+      if (left <= CHEER_LINE) {
+        // のこりが少ない：小さなお祝い（全部消しより控えめ。点数は足さない）
+        setHint(`あと すこし！ のこり ${left} こで おしまい`);
+        const p = setPending(() => showOverCard());
+        render.cheer().then(() => p.run());
+        return;
+      }
       setHint("もう けせる ところが ないよ。おしまい！");
       sfx.play("over");
       const p = setPending(() => showOverCard());
@@ -319,37 +343,53 @@
     best = r.best;
     writeKey(KEY_BEST[mode], String(best));
     removeKey(KEY_SAVE);
+    const left = safeCall(() => L.remaining(state), 0);
+    // いちばん少ない のこり（壊れた値は記録なしとして扱い、今回の値で書き直す）
+    const lr = safeCall(() => L.recordLeast(leastOf(mode), left), { least: left, improved: false, prev: null });
+    if (lr.least !== null && lr.least !== undefined) writeKey(KEY_LEAST[mode], String(lr.least));
     lastOver = {
       score: state.score, improved: !!r.improved, mode, allClear: !!state.allClear,
-      remaining: safeCall(() => L.remaining(state), 0), bonus: o && o.bonus ? o.bonus : 0
+      remaining: left, bonus: o && o.bonus ? o.bonus : 0,
+      leastPrev: lr.prev, leastImproved: !!lr.improved
     };
   }
 
   function showOverCard() {
-    const c = lastOver || { score: state ? state.score : 0, improved: false, mode, allClear: false, remaining: 0 };
+    const c = lastOver || { score: state ? state.score : 0, improved: false, mode, allClear: false, remaining: 0, leastPrev: null, leastImproved: false };
     render.hideBanner();
-    const other = c.mode === "hard" ? "normal" : "hard";
+    const [other, other2] = OTHER_MODES[c.mode] || OTHER_MODES.normal;
+    const near = !c.allClear && safeCall(() => L.isNear(c.mode, c.remaining), false);
     const leftText = c.allClear ? "ぜんぶ けせたよ！（＋1000）"
-      : c.remaining <= 10 ? `のこり ${c.remaining} こ。おしい！ あと すこしで ぜんぶ けし`
+      : near ? `のこり ${c.remaining} こ。おしい！ あと すこしで ぜんぶ けしだったね！`
       : `のこり ${c.remaining} こ`;
+    const leastText = c.leastPrev === null || c.leastPrev === undefined ? ""
+      : `まえの いちばん すくない のこり ${c.leastPrev} こ → こんかい ${c.remaining} こ`;
     showCard(`
       <h2 id="cardTitle" data-f="h"></h2>
+      ${c.allClear ? "" : '<p class="sub" data-f="r"></p>'}
       <p class="big"><span data-f="s"></span><small>てん</small></p>
       <p class="best-new" data-f="b"></p>
-      <p data-f="l"></p>
-      <div class="btns">
+      <p class="left" data-f="l"></p>
+      ${leastText ? '<p class="least" data-f="q"></p>' : ""}
+      ${c.leastImproved ? '<p class="best-new least-new" data-f="k"></p>' : ""}
+      <div class="btns row4">
         <button class="cta primary" id="againBtn" type="button" data-cmd="again">もういちど</button>
         <button class="cta" id="modeBtn" type="button" data-cmd="mode" data-mode="${other}"></button>
+        <button class="cta" id="modeBtn2" type="button" data-cmd="mode" data-mode="${other2}"></button>
         <button class="cta" id="menuBtn" type="button" data-cmd="menu">メニューへ</button>
       </div>`, {
       h: c.allClear ? "ぜんぶ けし！" : "おしまい！",
+      r: "もう けせる ところが ないよ",
       s: String(c.score),
       b: c.improved ? "あたらしい きろく！" : `ベスト ${best} てん（${MODE_NAME[c.mode]}）`,
-      l: leftText
+      l: leftText,
+      q: leastText,
+      k: "さいこう きろく！"
     }, "over");
-    const mb = $("modeBtn");
+    const mb = $("modeBtn"), mb2 = $("modeBtn2");
     if (mb) mb.textContent = `${MODE_NAME[other]}で あそぶ`;
-    if (!c.improved) { const b = el.card.querySelector(".best-new"); if (b) b.className = "note"; }
+    if (mb2) mb2.textContent = `${MODE_NAME[other2]}で あそぶ`;
+    if (!c.improved) { const b = el.card.querySelector(".best-new:not(.least-new)"); if (b) b.className = "note-best"; }
     cardShownAt = now();
     el.card.querySelectorAll(".btns button").forEach((btn) => btn.setAttribute("aria-disabled", "true"));
     later(() => el.card.querySelectorAll(".btns button[aria-disabled]").forEach((btn) => btn.removeAttribute("aria-disabled")), CARD_LOCK_MS);
@@ -378,23 +418,25 @@
     if (overlayKind || !state) return;
     if (phase === "anim" || render.busy) flush();
     if (overlayKind) return;
-    const other = mode === "hard" ? "normal" : "hard";
+    const [other, other2] = OTHER_MODES[mode] || OTHER_MODES.normal;
     showCard(`
       <h2 id="cardTitle">さいしょから はじめる？</h2>
       <p data-f="m"></p>
       <div class="btns">
         <button class="cta primary" type="button" data-cmd="newBoard">あたらしい ばん</button>
         ${moves.length ? '<button class="cta" type="button" data-cmd="sameBoard">おなじ ばんを はじめから</button>' : ""}
-        <button class="cta" type="button" data-cmd="switchMode" data-f="o"></button>
+        <button class="cta" type="button" data-cmd="switchMode" data-mode="${other}" data-f="o"></button>
+        <button class="cta" type="button" data-cmd="switchMode" data-mode="${other2}" data-f="o2"></button>
         <button class="cta" type="button" data-cmd="close">やめる</button>
       </div>`, {
       m: moves.length ? "いまの ばんは おわりに なるよ（ベストには はいらない）" : "ばんを かえられるよ",
-      o: `${MODE_NAME[other]}に する`
+      o: `${MODE_NAME[other]}に する`,
+      o2: `${MODE_NAME[other2]}に する`
     }, "confirm");
   }
   function restart(md, sameBoard) {
     hideOverlay();
-    const m = md === "hard" || md === "normal" ? md : mode;
+    const m = MODE_LIST.includes(md) ? md : mode;
     if (sameBoard && state) startGame(state.seed, m, []);
     else startGame(newSeed(), m, []);
     sfx.play("start");
@@ -427,11 +469,11 @@
     showCard(`
       <h2 id="cardTitle">あそびかた</h2>
       <ol class="rules">
-        <li><b>おなじ いろ</b>が 2こ いじょう つながった ところを おすと えらべる。<b>もう一度 おすと ポン！</b></li>
+        <li><b>おなじ いろ</b>が 2こ いじょう つながった ところを おす。<b>1かいめは えらぶ（ひかる）、2かいめで ポン！</b></li>
         <li><b>たくさん まとめて</b> けすほど てんが ふえる。ぜんぶ けすと <b>＋1000</b>。</li>
-        <li>けせる ところが なくなったら おしまい。「1手もどす」は なんかいでも。</li>
+        <li>けせる ところが なくなったら おしまい。<b>とちゅうで やめても つづきから あそべるよ。</b></li>
       </ol>
-      <p class="note">キー：やじるしで うごかす、エンターで えらぶ・けす、U もどす、M おと</p>
+      <p class="note">「1手もどす」は なんかいでも。キー：やじるしで うごかす、エンターで えらぶ・けす、U もどす、M おと</p>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");
   }
   function closeCard() {
@@ -456,13 +498,36 @@
     else if (cmd === "close") closeCard();
     else if (cmd === "newBoard") restart(mode);
     else if (cmd === "sameBoard") restart(mode, true);
-    else if (cmd === "switchMode") restart(mode === "hard" ? "normal" : "hard");
+    else if (cmd === "switchMode") restart(btn.dataset.mode);
   });
   el.helpBtn.addEventListener("click", () => { sfx.unlock(); showHelp(); });
   el.undoBtn.addEventListener("click", () => undo());
   el.restartBtn.addEventListener("click", () => askRestart());
 
   // ===== 入力 =====
+  // 押した座標 → マス。選んでいる間は、選んだかたまりのマスから半マス以内なら（ほかのかたまりの真上でも）そのマスにする
+  // （2回目のタップは1回目より少しずれやすい。iPhone SE で 12〜18px ほど）
+  function pickCell(cx, cy) {
+    if (selected && phase === "selected") {
+      const near = nearSelected(cx, cy);
+      if (near) return near;
+    }
+    return render.cellAt(cx, cy);
+  }
+  function nearSelected(cx, cy) {
+    const c = render.cell, tol = c / 2;
+    let hit = null, bestD = Infinity;
+    for (const [x, y] of selected.cells) {
+      const r = render.cellRect(x, y);
+      const dx = Math.max(r.left - cx, 0, cx - (r.left + r.width));
+      const dy = Math.max(r.top - cy, 0, cy - (r.top + r.height));
+      if (dx < tol && dy < tol) {   // 半マスちょうど（となりのマスの真ん中）は含めない
+        const d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; hit = { x, y }; }
+      }
+    }
+    return hit;
+  }
   function moveCursor(d) {
     if (!state || phase === "over") return;
     if (!cursor) cursor = selected ? { x: selected.x, y: selected.y } : { x: 0, y: 0 };
@@ -489,7 +554,7 @@
   }
   const input = I && typeof I.attach === "function"
     ? I.attach({ board: el.board, area: el.playView, root: document }, { onTap, onKey },
-      { isBlocked: () => !!overlayKind, cellAt: (cx, cy) => render.cellAt(cx, cy) })
+      { isBlocked: () => !!overlayKind, cellAt: (cx, cy) => pickCell(cx, cy) })
     : null;
   if (!input) console.error("まとめてポン: MatometeInput が読み込まれていません（input.js）。タップとキーボードが使えません");
 
@@ -499,12 +564,33 @@
 
   // ===== 大きさ =====
   let layoutQueued = false;
+  const landMQ = window.matchMedia ? window.matchMedia("(orientation: landscape) and (max-height: 500px)") : { matches: false };
+  const smallLandscape = () => render.cell < SMALL_CELL && window.innerWidth > window.innerHeight;
+  // 1個のマスを押したとき、横向きでマスが小さければ「たてむき」をもう一度すすめる（20 秒に1回・3回まで）
+  function portraitTipDue() {
+    if (!smallLandscape() || portraitTipAgain >= 3 || now() - portraitTipAt < 20000) return false;
+    portraitTipAgain += 1;
+    portraitTipAt = now();
+    return true;
+  }
+  function availSize() {
+    // 横向きで背が低いとき：盤の列は盤の幅だけ（中央寄せ）。使える幅は「全体 − 左の列 − すき間」で決める（盤の幅に引っぱられない）
+    if (landMQ.matches) {
+      const app = el.playView.parentElement, cs = getComputedStyle(app);
+      const inner = app.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      const left = el.hint.getBoundingClientRect().width;
+      const gap = parseFloat(cs.columnGap) || 0;
+      return { availW: Math.max(0, inner - left - gap), availH: el.playView.clientHeight };
+    }
+    return { availW: el.playView.clientWidth, availH: el.playView.clientHeight };
+  }
   function doLayout() {
     layoutQueued = false;
-    const cell = render.layout({ availW: el.playView.clientWidth, availH: el.playView.clientHeight });
+    const cell = render.layout(availSize());
     // 横向きでマスが小さいときは、1回だけ たてむきを すすめる
     if (!portraitTipShown && cell < SMALL_CELL && window.innerWidth > window.innerHeight) {
       portraitTipShown = true;
+      portraitTipAt = now();
       if (phase === "idle" && !selected) setHint(HINT_PORTRAIT);
     }
     draw();
@@ -543,7 +629,7 @@
         selected: selected ? selected.n : null, selectedCells: selected ? selected.cells.map((c) => c.slice()) : [],
         history: moves.map((m) => m.slice()), cursor: cursor ? { x: cursor.x, y: cursor.y } : null,
         phase, overlay: overlayKind, busy: !!render.busy, cell: render.cell, calm: !!render.calm,
-        timers: timers.size, runId
+        timers: timers.size, runId, frames: render.frames, fxDraws: render.fxDraws, bestShown
       };
     },
     tapCell(x, y) { return onTap(x, y, "key"); },
@@ -560,12 +646,12 @@
       return k === "remove" ? "remove" : "invalid";
     },
     undo() { return undo(); },
-    restart(md) { hideOverlay(); return startGame(newSeed(), md === "hard" || md === "normal" ? md : mode, []); },
+    restart(md) { hideOverlay(); return startGame(newSeed(), MODE_LIST.includes(md) ? md : mode, []); },
     newSeed(seed, md) {
       const s = Number(seed);
       if (!Number.isFinite(s)) return false;
       hideOverlay();
-      return startGame(s, md === "hard" || md === "normal" ? md : mode, []);
+      return startGame(s, MODE_LIST.includes(md) ? md : mode, []);
     },
     cellRect(x, y) { const r = render.cellRect(x, y); return { left: r.left, top: r.top, width: r.width, height: r.height }; },
     isAnimating() { return !!render.busy; },
@@ -577,7 +663,8 @@
     const sv = safeCall(() => L.validateSave(readKey(KEY_SAVE)), null);
     let ok = false;
     if (sv) ok = startGame(sv.seed, sv.mode, sv.moves);
-    if (!ok) ok = startGame(newSeed(), "normal", []);
+    // 保存が無い（回が終わってから開き直した）ときは、最後に遊んだモードで始める（壊れた値は ふつう）
+    if (!ok) ok = startGame(newSeed(), safeCall(() => L.validateMode(readKey(KEY_MODE)), "normal"), []);
     doLayout();
     if (!safeCall(() => L.validateFlag(readKey(KEY_HELP)), false)) showHelp();
   })();

@@ -101,6 +101,7 @@
   .back:active { filter: brightness(1.3); }
   h1.title { margin: 0; min-width: 0; font-size: 16px; line-height: 1.2; letter-spacing: 0.04em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: clip; }
   .stat .mode[data-mode="hard"] { color: #ffb4a0; }
+  .stat .mode[data-mode="easy"] { color: #9fe0c4; }
   .head-tools { display: flex; gap: 6px; }
   .tool {
     box-sizing: border-box;
@@ -176,17 +177,18 @@
   }
   .board:focus-visible { box-shadow: 0 0 0 3px var(--accent), 0 8px 24px rgba(0, 0, 0, 0.35); }
   .board canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 8px; }
-  /* 札「n こ ＋p てん」：選んだかたまりの上（上に余裕が無ければ下）に出る */
+  /* 札「n こ ＋p てん」：選んだかたまりの上（盤の上端で余裕が無ければ下）に、小さく出る（まわりのマスをなるべく隠さない） */
   .tag {
     position: absolute;
     z-index: 5;
     left: 0; top: 0;
     box-sizing: border-box;
-    padding: 4px 10px;
+    padding: 1px 5px;
     border-radius: 999px;
     background: #fff;
     color: #1b1f2e;
-    font: 800 14px/1.25 var(--font-display);
+    font: 800 12px/1.25 var(--font-display);
+    letter-spacing: -0.02em;
     white-space: nowrap;
     pointer-events: none;
     box-shadow: 0 0 0 2px var(--accent), 0 4px 12px rgba(0, 0, 0, 0.45);
@@ -196,14 +198,14 @@
     content: "";
     position: absolute;
     left: var(--arrow, 50%);
-    bottom: -6px;
-    width: 10px; height: 10px;
-    margin-left: -5px;
+    bottom: -4px;
+    width: 8px; height: 8px;
+    margin-left: -4px;
     background: #fff;
     transform: rotate(45deg);
     box-shadow: 2px 2px 0 0 var(--accent);
   }
-  .tag[data-below="1"]::after { bottom: auto; top: -6px; box-shadow: -2px -2px 0 0 var(--accent); }
+  .tag[data-below="1"]::after { bottom: auto; top: -4px; box-shadow: -2px -2px 0 0 var(--accent); }
   .tag .pts { color: #b45f00; }
   .tag[data-zero="1"] .pts { color: #6b7088; }
 
@@ -240,6 +242,7 @@
     text-align: center;
     color: var(--hint);
     font: 14px/1.4 var(--font-text);
+    word-break: keep-all;      /* 行は ことばの間（空白）で折る（「ポ／ン！」のように切らない） */
     overflow-wrap: anywhere;
   }
   .tools { grid-area: tools; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -281,7 +284,9 @@
       gap: 6px 12px;
       padding-top: max(6px, env(safe-area-inset-top, 0px));
       padding-bottom: max(6px, env(safe-area-inset-bottom, 0px));
-      grid-template-columns: minmax(0, 1fr) minmax(0, 36%);
+      /* 左の列は 340px まで、盤の列は盤の幅だけ。2つまとめて真ん中へ（盤が右端に細く寄らない） */
+      grid-template-columns: minmax(0, 340px) auto;
+      justify-content: center;
       grid-template-rows: auto auto minmax(0, 1fr) auto;
       grid-template-areas: "head play" "stats play" "hint play" "tools play";
     }
@@ -323,12 +328,15 @@
     box-shadow: 0 0 0 1px var(--line), 0 20px 50px rgba(0, 0, 0, 0.5);
   }
   .card h2 { margin: 0; font-size: 24px; line-height: 1.3; letter-spacing: 0.04em; overflow-wrap: anywhere; }
-  .card p { margin: 0; color: var(--ink); font: 16px/1.6 var(--font-text); overflow-wrap: anywhere; }
+  .card p { margin: 0; color: var(--ink); font: 16px/1.6 var(--font-text); word-break: keep-all; overflow-wrap: anywhere; }
+  .card p.sub { margin-top: -8px; color: var(--hint); font-size: 15px; }
+  .card p.note-best { color: var(--muted); font-size: 14px; }
+  .card p.least { color: var(--hint); font-size: 14px; line-height: 1.45; }
   .card p.note { color: var(--muted); font-size: 14px; }
   .card p.best-new { color: var(--accent); font-weight: 700; }
   .card p.big { font: 900 40px/1.15 var(--font-display); color: var(--gold); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .card p.big small { font-size: 18px; color: var(--ink); margin-left: 4px; }
-  .card ol.rules { margin: 0; padding-left: 1.4em; text-align: left; font: 16px/1.55 var(--font-text); display: flex; flex-direction: column; gap: 4px; }
+  .card ol.rules { margin: 0; padding-left: 1.4em; text-align: left; font: 16px/1.55 var(--font-text); display: flex; flex-direction: column; gap: 4px; word-break: keep-all; overflow-wrap: anywhere; }
   .card ol.rules b { color: var(--accent); }
   .card .btns { display: flex; flex-direction: column; gap: 10px; }
   /* 閉じるボタンは、カードが長くても画面の下に見えたままにする（スクロールしなくても押せる） */
@@ -341,25 +349,38 @@
     padding: 8px 12px;
     border-radius: 12px;
     border: 1px solid var(--line);
-    background: var(--bg);
-    color: var(--ink);
+    background: #343c5a;
+    color: #ffffff;
+    border-color: #4a5478;
     font: 700 16px/1.3 var(--font-text);
     touch-action: manipulation;
   }
+  /* ボタンが4つ以上（終わりのカード・さいしょからの確認）は 2 列に並べる（カードの中身が帯に隠れないように） */
+  .card .btns:has(> :nth-child(4)) { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .card .btns:has(> :nth-child(4)) button { word-break: keep-all; padding: 6px 8px; }
+  .card .btns:has(> :nth-child(4)) button:first-child:nth-last-child(odd) { grid-column: 1 / -1; }
   .card .btns button:first-child { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
   .card .btns button:active:not(:disabled) { filter: brightness(1.2); }
-  .card button[aria-disabled="true"] { opacity: 0.5; }
+  /* 出た直後の押せない間（0.6 秒）は、どのボタンも同じ見た目（1つだけ暗く見えない） */
+  .card .btns button[aria-disabled="true"], .card .btns button[aria-disabled="true"]:first-child { background: var(--bg); color: var(--muted); border-color: var(--line); }
   @media (orientation: landscape) and (max-height: 500px) {
-    .overlay { padding-top: calc(max(6px, env(safe-area-inset-top, 0px)) + var(--head-h) + 4px); padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)); }
-    .card { width: min(540px, 100%); padding: 12px 16px; gap: 8px; }
+    /* 横向き：カードは「← メニュー」の右に置く（上の帯の高さぶん下げない。背の低い画面でも文が帯に隠れない） */
+    .overlay { padding-top: max(6px, env(safe-area-inset-top, 0px)); padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)); padding-left: calc(max(12px, env(safe-area-inset-left, 0px)) + 118px); }
+    .card { width: min(540px, 100%); padding: 10px 16px; gap: 6px; }
     .card h2 { font-size: 20px; }
     .card ol.rules, .card p { font-size: 15px; line-height: 1.45; }
-    .card p.big { font-size: 30px; }
+    .card ol.rules { font-size: 14px; line-height: 1.4; gap: 2px; }
+    .card p.sub { margin-top: -4px; font-size: 14px; }
+    .card p.least, .card p.note-best { font-size: 13px; }
+    .card p.big { font-size: 28px; }
     .card p.note { display: none; }
     .card .btns { flex-direction: row; }
     .card .btns button { min-height: 44px; padding: 4px 4px; font-size: 14px; white-space: nowrap; }
-    /* ボタンが4つ（さいしょからの確認）のときは 2×2 に並べる */
+    /* ボタンが4つ以上（さいしょからの確認）のときは 2 列に並べる */
     .card .btns:has(> :nth-child(4)) { display: grid; grid-template-columns: 1fr 1fr; }
+    /* 終わりのカード：4つのボタンを1列に（カードの中身が帯に隠れにくい） */
+    .card .btns.row4 { display: flex; flex-direction: row; }
+    .card .btns.row4 button { flex: 1 1 0; min-width: 0; white-space: normal; line-height: 1.2; }
   }
 
   /* 背の低い縦画面：カードを詰めて、遊び方がスクロールなしで収まるように */
@@ -388,7 +409,7 @@
 
   <div class="stats" aria-label="てんすう">
     <div class="stat"><span class="lbl">てん</span><b id="score">0</b></div>
-    <div class="stat"><span class="lbl mode" id="modeChip" data-mode="normal">ベスト・ふつう</span><b id="best">0</b></div>
+    <div class="stat"><span class="lbl mode" id="modeChip" data-mode="normal">ベスト（ふつう）</span><b id="best">0</b></div>
     <div class="stat"><span class="lbl">のこり</span><b id="left">200</b></div>
   </div>
 

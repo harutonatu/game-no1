@@ -181,6 +181,12 @@ async function overlayProbe(page, safe, { noScroll = false } = {}) {
     }
     ov.scrollTop = 0;
     res.hscroll = document.documentElement.scrollWidth > innerWidth;
+    // スクロールしない画面：文（見出し・段落・項目）が画面の中にあり、下のボタンの帯に隠れていない
+    const band = card.querySelector('.btns')?.getBoundingClientRect();
+    res.covered = [...card.querySelectorAll('h2, p, li')].filter((e) => e.getBoundingClientRect().height > 0 && getComputedStyle(e).display !== 'none').filter((e) => {
+      const q = e.getBoundingClientRect();
+      return q.top < t - 0.5 || q.bottom > innerHeight - b + 0.5 || (band && q.bottom > band.top + 0.5);
+    }).map((e) => e.textContent.trim().slice(0, 16));
     return res;
   }, [safe, noScroll]);
 }
@@ -203,8 +209,10 @@ export const tests = [
         s0.grid.length === COLS && s0.grid.every((c) => c.length === ROWS) && count(s0.grid) === 200 && s0.score === 0 && s0.moves === 0 && s0.phase === 'idle' && d0.score === 0 && d0.left === 200 && (await phaseAttr(page)) === 'idle', { s0: { ...s0, grid: '…' }, d0 });
       const groups = groupsOf(s0.grid);
       const big = groups.filter((g) => g.length >= 3).sort((a, b) => b.length - a.length)[0];
-      const two = groups.find((g) => g.length === 2);
-      const single = groups.find((g) => g.length === 1);
+      // 選び直し・1個のマスの確かめは、選んだかたまりから 1 マス以上はなれた所で（となりのマスの近い半分は「2回目」として扱うため）
+      const far = (g) => g.every(([x, y]) => big.every(([a, b]) => Math.abs(a - x) + Math.abs(b - y) >= 2));
+      const two = groups.find((g) => g.length === 2 && far(g));
+      const single = groups.find((g) => g.length === 1 && far(g));
       if (!big || !two || !single) throw new Error('種 1 の盤に 3 個以上・2 個・1 個のかたまりが見つからない');
       // 1回目：選ぶだけ
       const [bx, by] = big[big.length - 1];
@@ -214,7 +222,13 @@ export const tests = [
       check(`1回目（${n} 個のかたまり）：選ぶだけで消えない（盤・点・手が同じ）、phase selected・data-phase selected`, s1.phase === 'selected' && (await phaseAttr(page)) === 'selected' && J(s1.grid) === J(s0.grid) && s1.score === 0 && s1.moves === 0, { phase: s1.phase, score: s1.score });
       check(`選んだかたまりが別実装と同じ（${n} 個）・#board[data-selected="${n}"]`, s1.selected === n && J([...s1.selectedCells].sort((a, b) => a[0] - b[0] || a[1] - b[1])) === J(big) && t1.sel === String(n), { sel: s1.selected, dom: t1.sel });
       check(`札が出て「${n} こ ＋${p} てん」（${t1.text}）、画面の中`, t1.shown && t1.text === `${n} こ ＋${p} てん` && t1.inView, t1);
-      check(`ヒントが 2回目を案内する（${await hintText(page)}）`, /もう一度|もういちど/.test((await hintText(page)) || ''), await hintText(page));
+      const tz = await page.evaluate((cells) => {
+        const t = document.querySelector('#tag').getBoundingClientRect(), c = window.MatometeGame.state().cell;
+        const hit = cells.filter(([x, y]) => { const r = window.MatometeGame.cellRect(x, y); return r.left < t.right - 0.5 && r.left + r.width > t.left + 0.5 && r.top < t.bottom - 0.5 && r.top + r.height > t.top + 0.5; }).length;
+        return { w: Math.round(t.width), h: Math.round(t.height), c, cells: +((t.width * t.height) / (c * c)).toFixed(1), hit };
+      }, big);
+      check(`札は小さい（${tz.w}×${tz.h}px＝マス ${tz.cells} こ分、高さはマス 1 こ分まで）、選んだかたまりのマスに重ならない（${tz.hit}）`, tz.cells <= 5 && tz.h <= tz.c + 1 && tz.hit === 0, tz);
+      check(`ヒントが 2回目を案内する（${await hintText(page)}）、表記は「もういちど」`, /もういちど/.test((await hintText(page)) || '') && !/もう一度/.test((await hintText(page)) || ''), await hintText(page));
       // 別のかたまりで選び直し（2 個 → ＋0 てん）
       await tapReal(page, two[0][0], two[0][1]); await wait(page, 60);
       const s2 = await gs(page), t2 = await tagInfo(page);
@@ -310,7 +324,7 @@ export const tests = [
       // 壊れた保存
       const long = J({ v: 1, seed: 1, mode: 'normal', moves: Array.from({ length: 201 }, () => [0, 0]) });
       const BAD_SAVE = ['{not json', '', 'null', '[]', '"x"', '{"v":2,"seed":1,"mode":"normal","moves":[]}', '{"v":1,"seed":1.5,"mode":"normal","moves":[]}', '{"v":1,"seed":"1","mode":"normal","moves":[]}',
-        '{"v":1,"seed":1,"mode":"easy","moves":[]}', '{"v":1,"seed":1,"mode":"normal","moves":"x"}', '{"v":1,"seed":1,"mode":"normal","moves":[[0]]}', '{"v":1,"seed":1,"mode":"normal","moves":[[0,1.5]]}',
+        '{"v":1,"seed":1,"mode":"Easy","moves":[]}', '{"v":1,"seed":1,"mode":"normal","moves":"x"}', '{"v":1,"seed":1,"mode":"normal","moves":[[0]]}', '{"v":1,"seed":1,"mode":"normal","moves":[[0,1.5]]}',
         '{"v":1,"seed":1,"mode":"normal","moves":[[99,99]]}', '{"v":1,"seed":1,"mode":"normal","moves":[[-1,0]]}', long, '{"v":1,"seed":99999999999,"mode":"normal","moves":[]}'];
       const bad = [];
       for (const raw of BAD_SAVE) {
@@ -363,6 +377,9 @@ export const tests = [
       const r = {};
       const h = await overlayInfo(page);
       check(`初回は遊び方が自動で出る（close がある。${h.cmds.join(',')}）・role=dialog・aria-labelledby`, h.shown && h.cmds.includes('close') && h.role === 'dialog' && !!h.lab, h);
+      const rules = await page.evaluate(() => [...document.querySelectorAll('#card ol.rules li')].map((li) => li.textContent.replace(/\s+/g, ' ').trim()));
+      check(`遊び方は 3 項目以内で、2回タップ（1かいめは えらぶ・2かいめで ポン）と「とちゅうで やめても つづきから あそべるよ」がある、「もう一度」の表記は使わない（${rules.join(' / ')}）`,
+        rules.length >= 1 && rules.length <= 3 && rules.some((t) => /1かいめは えらぶ/.test(t) && /2かいめで ポン/.test(t)) && rules.some((t) => /とちゅうで やめても つづきから あそべるよ/.test(t)) && !rules.some((t) => /もう一度/.test(t)), rules);
       r.help = await reachable(page, 'a#back');
       await page.click('a#back'); await page.waitForURL(BASE, { timeout: 5000 }).catch(() => {});
       r.helpNav = page.url() === BASE;
@@ -449,6 +466,9 @@ export const tests = [
       const last = CLEAR1[CLEAR1.length - 1];
       await tapReal(page, last[0], last[1]); await wait(page, 40);
       await tapReal(page, last[0], last[1]);
+      // 最後の手：記録はすぐ（演出中に閉じても消えない）、画面のベストの数字はポンの演出が終わってから
+      const during = await page.evaluate(() => ({ best: document.querySelector('#best').textContent.trim(), anim: window.MatometeGame.isAnimating() }));
+      const recNow = await stored(page, 'matomete.best');
       let banner = false, bannerText = '', hintAll = '', cardAt = -1;
       for (let i = 0; i < 80; i++) {
         await wait(page, 50);
@@ -460,16 +480,22 @@ export const tests = [
       check(`全部消しでお祝いが出る（#banner「${bannerText}」に ＋1000）、ヒント「${hintAll}」`, banner && /[＋+]1000/.test(bannerText) && /ぜんぶ/.test(hintAll), { banner, bannerText, hintAll });
       const s1 = await gs(page), ov = await overlayInfo(page);
       check(`終わりのカード：「ぜんぶ けし」・${CLEAR1_SCORE} 点・「あたらしい きろく」（${ov.text}）`, cardAt >= 0 && /ぜんぶ けし/.test(ov.text) && ov.text.includes(String(CLEAR1_SCORE)) && /あたらしい きろく/.test(ov.text) && s1.allClear && s1.over && s1.score === CLEAR1_SCORE, { ov, score: s1.score });
+      check(`最後の手の直後（演出中 ${during.anim}）：matomete.best はもう ${recNow}、画面の #best はまだ前の 300（${during.best}）。カードが出たら ${CLEAR1_SCORE}`, during.anim === true && during.best === '300' && recNow === String(CLEAR1_SCORE) && (await domNums(page)).best === CLEAR1_SCORE, { during, recNow });
       check(`カードのボタン（${ov.cmds.join(',')}）に again・mode・menu、#againBtn・#modeBtn・#menuBtn がある`, ['again', 'mode', 'menu'].every((c) => ov.cmds.includes(c)) && await page.evaluate(() => !!(document.querySelector('#againBtn') && document.querySelector('#modeBtn') && document.querySelector('#menuBtn'))), ov.cmds);
       check(`matomete.best が ${CLEAR1_SCORE}（${await stored(page, 'matomete.best')}）、matomete.save は消える（${await stored(page, 'matomete.save')}）、#best も同じ`,
         (await stored(page, 'matomete.best')) === String(CLEAR1_SCORE) && (await stored(page, 'matomete.save')) === null && (await domNums(page)).best === CLEAR1_SCORE, null);
       check('終わったら「1手もどす」は押せない', await page.evaluate(() => document.querySelector('#undoBtn').disabled), null);
-      // 0.6 秒のロック
+      // 0.6 秒のロック：ロック中はどのボタンも同じ見た目、ロック後は 2 番目からの文字も明るい
+      const looks = () => page.evaluate(() => [...document.querySelectorAll('#card .btns button')].map((b) => { const cs = getComputedStyle(b); const rgb = cs.color.match(/\d+/g).map(Number); return { id: b.id, bg: cs.backgroundColor, color: cs.color, op: cs.opacity, lum: (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 }; }));
+      const lk = await looks();
+      check(`ロック中（0.6 秒）の ${lk.length} つのボタンは同じ見た目（背景・文字の色・不透明度）`, lk.length >= 4 && lk.every((b) => b.bg === lk[0].bg && b.color === lk[0].color && b.op === lk[0].op), lk);
       const lock = await page.evaluate(() => document.querySelector('#againBtn').getAttribute('aria-disabled'));
       await page.evaluate(() => document.querySelector('#againBtn').click()); await wait(page, 30);
       const early = await gs(page);
       check(`カードが出た直後の「もういちど」は効かない（aria-disabled ${lock}・まだ終わりのカード）`, early.overlay === 'over' && early.over === true && lock === 'true', { overlay: early.overlay });
       await wait(page, 700);
+      const ul = await looks();
+      check(`ロックが解けると 2 番目からのボタンの文字も明るい（明るさ ${ul.slice(1).map((b) => b.lum.toFixed(2)).join('・')}、不透明度 1）`, ul.slice(1).every((b) => b.lum >= 0.85 && b.op === '1') && ul[0].bg !== ul[1].bg, ul);
       const lock2 = await page.evaluate(() => document.querySelector('#againBtn')?.getAttribute('aria-disabled') ?? null);
       await page.click('#againBtn'); await wait(page, 100);
       const s2 = await gs(page);
@@ -483,7 +509,7 @@ export const tests = [
     },
   },
   {
-    id: 'QW5', tier: 'full', title: 'まとめてポン 終わり：消せるかたまりが無くなると「おしまい」のカード（点・のこり・ベスト）、ふつうは matomete.best・むずかしいは matomete.bestHard に記録（高い方だけ）、「むずかしいで あそぶ」で 5 色に切り替わる',
+    id: 'QW5', tier: 'full', title: 'まとめてポン 終わり：消せるかたまりが無くなると「おしまい」のカード（理由・点・のこり・ベスト）、ふつうは matomete.best・むずかしいは matomete.bestHard に記録（高い方だけ）、のこりの記録（least・leastHard）、「むずかしいで あそぶ」で 5 色・「やさしいで あそぶ」もある、「おしい！」の線はモード別',
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'QW5', { extra: { 'matomete.best': '5', 'matomete.bestHard': '999999' } });
       await fresh(page, 1);
@@ -492,7 +518,10 @@ export const tests = [
       const ov = await overlayInfo(page), d = await domNums(page);
       const stuck = groupsOf(s.grid).every((g) => g.length < 2);
       check(`回の終わり：over・消せるかたまりが無い（別実装）・残り ${s.remaining} が盤のマスの数と同じ、phase over`, s.over && !s.allClear && stuck && s.remaining === count(s.grid) && s.remaining > 0 && (await phaseAttr(page)) === 'over', { over: s.over, remaining: s.remaining });
-      check(`カード「おしまい」に点 ${s.score}・のこり ${s.remaining} こ・あたらしい きろく（${ov.text}）`, /おしまい/.test(ov.text) && ov.text.includes(String(s.score)) && new RegExp(`のこり ${s.remaining} こ`).test(ov.text) && /あたらしい きろく/.test(ov.text), ov.text);
+      check(`カード「おしまい！」の下に理由「もう けせる ところが ないよ」、点 ${s.score}・のこり ${s.remaining} こ・あたらしい きろく、のこり 21 こは「おしい」でない（${ov.text}）`, /おしまい！ もう けせる ところが ないよ/.test(ov.text) && ov.text.includes(String(s.score)) && new RegExp(`のこり ${s.remaining} こ`).test(ov.text) && /あたらしい きろく/.test(ov.text) && !/おしい/.test(ov.text) && !/まえの いちばん/.test(ov.text), ov.text);
+      check(`のこりの記録 matomete.least が ${s.remaining}（${await stored(page, 'matomete.least')}）、はじめてなので「まえの」の行は無い`, (await stored(page, 'matomete.least')) === String(s.remaining), null);
+      const mb = await page.evaluate(() => ['#modeBtn', '#modeBtn2'].map((q) => { const b = document.querySelector(q); return b ? `${b.dataset.mode}:${b.textContent.trim()}` : null; }));
+      check(`ふつうの終わりのカードから むずかしい・やさしい の 2 つを選べる（${mb.join(' / ')}）`, mb[0] === 'hard:むずかしいで あそぶ' && mb[1] === 'easy:やさしいで あそぶ', mb);
       check(`ふつうのベスト matomete.best が ${s.score}（${await stored(page, 'matomete.best')}）・#best ${d.best}、bestHard は 999999 のまま`, (await stored(page, 'matomete.best')) === String(s.score) && d.best === s.score && (await stored(page, 'matomete.bestHard')) === '999999', null);
       const modeLabel = await page.evaluate(() => document.querySelector('#modeBtn')?.textContent.trim());
       await wait(page, 700);
@@ -508,7 +537,17 @@ export const tests = [
       const back = await page.evaluate(() => document.querySelector('#modeBtn')?.textContent.trim());
       await page.click('#modeBtn'); await wait(page, 400);
       const n0 = await gs(page);
-      check(`「${back}」で ふつうに戻る（mode ${n0.mode}・色 ${n0.colors}・ベスト ${n0.best}）`, /ふつう/.test(back || '') && n0.mode === 'normal' && n0.colors === 4 && n0.best === s.score, { mode: n0.mode, best: n0.best });
+      check(`「${back}」で ふつうに戻る（mode ${n0.mode}・色 ${n0.colors}・ベスト ${n0.best}）、むずかしいの のこりは matomete.leastHard（${await stored(page, 'matomete.leastHard')}）`, /ふつう/.test(back || '') && n0.mode === 'normal' && n0.colors === 4 && n0.best === s.score && (await stored(page, 'matomete.leastHard')) === String(hs.remaining), { mode: n0.mode, best: n0.best });
+      // 「おしい！」の線はモード別（やさしい 5・ふつう 10・むずかしい 15 こ以下）。種と手順は「一番大きいかたまりを消し続ける」で決まる
+      const line = [];
+      for (const [sd, md, left, near] of [[5, 'normal', 7, true], [2, 'easy', 8, false], [4, 'hard', 14, true], [1, 'hard', 39, false]]) {
+        await fresh(page, sd, md);
+        const e = await playToOver(page);
+        const t = (await overlayInfo(page)).text;
+        const ok = e.remaining === left && /おしい！ あと すこしで ぜんぶ けしだったね！/.test(t) === near;
+        line.push({ sd, md, left: e.remaining, near, ok });
+      }
+      check(`「おしい！ あと すこしで ぜんぶ けしだったね！」は ふつう 7 こ・むずかしい 14 こで出て、やさしい 8 こ・むずかしい 39 こでは出ない`, line.every((x) => x.ok), line);
       await ctx.close();
     },
   },
@@ -617,6 +656,10 @@ export const tests = [
         const s = await gs(page);
         const r = await layoutProbe(page, SEL, v.safe, { overlapSel: '.head, .stats, #board, #hint, .tools', minSel: BTN });
         check(`${v.label} ${v.w}×${v.h}｜マス ${s.cell}px：${r.n} 要素が画面内・重なりなし・ボタン 44px 以上・横スクロールなし`, r.n >= 8 && r.outside.length === 0 && r.overlaps.length === 0 && r.small.length === 0 && !r.hscroll, r);
+        if (v.w > v.h && v.h <= 500) {
+          const lay = await page.evaluate(() => { const hd = document.querySelector('.head').getBoundingClientRect(), b = document.querySelector('#board').getBoundingClientRect(); return { gap: Math.round(b.left - hd.right), left: Math.round(hd.left), right: Math.round(innerWidth - b.right) }; });
+          check(`${v.label}：盤は左の列のすぐ右（すき間 ${lay.gap}px）で、全体が真ん中寄り（左の余白 ${lay.left}px・右の余白 ${lay.right}px）`, lay.gap >= 0 && lay.gap <= 24 && lay.right <= lay.left + 60, lay);
+        }
         const t = await page.evaluate(() => {
           document.querySelector('#score').textContent = '1234567'; document.querySelector('#score').dataset.size = 'l';
           const small = [...document.querySelectorAll('.head *, .stats *, #hint, .tools button')].filter((e) => e.offsetParent && [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) && parseFloat(getComputedStyle(e).fontSize) < 11.5).map((e) => e.id || e.className || e.tagName);
@@ -632,10 +675,10 @@ export const tests = [
         await ctx.close();
       }
       // カード（遊び方・確認・終わり）が SE 縦・SE 横で切れない。遊び方はスクロールなしで「わかった」まで見える
-      for (const vv of [view('SE', 'p', 'app'), view('SE', 'l', 'app'), view('SE', 'l', 'safari')]) {
+      for (const vv of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari'), view('iPad', 'p', 'app')]) {
         const h = await openG(browser, `QW8 カード ${vv.label}`, { v: vv, help: false });
         const o1 = await overlayProbe(h.page, vv.safe, { noScroll: true });
-        check(`${vv.label}：遊び方カードがスクロールなしで全部見え、ボタンが 44px 以上`, overlayOk(o1), o1);
+        check(`${vv.label} ${vv.w}×${vv.h}：遊び方カードがスクロールなしで全部見え（「わかった」まで）、文が下の帯に隠れない（隠れ：${o1.covered.join(' / ') || 'なし'}）、ボタンが 44px 以上、a#back が押せる`, overlayOk(o1) && o1.covered.length === 0 && await reachable(h.page, 'a#back'), o1);
         await clickCmd(h.page, 'close'); await wait(h.page, 400);
         const g = groupsOf((await gs(h.page)).grid).find((x) => x.length >= 2);
         await playMoves(h.page, [g[0]]);
@@ -893,7 +936,10 @@ export const tests = [
       check(`いまの点数（${(await gs(page)).score}）がベスト 3 を超えると #score[data-over-best="1"]（${ob}）`, (await gs(page)).score > 3 && ob === '1', ob);
       await fresh(page, 2, 'hard');
       const chip = await page.evaluate(() => document.querySelector('#modeChip')?.textContent.trim());
-      check(`むずかしいでは、ベストの見出しが「むずかしい」（${chip}）`, /むずかしい/.test(chip || ''), chip);
+      check(`むずかしいでは、ベストの見出しが「ベスト（むずかしい）」（${chip}）`, chip === 'ベスト（むずかしい）', chip);
+      await fresh(page, 2, 'normal');
+      const chipN = await page.evaluate(() => document.querySelector('#modeChip')?.textContent.trim());
+      check(`ふつうでは「ベスト（ふつう）」（${chipN}）`, chipN === 'ベスト（ふつう）', chipN);
       await ctx.close();
     },
   },
@@ -945,6 +991,116 @@ export const tests = [
       }
       check('メニューのまとめてポンのカードを押すとゲームが開く', await (async () => { await page.click('a.game[href="games/matomete/"]'); await page.waitForURL('**/games/matomete/', { timeout: 5000 }).catch(() => {}); return page.url() === MT; })(), page.url());
       await ctx.close();
+    },
+  },
+  {
+    id: 'QW17', tier: 'smoke', title: 'まとめてポン やさしい・記録：やさしい（3色）で始められ、ベストは matomete.bestEasy、最後のモードを matomete.mode に覚えて開き直しても同じモード（壊れた値は ふつう）、いちばん少ない のこり（matomete.leastEasy。壊れた値は無視）と「まえの … → こんかい …」「さいこう きろく！」、のこり 5 こ以下は小さなお祝い',
+    async run({ browser, check }) {
+      const { ctx, page } = await openG(browser, 'QW17', { v: SMOKE_V(), extra: { 'matomete.best': '50', 'matomete.leastEasy': 'abc' } });
+      await fresh(page, 1, 'easy');
+      const s0 = await gs(page);
+      const chip = await page.evaluate(() => document.querySelector('#modeChip')?.textContent.trim());
+      check(`やさしい：mode easy・色 3・盤は 3 色だけ（${[...new Set(s0.grid.flat())].join(',')}）、見出し「${chip}」、ベストは 0（ふつうの 50 と別）`, s0.mode === 'easy' && s0.colors === 3 && new Set(s0.grid.flat()).size === 3 && s0.grid.flat().every((v) => v >= 0 && v <= 2) && chip === 'ベスト（やさしい）' && s0.best === 0 && (await domNums(page)).best === 0, { mode: s0.mode, colors: s0.colors, chip });
+      check(`回を始めると matomete.mode が easy（${await stored(page, 'matomete.mode')}）、保存の mode も easy`, (await stored(page, 'matomete.mode')) === 'easy' && JSON.parse(await stored(page, 'matomete.save')).mode === 'easy', null);
+      // 種 1・やさしいを「一番大きいかたまりを消し続ける」と、のこり 2 こで終わる（1696 点）
+      const e1 = await playToOver(page);
+      const hint1 = await hintText(page), ov1 = await overlayInfo(page);
+      check(`のこり ${e1.remaining} こで終わると小さなお祝い（ヒント「${hint1}」）、カードに「おしい！ あと すこしで ぜんぶ けしだったね！」`, e1.remaining === 2 && !e1.allClear && /あと すこし/.test(hint1 || '') && /のこり 2 こ。おしい！ あと すこしで ぜんぶ けしだったね！/.test(ov1.text), { left: e1.remaining, hint1, text: ov1.text });
+      check(`ベストは matomete.bestEasy（${await stored(page, 'matomete.bestEasy')}）に、ふつうの matomete.best は 50 のまま`, (await stored(page, 'matomete.bestEasy')) === String(e1.score) && (await stored(page, 'matomete.best')) === '50', null);
+      check(`壊れた matomete.leastEasy（abc）は無視：「まえの」の行は出ず、今回の 2 で書き直す（${await stored(page, 'matomete.leastEasy')}）`, !/まえの/.test(ov1.text) && (await stored(page, 'matomete.leastEasy')) === '2', ov1.text);
+      const mb = await page.evaluate(() => ['#modeBtn', '#modeBtn2'].map((q) => document.querySelector(q)?.dataset.mode));
+      check(`やさしいの終わりのカードから ふつう・むずかしい を選べる（${mb.join(',')}）`, mb[0] === 'normal' && mb[1] === 'hard', mb);
+      // 回が終わってから開き直す：保存は無いが、やさしいのまま
+      await page.reload(); await wait(page, 300);
+      const r1 = await gs(page);
+      check(`回が終わってから開き直しても やさしい（mode ${r1.mode}・色 ${r1.colors}・ベスト ${r1.best}）`, r1.mode === 'easy' && r1.colors === 3 && r1.best === e1.score && r1.moves === 0, { mode: r1.mode });
+      // 同じ のこり → 「まえの … → こんかい …」だけ。少ない → 「さいこう きろく！」
+      await fresh(page, 9, 'easy');
+      const e2 = await playToOver(page), ov2 = await overlayInfo(page);
+      check(`前と同じ のこり ${e2.remaining} こ：「まえの いちばん すくない のこり 2 こ → こんかい 2 こ」、「さいこう きろく」は出ない（${ov2.text}）`, e2.remaining === 2 && /まえの いちばん すくない のこり 2 こ → こんかい 2 こ/.test(ov2.text) && !/さいこう きろく/.test(ov2.text), ov2.text);
+      await fresh(page, 4, 'easy');
+      const e3 = await playToOver(page), ov3 = await overlayInfo(page);
+      check(`前より少ない のこり ${e3.remaining} こ：「まえの いちばん すくない のこり 2 こ → こんかい 1 こ」「さいこう きろく！」、matomete.leastEasy が 1（${await stored(page, 'matomete.leastEasy')}）`, e3.remaining === 1 && /まえの いちばん すくない のこり 2 こ → こんかい 1 こ/.test(ov3.text) && /さいこう きろく！/.test(ov3.text) && (await stored(page, 'matomete.leastEasy')) === '1', ov3.text);
+      check('ふつう・むずかしいの のこりの記録（matomete.least・leastHard）にはさわらない', (await stored(page, 'matomete.least')) === null && (await stored(page, 'matomete.leastHard')) === null, null);
+      // 覚えたモード：壊れた値は ふつう、hard は むずかしい
+      const bad = [];
+      for (const [raw, want] of [['hard', 'hard'], ['normal', 'normal'], ['Easy', 'normal'], ['x', 'normal'], ['__proto__', 'normal'], ['', 'normal'], ['{"m":1}', 'normal']]) {
+        await seed(page, { 'matomete.help': '1', 'matomete.save': null, 'matomete.mode': raw });
+        await page.goto(MT); await wait(page, 250);
+        const st = await gs(page);
+        if (st.mode !== want || st.moves !== 0) bad.push(`${raw}: ${st.mode}`);
+      }
+      check('覚えたモード matomete.mode：hard・normal はそのモード、壊れた値（Easy・x・__proto__・空・JSON）は ふつう', bad.length === 0, bad);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'QW18', tier: 'full', title: 'まとめてポン 2回目のずれ・明滅・横向き：選んだかたまりのマスから半マス以内なら（となりのかたまりの上でも）2回目として消える、それより遠いと選び直し、明滅は数秒で止まり rAF と fx の描き直しも止まる、横向きでマスが小さいと1個のマスを押したときにも「たてむき」を出し直す（出しすぎない）',
+    async run({ browser, check }) {
+      const { ctx, page } = await openG(browser, 'QW18', { v: SMOKE_V() });
+      await fresh(page, 1);
+      const s0 = await gs(page);
+      const groups = groupsOf(s0.grid);
+      const idOf = (x, y) => groups.findIndex((g) => g.some(([a, b]) => a === x && b === y));
+      // 選ぶかたまり G と、その右どなりの別のかたまりのマス N
+      let G = null, edge = null;
+      for (const g of groups.filter((x) => x.length >= 3).sort((a, b) => b.length - a.length)) {
+        const e = g.find(([x, y]) => x + 1 < COLS && s0.grid[x + 1][y] !== null && idOf(x + 1, y) !== idOf(x, y) && groups[idOf(x + 1, y)].length >= 2);
+        if (e) { G = g; edge = e; break; }
+      }
+      if (!G) throw new Error('右どなりに 2 個以上の別のかたまりがある 3 個以上のかたまりが見つからない');
+      const N = groups[idOf(edge[0] + 1, edge[1])];
+      const er = await page.evaluate(([x, y]) => window.MatometeGame.cellRect(x, y), edge);
+      const c = er.width;
+      const at = (k) => [er.left + er.width + k * c, er.top + er.height / 2];   // 選んだマスの右ふちから k マス右
+      await tapReal(page, edge[0], edge[1]); await wait(page, 60);
+      await page.mouse.click(...at(0.4)); await wait(page, 1500);
+      const s1 = await gs(page);
+      check(`選んで（${G.length} 個）から、右どなりのかたまりのマスの上でも 選んだマスから 0.4 マス（${(0.4 * c).toFixed(1)}px）なら 2回目として消える`, s1.moves === 1 && J(s1.grid) === J(simulate(s0.grid, G)), { moves: s1.moves, selected: s1.selected });
+      await fresh(page, 1);
+      await tapReal(page, edge[0], edge[1]); await wait(page, 60);
+      await page.mouse.click(...at(0.75)); await wait(page, 100);
+      const s2 = await gs(page);
+      check(`0.75 マス離れると選び直し（となりのかたまり ${N.length} 個を選ぶ・消えない）`, s2.moves === 0 && s2.selected === N.length, { moves: s2.moves, selected: s2.selected });
+      // 盤の上の段の外側（盤のふちの外）でも、半マス以内なら 2回目
+      const top = G.slice().sort((a, b) => b[1] - a[1])[0];
+      await fresh(page, 1);
+      await tapReal(page, top[0], top[1]); await wait(page, 60);
+      const tr = await page.evaluate(([x, y]) => window.MatometeGame.cellRect(x, y), top);
+      await page.mouse.click(tr.left + tr.width / 2, tr.top - 0.35 * c); await wait(page, 1500);
+      const s3 = await gs(page);
+      check(`選んだかたまりのいちばん上のマス（${top}）の 0.35 マス上を押しても 2回目として消える`, s3.moves === 1 && J(s3.grid) === J(simulate(s0.grid, G)), { moves: s3.moves, sel: s3.selected });
+      // 明滅は数秒で止まる：rAF のコマが増えない・fx を描き直さない
+      await fresh(page, 1); await wait(page, 1500);
+      const f0 = await gs(page);
+      await tapReal(page, edge[0], edge[1]); await wait(page, 500);
+      const f1 = await gs(page);
+      await wait(page, 3000);
+      const f2 = await gs(page);
+      await wait(page, 1500);
+      const f3 = await gs(page);
+      check(`選んだ直後は明滅で描き続け（0.5 秒で ${f1.frames - f0.frames} コマ）、3.5 秒後には止まる（その後 1.5 秒で ${f3.frames - f2.frames} コマ）。選んでいる間 fx は描き直さない（${f3.fxDraws - f0.fxDraws} 回）`, f1.frames - f0.frames >= 10 && f3.frames - f2.frames === 0 && f3.fxDraws === f0.fxDraws && f3.selected === G.length, { f0: f0.frames, f1: f1.frames, f2: f2.frames, f3: f3.frames, fx: [f0.fxDraws, f3.fxDraws] });
+      await page.mouse.click(...at(0.2)); await wait(page, 100);
+      await wait(page, 2000);
+      const f4 = await gs(page);
+      await wait(page, 1000);
+      const f5 = await gs(page);
+      check(`消したあと粒が消えたら fx の描き直しも止まる（1 秒で ${f5.fxDraws - f4.fxDraws} 回）、rAF も止まる（${f5.frames - f4.frames} コマ）`, f4.moves === 1 && f5.fxDraws === f4.fxDraws && f5.frames === f4.frames, { f4: [f4.frames, f4.fxDraws], f5: [f5.frames, f5.fxDraws] });
+      await ctx.close();
+      // 横向き（SE 568×320）：はじめに「たてむき」。1個のマスを押すと、20 秒あけて出し直す（すぐ続けては出さない）
+      const L2 = await openG(browser, 'QW18 横', { v: view('SE', 'l', 'app') });
+      const p2 = L2.page;
+      await fresh(p2, 1);
+      const g2 = await gs(p2);
+      const singles = groupsOf(g2.grid).filter((g) => g.length === 1);
+      const h0 = await hintText(p2);
+      await wait(p2, 21000);
+      await tapReal(p2, singles[0][0][0], singles[0][0][1]); await wait(p2, 400);
+      const h1 = await hintText(p2);
+      await tapReal(p2, singles[1][0][0], singles[1][0][1]); await wait(p2, 400);
+      const h2 = await hintText(p2);
+      check(`横向き（マス ${g2.cell}px）：1個のマスを押すと「${h1}」（たてむきを出し直す）、すぐ続けて押すと「${h2}」（出し直さない）`, g2.cell < 22 && /2こ いじょう/.test(h1 || '') && /たてむき/.test(h1 || '') && /2こ いじょう/.test(h2 || '') && !/たてむき/.test(h2 || ''), { h0, h1, h2, cell: g2.cell });
+      await L2.ctx.close();
     },
   },
 ];

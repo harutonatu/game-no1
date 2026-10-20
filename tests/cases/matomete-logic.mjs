@@ -58,20 +58,21 @@ function rng32(seed) {
 
 export const tests = [
   {
-    id: 'QL1', tier: 'smoke', node: true, title: 'まとめてポン：定数・COLORS（5色・色と記号がすべて違う）・colorName・newGame の形（10×20・全部埋まる・色の数）',
+    id: 'QL1', tier: 'smoke', node: true, title: 'まとめてポン：定数・COLORS（5色・色と記号がすべて違う）・colorName・newGame の形（10×20・全部埋まる・色の数。やさしい 3・ふつう 4・むずかしい 5）',
     run({ check, root }) {
       const L = load(root);
-      const K = { NAME: 'まとめてポン', COLS: 10, ROWS: 20, ALL_CLEAR_BONUS: 1000, MAX_MOVES_SAVED: 200, SAVE_KEY_SAVE: 'matomete.save', SAVE_KEY_BEST: 'matomete.best', SAVE_KEY_BEST_HARD: 'matomete.bestHard', SAVE_KEY_HELP: 'matomete.help' };
+      const K = { NAME: 'まとめてポン', COLS: 10, ROWS: 20, ALL_CLEAR_BONUS: 1000, MAX_MOVES_SAVED: 200, SAVE_KEY_SAVE: 'matomete.save', SAVE_KEY_BEST: 'matomete.best', SAVE_KEY_BEST_HARD: 'matomete.bestHard', SAVE_KEY_BEST_EASY: 'matomete.bestEasy', SAVE_KEY_HELP: 'matomete.help', SAVE_KEY_MODE: 'matomete.mode', CHEER_LINE: 5 };
       const kBad = Object.entries(K).filter(([k, v]) => L[k] !== v).map(([k, v]) => ({ k, want: v, got: L[k] }));
       check('定数が契約 §3 のとおり', kBad.length === 0, kBad);
-      check('MODES は { normal: 4, hard: 5 }', J(L.MODES) === J({ normal: 4, hard: 5 }), L.MODES);
+      check('MODES は { easy: 3, normal: 4, hard: 5 }', J(L.MODES) === J({ easy: 3, normal: 4, hard: 5 }), L.MODES);
+      check('SAVE_KEY_LEAST はモードごと（leastEasy・least・leastHard）、NEAR_CLEAR は やさしい 5・ふつう 10・むずかしい 15', J(L.SAVE_KEY_LEAST) === J({ easy: 'matomete.leastEasy', normal: 'matomete.least', hard: 'matomete.leastHard' }) && J(L.NEAR_CLEAR) === J({ easy: 5, normal: 10, hard: 15 }) && Object.isFrozen(L.SAVE_KEY_LEAST) && Object.isFrozen(L.NEAR_CLEAR), { least: L.SAVE_KEY_LEAST, near: L.NEAR_CLEAR });
       const CO = L.COLORS;
       check('COLORS は 5 色で id が 0〜4、orange・sky・green・yellow・pink の順', Array.isArray(CO) && CO.length === 5 && CO.every((c, i) => c.id === i) && J(CO.map((c) => c.key)) === J(['orange', 'sky', 'green', 'yellow', 'pink']), CO);
       const uniq = (key) => new Set(CO.map((c) => c[key])).size === CO.length;
       check('key・name・hex・mark がすべて違う（色だけに頼らない＝記号も違う）', uniq('key') && uniq('name') && uniq('hex') && uniq('mark') && CO.every((c) => /^#[0-9A-Fa-f]{6}$/.test(c.hex) && c.mark && c.name), CO);
       check('COLORS・MODES・API が凍結されている', Object.isFrozen(CO) && Object.isFrozen(L.MODES) && Object.isFrozen(L), null);
       check('colorName：範囲外・整数でないは「？」、0 は COLORS[0].name', L.colorName(-1) === '？' && L.colorName(5) === '？' && L.colorName(NaN) === '？' && L.colorName('0') === '？' && L.colorName(0) === CO[0].name && L.colorName(4) === CO[4].name, [L.colorName(-1), L.colorName(0)]);
-      for (const [mode, n] of [['normal', 4], ['hard', 5]]) {
+      for (const [mode, n] of [['easy', 3], ['normal', 4], ['hard', 5]]) {
         const s = L.newGame(12345, mode);
         const shapeOk = s && Array.isArray(s.grid) && s.grid.length === 10 && s.grid.every((c) => Array.isArray(c) && c.length === 20);
         const vals = shapeOk ? s.grid.flat() : [];
@@ -230,9 +231,10 @@ export const tests = [
       const badSeeds = [NaN, Infinity, '1', null, undefined, {}, []];
       const sBad = badSeeds.filter((v) => { try { return L.newGame(v) !== null; } catch { return true; } });
       check('数でない・有限でない種は null（例外なし）', sBad.length === 0, sBad.map(String));
-      const badModes = ['easy', '', null, 4, 'Normal', 'toString', '__proto__'];
+      check('同じ種でも easy と normal は違う盤、easy は 3 色', J(L.newGame(5, 'easy').grid) !== J(L.newGame(5, 'normal').grid) && L.newGame(5, 'easy').colors === 3, null);
+      const badModes = ['Easy', 'EASY', '', null, 4, 'Normal', 'toString', '__proto__'];
       const mBad = badModes.filter((v) => { try { return L.newGame(1, v) !== null; } catch { return true; } });
-      check('normal・hard 以外の mode は null（例外なし）', mBad.length === 0, mBad.map(String));
+      check('easy・normal・hard 以外の mode は null（例外なし）', mBad.length === 0, mBad.map(String));
     },
   },
   {
@@ -264,15 +266,15 @@ export const tests = [
         undefined, null, 1, '', 'abc', '{', '[]', 'null', '"x"', '123',
         J({ ...okSave, v: 2 }), J({ ...okSave, v: '1' }), J({ seed: 5, mode: 'normal', moves: [] }),
         J({ ...okSave, seed: 1.5 }), J({ ...okSave, seed: '5' }), J({ ...okSave, seed: 4294967296 }), J({ ...okSave, seed: -2147483649 }), J({ ...okSave, seed: null }),
-        J({ ...okSave, mode: 'easy' }), J({ ...okSave, mode: null }), J({ ...okSave, mode: 'toString' }), J({ ...okSave, mode: '__proto__' }),
+        J({ ...okSave, mode: 'Easy' }), J({ ...okSave, mode: 'veryhard' }), J({ ...okSave, mode: null }), J({ ...okSave, mode: 'toString' }), J({ ...okSave, mode: '__proto__' }),
         J({ ...okSave, moves: {} }), J({ ...okSave, moves: 'x' }), J({ ...okSave, moves: null }),
         J({ ...okSave, moves: Array(201).fill([0, 0]) }), J({ ...okSave, moves: [[0]] }), J({ ...okSave, moves: [[0, 0, 0]] }), J({ ...okSave, moves: [[0, 1.5]] }), J({ ...okSave, moves: [['0', 0]] }), J({ ...okSave, moves: [null] }), J({ ...okSave, moves: [{ 0: 0, 1: 0, length: 2 }] }),
       ];
       const vBad = broken.filter((v) => { try { return L.validateSave(v) !== null; } catch { return true; } });
       check(`validateSave：壊れた値 ${broken.length} 通りはすべて null（例外なし）`, vBad.length === 0, vBad);
-      const good = [J(okSave), J({ ...okSave, moves: [] }), J({ ...okSave, moves: Array(200).fill([0, 0]) }), J({ ...okSave, seed: 4294967295 }), J({ ...okSave, seed: -2147483648 }), J({ ...okSave, mode: 'hard', extra: 1 })];
+      const good = [J(okSave), J({ ...okSave, moves: [] }), J({ ...okSave, moves: Array(200).fill([0, 0]) }), J({ ...okSave, seed: 4294967295 }), J({ ...okSave, seed: -2147483648 }), J({ ...okSave, mode: 'hard', extra: 1 }), J({ ...okSave, mode: 'easy' })];
       const gBad = good.filter((v) => L.validateSave(v) === null);
-      check('validateSave：正しい値（手 0 個・200 個・seed の両端・余計な項目つき）は受け付ける', gBad.length === 0, gBad);
+      check('validateSave：正しい値（手 0 個・200 個・seed の両端・余計な項目つき・やさしい）は受け付ける', gBad.length === 0, gBad);
       // validateBest / recordBest / validateFlag
       const B = [['12', 12], [34, 34], ['0', 0], [0, 0], ['-1', 0], [-5, 0], ['1.5', 0], ['abc', 0], [null, 0], [undefined, 0], [NaN, 0], ['9007199254740993', 0], [{}, 0], [[], 0], ['', 0], [Infinity, 0]];
       const bBad = B.filter(([v, w]) => { try { return L.validateBest(v) !== w; } catch { return true; } }).map(([v]) => String(v));
@@ -328,7 +330,7 @@ export const tests = [
       let games = 0, movesTotal = 0, allClears = 0, invalidTried = 0;
       const rnd = rng32(0xC0FFEE);
       for (let gi = 0; gi < 1000; gi++) {
-        const mode = gi % 3 === 0 ? 'hard' : 'normal';
+        const mode = ['normal', 'hard', 'easy'][gi % 3];
         const seed = Math.floor(rnd() * 4294967296);
         let s = L.newGame(seed, mode);
         const mv = []; let sum = 0;
@@ -388,6 +390,31 @@ export const tests = [
         if (bad.length > 10) break;
       }
       check(`1000 回の乱数プレイ（${games} 回・合計 ${movesTotal} 手・全部消し ${allClears} 回・消せない手 ${invalidTried} 回）で不変条件がすべて成り立つ`, bad.length === 0 && games === 1000, bad.slice(0, 10));
+    },
+  },
+  {
+    id: 'QL10', tier: 'smoke', node: true, title: 'まとめてポン：モードの記憶 validateMode・いちばん少ない のこり validateLeast／recordLeast（壊れた値は記録なし）・「おしい」の線 isNear（やさしい 5・ふつう 10・むずかしい 15）',
+    run({ check, root }) {
+      const L = load(root);
+      const okModes = ['easy', 'normal', 'hard'].filter((m) => L.validateMode(m) === m);
+      const badModes = [null, undefined, '', 'Easy', 'HARD', 'toString', '__proto__', 'constructor', 3, {}, [], 'normal ', 'veryhard'];
+      const mBad = badModes.filter((v) => { try { return L.validateMode(v) !== 'normal'; } catch { return true; } }).map(String);
+      check('validateMode：easy・normal・hard はそのまま', okModes.length === 3, okModes);
+      check(`validateMode：無い・壊れた値（${badModes.length} 通り）は normal（例外なし）`, mBad.length === 0, mBad);
+      const good = [['0', 0], ['5', 5], [5, 5], ['200', 200], [0, 0], [' 7 ', 7]];
+      const gBad = good.filter(([v, w]) => L.validateLeast(v) !== w).map(([v]) => String(v));
+      check('validateLeast：0〜200 の整数（文字列も）はその値', gBad.length === 0, gBad);
+      const broken = [null, undefined, '', 'abc', '-1', -1, '1.5', 1.5, '201', 201, 'NaN', NaN, 'Infinity', Infinity, '1e2', '0x10', {}, [], true, '９'];
+      const bBad = broken.filter((v) => { try { return L.validateLeast(v) !== null; } catch { return true; } }).map(String);
+      check(`validateLeast：壊れた値 ${broken.length} 通りは null（記録なし。例外なし）`, bBad.length === 0, bBad);
+      const r1 = L.recordLeast(null, 12), r2 = L.recordLeast('12', 8), r3 = L.recordLeast('8', 8), r4 = L.recordLeast('8', 20), r5 = L.recordLeast('壊れ', 30), r6 = L.recordLeast('3', 0), r7 = L.recordLeast('9', 'x');
+      check('recordLeast：はじめては記録して improved false（まえ null）、少なければ improved true、同じ・多いは前のまま',
+        J(r1) === J({ least: 12, improved: false, prev: null }) && J(r2) === J({ least: 8, improved: true, prev: 12 }) && J(r3) === J({ least: 8, improved: false, prev: 8 }) && J(r4) === J({ least: 8, improved: false, prev: 8 }), [r1, r2, r3, r4]);
+      check('recordLeast：壊れた前の記録は「記録なし」として今回で書き直す、全部消し（0）も記録になる、今回が壊れていたら前のまま',
+        J(r5) === J({ least: 30, improved: false, prev: null }) && J(r6) === J({ least: 0, improved: true, prev: 3 }) && J(r7) === J({ least: 9, improved: false, prev: 9 }), [r5, r6, r7]);
+      const near = [['easy', 5, true], ['easy', 6, false], ['normal', 10, true], ['normal', 11, false], ['hard', 15, true], ['hard', 16, false], ['normal', 0, false], ['easy', 1, true], ['x', 10, true], ['x', 11, false], ['hard', 1.5, false]];
+      const nBad = near.filter(([m, n, w]) => L.isNear(m, n) !== w).map((x) => x.join(':'));
+      check('isNear：のこりが線以下（全部消しの 0 は含まない）で true。線はモード別、知らないモードは ふつう の線', nBad.length === 0, nBad);
     },
   },
 ];

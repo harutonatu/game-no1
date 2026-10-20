@@ -11,11 +11,13 @@
  *   remove(outcome, prevState, nextState) → Promise   ふくらむ→ポン（粒・輪・点数）→ストンと落ちる→すっと左へ寄る
  *   deny(x, y)                            1個だけのマス：軽く揺らす（動きを減らす設定では、ふちを一瞬出すだけ）
  *   celebrate() → Promise                 全部消しのお祝い（大きな文字と紙ふぶき）
+ *   cheer() → Promise                     のこりが少なく終わったときの小さなお祝い（少しの紙ふぶき。文字・光なし）
  *   delay(ms) → Promise                   演出の時計で待つ（finishAll ですぐ終わる）
  *   finishAll()                           動いている演出を一瞬で終わらせる。ポンの粒と音がまだなら、ここで出す
  *   hideBanner(), setCalm(b), cellAt(clientX, clientY) → {x,y}|null, cellRect(x, y) → {left,top,width,height}
- *   busy（演出中）, calm, cell（マスの大きさ px）
+ *   busy（演出中）, calm, cell（マスの大きさ px）, frames（描いたコマの数）, fxDraws（fx を描き直した回数。テスト用）
  * - 演出は requestAnimationFrame の自前の時計で進める（setTimeout は使わない）。何も動いていない間は rAF を回さない。
+ * - 選んだふちの明滅は PULSE_MS だけ（そのあとは明るいまま止める）。fx に何も無いときは fx を描かない（消すのも1回だけ）。
  * - 盤の座標は grid[x][y]（x=0 が左、y=0 が下）。画面の上から数える行は ROWS-1-y。
  */
 (function (root) {
@@ -25,8 +27,9 @@
   const MAX_PARTS = 280;          // 粒の上限（iPhone SE でも重くならない数）
   const SWELL_MS = 110;           // ふくらむ時間
   const SHIFT_MS = 170;           // 左へ寄る時間
-  const CALM_FADE_MS = 120;
-  const COL_GLOW_MS = 260;        // 寄った列が光り終わるまで       // 動きを減らす設定：消えるまでの時間
+  const CALM_FADE_MS = 120;       // 動きを減らす設定：消えるまでの時間
+  const COL_GLOW_MS = 260;        // 寄った列が光り終わるまで
+  const PULSE_MS = 2400;          // 選んだふちが明滅する時間（そのあとは止めて、rAF も止める）
 
   // logic.js が無いときの予備（契約 §3 と同じ）
   const FALLBACK_COLORS = [
@@ -112,12 +115,15 @@
     let calm = !!o.calm;
     let cell = 20;
     let dpr = 1;
-    let view = { state: null, selected: null, selKeys: null, cursor: null };
+    let view = { state: null, selected: null, selKeys: null, cursor: null, selSig: "" };
     let anim = null;              // 消す演出（1つだけ）
     let waits = [];               // delay / celebrate の待ち { until, resolve }
     let parts = [], rings = [], popups = [], flash = null, shake = null, denyFx = null;
     let celebrateT = null;
-    let colGlow = null;           // 左へ寄った列の光 { cols:Set, t0 }（演出が終わったあと、少しだけ残る）        // 紙ふぶきの開始時刻
+    let colGlow = null;           // 左へ寄った列の光 { cols:Set, t0 }（演出が終わったあと、少しだけ残る）
+    let selAt = 0;                // 選んだ時刻（明滅を PULSE_MS で止める）
+    let fxClean = true;           // fx がもう空に消してあるか（空のときは何度も消さない）
+    let frames = 0, fxDraws = 0;
     let raf = 0, lastTs = 0;
     let sprites = {};             // 色ごとのマスの絵（マスの大きさが変わったら作り直す）
 
@@ -147,8 +153,8 @@
       if (!fx) return;
       const w = root.innerWidth || 0, h = root.innerHeight || 0;
       const W = Math.max(1, Math.round(w * dpr)), H = Math.max(1, Math.round(h * dpr));
-      if (fx.width !== W) fx.width = W;
-      if (fx.height !== H) fx.height = H;
+      if (fx.width !== W) { fx.width = W; fxClean = true; }
+      if (fx.height !== H) { fx.height = H; fxClean = true; }
     }
 
     // マス1つの絵（色・明るい上ふち・記号）を前もって作る
@@ -234,6 +240,8 @@
       view.state = state || null;
       view.selected = Array.isArray(op.selected) && op.selected.length ? op.selected.map((c) => [c[0], c[1]]) : null;
       view.selKeys = view.selected ? new Set(view.selected.map((c) => key(c[0], c[1]))) : null;
+      const sig = view.selected ? view.selected.map((c) => key(c[0], c[1])).join(",") : "";
+      if (sig !== view.selSig) { view.selSig = sig; selAt = nowMs(); }
       view.cursor = op.cursor && Number.isInteger(op.cursor.x) ? { x: op.cursor.x, y: op.cursor.y } : null;
       if (view.selected) {
         board.dataset.selected = String(view.selected.length);
@@ -325,7 +333,7 @@
       }
       if (view.selected) {
         // ふち：動きを減らす設定では明るさを変えない（太い白いふちだけで分かる）
-        const pulse = calm ? 1 : 0.82 + 0.18 * Math.sin(t / 150);
+        const pulse = calm || t - selAt >= PULSE_MS ? 1 : 0.82 + 0.18 * Math.sin(t / 150);
         outline(view.selected, pulse, "#ffffff");
       }
       if (denyFx) {
@@ -444,18 +452,20 @@
       const n = a.removedCells.length;
       popups.push({ x: sx / n, y: sy / n, text: "+" + a.points, size: Math.round(Math.max(16, Math.min(40, 15 + Math.sqrt(a.points) * 2))), age: 0, life: 0.8, rise: 0 });
     }
-    function spawnConfetti() {
+    function spawnConfetti(count, fromBoard) {
       const r = rect();
       const W = root.innerWidth || r.width;
       const cols = ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#CC79A7", "#ffffff"];
       const budget = Math.max(0, MAX_PARTS - parts.length);
-      const total = Math.min(budget, 160);
+      const total = Math.min(budget, count || 160);
+      // fromBoard：盤の左右の下から（小さなお祝い）。ふだんは画面の左右から
+      const lx = fromBoard ? r.left : W * 0.08, rx = fromBoard ? r.right : W * 0.92;
       for (let i = 0; i < total; i++) {
         const fromLeft = i % 2 === 0;
         const ang = fromLeft ? -Math.PI / 3 - Math.random() * 0.5 : -Math.PI * 2 / 3 + Math.random() * 0.5;
-        const sp = 380 + Math.random() * 420;
+        const sp = (fromBoard ? 0.6 : 1) * (380 + Math.random() * 420);
         parts.push({
-          x: fromLeft ? W * 0.08 : W * 0.92, y: r.top + r.height * 0.75,
+          x: fromLeft ? lx : rx, y: r.top + r.height * 0.75,
           vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, g: 520, size: 4 + Math.random() * 5,
           rot: Math.random() * 6, vr: (Math.random() - 0.5) * 16, color: cols[i % cols.length], life: 1.4 + Math.random() * 0.8, age: 0, sq: true
         });
@@ -477,9 +487,13 @@
     }
     function drawFx() {
       if (!fctx) return;
+      const any = parts.length || rings.length || popups.length || flash;
+      if (!any && fxClean) return;   // 何も無く、もう消してある：全画面の canvas にさわらない
+      fxDraws++;
       fctx.setTransform(1, 0, 0, 1, 0, 0);
       fctx.clearRect(0, 0, fx.width, fx.height);
-      if (!parts.length && !rings.length && !popups.length && !flash) return;
+      fxClean = !any;
+      if (!any) return;
       fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (flash) {
         fctx.globalAlpha = flash.alpha * (1 - flash.age / flash.life);
@@ -525,7 +539,7 @@
     // ---------- 時計 ----------
     function needFrames(t) {
       if (anim || waits.length || parts.length || rings.length || popups.length || flash) return true;
-      if (view.selected && !calm) return true;   // 選んだふちの明滅
+      if (view.selected && !calm && t - selAt < PULSE_MS + 50) return true;   // 選んだふちの明滅（少しのあいだだけ）
       if (denyFx && t - denyFx.t0 < 300) return true;
       if (shake && t - shake.t0 < shake.ms) return true;
       if (colGlow && t - colGlow.t0 < COL_GLOW_MS) return true;
@@ -537,6 +551,7 @@
     }
     function frame() {
       raf = 0;
+      frames++;
       const t = nowMs();
       const dt = Math.min(0.05, Math.max(0, (t - (lastTs || t)) / 1000));
       lastTs = t;
@@ -652,6 +667,13 @@
       celebrateT = nowMs();
       return delay(calm ? 1100 : 1500);
     }
+    // のこりが少なく終わった：小さなお祝い（盤の左右から少しの紙ふぶき。大きな文字・画面の光はなし）
+    function cheer() {
+      snd("best");
+      buzz([20, 40, 20]);
+      if (!calm) spawnConfetti(48, true);
+      return delay(calm ? 600 : 900);
+    }
     function hideBanner() {
       if (banner) { banner.hidden = true; banner.classList.remove("go"); }
     }
@@ -669,11 +691,13 @@
     }
 
     return {
-      layout, show, remove, deny, celebrate, delay, finishAll, hideBanner, setCalm, cellAt, cellRect, placeTag,
+      layout, show, remove, deny, celebrate, cheer, delay, finishAll, hideBanner, setCalm, cellAt, cellRect, placeTag,
       get busy() { return !!anim || waits.length > 0; },
       get calm() { return calm; },
       get cell() { return cell; },
       get fxCount() { return parts.length + rings.length + popups.length; },
+      get frames() { return frames; },
+      get fxDraws() { return fxDraws; },
       get celebratedAt() { return celebrateT; }
     };
   }

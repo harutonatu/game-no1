@@ -18,7 +18,7 @@
   const NAME = "まとめてポン";
   const COLS = 10;
   const ROWS = 20;
-  const MODES = Object.freeze({ normal: 4, hard: 5 });
+  const MODES = Object.freeze({ easy: 3, normal: 4, hard: 5 });
   const ALL_CLEAR_BONUS = 1000;
   const MAX_MOVES_SAVED = 200;
   const SAVE_V = 1;
@@ -26,6 +26,13 @@
   const SAVE_KEY_BEST = "matomete.best";
   const SAVE_KEY_BEST_HARD = "matomete.bestHard";
   const SAVE_KEY_HELP = "matomete.help";
+  const SAVE_KEY_BEST_EASY = "matomete.bestEasy";
+  const SAVE_KEY_MODE = "matomete.mode";          // 最後に遊んだモード（回が終わってから開き直しても同じモードで始める）
+  // モードごとの「いちばん少ない のこり」（上達の目安。点数には足さない）
+  const SAVE_KEY_LEAST = Object.freeze({ easy: "matomete.leastEasy", normal: "matomete.least", hard: "matomete.leastHard" });
+  // 「おしい！」と言う のこりの線（モード別）と、小さなお祝いをする のこりの線
+  const NEAR_CLEAR = Object.freeze({ easy: 5, normal: 10, hard: 15 });
+  const CHEER_LINE = 5;
   const DEAL_TRIES = 50;   // 最初から消せない盤を配り直す回数の上限（超えたら決定的に直す）
 
   // 色（契約 §3）。いろびんの Okabe-Ito 系から 5 色。mark は記号の種類（色に頼らないため）
@@ -344,15 +351,44 @@
 
   function validateFlag(raw) { return raw === "1"; }
 
+  // 保存されたモード。MODES にあればその名前、それ以外（無い・壊れた値）は "normal"
+  function validateMode(raw) {
+    return typeof raw === "string" && Object.prototype.hasOwnProperty.call(MODES, raw) ? raw : "normal";
+  }
+
+  // いちばん少ない のこり：0〜COLS*ROWS の整数（文字列も可）ならその値、それ以外（無い・壊れた値）は null（記録なし）
+  function validateLeast(raw) {
+    if (typeof raw !== "string" && typeof raw !== "number") return null;
+    if (typeof raw === "string" && !/^\d+$/.test(raw.trim())) return null;
+    const n = Number(raw);
+    return Number.isSafeInteger(n) && n >= 0 && n <= COLS * ROWS ? n : null;
+  }
+
+  // 前の記録 prev（壊れた値は記録なし）と今回の のこり left → { least, improved（前より少ない）, prev（前の記録か null） }
+  function recordLeast(prev, left) {
+    const p = validateLeast(prev);
+    const l = validateLeast(left);
+    if (l === null) return { least: p, improved: false, prev: p };
+    if (p === null) return { least: l, improved: false, prev: null };
+    return { least: Math.min(p, l), improved: l < p, prev: p };
+  }
+
+  // 「おしい！」と言う のこりか（全部消しは含まない）
+  function isNear(mode, left) {
+    const line = Object.prototype.hasOwnProperty.call(NEAR_CLEAR, mode) ? NEAR_CLEAR[mode] : NEAR_CLEAR.normal;
+    return isInt(left) && left > 0 && left <= line;
+  }
+
   function colorName(id) {
     return isInt(id) && id >= 0 && id < COLORS.length ? COLORS[id].name : "？";
   }
 
   const api = Object.freeze({
     NAME, COLS, ROWS, MODES, ALL_CLEAR_BONUS, MAX_MOVES_SAVED,
-    SAVE_KEY_SAVE, SAVE_KEY_BEST, SAVE_KEY_BEST_HARD, SAVE_KEY_HELP, COLORS,
+    SAVE_KEY_SAVE, SAVE_KEY_BEST, SAVE_KEY_BEST_HARD, SAVE_KEY_BEST_EASY, SAVE_KEY_HELP, SAVE_KEY_MODE, SAVE_KEY_LEAST,
+    NEAR_CLEAR, CHEER_LINE, COLORS,
     makeRng, newGame, groupAt, scoreFor, canRemove, applyRemove, hasMoves, remaining,
-    replay, makeSave, validateSave, validateBest, recordBest, validateFlag, colorName
+    replay, makeSave, validateSave, validateBest, recordBest, validateFlag, validateMode, validateLeast, recordLeast, isNear, colorName
   });
   root.MatometeLogic = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
