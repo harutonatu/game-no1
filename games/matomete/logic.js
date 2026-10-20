@@ -1,6 +1,6 @@
 /*
  * まとめてポン — ロジック（DOM・時計・Math.random・localStorage に触れない純粋な計算だけ）
- * 契約：docs/matomete-contract.md §1（ルール）・§3（API）・§9・§10（7こ以上で まわりも消える・れんぞく。§1 より優先）
+ * 契約：docs/matomete-contract.md §1（ルール）・§3（API）・§9・§10（5こ以上で まわりも消える・れんぞく。§1 より優先）
  * 担当A（ロジック）だけが編集する。
  *
  * UMD: ブラウザでは window.MatometeLogic、Node では module.exports と globalThis.MatometeLogic。
@@ -21,12 +21,12 @@
   const MODES = Object.freeze({ easy: 3, normal: 4, hard: 5 });
   const ALL_CLEAR_BONUS = 1000;
   const MAX_MOVES_SAVED = 200;
-  const SAVE_V = 2;                                // §10 でルールが変わったので 2。v:1 は手を捨てて同じ種の最初から
+  const SAVE_V = 3;                                // §10 でルールが変わったので 2、BIG を 5 にしたので 3。v:2・v:1 は手を捨てて同じ種の最初から
   // §10：大きく消すと、まわりも消える
-  const BIG = 7;                                  // この数以上のかたまりで、まわりも消える
-  const STREAK_WIDE = 3;                          // れんぞく（7こ以上が続いた回数）がこの数以上の消し方は、まわりが広い
+  const BIG = 5;                                  // この数以上のかたまりで、まわりも消える
+  const STREAK_WIDE = 3;                          // れんぞく（5こ以上が続いた回数）がこの数以上の消し方は、まわりが広い
   const RADIUS = Object.freeze({ near: 1, wide: 2 });   // まわりの範囲（上下左右に数えたマスの数）
-  const EXTRA_POINT = 1;                          // まわりで消えたマス 1 こあたりの点
+  const EXTRA_POINT = 3;                          // まわりで消えたマス 1 こあたりの点（ユーザー決定で +1 → +3）
   const SAVE_KEY_SAVE = "matomete.save";
   const SAVE_KEY_BEST = "matomete.best";
   const SAVE_KEY_BEST_HARD = "matomete.bestHard";
@@ -178,7 +178,7 @@
     return out.map((k) => { const cx = (k / ROWS) | 0; return [cx, k - cx * ROWS]; });
   }
 
-  // まわりの範囲 r（§10）：かたまり n こ・消す前の れんぞく streak から。7こ未満は 0
+  // まわりの範囲 r（§10）：かたまり n こ・消す前の れんぞく streak から。5こ未満は 0
   function radiusFor(n, streak) {
     if (!isInt(n) || n < BIG) return 0;
     const st = isInt(streak) && streak > 0 ? streak : 0;
@@ -269,7 +269,7 @@
       const cells = gridGroup(g0, x, y);
       if (cells.length < 2) return invalid(state, "single");
 
-      // §10：7こ以上なら まわりも同時に消す（れんぞく 3 回目からは広い）
+      // §10：5こ以上なら まわりも同時に消す（れんぞく 3 回目からは広い）
       const streak0 = isInt(state.streak) && state.streak > 0 ? state.streak : 0;
       const big = cells.length >= BIG;
       const radius = radiusFor(cells.length, streak0);
@@ -393,15 +393,15 @@
       let o;
       try { o = JSON.parse(raw); } catch (e) { return null; }
       if (!o || typeof o !== "object" || Array.isArray(o)) return null;
-      if (o.v !== SAVE_V && o.v !== 1) return null;
+      if (o.v !== SAVE_V && o.v !== 2 && o.v !== 1) return null;
       if (!isInt(o.seed) || o.seed < -2147483648 || o.seed > 4294967295) return null;
       if (typeof o.mode !== "string" || !Object.prototype.hasOwnProperty.call(MODES, o.mode)) return null;
       if (!Array.isArray(o.moves) || o.moves.length > MAX_MOVES_SAVED) return null;
       for (const m of o.moves) {
         if (!Array.isArray(m) || m.length !== 2 || !isInt(m[0]) || !isInt(m[1])) return null;
       }
-      // 前の版（v:1）の途中保存は、ルールが違うので手を捨てて同じ種の最初から（§10）
-      if (o.v === 1) return { seed: o.seed, mode: o.mode, moves: [] };
+      // 前の版（v:2・v:1）の途中保存は、ルールが違うので手を捨てて同じ種の最初から（§10）
+      if (o.v !== SAVE_V) return { seed: o.seed, mode: o.mode, moves: [] };
       return { seed: o.seed, mode: o.mode, moves: o.moves.map((m) => [m[0], m[1]]) };
     } catch (e) { return null; }
   }

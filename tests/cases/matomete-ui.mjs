@@ -16,11 +16,11 @@ const SMOKE_V = () => view('SE', 'p', 'app');
 const STD_V = () => view('i13', 'p', 'app');
 const CDP = 'CDP のタッチ操作（連続タップ）';
 const COLS = 10, ROWS = 20;
-// 種 171・ふつうで全部消しになる手順（§10 のルールで「一番大きいかたまりを消し続ける」。31 手・1476 点）。各手は押したマス [x, y]
-const CLEAR_SEED = 171;
-const CLEAR1 = [[2, 11], [0, 14], [8, 10], [7, 10], [0, 5], [0, 5], [0, 4], [0, 6], [0, 3], [0, 2], [4, 1], [3, 3], [7, 4], [6, 3], [6, 6], [8, 3], [7, 0], [0, 0], [2, 0], [4, 3], [1, 0], [0, 0], [2, 2], [2, 0], [1, 0], [3, 2], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]];
-const CLEAR1_SCORE = 1476;
-const BIG = 7, WIDE_AT = 3;   // §10：7こ以上で まわりも消える。れんぞく 3 回目から r=2
+// 種 187・ふつうで全部消しになる手順（§10 のルール（5こ以上・まわり +3 点）で「一番大きいかたまりを消し続ける」。16 手・1620 点）。各手は押したマス [x, y]
+const CLEAR_SEED = 187;
+const CLEAR1 = [[2, 6], [0, 10], [3, 2], [0, 4], [5, 8], [4, 4], [3, 2], [0, 3], [2, 1], [2, 0], [0, 1], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]];
+const CLEAR1_SCORE = 1620;
+const BIG = 5, WIDE_AT = 3, EXTRA = 3;   // §10：5こ以上で まわりも消える（1 こ +3 点）。れんぞく 3 回目から r=2
 
 // ---------- 期待値の別実装（契約 §1） ----------
 // 盤 grid[x][y]（x=0 が左、y=0 が下）。かたまりは上下左右だけ。1個のマスも返す（並びは x→y の順）
@@ -61,7 +61,7 @@ function blastOf(grid, cells, streak = 0) {
   const r = streak + 1 >= WIDE_AT ? 2 : 1;
   return { extra: around(grid, cells, r), r, streak: streak + 1 };
 }
-const ptsAll = (grid, cells, streak = 0) => pts(cells.length) + blastOf(grid, cells, streak).extra.length;
+const ptsAll = (grid, cells, streak = 0) => pts(cells.length) + blastOf(grid, cells, streak).extra.length * EXTRA;
 // 消す（まわりも）→ 列の中で落とす → 空の列を左へ詰める
 function simulate(grid, cells, streak = 0) {
   const g = grid.map((c) => c.slice());
@@ -312,7 +312,7 @@ export const tests = [
     },
   },
   {
-    id: 'QW2', tier: 'smoke', title: 'まとめてポン データ：手を打つたび matomete.save（v:2・種・手）、再読み込みで同じ局面（れんぞくも）、前の版（v:1）の途中保存は同じ種の最初から、壊れた matomete.save・matomete.best でも落ちない、保存できない環境でも遊べる、ほかのゲームの保存キーを変えない',
+    id: 'QW2', tier: 'smoke', title: 'まとめてポン データ：手を打つたび matomete.save（v:3・種・手）、再読み込みで同じ局面（れんぞくも）、前の版（v:2・v:1）の途中保存は同じ種の最初から、壊れた matomete.save・matomete.best でも落ちない、保存できない環境でも遊べる、ほかのゲームの保存キーを変えない',
     async run({ browser, check }) {
       const others = { 'blockpuzzle.best': '777', 'tile2048.best': '888', 'hashi.best': '55', 'zenmai.progress': '{"stars":{"z01":3}}', 'pikatto.bestSolo': '321', 'kiritori.best': '99', 'irobin.best': '4' };
       const { ctx, page } = await openG(browser, 'QW2', { v: SMOKE_V(), extra: { 'matomete.best': '120', ...others } });
@@ -321,7 +321,7 @@ export const tests = [
       await fresh(page, 7);
       const s0 = await gs(page);
       const sv0 = JSON.parse((await stored(page, 'matomete.save')) || 'null');
-      check(`回を始めると matomete.save に v:2・seed 7・mode normal・手 0（${J(sv0)}）`, !!sv0 && sv0.v === 2 && sv0.seed === 7 && sv0.mode === 'normal' && Array.isArray(sv0.moves) && sv0.moves.length === 0, sv0);
+      check(`回を始めると matomete.save に v:3・seed 7・mode normal・手 0（${J(sv0)}）`, !!sv0 && sv0.v === 3 && sv0.seed === 7 && sv0.mode === 'normal' && Array.isArray(sv0.moves) && sv0.moves.length === 0, sv0);
       const g1 = groupsOf(s0.grid).find((g) => g.length >= 2);
       await playMoves(page, [g1[0]]);
       const g2 = groupsOf((await gs(page)).grid).find((g) => g.length >= 2);
@@ -332,12 +332,14 @@ export const tests = [
       await page.reload(); await wait(page, 300);
       const s2 = await gs(page);
       check('再読み込みで同じ局面（盤・点・手・種・れんぞく）、1手もどすも続きから使える', J(s2.grid) === J(s1.grid) && s2.score === s1.score && s2.moves === 2 && s2.seed === 7 && s2.streak === s1.streak && J(s2.history) === J(s1.history) && !(await page.evaluate(() => document.querySelector('#undoBtn').disabled)), { a: s1.score, b: s2.score, moves: s2.moves });
-      // 前の版（v:1）の途中保存：ルールが違うので手を捨てて、同じ種・同じモードの最初から
-      await seed(page, { ...others, 'matomete.help': '1', 'matomete.save': J({ v: 1, seed: 7, mode: 'easy', moves: sv.moves }) });
-      await page.goto(MT); await wait(page, 250);
-      const s1v = await gs(page), sv1 = JSON.parse((await stored(page, 'matomete.save')) || 'null');
-      check(`v:1 の途中保存（2 手）で開くと、同じ種 7・やさしいの最初から（手 ${s1v.moves}・点 ${s1v.score}・盤が全部埋まる）、保存は v:2 で書き直す`, s1v.seed === 7 && s1v.mode === 'easy' && s1v.moves === 0 && s1v.score === 0 && count(s1v.grid) === 200 && sv1 && sv1.v === 2 && sv1.moves.length === 0, { seed: s1v.seed, mode: s1v.mode, moves: s1v.moves, sv1 });
-      await seed(page, { ...others, 'matomete.help': '1', 'matomete.save': J({ v: 2, seed: 7, mode: 'normal', moves: sv.moves }) });
+      // 前の版（v:2・v:1）の途中保存：ルールが違うので手を捨てて、同じ種・同じモードの最初から
+      for (const ov of [1, 2]) {
+        await seed(page, { ...others, 'matomete.help': '1', 'matomete.save': J({ v: ov, seed: 7, mode: 'easy', moves: sv.moves }) });
+        await page.goto(MT); await wait(page, 250);
+        const s1v = await gs(page), sv1 = JSON.parse((await stored(page, 'matomete.save')) || 'null');
+        check(`v:${ov} の途中保存（2 手）で開くと、同じ種 7・やさしいの最初から（手 ${s1v.moves}・点 ${s1v.score}・盤が全部埋まる）、保存は v:3 で書き直す`, s1v.seed === 7 && s1v.mode === 'easy' && s1v.moves === 0 && s1v.score === 0 && count(s1v.grid) === 200 && sv1 && sv1.v === 3 && sv1.moves.length === 0, { seed: s1v.seed, mode: s1v.mode, moves: s1v.moves, sv1 });
+      }
+      await seed(page, { ...others, 'matomete.help': '1', 'matomete.save': J({ v: 3, seed: 7, mode: 'normal', moves: sv.moves }) });
       await page.goto(MT); await wait(page, 250);
       // 隠れたとき（アプリの切り替え）にも保存
       await page.evaluate(() => localStorage.removeItem('matomete.save'));
@@ -350,7 +352,7 @@ export const tests = [
       const extra = Object.keys(after).filter((k) => !(k in others) && !k.startsWith('matomete.') && k !== 'blockpuzzle.sound');
       check(`ほかのゲームの保存キーは変わらず、新しいキーは matomete.* だけ（変化 ${changed.join(',') || 'なし'}・余分 ${extra.join(',') || 'なし'}）`, changed.length === 0 && extra.length === 0, { changed, extra });
       // 壊れた保存
-      const long = J({ v: 2, seed: 1, mode: 'normal', moves: Array.from({ length: 201 }, () => [0, 0]) });
+      const long = J({ v: 3, seed: 1, mode: 'normal', moves: Array.from({ length: 201 }, () => [0, 0]) });
       const BAD_SAVE = ['{not json', '', 'null', '[]', '"x"', '{"v":3,"seed":1,"mode":"normal","moves":[]}', '{"v":2,"seed":1.5,"mode":"normal","moves":[]}', '{"v":2,"seed":"1","mode":"normal","moves":[]}',
         '{"v":2,"seed":1,"mode":"Easy","moves":[]}', '{"v":2,"seed":1,"mode":"normal","moves":"x"}', '{"v":2,"seed":1,"mode":"normal","moves":[[0]]}', '{"v":2,"seed":1,"mode":"normal","moves":[[0,1.5]]}',
         '{"v":2,"seed":1,"mode":"normal","moves":[[99,99]]}', '{"v":2,"seed":1,"mode":"normal","moves":[[-1,0]]}', long, '{"v":2,"seed":99999999999,"mode":"normal","moves":[]}', '{"v":1,"seed":1,"mode":"normal","moves":[[0]]}'];
@@ -406,8 +408,8 @@ export const tests = [
       const h = await overlayInfo(page);
       check(`初回は遊び方が自動で出る（close がある。${h.cmds.join(',')}）・role=dialog・aria-labelledby`, h.shown && h.cmds.includes('close') && h.role === 'dialog' && !!h.lab, h);
       const rules = await page.evaluate(() => [...document.querySelectorAll('#card ol.rules li')].map((li) => li.textContent.replace(/\s+/g, ' ').trim()));
-      check(`遊び方は 3 項目以内で、2回タップ（1かいめは えらぶ・2かいめで ポン）・「7こ いじょう けすと まわりも ポン！ 3かい つづけると もっと ひろく」・「とちゅうで やめても つづきから あそべるよ」がある、「もう一度」の表記は使わない（${rules.join(' / ')}）`,
-        rules.length >= 1 && rules.length <= 3 && rules.some((t) => /1かいめは えらぶ/.test(t) && /2かいめで ポン/.test(t)) && rules.some((t) => /7こ いじょう けすと まわりも ポン！ 3かい つづけると もっと ひろく/.test(t)) && rules.some((t) => /とちゅうで やめても つづきから あそべるよ/.test(t)) && !rules.some((t) => /もう一度/.test(t)), rules);
+      check(`遊び方は 3 項目以内で、2回タップ（1かいめは えらぶ・2かいめで ポン）・「5こ いじょう けすと まわりも ポン！ 3かい つづけると もっと ひろく」・「とちゅうで やめても つづきから あそべるよ」がある、「もう一度」の表記は使わない（${rules.join(' / ')}）`,
+        rules.length >= 1 && rules.length <= 3 && rules.some((t) => /1かいめは えらぶ/.test(t) && /2かいめで ポン/.test(t)) && rules.some((t) => /5こ いじょう けすと まわりも ポン！ 3かい つづけると もっと ひろく/.test(t)) && rules.some((t) => /とちゅうで やめても つづきから あそべるよ/.test(t)) && !rules.some((t) => /もう一度/.test(t)), rules);
       r.help = await reachable(page, 'a#back');
       await page.click('a#back'); await page.waitForURL(BASE, { timeout: 5000 }).catch(() => {});
       r.helpNav = page.url() === BASE;
@@ -483,7 +485,7 @@ export const tests = [
 
   // ================= full =================
   {
-    id: 'QW4', tier: 'full', title: 'まとめてポン 全部消し：種 171 の手順で盤が空になると、お祝い（#banner に ＋1000・ヒント）→ 終わりのカード「ぜんぶ けし！」1476 点・あたらしい きろく、matomete.best 1476・保存を消す、カードの直後 0.6 秒は押せない',
+    id: 'QW4', tier: 'full', title: 'まとめてポン 全部消し：種 187 の手順で盤が空になると、お祝い（#banner に ＋1000・ヒント）→ 終わりのカード「ぜんぶ けし！」1620 点・あたらしい きろく、matomete.best 1620・保存を消す、カードの直後 0.6 秒は押せない',
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'QW4', { extra: { 'matomete.best': '300' } });
       await fresh(page, CLEAR_SEED);
@@ -529,7 +531,7 @@ export const tests = [
       const s2 = await gs(page);
       check(`0.6 秒たつと押せて（aria-disabled ${lock2}）、新しい回（手 0・点 0・盤が埋まる・カードが閉じる）`, lock2 === null && s2.moves === 0 && s2.score === 0 && count(s2.grid) === 200 && s2.overlay === null && s2.phase === 'idle' && s2.best === CLEAR1_SCORE, { overlay: s2.overlay, moves: s2.moves });
       // 全部消しの手順を再読み込みで最後まで当て直しても、ベストだけ記録して新しい回になる（終わった回を再開しない）
-      await seed(page, { 'matomete.help': '1', 'matomete.save': J({ v: 2, seed: CLEAR_SEED, mode: 'normal', moves: CLEAR1 }), 'matomete.best': '10' });
+      await seed(page, { 'matomete.help': '1', 'matomete.save': J({ v: 3, seed: CLEAR_SEED, mode: 'normal', moves: CLEAR1 }), 'matomete.best': '10' });
       await page.goto(MT); await wait(page, 300);
       const s3 = await gs(page);
       check(`最後の手まで保存された回を開くと、ベストを記録して（${await stored(page, 'matomete.best')}）新しい回から`, (await stored(page, 'matomete.best')) === String(CLEAR1_SCORE) && s3.moves === 0 && !s3.over && count(s3.grid) === 200, { moves: s3.moves });
@@ -568,14 +570,14 @@ export const tests = [
       check(`「${back}」で ふつうに戻る（mode ${n0.mode}・色 ${n0.colors}・ベスト ${n0.best}）、むずかしいの のこりは matomete.leastHard（${await stored(page, 'matomete.leastHard')}）`, /ふつう/.test(back || '') && n0.mode === 'normal' && n0.colors === 4 && n0.best === s.score && (await stored(page, 'matomete.leastHard')) === String(hs.remaining), { mode: n0.mode, best: n0.best });
       // 「おしい！」の線はモード別（やさしい 5・ふつう 10・むずかしい 15 こ以下）。種と手順は「一番大きいかたまりを消し続ける」で決まる
       const line = [];
-      for (const [sd, md, left, near] of [[11, 'normal', 9, true], [2, 'easy', 9, false], [22, 'hard', 14, true], [2, 'hard', 31, false]]) {
+      for (const [sd, md, left, near] of [[7, 'normal', 10, true], [2, 'easy', 9, false], [2, 'hard', 15, true], [18, 'hard', 32, false]]) {
         await fresh(page, sd, md);
         const e = await playToOver(page);
         const t = (await overlayInfo(page)).text;
         const ok = e.remaining === left && /おしい！ あと すこしで ぜんぶ けしだったね！/.test(t) === near;
         line.push({ sd, md, left: e.remaining, near, ok });
       }
-      check(`「おしい！ あと すこしで ぜんぶ けしだったね！」は ふつう 9 こ・むずかしい 14 こで出て、やさしい 9 こ・むずかしい 31 こでは出ない`, line.every((x) => x.ok), line);
+      check(`「おしい！ あと すこしで ぜんぶ けしだったね！」は ふつう 10 こ・むずかしい 15 こ（線ちょうど）で出て、やさしい 9 こ・むずかしい 32 こでは出ない`, line.every((x) => x.ok), line);
       await ctx.close();
     },
   },
@@ -825,7 +827,7 @@ export const tests = [
       const sel = first('select'), pop = first('pop');
       check(`選ぶと select（引数 ${sel && sel.a} ＝ ${g.length}）、消すと pop（引数 ${pop && pop.a} ＝ ${g.length}）`, !!sel && sel.a === g.length && !!pop && pop.a === g.length, ps1.map((p) => p.n));
       const bl = first('blast');
-      check(`${g.length} こ（7こ以上）を消すと まわりの音 blast（引数 ${bl && bl.a} ＝ r 1）も鳴る`, g.length < BIG || (!!bl && bl.a === 1), ps1.map((p) => p.n));
+      check(`${g.length} こ（5こ以上）を消すと まわりの音 blast（引数 ${bl && bl.a} ＝ r 1）も鳴る`, g.length < BIG || (!!bl && bl.a === 1), ps1.map((p) => p.n));
       const after = simulate(s0.grid, g);
       const fell = s0.grid.some((c, x) => c.some((v, y) => v !== null && after[x] && J(after[x]) !== J(c)));
       check(`落ちるマスがあれば fall（${fell}）、1個のマスで deny、1手もどすで undo、あたらしい ばんで start`, (!fell || !!first('fall')) && !!first('deny') && !!first('undo') && !!first('start'), ps1.map((p) => p.n));
@@ -1047,10 +1049,10 @@ export const tests = [
       const r1 = await gs(page);
       check(`回が終わってから開き直しても やさしい（mode ${r1.mode}・色 ${r1.colors}・ベスト ${r1.best}）`, r1.mode === 'easy' && r1.colors === 3 && r1.best === e1.score && r1.moves === 0, { mode: r1.mode });
       // 同じ のこり → 「まえの … → こんかい …」だけ。少ない → 「さいこう きろく！」
-      await fresh(page, 7, 'easy');
+      await fresh(page, 12, 'easy');
       const e2 = await playToOver(page), ov2 = await overlayInfo(page);
       check(`前と同じ のこり ${e2.remaining} こ：「まえの いちばん すくない のこり 2 こ → こんかい 2 こ」、「さいこう きろく」は出ない（${ov2.text}）`, e2.remaining === 2 && /まえの いちばん すくない のこり 2 こ → こんかい 2 こ/.test(ov2.text) && !/さいこう きろく/.test(ov2.text), ov2.text);
-      await fresh(page, 8, 'easy');
+      await fresh(page, 7, 'easy');
       const e3 = await playToOver(page), ov3 = await overlayInfo(page);
       check(`前より少ない のこり ${e3.remaining} こ：「まえの いちばん すくない のこり 2 こ → こんかい 1 こ」「さいこう きろく！」、matomete.leastEasy が 1（${await stored(page, 'matomete.leastEasy')}）`, e3.remaining === 1 && /まえの いちばん すくない のこり 2 こ → こんかい 1 こ/.test(ov3.text) && /さいこう きろく！/.test(ov3.text) && (await stored(page, 'matomete.leastEasy')) === '1', ov3.text);
       check('ふつう・むずかしいの のこりの記録（matomete.least・leastHard）にはさわらない', (await stored(page, 'matomete.least')) === null && (await stored(page, 'matomete.leastHard')) === null, null);
@@ -1067,7 +1069,7 @@ export const tests = [
     },
   },
   {
-    id: 'QW19', tier: 'full', title: 'まとめてポン §10 画面：7こ以上を選ぶと まわりの予告（光・札「まわりも！」・初めてのヒント）、消すと まわりが内から外へ順に消え（波）、盤が別実装と一致・canvas も一致、演出 0.9 秒以内、れんぞく 2 で「れんぞく 2」、3 回目は札「ひろがる！」・r=2 の予告・大きな「ひろがる！」、6こ以下で表示が消え、1手もどす・再読み込みで れんぞくも戻る、動きを減らす設定では波なしで すぐ消える',
+    id: 'QW19', tier: 'full', title: 'まとめてポン §10 画面：5こ以上を選ぶと まわりの予告（光・札「まわりも！」・初めてのヒント）、消すと まわりが内から外へ順に消え（波）、盤が別実装と一致・canvas も一致、演出 0.9 秒以内、れんぞく 2 で「れんぞく 2」、3 回目は札「ひろがる！」・r=2 の予告・大きな「ひろがる！」、4こ以下で表示が消え、1手もどす・再読み込みで れんぞくも戻る、動きを減らす設定では波なしで すぐ消える',
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'QW19');
       await fresh(page, 1);
@@ -1102,14 +1104,14 @@ export const tests = [
       // ---- 1 回目（れんぞく 0 → 1）：予告と波 ----
       const s0 = await gs(page);
       const g1 = greedy(s0.grid);
-      if (g1.length < BIG) throw new Error(`種 1 のいちばん大きいかたまりが ${g1.length} こ（7 こ以上が要る）`);
+      if (g1.length < BIG) throw new Error(`種 1 のいちばん大きいかたまりが ${g1.length} こ（5 こ以上が要る）`);
       const ex1 = around(s0.grid, g1, 1);
       const others = [];
       for (let x = 0; x < COLS; x++) for (let y = 0; y < ROWS; y++) if (s0.grid[x][y] !== null && !g1.some(([a, b]) => a === x && b === y) && !ex1.some(([a, b]) => a === x && b === y)) others.push([x, y]);
       await tapReal(page, g1[0][0], g1[0][1]); await wait(page, 3000);   // 明滅が止まってから明るさを比べる
       const sel1 = await gs(page), tag1 = await tagInfo(page), blast1 = await page.evaluate(() => document.querySelector('#tag').dataset.blast ?? null), h1 = await hintText(page);
-      check(`7こ以上（${g1.length} こ）を選ぶと、まわり ${ex1.length} こ（r=1）を予告（state の extraCells・radius 1）、札「${tag1.text}」・data-blast 1、ヒント「${h1}」`,
-        sel1.selected === g1.length && J(sortC(sel1.extraCells)) === J(ex1) && sel1.radius === 1 && blast1 === '1' && tag1.text.startsWith('まわりも！') && tag1.text.includes(`${g1.length + ex1.length}こ`) && tag1.text.includes(`＋${ptsAll(s0.grid, g1)}てん`) && /7こ いじょうだと まわりも けせるよ/.test(h1 || '') && /もういちど/.test(h1 || ''), { sel: sel1.extraCells.length, tag1, blast1, h1 });
+      check(`5こ以上（${g1.length} こ）を選ぶと、まわり ${ex1.length} こ（r=1）を予告（state の extraCells・radius 1）、札「${tag1.text}」・data-blast 1、ヒント「${h1}」`,
+        sel1.selected === g1.length && J(sortC(sel1.extraCells)) === J(ex1) && sel1.radius === 1 && blast1 === '1' && tag1.text.startsWith('まわりも！') && tag1.text.includes(`${g1.length + ex1.length}こ`) && tag1.text.includes(`＋${ptsAll(s0.grid, g1)}てん`) && /5こ いじょうだと まわりも けせるよ/.test(h1 || '') && /もういちど/.test(h1 || ''), { sel: sel1.extraCells.length, tag1, blast1, h1 });
       const le = await lum(ex1), lo = await lum(others);
       check(`予告の光：まわりのマスは ほかのマスより明るい（明るさ ${le.toFixed(0)} と ${lo.toFixed(0)}）`, le > lo * 1.5, { le, lo });
       // 波：かたまりのポン（0.11 秒）のあと、中心に近いマスから順に消える
@@ -1124,7 +1126,7 @@ export const tests = [
       anims.push(s1.animMs);
       const exp1 = simulate(s0.grid, g1, 0);
       check(`波：消して 0.175 秒（演出中 ${mid.busy}）は、中心にいちばん近いまわりのマス（${nearC.x},${nearC.y}）がもう消え（不透明度 ${mid.near}）、いちばん遠いマス（${farC.x},${farC.y}）はまだある（${mid.far}）`, mid.busy === true && farC.d - nearC.d > 1 && mid.near < 80 && mid.far > 200, mid);
-      check(`消したあと：盤が別実装（かたまり＋まわり 15 こ前後＋落下＋左詰め）と同じ、点 ${ptsAll(s0.grid, g1)}、れんぞく 1、演出 ${s1.animMs}ms（0.9 秒以内）・もう終わっている`, J(s1.grid) === J(exp1) && s1.score === ptsAll(s0.grid, g1) && s1.streak === 1 && s1.animMs > 0 && s1.animMs <= 900 && !(await page.evaluate(() => window.MatometeGame.isAnimating())), { diff: diffCells(s1.grid, exp1).slice(0, 5), score: s1.score, streak: s1.streak, animMs: s1.animMs });
+      check(`消したあと：盤が別実装（かたまり＋まわり 11 こ前後＋落下＋左詰め）と同じ、点 ${ptsAll(s0.grid, g1)}、れんぞく 1、演出 ${s1.animMs}ms（0.9 秒以内）・もう終わっている`, J(s1.grid) === J(exp1) && s1.score === ptsAll(s0.grid, g1) && s1.streak === 1 && s1.animMs > 0 && s1.animMs <= 900 && !(await page.evaluate(() => window.MatometeGame.isAnimating())), { diff: diffCells(s1.grid, exp1).slice(0, 5), score: s1.score, streak: s1.streak, animMs: s1.animMs });
       check('消したあとの canvas の色が state.grid と一致', diffCells(await boardColors(page), s1.grid).length === 0, diffCells(await boardColors(page), s1.grid).slice(0, 5));
       const b1 = await streakEl();
       check(`盤の上に「${b1 && b1.text}」（れんぞく 1）、ヒントで あと何回で ひろがるか（${await hintText(page)}）`, b1 && b1.shown && b1.text === 'れんぞく 1' && /あと 2かい/.test((await hintText(page)) || ''), { b1, h: await hintText(page) });
@@ -1153,18 +1155,39 @@ export const tests = [
       check(`3 回目を選ぶと 予告が広い（r=2・まわり ${pre3.ex.length} こ）、札「${tag3.text}」・data-blast 2、ヒント「${h3}」`, sel3.radius === 2 && J(sortC(sel3.extraCells)) === J(pre3.ex) && pre3.blast === '2' && tag3.text.startsWith('ひろがる！') && tag3.text.includes(`＋${ptsAll(pre3.st.grid, pre3.g, 2)}てん`) && /ひろがって/.test(h3 || ''), { r: sel3.radius, n: sel3.extraCells.length, tag3, h3 });
       check(`3 回目を消すと 大きな「${r3.burst && r3.burst.text}」（data-kind ${r3.burst && r3.burst.kind}）、盤の上は「${r3.b && r3.b.text}」、盤は別実装（r=2）と同じ、点が合う`, r3.burst && r3.burst.text === 'ひろがる！' && r3.burst.kind === 'wide' && r3.b.text === 'ひろがる！ れんぞく 3' && r3.b.wide === '1' && r3.s.streak === 3 && J(r3.s.grid) === J(r3.exp) && r3.s.score === pre3.st.score + ptsAll(pre3.st.grid, pre3.g, 2), { burst: r3.burst, b: r3.b });
       check(`まわりも消える演出はどれも 0.9 秒以内（${anims.join('・')}ms）`, anims.length >= 3 && anims.every((m) => m > 0 && m <= 900), anims);
-      // 6こ以下を消すと れんぞく 0・表示が消える。1手もどすと れんぞく 3 に戻る。再読み込みでも同じ
+      // 4こ以下を消すと れんぞく 0・表示が消える。1手もどすと れんぞく 3 に戻る。再読み込みでも同じ
       const s3 = await gs(page);
       const small = groupsOf(s3.grid).filter((x) => x.length >= 2 && x.length < BIG)[0];
       await page.evaluate(([x, y]) => window.MatometeGame.remove(x, y), small[0]); await wait(page, 50);
       const s4 = await gs(page), b4 = await streakEl();
-      check(`${small.length} こ（6こ以下）を消すと れんぞく 0、盤の上の表示が消える（${J(b4)}）`, s4.streak === 0 && !b4.shown && J(s4.grid) === J(simulate(s3.grid, small, 3)), { streak: s4.streak, b4 });
+      check(`${small.length} こ（4こ以下）を消すと れんぞく 0、盤の上の表示が消える（${J(b4)}）`, s4.streak === 0 && !b4.shown && J(s4.grid) === J(simulate(s3.grid, small, 3)), { streak: s4.streak, b4 });
       await page.click('#undoBtn'); await wait(page, 100);
       const s5 = await gs(page), b5 = await streakEl();
       check(`1手もどすと れんぞく 3 に戻り、表示「${b5.text}」も戻る`, s5.streak === 3 && b5.shown && b5.text === 'ひろがる！ れんぞく 3' && J(s5.grid) === J(s3.grid), { streak: s5.streak, b5 });
       await page.reload(); await wait(page, 300);
       const s6 = await gs(page), b6 = await streakEl();
       check(`再読み込みしても れんぞく 3（${s6.streak}）・表示「${b6.text}」`, s6.streak === 3 && b6.shown && J(s6.grid) === J(s3.grid), { streak: s6.streak });
+      // いちばん長い演出も 0.9 秒以内：種 1〜4 の ふつう・種 1〜2 の やさしいを「一番大きいかたまり」で終わりまで消し、まわりも消えた手の演出の長さの最大を見る
+      const longest = await page.evaluate(([C, R, B]) => {
+        const G = window.MatometeGame; let max = 0, n = 0;
+        for (const [sd, md] of [[1, 'normal'], [2, 'normal'], [3, 'normal'], [4, 'normal'], [1, 'easy'], [2, 'easy']]) {
+          G.newSeed(sd, md);
+          for (let k = 0; k < 200 && !G.state().over; k++) {
+            const grid = G.state().grid, seen = new Set(); let best = null;
+            for (let x = 0; x < C; x++) for (let y = 0; y < R; y++) {
+              if (grid[x][y] === null || seen.has(x * 100 + y)) continue;
+              const st = [[x, y]], v = grid[x][y]; let size = 0; seen.add(x * 100 + y);
+              while (st.length) { const [a, b] = st.pop(); size++; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = a + dx, ny = b + dy; if (nx >= 0 && ny >= 0 && nx < C && ny < R && !seen.has(nx * 100 + ny) && grid[nx][ny] === v) { seen.add(nx * 100 + ny); st.push([nx, ny]); } } }
+              if (size >= 2 && (!best || size > best.size)) best = { x, y, size };
+            }
+            if (!best) break;
+            G.remove(best.x, best.y);
+            if (best.size >= B) { n++; max = Math.max(max, G.state().animMs || 0); }
+          }
+        }
+        return { max, n };
+      }, [COLS, ROWS, BIG]);
+      check(`まわりも消える手 ${longest.n} 回（種 1〜4 ふつう・種 1〜2 やさしい）の演出の最大 ${longest.max}ms も 0.9 秒以内`, longest.n >= 20 && longest.max > 0 && longest.max <= 900, longest);
       await ctx.close();
       // ---- 動きを減らす設定：波・粒・揺れなし。まわりもかたまりと同時に薄くなって すぐ消える ----
       const C2 = await openG(browser, 'QW19 reduce', { opts: { reducedMotion: 'reduce' } });
@@ -1175,7 +1198,7 @@ export const tests = [
       await tapReal(p2, cg[0][0], cg[0][1]); await wait(p2, 40);
       await tapReal(p2, cg[0][0], cg[0][1]); await wait(p2, 200);
       const c1 = await gs(p2);
-      check(`動きを減らす：7こ以上でも 0.2 秒で消え終わる（isAnimating ${c1.busy}・演出 ${c1.animMs}ms）、盤は別実装と同じ`, c1.calm === true && c1.busy === false && c1.animMs <= 200 && J(c1.grid) === J(simulate(c0.grid, cg, 0)) && c1.streak === 1, { busy: c1.busy, animMs: c1.animMs });
+      check(`動きを減らす：5こ以上でも 0.2 秒で消え終わる（isAnimating ${c1.busy}・演出 ${c1.animMs}ms）、盤は別実装と同じ`, c1.calm === true && c1.busy === false && c1.animMs <= 200 && J(c1.grid) === J(simulate(c0.grid, cg, 0)) && c1.streak === 1, { busy: c1.busy, animMs: c1.animMs });
       await C2.ctx.close();
     },
   },

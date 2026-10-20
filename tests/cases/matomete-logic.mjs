@@ -123,12 +123,12 @@ export const tests = [
       check('scoreFor：2→0、3→1、4→4、10→64、200→39204、0・1→0', tBad.length === 0, tBad);
       const wBad = [-1, 1.5, NaN, '5', null, undefined, Infinity].filter((v) => L.scoreFor(v) !== 0);
       check('scoreFor：負・小数・数でない は 0（例外なし）', wBad.length === 0, wBad.map(String));
-      // 5 個のかたまり＋残り
-      const S = mk(['00000', '1', '12'], { score: 7, moves: 3 });
+      // 4 個のかたまり＋残り（5 こ以上は まわりも消えるので §10 の QL11 で確かめる）
+      const S = mk(['0000', '1', '12'], { score: 7, moves: 3 });
       const r = L.applyRemove(S, 0, 2);
       const o = r.outcome;
-      check('5 個消す：kind remove・count 5・color 0・points 9・bonus 0・allClear false', o.kind === 'remove' && o.count === 5 && o.color === 0 && o.points === 9 && o.bonus === 0 && o.allClear === false, o);
-      check('score は 7+9=16、moves は 4、cleared は +5、remaining は 3', r.state.score === 16 && r.state.moves === 4 && r.state.cleared === S.cleared + 5 && o.remaining === 3 && L.remaining(r.state) === 3, { score: r.state.score, moves: r.state.moves, cleared: r.state.cleared, rem: o.remaining });
+      check('4 個消す：kind remove・count 4・color 0・points 4・bonus 0・allClear false', o.kind === 'remove' && o.count === 4 && o.color === 0 && o.points === 4 && o.bonus === 0 && o.allClear === false, o);
+      check('score は 7+4=11、moves は 4、cleared は +4、remaining は 3', r.state.score === 11 && r.state.moves === 4 && r.state.cleared === S.cleared + 4 && o.remaining === 3 && L.remaining(r.state) === 3, { score: r.state.score, moves: r.state.moves, cleared: r.state.cleared, rem: o.remaining });
       check('cells は消したマス（groupAt と同じ並び）', J(o.cells) === J(L.groupAt(S, 0, 0)), o.cells);
       // 全部消し
       const A = mk(['00', '0'], { score: 5 });
@@ -245,7 +245,7 @@ export const tests = [
       let s = L.newGame(777, 'hard'); const mv = [];
       for (let i = 0; i < 6 && !s.over; i++) { const m = findMove(L, s); const r = L.applyRemove(s, m[0], m[1]); s = r.state; mv.push(m); }
       const raw = L.makeSave(s, mv);
-      check('makeSave は { v:2, seed, mode, moves } の JSON（§10 でルールが変わったので v は 2）', J(JSON.parse(raw)) === J({ v: 2, seed: 777, mode: 'hard', moves: mv }), raw);
+      check('makeSave は { v:3, seed, mode, moves } の JSON（§10 で 2、5こ以上・まわり +3 点に変えたので v は 3）', J(JSON.parse(raw)) === J({ v: 3, seed: 777, mode: 'hard', moves: mv }), raw);
       const sv = L.validateSave(raw);
       check('validateSave(makeSave) は { seed, mode, moves }', sv && sv.seed === 777 && sv.mode === 'hard' && J(sv.moves) === J(mv), sv);
       const rp = L.replay(sv.seed, sv.mode, sv.moves);
@@ -261,11 +261,11 @@ export const tests = [
       const rb = [L.replay(NaN, 'normal', []), L.replay(1, 'x', []), L.replay(1, 'normal', 'abc'), L.replay(1, 'normal', [[0]]), L.replay(1, 'normal', [null])];
       check('replay の壊れた引数：例外なし・ok false', rb.every((r) => r && r.ok === false) && rb[0].state === null, rb.map((r) => r && r.ok));
       // validateSave の壊れた値
-      const okSave = { v: 2, seed: 5, mode: 'normal', moves: [[0, 0]] };
+      const okSave = { v: 3, seed: 5, mode: 'normal', moves: [[0, 0]] };
       const broken = [
         undefined, null, 1, '', 'abc', '{', '[]', 'null', '"x"', '123',
-        J({ ...okSave, v: 3 }), J({ ...okSave, v: 0 }), J({ ...okSave, v: '1' }), J({ ...okSave, v: '2' }),
-        J({ ...okSave, v: 1, seed: 1.5 }), J({ ...okSave, v: 1, mode: 'x' }), J({ ...okSave, v: 1, moves: [[0]] }), J({ seed: 5, mode: 'normal', moves: [] }),
+        J({ ...okSave, v: 4 }), J({ ...okSave, v: 0 }), J({ ...okSave, v: '1' }), J({ ...okSave, v: '2' }), J({ ...okSave, v: '3' }),
+        J({ ...okSave, v: 1, seed: 1.5 }), J({ ...okSave, v: 1, mode: 'x' }), J({ ...okSave, v: 1, moves: [[0]] }), J({ ...okSave, v: 2, seed: 1.5 }), J({ ...okSave, v: 2, mode: 'x' }), J({ ...okSave, v: 2, moves: [[0]] }), J({ seed: 5, mode: 'normal', moves: [] }),
         J({ ...okSave, seed: 1.5 }), J({ ...okSave, seed: '5' }), J({ ...okSave, seed: 4294967296 }), J({ ...okSave, seed: -2147483649 }), J({ ...okSave, seed: null }),
         J({ ...okSave, mode: 'Easy' }), J({ ...okSave, mode: 'veryhard' }), J({ ...okSave, mode: null }), J({ ...okSave, mode: 'toString' }), J({ ...okSave, mode: '__proto__' }),
         J({ ...okSave, moves: {} }), J({ ...okSave, moves: 'x' }), J({ ...okSave, moves: null }),
@@ -276,9 +276,11 @@ export const tests = [
       const good = [J(okSave), J({ ...okSave, moves: [] }), J({ ...okSave, moves: Array(200).fill([0, 0]) }), J({ ...okSave, seed: 4294967295 }), J({ ...okSave, seed: -2147483648 }), J({ ...okSave, mode: 'hard', extra: 1 }), J({ ...okSave, mode: 'easy' })];
       const gBad = good.filter((v) => L.validateSave(v) === null);
       check('validateSave：正しい値（手 0 個・200 個・seed の両端・余計な項目つき・やさしい）は受け付ける', gBad.length === 0, gBad);
-      // 前の版（v:1）の途中保存：形が正しければ、手を捨てて同じ種・同じモードの最初から（§10）
-      const v1 = L.validateSave(J({ v: 1, seed: 777, mode: 'hard', moves: mv }));
-      check('v:1 の保存は { seed, mode, moves: [] }（手を捨てる。replay すると newGame と同じ）', v1 && v1.seed === 777 && v1.mode === 'hard' && J(v1.moves) === '[]' && J(L.replay(v1.seed, v1.mode, v1.moves).state) === J(L.newGame(777, 'hard')), v1);
+      // 前の版（v:2・v:1）の途中保存：形が正しければ、手を捨てて同じ種・同じモードの最初から（§10）
+      for (const ov of [1, 2]) {
+        const vo = L.validateSave(J({ v: ov, seed: 777, mode: 'hard', moves: mv }));
+        check(`v:${ov} の保存は { seed, mode, moves: [] }（手を捨てる。replay すると newGame と同じ）`, vo && vo.seed === 777 && vo.mode === 'hard' && J(vo.moves) === '[]' && J(L.replay(vo.seed, vo.mode, vo.moves).state) === J(L.newGame(777, 'hard')), vo);
+      }
       // validateBest / recordBest / validateFlag
       const B = [['12', 12], [34, 34], ['0', 0], [0, 0], ['-1', 0], [-5, 0], ['1.5', 0], ['abc', 0], [null, 0], [undefined, 0], [NaN, 0], ['9007199254740993', 0], [{}, 0], [[], 0], ['', 0], [Infinity, 0]];
       const bBad = B.filter(([v, w]) => { try { return L.validateBest(v) !== w; } catch { return true; } }).map(([v]) => String(v));
@@ -327,12 +329,12 @@ export const tests = [
     },
   },
   {
-    id: 'QL11', tier: 'smoke', node: true, title: 'まとめてポン §10：7こ以上で まわりも消える（上下左右 r マス以内・色を問わない・盤の端・空のマスは数えない）、れんぞく（7こ以上で +1・6こ以下で 0・3 回目から r=2）、点数 (n−2)²＋まわりの数、preview、undo（前の state）と replay で streak が同じ',
+    id: 'QL11', tier: 'smoke', node: true, title: 'まとめてポン §10：5こ以上で まわりも消える（上下左右 r マス以内・色を問わない・盤の端・空のマスは数えない）、れんぞく（5こ以上で +1・4こ以下で 0・3 回目から r=2）、点数 (n−2)²＋まわりの数×3、preview、undo（前の state）と replay で streak が同じ',
     run({ check, root }) {
       const L = load(root);
-      check('定数：BIG 7・STREAK_WIDE 3・RADIUS { near 1, wide 2 }・EXTRA_POINT 1・SAVE_V 2', L.BIG === 7 && L.STREAK_WIDE === 3 && J(L.RADIUS) === J({ near: 1, wide: 2 }) && L.EXTRA_POINT === 1 && L.SAVE_V === 2, { BIG: L.BIG, W: L.STREAK_WIDE, R: L.RADIUS });
-      // 盤：1 と 2 の市松（どこもつながらない）に、色 0 の縦 7 こ（列 gx の 0〜6 段）。列 0〜5 は高さ h
-      const board = (gx, h = 12, n = 7, streak) => {
+      check('定数：BIG 5・STREAK_WIDE 3・RADIUS { near 1, wide 2 }・EXTRA_POINT 3・SAVE_V 3', L.BIG === 5 && L.STREAK_WIDE === 3 && J(L.RADIUS) === J({ near: 1, wide: 2 }) && L.EXTRA_POINT === 3 && L.SAVE_V === 3, { BIG: L.BIG, W: L.STREAK_WIDE, R: L.RADIUS });
+      // 盤：1 と 2 の市松（どこもつながらない）に、色 0 の縦 5 こ（列 gx の 0〜4 段）。列 0〜5 は高さ h
+      const board = (gx, h = 12, n = 5, streak) => {
         const cs = [];
         for (let x = 0; x < 6; x++) { let t = ''; for (let y = 0; y < h; y++) t += (x === gx && y < n) ? '0' : String(1 + ((x + y) % 2)); cs.push(t); }
         const st = mk(cs);
@@ -350,31 +352,31 @@ export const tests = [
       const S1 = board(3);
       const g1 = L.groupAt(S1, 3, 0);
       const r1 = L.applyRemove(S1, 3, 3), o1 = r1.outcome;
-      check(`7 こ（れんぞく 0 から）：radius 1・まわり ${o1.extra && o1.extra.length} こ（左右の列 7 こずつ＋上 1 こ＝15、色 1・2 の両方）`, g1.length === 7 && o1.radius === 1 && J(o1.extra) === J(around(S1, g1, 1)) && o1.extra.length === 15 && new Set(o1.extra.map(([a, b]) => S1.grid[a][b])).size === 2, o1.extra);
-      check(`点数は (7−2)²＋15 ＝ 40（points ${o1.points}・extraPoints ${o1.extraPoints}）、streak 1、cleared は 7＋15、残りは 72−22`, o1.points === 40 && o1.extraPoints === 15 && o1.streak === 1 && r1.state.streak === 1 && r1.state.score === 40 && r1.state.cleared === S1.cleared + 22 && o1.remaining === 50, { p: o1.points, st: r1.state.streak, rem: o1.remaining });
-      check('まわりはかたまりのマスと重ならない、消したあとの盤に まわりのマスが残らない（落下で詰まる）', o1.extra.every(([a, b]) => !g1.some(([c, d]) => a === c && b === d)) && L.remaining(r1.state) === 72 - 22, null);
+      check(`5 こ（れんぞく 0 から）：radius 1・まわり ${o1.extra && o1.extra.length} こ（左右の列 5 こずつ＋上 1 こ＝11、色 1・2 の両方）`, g1.length === 5 && o1.radius === 1 && J(o1.extra) === J(around(S1, g1, 1)) && o1.extra.length === 11 && new Set(o1.extra.map(([a, b]) => S1.grid[a][b])).size === 2, o1.extra);
+      check(`点数は (5−2)²＋11×3 ＝ 42（points ${o1.points}・extraPoints ${o1.extraPoints}）、streak 1、cleared は 5＋11、残りは 72−16`, o1.points === 42 && o1.extraPoints === 33 && o1.streak === 1 && r1.state.streak === 1 && r1.state.score === 42 && r1.state.cleared === S1.cleared + 16 && o1.remaining === 56, { p: o1.points, st: r1.state.streak, rem: o1.remaining });
+      check('まわりはかたまりのマスと重ならない、消したあとの盤に まわりのマスが残らない（落下で詰まる）', o1.extra.every(([a, b]) => !g1.some(([c, d]) => a === c && b === d)) && L.remaining(r1.state) === 72 - 16, null);
       // 盤の端（列 0）：はみ出さない
       const E = board(0), ge = L.groupAt(E, 0, 0), oe = L.applyRemove(E, 0, 0).outcome;
-      check(`盤の端（左の列）：まわりは右の列 7 こ＋上 1 こ＝8（${oe.extra.length}）、範囲外を数えない`, oe.extra.length === 8 && J(oe.extra) === J(around(E, ge, 1)), oe.extra);
-      // 空のマスは数えない（列の高さが 7 なら上は空）
-      const Hs = board(3, 7), oh = L.applyRemove(Hs, 3, 0).outcome;
-      check(`上が空：空のマスは まわりに入らない（${oh.extra.length} こ＝左右 14）`, oh.extra.length === 14 && oh.extra.every(([a, b]) => Hs.grid[a][b] !== null), oh.extra);
+      check(`盤の端（左の列）：まわりは右の列 5 こ＋上 1 こ＝6（${oe.extra.length}）、範囲外を数えない`, oe.extra.length === 6 && J(oe.extra) === J(around(E, ge, 1)), oe.extra);
+      // 空のマスは数えない（列の高さが 5 なら上は空）
+      const Hs = board(3, 5), oh = L.applyRemove(Hs, 3, 0).outcome;
+      check(`上が空：空のマスは まわりに入らない（${oh.extra.length} こ＝左右 10）`, oh.extra.length === 10 && oh.extra.every(([a, b]) => Hs.grid[a][b] !== null), oh.extra);
       // れんぞく：前が 1 → 2（r=1）、前が 2 → 3（r=2）、前が 5 → 6（r=2 のまま）
-      const o_1 = L.applyRemove(board(3, 12, 7, 1), 3, 0).outcome;
-      const S2 = board(3, 12, 7, 2), r2 = L.applyRemove(S2, 3, 0), o2 = r2.outcome;
-      const o5 = L.applyRemove(board(3, 12, 7, 5), 3, 0).outcome;
-      check(`れんぞく：前 1 → streak 2・r 1、前 2 → streak 3・r 2（まわり ${o2.extra.length} こ＝32）、前 5 → streak 6・r 2`, o_1.streak === 2 && o_1.radius === 1 && o2.streak === 3 && o2.radius === 2 && J(o2.extra) === J(around(S2, L.groupAt(S2, 3, 0), 2)) && o2.extra.length === 32 && o5.streak === 6 && o5.radius === 2, { a: [o_1.streak, o_1.radius], b: [o2.streak, o2.radius, o2.extra.length], c: [o5.streak, o5.radius] });
-      check(`r=2 の点数は 25＋32 ＝ 57（${o2.points}）`, o2.points === 57 && r2.state.score === 57, o2.points);
-      // 6 こ以下：まわりなし・れんぞく 0
-      const S6 = board(3, 12, 6, 2), r6 = L.applyRemove(S6, 3, 0), o6 = r6.outcome;
-      check(`6 こ（前 2）：まわりなし（extra []・radius 0・extraPoints 0）、点 16、streak 0 に戻る`, J(o6.extra) === '[]' && o6.radius === 0 && o6.extraPoints === 0 && o6.points === 16 && o6.streak === 0 && r6.state.streak === 0, o6);
-      const S8 = board(3, 12, 8), o8 = L.applyRemove(S8, 3, 0).outcome;
-      check(`8 こ：まわりも消える（${o8.extra.length} こ）・点 36＋まわり`, o8.radius === 1 && o8.extra.length === 17 && o8.points === 36 + 17, o8.extra.length);
+      const o_1 = L.applyRemove(board(3, 12, 5, 1), 3, 0).outcome;
+      const S2 = board(3, 12, 5, 2), r2 = L.applyRemove(S2, 3, 0), o2 = r2.outcome;
+      const o5 = L.applyRemove(board(3, 12, 5, 5), 3, 0).outcome;
+      check(`れんぞく：前 1 → streak 2・r 1、前 2 → streak 3・r 2（まわり ${o2.extra.length} こ＝24）、前 5 → streak 6・r 2`, o_1.streak === 2 && o_1.radius === 1 && o2.streak === 3 && o2.radius === 2 && J(o2.extra) === J(around(S2, L.groupAt(S2, 3, 0), 2)) && o2.extra.length === 24 && o5.streak === 6 && o5.radius === 2, { a: [o_1.streak, o_1.radius], b: [o2.streak, o2.radius, o2.extra.length], c: [o5.streak, o5.radius] });
+      check(`r=2 の点数は 9＋24×3 ＝ 81（${o2.points}）`, o2.points === 81 && r2.state.score === 81, o2.points);
+      // 4 こ以下：まわりなし・れんぞく 0
+      const S6 = board(3, 12, 4, 2), r6 = L.applyRemove(S6, 3, 0), o6 = r6.outcome;
+      check(`4 こ（前 2）：まわりなし（extra []・radius 0・extraPoints 0）、点 4、streak 0 に戻る`, J(o6.extra) === '[]' && o6.radius === 0 && o6.extraPoints === 0 && o6.points === 4 && o6.streak === 0 && r6.state.streak === 0, o6);
+      const S8 = board(3, 12, 6), o8 = L.applyRemove(S8, 3, 0).outcome;
+      check(`6 こ：まわりも消える（${o8.extra.length} こ）・点 16＋まわり×3`, o8.radius === 1 && o8.extra.length === 13 && o8.points === 16 + 13 * 3, o8.extra.length);
       // newGame の streak は 0、streak の無い手組みの state は 0 とみなす、壊れた streak は invalid
-      check('newGame の streak は 0、streak の無い state は 0 とみなす、負・小数の streak は壊れた state（invalid）', L.newGame(1).streak === 0 && L.applyRemove(board(3), 3, 0).outcome.streak === 1 && L.applyRemove(board(3, 12, 7, -1), 3, 0).outcome.kind === 'invalid' && L.applyRemove(board(3, 12, 7, 1.5), 3, 0).outcome.kind === 'invalid', null);
+      check('newGame の streak は 0、streak の無い state は 0 とみなす、負・小数の streak は壊れた state（invalid）', L.newGame(1).streak === 0 && L.applyRemove(board(3), 3, 0).outcome.streak === 1 && L.applyRemove(board(3, 12, 5, -1), 3, 0).outcome.kind === 'invalid' && L.applyRemove(board(3, 12, 5, 1.5), 3, 0).outcome.kind === 'invalid', null);
       // preview は applyRemove と同じ（盤は変えない）
       const pv = L.preview(S2, 3, 4), pv6 = L.preview(S6, 3, 0);
-      check('preview(state, x, y)：cells・extra・radius・points・extraPoints・streak が applyRemove と同じ、盤は変えない', pv && J(pv.cells) === J(o2.cells) && J(pv.extra) === J(o2.extra) && pv.radius === 2 && pv.points === 57 && pv.extraPoints === 32 && pv.streak === 3 && pv.count === 7 && pv6 && pv6.radius === 0 && pv6.extra.length === 0 && pv6.points === 16 && pv6.streak === 0, { pv, pv6 });
+      check('preview(state, x, y)：cells・extra・radius・points・extraPoints・streak が applyRemove と同じ、盤は変えない', pv && J(pv.cells) === J(o2.cells) && J(pv.extra) === J(o2.extra) && pv.radius === 2 && pv.points === 81 && pv.extraPoints === 72 && pv.streak === 3 && pv.count === 5 && pv6 && pv6.radius === 0 && pv6.extra.length === 0 && pv6.points === 4 && pv6.streak === 0, { pv, pv6 });
       const pvBad = [L.preview(S1, 0, 0), L.preview(S1, 9, 0), L.preview(S1, -1, 0), L.preview(null, 0, 0), L.preview({ ...S1, over: true }, 3, 0)];
       check('preview：1 こ・空・範囲外・壊れた state・over は null（例外なし）', pvBad.every((v) => v === null), pvBad);
       // 1手もどす（前の state を使う）と streak も戻る・replay で streak が同じ
@@ -386,7 +388,7 @@ export const tests = [
       }
       const streaks = hist.map((h) => h.streak);
       const rpOk = hist.every((h, i) => L.replay(h.seed, h.mode, mv.slice(0, i)).state.streak === h.streak);
-      check(`1手もどす（前の state）で streak も戻り、replay の streak が手の途中でも同じ（${streaks.join(',')}）、7こ以上が続いた所がある`, rpOk && hist.every(Object.isFrozen) && Math.max(...streaks) >= 2, streaks);
+      check(`1手もどす（前の state）で streak も戻り、replay の streak が手の途中でも同じ（${streaks.join(',')}）、5こ以上が続いた所がある`, rpOk && hist.every(Object.isFrozen) && Math.max(...streaks) >= 2, streaks);
     },
   },
   {
@@ -432,9 +434,9 @@ export const tests = [
           if (o.radius === 2) wides++;
           if (o.count !== o.cells.length || o.count < 2) bad.push(`${seed}: count と cells が合わない`);
           const ex = o.extra || [];
-          if (o.points !== (o.count - 2) ** 2 + ex.length || o.extraPoints !== ex.length) bad.push(`${seed}: points が (n-2)^2＋まわりの数 でない`);
-          // §10：7こ以上で まわり（r は れんぞく 3 回目から 2）、6こ以下は まわりなし・れんぞく 0
-          const st0 = s.streak || 0, wantR = o.count >= 7 ? (st0 + 1 >= 3 ? 2 : 1) : 0, wantSt = o.count >= 7 ? st0 + 1 : 0;
+          if (o.points !== (o.count - 2) ** 2 + ex.length * 3 || o.extraPoints !== ex.length * 3) bad.push(`${seed}: points が (n-2)^2＋まわりの数×3 でない`);
+          // §10：5こ以上で まわり（r は れんぞく 3 回目から 2）、4こ以下は まわりなし・れんぞく 0
+          const st0 = s.streak || 0, wantR = o.count >= 5 ? (st0 + 1 >= 3 ? 2 : 1) : 0, wantSt = o.count >= 5 ? st0 + 1 : 0;
           if (o.radius !== wantR || o.streak !== wantSt || ns.streak !== wantSt) bad.push(`${seed}: radius / streak が違う（${o.count} こ・前 ${st0}）`);
           const inCells = new Set(o.cells.map(([a, b]) => a * 100 + b));
           const exWant = [];

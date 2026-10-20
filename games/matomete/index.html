@@ -208,7 +208,7 @@
   .tag[data-below="1"]::after { bottom: auto; top: -4px; box-shadow: -2px -2px 0 0 var(--accent); }
   .tag .pts { color: #b45f00; }
   .tag[data-zero="1"] .pts { color: #6b7088; }
-  /* 7こ以上（§10）：まわりも消える札。だいだいの地に「まわりも ポン！」（広いときは「ひろがる！」） */
+  /* 5こ以上（§10）：まわりも消える札。だいだいの地に「まわりも ポン！」（広いときは「ひろがる！」） */
   .tag[data-blast] { background: #ffe1b0; box-shadow: 0 0 0 2px #ff8a3d, 0 4px 12px rgba(0, 0, 0, 0.45); }
   .tag[data-blast]::after { background: #ffe1b0; box-shadow: 2px 2px 0 0 #ff8a3d; }
   .tag[data-blast][data-below="1"]::after { box-shadow: -2px -2px 0 0 #ff8a3d; }
@@ -217,7 +217,7 @@
   .tag[data-blast="2"] { background: #fff2a8; box-shadow: 0 0 0 2px #ff5a1f, 0 0 10px rgba(255, 170, 60, 0.8); }
   .tag[data-blast="2"] .kick { color: #d1290b; }
 
-  /* れんぞく（§10）：盤の上のはしに小さく。7こ以上を続けて消している間だけ出る */
+  /* れんぞく（§10）：盤の上のはしに小さく。5こ以上を続けて消している間だけ出る */
   .streak {
     position: absolute;
     z-index: 6;

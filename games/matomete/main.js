@@ -9,8 +9,8 @@
  *   2回目は指がずれやすいので、選んだかたまりのマスから半マス以内なら（ほかのかたまりの上でも）選んだ方を押したことにする
  * - モードは やさしい（3色）・ふつう（4色）・むずかしい（5色）。最後に遊んだモードを matomete.mode に覚える
  * - 演出の順番は render の Promise で進める（タイマーで進めない）。演出中に押したら、演出を終わらせてから判定する
- * - §10：7こ以上を選ぶと、まわりで消えるマスも光らせて予告し、札に合計（マスの数・点）と「まわりも ポン！」を出す。
- *   7こ以上が続いた回数（れんぞく）は state.streak。盤の上の #streak に出し、3 回目からは「ひろがる！」
+ * - §10：5こ以上を選ぶと、まわりで消えるマスも光らせて予告し、札に合計（マスの数・点）と「まわりも ポン！」を出す。
+ *   5こ以上が続いた回数（れんぞく）は state.streak。盤の上の #streak に出し、3 回目からは「ひろがる！」
  */
 (() => {
   "use strict";
@@ -44,7 +44,7 @@
   const HINT_SELECTED = "もういちど おすと ポン！";
   const HINT_SINGLE = "2こ いじょう つながると けせるよ";
   const HINT_PORTRAIT = "たてむきの ほうが あそびやすいよ";
-  const BIG = L.BIG || 7;
+  const BIG = L.BIG || 5;
   const WIDE_AT = L.STREAK_WIDE || 3;
   const HINT_BIG_FIRST = `${BIG}こ いじょうだと まわりも けせるよ。もういちど おすと ポン！`;
   const HINT_BIG = "もういちど おすと まわりも ポン！";
@@ -121,7 +121,7 @@
   let portraitTipShown = false;
   let portraitTipAgain = 0;     // 1個のマスを押したときに「たてむき」を出し直した回数
   let portraitTipAt = -Infinity;
-  let bigTipShown = false;      // 「7こ いじょうだと まわりも けせるよ」を出したか（開くたびに1回）
+  let bigTipShown = false;      // 「5こ いじょうだと まわりも けせるよ」を出したか（開くたびに1回）
 
   const reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
   const render = R.create({ board: el.board, canvas: el.canvas, tag: el.tag, fx: el.fx, banner: el.banner, burst: el.burst }, { calm: !!reduceMotion.matches, sfx });
@@ -176,8 +176,8 @@
   function renderTools() {
     el.undoBtn.disabled = !(history.length > 0) || phase === "over";
   }
-  // 札：6こ以下は「n こ ＋p てん」。7こ以上は「まわりも！Nこ ＋pてん」（N・p は まわりも入れた合計。広いときは「ひろがる！」）。
-  // SE 縦（マス 18px）でも盤の幅の 8 割に収まるよう、7こ以上の札は空白を詰める
+  // 札：4こ以下は「n こ ＋p てん」。5こ以上は「まわりも！Nこ ＋pてん」（N・p は まわりも入れた合計。広いときは「ひろがる！」）。
+  // SE 縦（マス 18px）でも盤の幅の 8 割に収まるよう、5こ以上の札は空白を詰める
   function tagText(sel) {
     if (!sel.extra.length) return `${sel.n} こ ＋${sel.points} てん`;
     return `${sel.radius >= 2 ? "ひろがる！" : "まわりも！"}${sel.n + sel.extra.length}こ ＋${sel.points}てん`;
@@ -519,7 +519,7 @@
       <h2 id="cardTitle">あそびかた</h2>
       <ol class="rules">
         <li><b>おなじ いろ</b>が 2こ いじょう つながった ところを おす。<b>1かいめは えらぶ（ひかる）、2かいめで ポン！</b></li>
-        <li><b>たくさん</b> けすほど てんが ふえる。<b>7こ いじょう けすと まわりも ポン！ 3かい つづけると もっと ひろく</b>。ぜんぶ けすと ＋1000。</li>
+        <li><b>たくさん</b> けすほど てんが ふえる。<b>${BIG}こ いじょう けすと まわりも ポン！ 3かい つづけると もっと ひろく</b>。ぜんぶ けすと ＋1000。</li>
         <li>けせる ところが なくなったら おしまい。<b>とちゅうで やめても つづきから あそべるよ。</b></li>
       </ol>
       <p class="note">「1手もどす」は なんかいでも。キー：やじるしで うごかす、エンターで えらぶ・けす、U もどす、M おと</p>
