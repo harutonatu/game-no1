@@ -11,7 +11,7 @@
  * - tap：動いた距離が 10px 未満で 300ms 以内
  * - ダブルタップ拡大の抑止：canvas は touch-action:none と touchstart/touchend の preventDefault。
  *   ボタンの所（.head-tools・.card）は、350ms 以内の2回目のタップの touchend を止めて click を自分で送る
- * - キーボード（§5.4）：← → Tab（選ぶ）、1 2 3（その色へおまかせ）、Enter（自分の色へ）、P・Esc（一時停止）、M（音）、?（遊び方）
+ * - キーボード（§5.4）：← →（選ぶ。Tab は止めず、ふつうにボタンへ移る。§19 A8）、1 2 3（その色へおまかせ）、Enter（自分の色へ）、P・Esc（一時停止）、M（音）、?（遊び方）
  */
 (function (root) {
   "use strict";
@@ -131,10 +131,9 @@
       else if (k === "m" || k === "M") cmd = "sound";
       else if (k === "?" || (k === "/" && e.shiftKey)) cmd = "help";
       else if (!card) {
-        // 場の操作（カードが開いているときはしない。Tab・Enter はカードのボタンに任せる）
+        // 場の操作（カードが開いているときはしない。Tab は横取りしない・Enter はボタンの上ではボタンに任せる）
         if (k === "ArrowRight") cmd = "next";
         else if (k === "ArrowLeft") cmd = "prev";
-        else if (k === "Tab") cmd = e.shiftKey ? "prev" : "next";
         else if (k === "1" || k === "2" || k === "3") cmd = "guide" + (Number(k) - 1);
         else if (k === "Enter" && !onControl) cmd = "guideOwn";
       }
