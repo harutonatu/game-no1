@@ -943,7 +943,6 @@
     const s = normalize(obj, true);
     if (!s) return false;
     state = s;
-    closeSheet();
     wallLast = Date.now();
     saveNow();
     relayout(true);
