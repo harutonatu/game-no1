@@ -134,6 +134,7 @@
   #money.bump { animation: bump 0.28s ease-out; }
   @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.12); } 100% { transform: scale(1); } }
   #shipCount { font: 700 13px/1.3 var(--font-text); color: var(--ink); white-space: nowrap; }
+  #shipCount { display: inline-block; }
   #shipCount.bump { animation: bump 0.4s ease-out; }
 
   /* ===== #goal ===== */
@@ -252,10 +253,8 @@
   .sheet-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
   #sheetTitle { flex: 1 1 auto; min-width: 0; margin: 0; font: 800 17px/1.25 var(--font-display); overflow-wrap: anywhere; word-break: keep-all; }
   #sheetClose { flex: 0 0 auto; }
-  .sheet-info { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
-  #sheetRate { margin: 0; font: 700 14px/1.35 var(--font-text); color: var(--muted); }
-  #sheetJam { margin: 0; padding: 1px 8px; border-radius: 999px; background: var(--jam); color: #2b2200; font: 800 13px/1.4 var(--font-text); }
-  #sheetJam::before { content: "⚠ "; }
+  #sheetInfo { margin: 0; font: 700 14px/1.35 var(--font-text); color: var(--muted); overflow-wrap: anywhere; word-break: keep-all; }
+  #sheetInfo[data-jam="1"], #sheetInfo .jam { color: var(--jam); }
   .buys { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .buys > .wide { grid-column: 1 / -1; }
   .buy {
@@ -281,10 +280,12 @@
   .buy .what { font-weight: 800; }
   .buy .cost { font: 800 14px/1.25 var(--font-display); color: var(--gold); font-variant-numeric: tabular-nums; }
   .buy .note { font: 600 12px/1.3 var(--font-text); color: var(--muted); }
+  .buy .note:empty { display: none; }
   .buy[aria-disabled="true"] { background: #26332b; border-style: dashed; border-color: #4b6152; color: var(--muted); }
   .buy[aria-disabled="true"] .cost { color: var(--muted); }
-  .buy.deny { animation: shake 0.3s ease-in-out; }
+  .buy.deny, .shake { animation: shake 0.3s ease-in-out; }
   @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+  .mgr-switch:not(:has(button:not([hidden]))) { display: none; }
   .mgr-switch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .mgr-switch button {
     box-sizing: border-box;
@@ -298,8 +299,10 @@
     font: 700 14px/1.25 var(--font-text);
     word-break: keep-all;
   }
+  .mgr-switch button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; }
+  .mgr-switch button small { font: 600 12px/1.25 var(--font-text); opacity: 0.9; white-space: nowrap; }
   .mgr-switch button[aria-pressed="true"] { background: #f0a43a; border-color: #f0a43a; color: var(--accent-ink); }
-  .mgr-switch button[aria-pressed="true"]::before { content: "✓ "; }
+  .mgr-switch button[aria-pressed="true"] > span::before { content: "✓ "; }
 
   /* ヒント：2行分の高さに固定し、文言が変わっても配置が動かない */
   .hint {
@@ -346,7 +349,7 @@
       grid-template-areas: "scene hud" "scene goal" "scene sheet" "scene hint";
       gap: 3px 6px;
     }
-    .head { grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 4px; }
+    .head { display: flex; justify-content: space-between; column-gap: 4px; }
     /* 名前は場所を取るので、横向きでは見えない形にする（読み上げには残す） */
     h1.title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .back { padding: 0 8px; font-size: 15px; justify-self: start; }
@@ -355,9 +358,10 @@
     .goal { padding: 4px 6px; gap: 3px; }
     #goalText { font-size: 13px; line-height: 1.3; }
     #expandBtn { font-size: 13px; padding: 2px 8px; }
-    .sheet { max-height: none; min-height: 0; align-self: stretch; box-shadow: 0 0 0 1px var(--line); padding: 4px 6px 6px; gap: 4px; }
+    /* シートは #goal の上に重ねて出す（右の列の高さが足りないため。閉じると #goal がまた見える） */
+    .sheet { grid-row: 2 / 4; grid-column: 2; max-height: none; min-height: 0; align-self: stretch; box-shadow: 0 0 0 1px var(--line); padding: 4px 6px 6px; gap: 4px; }
     #sheetTitle { font-size: 15px; }
-    #sheetRate { font-size: 13px; }
+    #sheetInfo { font-size: 13px; }
     .buys { gap: 4px; }
     .buy { min-height: 46px; font-size: 13px; padding: 2px 4px; }
     .buy .cost { font-size: 13px; }
@@ -496,18 +500,15 @@
       <h2 id="sheetTitle">きこり（1にん・Lv1）</h2>
       <button class="tool" id="sheetClose" type="button" aria-label="とじる">✕</button>
     </div>
-    <div class="sheet-info">
-      <p id="sheetRate">1ぷんに 10ぽん</p>
-      <p id="sheetJam" hidden>ここが つまっているよ</p>
-    </div>
-    <div class="buys">
-      <button class="buy" type="button" data-buy="staff"><span class="what">＋1にん</span><span class="cost">15 えん</span><span class="note" hidden></span></button>
-      <button class="buy" type="button" data-buy="line" hidden><span class="what">＋1だい</span><span class="cost">100 えん</span><span class="note" hidden></span></button>
-      <button class="buy" type="button" data-buy="level"><span class="what">きかいを よくする Lv1→2</span><span class="cost">10 えん</span><span class="note" hidden></span></button>
-      <button class="buy wide" type="button" data-buy="mgr"><span class="what">マネージャーを やとう</span><span class="cost">300 えん</span><span class="note" hidden></span></button>
-      <div class="mgr-switch wide" id="mgrSwitch" hidden>
-        <button type="button" id="mgrFast" aria-pressed="true">はやい（はやさ 1.5ばい）</button>
-        <button type="button" id="mgrGain" aria-pressed="false">もうかる（ねだん ＋25%）</button>
+    <p id="sheetInfo">1ぷんに 10ぽん</p>
+    <div class="buys" id="sheetBuys">
+      <button class="buy" type="button" data-buy="staff"><span class="what" data-part="label">＋1にん</span><span class="cost" data-part="price">15 えん</span><span class="note" data-part="reason"></span></button>
+      <button class="buy" type="button" data-buy="line" hidden><span class="what" data-part="label">＋1だい</span><span class="cost" data-part="price">100 えん</span><span class="note" data-part="reason"></span></button>
+      <button class="buy" type="button" data-buy="level"><span class="what" data-part="label">きかいを よくする Lv1→2</span><span class="cost" data-part="price">10 えん</span><span class="note" data-part="reason"></span></button>
+      <button class="buy wide" type="button" data-buy="mgr"><span class="what" data-part="label">マネージャーを やとう</span><span class="cost" data-part="price">300 えん</span><span class="note" data-part="reason"></span></button>
+      <div class="mgr-switch wide" id="mgrSwitch">
+        <button type="button" id="mgrFast" aria-pressed="true" hidden><span>はやい</span><small>はやさ 1.5ばい</small></button>
+        <button type="button" id="mgrGain" aria-pressed="false" hidden><span>もうかる</span><small>ねだん ＋25%</small></button>
       </div>
     </div>
   </section>

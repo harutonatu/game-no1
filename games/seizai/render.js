@@ -88,6 +88,10 @@
     const doc = root.document;
     function el(id) { try { return doc ? doc.getElementById(id) : null; } catch (e) { return null; } }
 
+    ["money", "shipCount"].forEach((id) => {
+      const e = el(id);
+      if (e && e.addEventListener) e.addEventListener("animationend", () => e.classList.remove("bump"));
+    });
     if (mq) {
       const onMq = () => { calm = calmWanted || mq.matches; actors.setCalm(calm); };
       if (mq.addEventListener) mq.addEventListener("change", onMq); else if (mq.addListener) mq.addListener(onMq);
@@ -334,7 +338,7 @@
         last.yen += yen; last.text = yenText(last.yen);
       } else {
         floatTimes.push(clk);
-        floaters.push({ x: z.x + z.w * (0.45 + rnd() * 0.3), y: z.y + 40, yen, text: yenText(yen), t: 0 });
+        floaters.push({ x: z.x + z.w * (0.45 + rnd() * 0.3), y: z.y + 58, yen, text: yenText(yen), t: 0 });
         if (floaters.length > 6) floaters.shift();
       }
       bumpMoney();
@@ -349,11 +353,7 @@
       if (!moneyEl) moneyEl = el("money");
       if (!moneyEl || !moneyEl.classList) return;
       if (moneyEl.classList.contains("bump")) return;
-      moneyEl.classList.add("bump");
-      if (!moneyEl._bumpBound) {
-        moneyEl._bumpBound = true;
-        moneyEl.addEventListener("animationend", () => moneyEl.classList.remove("bump"));
-      }
+      moneyEl.classList.add("bump");   // 外すのは animationend（create で登録）
     }
     function updateGoalBar(state) {
       if (!fillEl) fillEl = el("goalFill");
@@ -394,7 +394,8 @@
       else if (e.kind === "leaf") for (let i = 0; i < 3; i++) particles.push({ x: e.x, y: e.y, vx: (rnd() - 0.5) * 30, vy: -18 - rnd() * 14, life: 0.7, col: "#6cc35a", r: 1.8 });
       else if (e.kind === "drop") particles.push({ x: e.x, y: e.y, vx: 0, vy: -10, life: 0.4, col: "#c9a877", r: 3 });
       else if (e.kind === "coin") particles.push({ x: e.x, y: e.y, vx: 0, vy: -24, life: 0.6, col: "#ffd84d", r: 2.4 });
-      else if (e.kind === "fall") particles.push({ fall: true, x: e.x, y: e.y, dir: e.dir, life: 0.7, t: 0 });
+      else if (e.kind === "fall") { if (particles.filter((p) => p.fall).length < 3) particles.push({ fall: true, x: e.x, y: e.y, dir: e.dir, life: 0.7, t: 0 }); }
+      else if (e.kind === "fall-old") particles.push({ fall: true, x: e.x, y: e.y, dir: e.dir, life: 0.7, t: 0 });
       else if (e.kind === "hello") particles.push({ ring: true, x: e.x, y: e.y - 12, life: 0.5, t: 0, col: "#ffffff" });
       if (particles.length > 90) particles.splice(0, particles.length - 90);
     }
@@ -577,14 +578,14 @@
       ctx.fillStyle = op.ink || "#ffffff";
       ctx.textBaseline = "middle";
       ctx.fillText(text, lx + fz * 0.35, y + h / 2 + 0.5);
-      return w;
+      return h;
     }
     function drawPiles(s) {
       const b = s.buf || {};
       const v = (k) => Math.max(0, Math.floor(num(b[k], 0)));
       // 森の置き場（丸太）
-      drawPile(12, 236, v("yard"), "log", 8);
-      if (v("yard") > 0) label(String(v("yard")), 52, 216, {});
+      drawPile(12, 244, v("yard"), "log", 8);
+      label(String(v("yard")), 50, 230, {});
       // 工場の入口と、台と台の間の置き場
       const f = geo.factory;
       const piles = [["logs", "log", "peel"], ["peeled", "peeled", "beam"], ["beams", "beam", "plank"]];
@@ -592,8 +593,8 @@
         const c = f.cols.find((cc) => cc.dept === d);
         if (!c) continue;
         if (k === productKey(stage)) continue;
-        drawPile(c.x0 + 6, f.y0 + 22, v(k), item, 8);
-        if (v(k) > 0) label(String(v(k)), c.x0 + 48, f.y0 + 4, {});
+        // 名前の札は左上なので、置き場の山は見出しの帯の右に（数は山の高さで見せる）
+        drawPile(c.x1 - 44, f.y0 + 24, v(k), item, 7);
       }
       // 売り物の山
       const gk = productKey(stage);
@@ -601,7 +602,7 @@
       const sx = geo.zones.goods.x + 14, sy = geo.shop.pileY;
       rect(ctx, sx - 6, sy, 112, 6, "#8a5a2b");
       drawPile(sx, sy, g, ITEM_OF[gk] || "plank", 16);
-      label(String(g), geo.zones.goods.x + geo.zones.goods.w - 8, sy + 8, { right: true });
+      label(String(g), geo.zones.goods.x + geo.zones.goods.w - 8, sy - 34, { right: true });
     }
     function drawStations(s) {
       const f = geo.factory;
@@ -870,13 +871,15 @@
         const z = geo.zones[d];
         const x = depts[d] || {};
         // 名前の札（文字でも部署が分かる）
-        let txt = NAMES[d] || d;
+        const right = d === "carry";
+        const lx = right ? z.x + z.w - 3 : z.x + 3;
+        const hh = label(NAMES[d] || d, lx, z.y + 3, { bg: "rgba(20,24,30,0.7)", bold: true, right });
         if (d !== "goods") {
           const n = Math.floor(num(LINE_DEPTS[d] ? x.lines : x.staff, 0));
-          txt += " " + n + (LINE_DEPTS[d] ? "だい" : "にん") + " Lv" + Math.floor(num(x.level, 1));
-          if (x.mgr === "fast" || x.mgr === "gain") txt += x.mgr === "fast" ? " ⚑" : " ¥";
+          let sub = n + (LINE_DEPTS[d] ? "だい" : "にん") + " Lv" + Math.floor(num(x.level, 1));
+          if (x.mgr === "fast" || x.mgr === "gain") sub += x.mgr === "fast" ? " ⚑" : " ¥";
+          label(sub, lx, z.y + 4 + hh, { bg: "rgba(20,24,30,0.55)", right });
         }
-        label(txt, z.x + 3, z.y + 3, { bg: "rgba(20,24,30,0.66)" });
         // つまり（黄色の点線と札）
         if (bn === d) {
           ctx.strokeStyle = "#ffd84d"; ctx.lineWidth = 2.6;
