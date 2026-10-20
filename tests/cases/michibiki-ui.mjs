@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { BASE, view, custom, newPage, seed, wait, sleep, layoutProbe, swInfo, touch, SFX_SPY, plays, mbDrag } from '../lib.mjs';
+import { BASE, view, custom, newPage, seed, wait, sleep, frozen, layoutProbe, swInfo, touch, SFX_SPY, plays, mbDrag } from '../lib.mjs';
 
 const MB = BASE + 'games/michibiki/';
 const SMOKE_V = () => view('SE', 'p', 'app');
@@ -180,6 +180,8 @@ export const tests = [
       await page.evaluate((id) => window.MichibikiGame.guide(id), q.id);
       const u = await until(page, 's.landed >= 1', 2400);
       check('おまかせ（guide）で1機目が着陸する（landed 1）', u.ok && u.s.landed === 1, u.s.landed);
+      // ここから先は、ページの時計を止めて wait でだけ進める（遅い環境でも 0.6 秒の確認がずれない）
+      await frozen(page, async () => {
       const seen = [];
       let s = await gs(page);
       for (let i = 0; i < 5 && !s.over; i++) {
@@ -201,9 +203,10 @@ export const tests = [
       await page.evaluate(() => document.querySelector('#againBtn').click()); await wait(page, 50);
       check('カードが出た直後（0.6 秒以内）に #againBtn を押しても何も起きない', (await dom(page)).overlay === 'over' && (await gs(page)).over === true, await dom(page));
       await wait(page, 650);
-      await page.click('#againBtn'); await wait(page, 100);
+      await page.evaluate(() => document.querySelector('#againBtn').click()); await wait(page, 100);
       const s2 = await gs(page), d2 = await dom(page);
       check(`0.6 秒たてば #againBtn で新しい回（landed ${s2.landed}・lives ${s2.lives}・phase ${s2.phase}・ベスト ${d2.best}）`, s2.phase === 'playing' && s2.landed === 0 && s2.lives === 3 && !s2.over && d2.overlay === null && d2.lives === '3' && d2.best === '1', { s2: { ...s2, drawLog: undefined }, d2 });
+      });
       await ctx.close();
     },
   },
@@ -855,11 +858,13 @@ export const tests = [
       const r = await landN(page, 2, { seeds: [1, 2, 3, 4, 5, 6] });
       const ob = await page.evaluate(() => document.querySelector('#score').dataset.overBest);
       check(`回を始めたときのベスト 1 を超えると #score[data-over-best="1"]（${ob}）、保存も 2（種 ${r.seed}）`, ob === '1' && (await stored(page, 'michibiki.best')) === '2', ob);
-      let s = await gs(page);
-      for (let i = 0; i < 5 && !s.over; i++) s = await crashOnce(page);
-      await wait(page, 700);
-      const card = (await dom(page)).card;
-      const tip = await page.evaluate(() => document.querySelector('#overTip')?.textContent.trim() || null);
+      let s = await gs(page), card = '', tip = null;
+      await frozen(page, async () => {
+        for (let i = 0; i < 5 && !s.over; i++) s = await crashOnce(page);
+        await wait(page, 700);
+        card = (await dom(page)).card;
+        tip = await page.evaluate(() => document.querySelector('#overTip')?.textContent.trim() || null);
+      });
       check(`終わりのカードは「ベスト こうしん！」（回を始めたときのベスト 1 と比べる）: ${card}`, s.over && /ベスト こうしん/.test(card), card);
       check(`#overTip は 2 機以下で終わったときだけ（この回 ${s.landed} 機・${tip}）`, s.landed <= 2 ? tip === 'つぎは かっそうろの やじるしを よく みてね' : tip === null, { landed: s.landed, tip });
       await ctx.close();
@@ -870,9 +875,11 @@ export const tests = [
     async run({ browser, check }) {
       const { ctx, page } = await openM(browser, 'FW22');
       let s = await gs(page);
-      for (let i = 0; i < 5 && !s.over; i++) s = await crashOnce(page);
-      await page.evaluate(() => { window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })); window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); });
-      await wait(page, 700);
+      await frozen(page, async () => {
+        for (let i = 0; i < 5 && !s.over; i++) s = await crashOnce(page);
+        await page.evaluate(() => { window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })); window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); });
+        await wait(page, 700);
+      });
       const r = await page.evaluate(() => { const b = document.querySelector('#againBtn'); return { kind: document.querySelector('#overlay').hidden ? null : document.querySelector('#overlay').dataset.kind, again: !!b, locked: b ? b.getAttribute('aria-disabled') : 'なし' }; });
       check(`over（${s.over}）のすぐ後に pagehide → pageshow しても、カードが出て（${r.kind}）押せない見た目が外れる（aria-disabled ${r.locked}）`, s.over && r.kind === 'over' && r.again && r.locked === null, r);
       await page.evaluate(() => document.querySelector('#againBtn').click()); await wait(page, 100);
