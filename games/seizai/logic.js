@@ -342,7 +342,7 @@
       if (was < need && s.goal.done >= need) ev.push({ kind: "goal" });
     } else {
       s.goal.done += n;
-      if (s.ships < SHIPS_MAX) s.ship.got += n;
+      s.ship.got += n;   // SHIPS_MAX のときは shipCheck が need − 1 で止める
     }
     if (s.stage >= 3 && s.order === null) {
       s.soldSinceOrder += n;
