@@ -36,7 +36,7 @@
   const SHAKE_MS = 400;
   const FF_MAX_SEC = 36000;           // ff・advance の上限（§7.4）
   const WORK_SFX_GAP = 0.4;           // 作業音は合わせて 0.4 秒に 1 回まで（§9）
-  const SELL_SFX_GAP = 0.5;           // 売れた音は 1 秒に 2 回まで（§9）
+  const SELL_SFX_GAP = 1 / 2;         // 売れた音は 1 秒に 2 回まで（§9。AWAY_RATE と紛れないよう 0.5 と書かない）
   const CARD_PRIORITY = ["help", "away", "end", "stage", "order"];
 
   const DEPT_IDS = ["cut", "plant", "carry", "peel", "beam", "plank", "shop"];
