@@ -35,8 +35,6 @@
   const HINT_MS = 3000;
   const SHAKE_MS = 400;
   const FF_MAX_SEC = 36000;           // ff・advance の上限（§7.4）
-  const WORK_SFX_GAP = 0.4;           // 作業音は合わせて 0.4 秒に 1 回まで（§9）
-  const SELL_SFX_GAP = 1 / 2;         // 売れた音は 1 秒に 2 回まで（§9。半分の速さの係数と紛れないよう小数で書かない）
   const CARD_PRIORITY = ["help", "away", "end", "stage", "order"];
 
   const DEPT_IDS = ["cut", "plant", "carry", "peel", "beam", "plank", "shop"];
@@ -83,19 +81,11 @@
   // ===== 効果音（sfx.js が無くても・表に無い名前でも、音なしで遊べる） =====
   const rawSfx = window.YubiSfx && typeof window.YubiSfx.create === "function" ? safeCall(() => window.YubiSfx.create("seizai"), null) : null;
   let silent = 0;                       // advance・catchUp の間は鳴らさない
-  const sfxLast = {};
   const sfx = {
     get on() { return rawSfx ? !!rawSfx.on : false; },
     unlock() { if (rawSfx) try { rawSfx.unlock(); } catch (e) { /* 無視 */ } },
     toggle() { if (rawSfx) try { return rawSfx.toggle(); } catch (e) { /* 無視 */ } return false; },
-    play(name, arg) { if (rawSfx && !silent) try { rawSfx.play(name, arg); } catch (e) { /* 無視 */ } },
-    // 間引いて鳴らす（group ごとに gap 秒に 1 回まで）
-    playGap(group, gap, name, arg) {
-      const t = now() / 1000;
-      if (sfxLast[group] !== undefined && t - sfxLast[group] < gap) return;
-      sfxLast[group] = t;
-      this.play(name, arg);
-    }
+    play(name, arg) { if (rawSfx && !silent) try { rawSfx.play(name, arg); } catch (e) { /* 無視 */ } }
   };
   document.addEventListener("pointerdown", () => sfx.unlock(), { capture: true });
   document.addEventListener("touchend", () => sfx.unlock(), { capture: true });
@@ -302,11 +292,11 @@
       if (!e || typeof e.kind !== "string") continue;
       switch (e.kind) {
         case "made":
-          if (e.dept === "cut") sfx.playGap("work", WORK_SFX_GAP, "chop");
-          else if (e.dept === "peel" || e.dept === "beam" || e.dept === "plank") sfx.playGap("work", WORK_SFX_GAP, "saw");
+          if (e.dept === "cut") sfx.play("chop");
+          else if (e.dept === "peel" || e.dept === "beam" || e.dept === "plank") sfx.play("saw");
           break;
         case "sold":
-          sfx.playGap("sell", SELL_SFX_GAP, "sell");
+          sfx.play("sell");   // 間引きは sfx.js の側（担当D）
           bump(el.money);
           break;
         case "order":
@@ -315,7 +305,7 @@
           openCard("order");
           break;
         case "delivered":
-          sfx.play("deliver");
+          sfx.play("deliver", state && state.stage === 4 ? "ship" : undefined);   // みなとでは船で届ける
           R_call("burst", "deliver", null);
           setHint(`ちゅうもんを とどけたよ！ おれい ${yen(e.yen)}`, 4000);
           saveNow();
@@ -326,13 +316,13 @@
           break;
         case "ship":
           if (e.ending) {
-            sfx.play("deliver");
+            sfx.play("deliver", "ship");
             R_call("burst", "ship", null);
             writeBest(5);
             saveNow();
             openCard("end");
           } else {
-            sfx.play("deliver");
+            sfx.play("deliver", "ship");
             R_call("burst", "ship", null);
             setHint(`ふねが でたよ！ おれい ${yen(e.yen)}`, 4000);
             bump(el.shipCount);
@@ -435,7 +425,6 @@
     cardShownAt = now();
     lockCardButtons(box);
     if (kind === "away") sfx.play("away");
-    else if (kind === "stage") sfx.play("stage");
     const p = CARDS[kind].primary();
     if (p) { try { p.focus({ preventScroll: true }); } catch (e) { try { p.focus(); } catch (e2) { /* 無視 */ } } }
   }
@@ -712,7 +701,7 @@
     closeSheet();
     relayout(true);
     R_call("burst", "stage", null);
-    sfx.play("stage");
+    sfx.play("stage", state.stage);
     updateUi(true);
     stageCardPending = true;
     cancel(stageCardTimer);
