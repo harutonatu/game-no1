@@ -3,16 +3,9 @@
 見つかった不具合・改善案の一覧です。直したら「状態」を `済` にし、「対応」にコミットかブランチを書きます。
 優先度：高＝遊べない・不公平・データが消える／中＝分かりにくい・押し間違える／低＝見た目・まれ。
 
-## 次にやること（2026-10-18 クラウドで統合・再テストした結果。続きをする人へ）
+## 次にやること
 
-最新の引き継ぎは docs/handoff.md（2026-10-20）。
-
-1. **統合**：ブランチ release/v18 に、feature/pikatto（50f4a5c）→ fix/yokotenkai（6f7bc0f）→ feature/hashi（52ce341）の順で merge 済み（rebase なし）。衝突は index.html・tests/README.md・tests/design.md・tests/mutants/mutate.mjs で、どれも両方の追記を残した。GAMES と sw.js の APP_FILES にピカッと早押しとハシわたりの両方が入っている。改行コードが CRLF のファイルはなかった。
-2. **版**：v18・2026-10-18（common/version.js・sw.js の CACHE_VERSION を一致させた。L10 合格）。
-3. **再テスト（release/v18、Linux の Chromium、`WORKERS=2`）**：smoke 74/74 合格（56.2 秒）、full 146/146 合格（213.7 秒）。T-02（A5・P9）は今回出なかった。WebKit smoke（`BROWSER=webkit WORKERS=1`）は 72/72 合格（確認 515/515、181.8 秒、対象外 2 項目＝P7・T1。CDP のタッチ操作が WebKit で使えないため。従来どおり）。変異テストは `ONLY=<PK または HW・HL の全項目> M=<MP1〜MP9 または MH1〜MH6> node tests/mutants/mutate.mjs both` で絞って流し、MP は smoke 9/9・full 9/9、MH は smoke 4/6・full 6/6 を検出（smoke の見逃しは MH5・MH6 で、どちらも full の HW6・HW8 で検出。画面の動きで見つける設計）。MP と MH は別ポート（9900・9950）で同時に流して約6分。PK-01〜PK-30 は「済」にした。
-4. **公開**：ユーザーの承認を得てから `git push origin release/v18:master`（fast-forward。origin/master 42c80d3 が release/v18 の祖先）。公開後、ユーザーが実機で確認（tests/README.md の実機確認リスト。ピカッと早押しは iPad の4本・5本指ジェスチャーの確認 PK-27 も。メニュー最下部が `v18・2026-10-18` になっていること）。
-5. **ユーザーの判断待ち**：なくなった（2026-10-18 に X-09・T-01・T-03・X-05 をユーザーが「おすすめどおり」で決定。ブランチ fix/decisions、版 v19。X-09＝拡大の抑止は残して12px未満の文字を12px以上に、T-01＝A4 を AudioContext が無い環境では対象外に、T-03＝.gitattributes を追加、X-05＝2048 の方向ボタンは見送り）。公開（master への push）はユーザーの承認待ち。
-6. **未着手の低い指摘**：PK-31〜PK-38、HS-01〜HS-11（HS-11 は中）。今回の公開の範囲外。
+最新の状態と次の候補は [docs/handoff.md](handoff.md)（2026-10-20、v23 公開後）を見てください。ここには書きません（重複を避けるため。以前ここにあった v18 の統合の記録は git の履歴にあります）。
 
 ## ピカッと早押し（games/pikatto/）
 
