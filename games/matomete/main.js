@@ -610,6 +610,14 @@
   // ===== 中断 =====
   document.addEventListener("visibilitychange", () => { if (document.hidden) { flush(); save(); } });
   window.addEventListener("pagehide", () => { save(); clearLater(); });
+  // pagehide の clearLater で「押せない」を外すタイマーが消えると、ボタンがうすいまま残る。戻ったときに外す
+  //（ミチビキ空港 §19 A3 の横展開。カードを出す続きは演出の時計なので消えない）
+  window.addEventListener("pageshow", () => {
+    if (overlayKind !== "over") return;
+    const unlock = () => el.card.querySelectorAll(".btns button[aria-disabled]").forEach((btn) => btn.removeAttribute("aria-disabled"));
+    const left = CARD_LOCK_MS - (now() - cardShownAt);
+    if (left > 0) later(unlock, left); else unlock();
+  });
 
   // ===== 大きさ =====
   let layoutQueued = false;

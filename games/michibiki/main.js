@@ -24,6 +24,7 @@
   const STEP = L.STEP || 1 / 60;
   const LIVES = L.LIVES || 3;
   const PLANE_R = L.PLANE_R || 12;
+  const PICK_R = L.PICK_R || 34;
   const ZONE_R = L.ZONE_R || 22;
   const APPROACH_D = L.APPROACH_D || 48;
   const RUNWAY_LEN = L.RUNWAY_LEN || 96;
@@ -107,6 +108,7 @@
   let overlayKind = null;        // null | help | paused | over
   let helpReturn = "start";      // 遊び方を閉じたら：start（回を始める）| paused（一時停止カードへ）
   let best = readBest();
+  let startBest = best;          // 回を始めたときのベスト（「ベスト こうしん！」はこれと比べる。§19 A2）
   let selected = null;           // 選んだ機体の id（タップ・キーボード）
   const drawings = new Map();    // pointerId → { id, pending: [[x,y]...], pathRef, guided }
   let manualMode = false;
@@ -183,7 +185,7 @@
     if (!state) return;
     setNum(el.score, state.landed | 0);
     setNum(el.best, best);
-    el.score.dataset.overBest = best > 0 && state.landed > best ? "1" : "0";
+    el.score.dataset.overBest = startBest > 0 && state.landed > startBest ? "1" : "0";
     renderLives(lost);
   }
   function bumpScore() {
@@ -269,6 +271,7 @@
         case "land":
           sfx.play("land", e.landed);
           scored = true;
+          saveBestNow();
           if (selected === e.id) selected = null;
           dropDrawingsOf(e.id);
           break;
@@ -307,6 +310,14 @@
     if (scored) bumpScore();
     if (state.over) onOver();
   }
+  // 着陸のたびに、ベストを超えていたらすぐ保存する（回の途中でやめても消えない。§19 A2）
+  function saveBestNow() {
+    const n = state ? state.landed | 0 : 0;
+    if (n <= best) return;
+    best = n;
+    const saved = readBest();
+    if (n > saved) writeKey(KEY_BEST, String(n));
+  }
   // 「あか」→「あかい」・「あお」→「あおい」・「きいろ」→「きいろい」
   function kanaAdj(name) { return /[かおろ]$/.test(name) ? name + "い" : name + "の"; }
 
@@ -324,14 +335,25 @@
 
   // ===== 道 =====
   function dropDrawingsOf(id) { drawings.forEach((d, k) => { if (d.id === id) drawings.delete(k); }); }
-  function applyPath(key, d) {
+  // なぞり始めとみなす動き（指を置いた点から MOVE_MIN 以上）
+  function movedEnough(d) {
+    const s0 = d.start;
+    return d.pending.some((q) => Math.hypot(q[0] - s0[0], q[1] - s0[1]) >= MOVE_MIN);
+  }
+  function applyPath(key, d, final) {
     if (!state || state.over || !d.dirty) return;
     const p = planeById(d.id);
     if (!p || p.phase !== "fly") { drawings.delete(key); return; }
     // 指がほとんど動いていない間は渡さない（setPath は機体のそばの点だけだと前の道を捨てるので、タップのぶれで道が消えないように）
     if (!d.pathRef && !d.started) {
-      const s0 = d.start;
-      if (!d.pending.some((q) => Math.hypot(q[0] - s0[0], q[1] - s0[1]) >= MOVE_MIN)) return;
+      if (!movedEnough(d)) return;
+      // 最初の setPath だけ：機体から PICK_R 以内にある先頭の点（指を置いた所など）を捨てる。
+      // 機体のうしろをつかんで前へなぞったとき、うしろの点へ戻って Uターンしないように（§19 A1）
+      const k = d.pending.findIndex((q) => Math.hypot(q[0] - p.x, q[1] - p.y) > PICK_R);
+      if (k < 0) {
+        if (!final) return;                         // まだ機体のそば：指が離れるまで待つ
+        d.pending = d.pending.slice(-1);            // 離した：指を離した点へ向かう
+      } else d.pending = d.pending.slice(k);
       d.started = true;
     }
     // 2回目からは、いまの道の残り（たどり終えた所は捨てる）＋新しい点
@@ -402,6 +424,8 @@
       if (!canPlay()) return false;
       const id = safeCall(() => L.pickPlane(state, pt[0], pt[1]), null);
       if (id === null || id === undefined) return false;
+      // その機体をなぞっている指があれば、新しい指は無視（道が交互に入れ替わらないように。§19 A7）
+      for (const d of drawings.values()) if (d.id === id) return false;
       drawings.set(pid, { id, pending: [[pt[0], pt[1]]], start: [pt[0], pt[1]], started: false, pathRef: null, guided: false, dirty: false });
       return true;
     },
@@ -416,11 +440,13 @@
       if (!rafId) ensureLoop();
     },
     onEnd(pid, pt, info) {
-      const tap = !!(info && info.tap);
+      let tap = !!(info && info.tap);
       const d = drawings.get(pid);
       if (d) {
         drawings.delete(pid);
         if (!canPlay()) return;
+        // まだなぞり始めていない（道を渡していない・ほとんど動いていない）なら、タップとして扱う（§19 A4）
+        if (!tap && !d.started && !d.pathRef && !movedEnough({ start: d.start, pending: d.pending.concat([[pt[0], pt[1]]]) })) tap = true;
         if (tap) {
           // 選んでいる機体があり、滑走路の上をタップした：おまかせを優先
           const rw = selected !== null && selected !== d.id ? runwayAt(pt[0], pt[1]) : null;
@@ -430,7 +456,7 @@
         }
         d.pending.push([pt[0], pt[1]]);
         d.dirty = true;
-        applyPath(pid, d);
+        applyPath(pid, d, true);
         redraw();
         return;
       }
@@ -517,6 +543,7 @@
     hideOverlay();
     if (!makeGame(Number.isFinite(seed) ? seed : newSeed(), layout)) return false;
     best = readBest();
+    startBest = best;
     render.resume();
     setPhase("playing");
     hud();
@@ -533,9 +560,10 @@
     if (phase === "over") return;
     drawings.clear();
     selected = null;
-    const prevBest = readBest();
+    // 「ベスト こうしん！」は回を始めたときのベストと比べる（着陸のたびに保存しているため。§19 A2）
+    const prevBest = startBest;
     const r = safeCall(() => L.recordBest(prevBest, state.landed | 0), { best: Math.max(prevBest, state.landed | 0), improved: (state.landed | 0) > prevBest });
-    best = r.best;
+    best = Math.max(r.best, readBest());
     writeKey(KEY_BEST, String(best));
     const st = state.stats || {};
     lastOver = { landed: state.landed | 0, improved: !!r.improved, prevBest, guided: st.guidedLandings | 0, crashes: st.crashes | 0 };
@@ -692,6 +720,17 @@
     if (document.hidden) { if (phase === "playing") pause(); acc = 0; lastT = null; }
   });
   window.addEventListener("pagehide", () => { clearLater(); stopLoop(); });
+  // pagehide の clearLater で消えた続きを戻す（終わって 0.6 秒以内に閉じると、カードが出ないまま止まるため。§19 A3）
+  window.addEventListener("pageshow", () => {
+    if (hintTimer === 0 && el.hint.textContent) el.hint.textContent = "";       // 消すタイマーが消えたヒント
+    if (phase === "over" && overlayKind !== "over") showOverCard();
+    else if (overlayKind === "over") {
+      // 「押せない」を外すタイマーも消えているので、外し直す
+      const unlock = () => el.card.querySelectorAll(".btns button[aria-disabled]").forEach((b) => b.removeAttribute("aria-disabled"));
+      const left = CARD_LOCK_MS - (now() - cardShownAt);
+      if (left > 0) later(unlock, left); else unlock();
+    }
+  });
 
   // ===== 大きさ・向き（§6.2） =====
   let layoutQueued = false;
@@ -711,7 +750,8 @@
     lastOrient = o;
     lastScale = render.scale;
     // 回の途中で向き・大きさが変わったら、layout はそのまま（倍率だけ直す）で一時停止（§6.2）
-    if (changed && phase === "playing") pause();
+    // ただし機体がまだ1機も出ていない間は止めない（起動直後の大きさの揺れで止まらないように。§19 A6）
+    if (changed && phase === "playing" && firstPlane) pause();
     portraitTip();
     redraw();
   }

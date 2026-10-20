@@ -207,7 +207,8 @@
     .stat b[data-size="m"] { font-size: 15px; }
   }
 
-  /* 横向きで背が低い：上の帯と点数の帯を1行に。ヒントは場の下端に重ねる（場の高さを削らない。SE 横で倍率 0.7 以上） */
+  /* 横向きで背が低い：上の帯と点数の帯を1行に。ヒントは場の上端に重ねる（場の高さを削らない。SE 横で倍率 0.7 以上）。
+     下端は wide のきいろの手前の通り道と予告の印に重なるので、上端に置く（§19 A5） */
   @media (orientation: landscape) and (max-height: 500px) {
     .app {
       padding-top: max(0px, env(safe-area-inset-top, 0px));
@@ -227,11 +228,11 @@
     .stat b[data-size="m"] { font-size: 14px; }
     .hint {
       grid-area: play;
-      align-self: end;
+      align-self: start;
       justify-self: center;
       height: auto;
       max-width: 90%;
-      margin-bottom: 4px;
+      margin-top: 4px;
       padding: 2px 10px;
       border-radius: 999px;
       background: rgba(13, 20, 28, 0.82);

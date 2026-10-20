@@ -50,14 +50,17 @@
   const MAX_PLANES = 10;
   const PATH_STEP = 6;
   const MAX_PATH = 400;
-  const COLOR_STEPS = Object.freeze([0, 6, 18]);
+  const COLOR_STEPS = Object.freeze([0, 4, 12]);   // 契約 §19 C2（[0, 6, 18] から早めた）
   const SAVE_KEY_BEST = "michibiki.best";
   const SAVE_KEY_HELP = "michibiki.help";
 
-  // 難しさの式（契約 §3.4）。秒は 1/100 秒の整数で計算して小数の誤差を出さない
+  // 難しさの式（契約 §3.4・§19 C1）。秒は 1/100 秒の整数で計算して小数の誤差を出さない
+  //   max(2.0, 6.5 − 0.14×min(n,10) − 0.22×max(0, n−10))
   const INTERVAL_START = 650;   // 6.5 秒
-  const INTERVAL_DROP = 14;     // 着陸 1 機ごとに 0.14 秒
-  const INTERVAL_MIN = 240;     // 2.4 秒
+  const INTERVAL_DROP = 14;     // 着陸 10 機までは 1 機ごとに 0.14 秒
+  const INTERVAL_KNEE = 10;     // ここから縮み方を速める
+  const INTERVAL_DROP2 = 22;    // 着陸 10 機を超えたら 1 機ごとに 0.22 秒
+  const INTERVAL_MIN = 200;     // 2.0 秒
   const INTERVAL_JITTER = 0.15; // ×0.85〜1.15
   const ALIVE_START = 3;
   const ALIVE_EVERY = 4;
@@ -80,8 +83,8 @@
   // 色（契約 §3.2）。Okabe-Ito 系。mark は記号の種類（ほかのゲームと同じ名前）、symbol は文字
   const COLORS = Object.freeze([
     { id: 0, key: "red",    name: "あか",   hex: "#D55E00", mark: "circle",   symbol: "○", opensAt: 0 },
-    { id: 1, key: "blue",   name: "あお",   hex: "#0072B2", mark: "triangle", symbol: "△", opensAt: 6 },
-    { id: 2, key: "yellow", name: "きいろ", hex: "#F0E442", mark: "square",   symbol: "□", opensAt: 18 }
+    { id: 1, key: "blue",   name: "あお",   hex: "#0072B2", mark: "triangle", symbol: "△", opensAt: 4 },
+    { id: 2, key: "yellow", name: "きいろ", hex: "#F0E442", mark: "square",   symbol: "□", opensAt: 12 }
   ].map((c) => Object.freeze(c)));
 
   // 滑走路（契約 §3.3）。入り口 (ex, ey) と向き (dx, dy)（入り口 → 奥）
@@ -170,8 +173,9 @@
     return Math.max(1, c);
   }
   function spawnInterval(landed) {
-    const n = normLanded(landed);
-    return Math.max(INTERVAL_MIN, INTERVAL_START - INTERVAL_DROP * Math.min(n, 1e6)) / 100;
+    const n = Math.min(normLanded(landed), 1e6);
+    const v = INTERVAL_START - INTERVAL_DROP * Math.min(n, INTERVAL_KNEE) - INTERVAL_DROP2 * Math.max(0, n - INTERVAL_KNEE);
+    return Math.max(INTERVAL_MIN, v) / 100;
   }
   function maxAlive(landed) {
     const n = normLanded(landed);
@@ -398,6 +402,25 @@
 
   // ---------------------------------------------------------------- 新しい回
 
+  // 回の1機目の出方（契約 §3.4・§19 B4）：あかの滑走路の手前側の辺（入り口の向きの逆の辺）の、
+  // 入り口の線から場の中央の側へ FIRST_SIDE_MIN〜MAX ずらした所に出し、手前の点（入り口から向きの逆へ APPROACH_D）
+  // へ向かってまっすぐ飛ぶ。何もしなければ手前の点を通って入り口の横を抜ける（区域に入らないので着陸しない）。
+  // 手前の点に着くまでに約 4 秒あるので、そこから矢印の向きへ短くなぞるだけで入れる。r は 0〜1
+  const FIRST_SIDE_MIN = 100, FIRST_SIDE_MAX = 140;
+  function firstWarnOpt(layout, r) {
+    const L = LAYOUTS[layout];
+    const rw = runwayOf(layout, 0);
+    const edge = rw.dx > 0 ? "left" : rw.dx < 0 ? "right" : rw.dy > 0 ? "top" : "bottom";
+    const off = FIRST_SIDE_MIN + (FIRST_SIDE_MAX - FIRST_SIDE_MIN) * (isNum(r) ? clamp(r, 0, 1) : 0.5);
+    const horiz = edge === "left" || edge === "right";
+    const c = horiz ? rw.ey : rw.ex;                 // 入り口の線の、辺に沿った位置
+    const len = horiz ? L.h : L.w;
+    const at = clamp(c + (c < len / 2 ? off : -off), len * 0.15, len * 0.85) / len;
+    const pos = edgePoint(edge, at, L.w, L.h);
+    const ax = rw.ex - rw.dx * APPROACH_D, ay = rw.ey - rw.dy * APPROACH_D;
+    return { edge, at, dir: unit(ax - pos[0], ay - pos[1]) || edgeInward(edge) };
+  }
+
   function newGame(seed, layout) {
     try {
       const lay = normLayout(layout);
@@ -412,8 +435,9 @@
         planes: [], warns: [], nearPairs: [],
         stats: { crashes: 0, guidedLandings: 0, freeLandings: 0, bounces: 0, wrongWays: 0 }
       };
-      // 回の1機目：あかの滑走路の手前側（左の辺）から、あか・ふつう（契約 §3.4）
-      makeWarn(s, rng, { edge: "left", at: 0.15 + 0.7 * rng.next(), color: 0, kind: "normal", delay: FIRST_SPAWN_T });
+      // 回の1機目：あかの滑走路の手前側の辺から、滑走路の向きに沿って（契約 §3.4・§19 B4）
+      const first = firstWarnOpt(lay, rng.next());
+      makeWarn(s, rng, { edge: first.edge, at: first.at, dir: first.dir, color: 0, kind: "normal", delay: FIRST_SPAWN_T });
       s.nextSpawnTick = FIRST_SPAWN_T + intervalTicks(0, rng);
       s.rng = rng.a;
       return freezeState(s);
