@@ -62,7 +62,7 @@
   if (missing.length) throw new Error("ミチビキ空港: 画面の部品が見つかりません：" + missing.join(", "));
 
   document.title = NAME;
-  el.title.textContent = NAME;
+  if (el.title.textContent !== NAME) el.title.textContent = NAME;   // 同じなら書き換えない（index.html の <wbr> を残す）
 
   function safeCall(fn, fallback) { try { return fn(); } catch (e) { console.error("ミチビキ空港:", e); return fallback; } }
 

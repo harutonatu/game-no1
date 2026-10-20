@@ -241,8 +241,10 @@
     .play { gap: 6px; }
   }
   /* 幅のごく狭い画面：見出しを少し小さく */
+  /* SE 縦（320px）で「ハシわたり」の最後が欠けないよう、15px・字間なし・すき間 6px */
   @media (max-width: 360px) {
-    h1.title { font-size: 17px; }
+    .head { gap: 6px; }
+    h1.title { font-size: 15px; letter-spacing: 0; }
     .back { padding: 0 8px; }
   }
 
