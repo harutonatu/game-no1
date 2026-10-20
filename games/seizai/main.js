@@ -1,0 +1,1089 @@
+/*
+ * もくもくこうば — 進行（固定ステップ）・シートとカード・保存・るすの あいだ・テスト用 API・デバッグ命令
+ * 契約：docs/seizai-contract.md §5.2〜5.4（シート・カード・DOM）・§7（進行・入力・テスト用 API・デバッグ命令）・§8（保存）・§13
+ * 担当C（入力・進行・保存）だけが編集する。
+ *
+ * 読み込み順：../../common/sfx.js → logic.js → actors.js → render.js → input.js → main.js
+ * - ルール・お金・時間の計算は logic.js（SeizaiLogic）だけが知っている。ここは呼ぶだけ。画面の数は logic の関数の値をそのまま出す（§13-1）
+ * - rAF ごとに performance.now() の差（0.25 秒で頭打ち）を貯め、STEP（0.1 秒）ずつ step（1 フレームに最大 3 回。足りない分は捨てる）
+ * - 実際の時計 Date.now() は「閉じた間」を測るときだけ使う（wallLast）。閉じた間を足すのは addAway() の1か所だけで、
+ *   半分の速さ（AWAY_RATE）は logic の catchUp の中だけで掛かる（ここでは掛けない。§7.1・§13-3）
+ * - タイマーは later / clearLater だけ（setTimeout を直接呼ばない。§7.1）
+ */
+(() => {
+  "use strict";
+
+  const L = window.SeizaiLogic;
+  if (!L || typeof L.newGame !== "function" || typeof L.step !== "function") throw new Error("もくもくこうば: SeizaiLogic が読み込まれていません（logic.js）");
+
+  const NAME = typeof L.NAME === "string" && L.NAME ? L.NAME : "もくもくこうば";
+  const STEP = Number.isFinite(L.STEP) && L.STEP > 0 ? L.STEP : 0.1;
+  const MAX_FRAME_SEC = 0.25;         // 1 フレームの差の頭打ち（§7.1）
+  const MAX_STEPS_PER_FRAME = 3;      // 1 フレームに回す step の上限（重い端末で早送りしない）
+  const AWAY_CARD_MIN_SEC = Number.isFinite(L.AWAY_CARD_MIN_SEC) ? L.AWAY_CARD_MIN_SEC : 60;
+  const MONEY_MAX = Number.isFinite(L.MONEY_MAX) ? L.MONEY_MAX : 9e15;
+  const SHIPS_MAX = Number.isFinite(L.SHIPS_MAX) ? L.SHIPS_MAX : 9999;
+  const ORDER_EVERY = Number.isFinite(L.ORDER_EVERY) ? L.ORDER_EVERY : 150;
+  const KEY_SAVE = L.SAVE_KEY || "seizai.save";
+  const KEY_BAK = L.SAVE_KEY_BAK || "seizai.save.bak";
+  const KEY_BEST = L.SAVE_KEY_BEST || "seizai.best";
+  const KEY_HELP = L.SAVE_KEY_HELP || "seizai.help";
+  const SAVE_EVERY_SEC = 10;          // 自動保存の間隔（遊んだ秒。§8.1）
+  const WALL_EVERY_MS = 1000;         // wallLast を覚え直す間隔（§7.1）
+  const CARD_LOCK_MS = 400;           // カードは出た直後 400ms 押せない（§5.3・§13-7）
+  const STAGE_CARD_DELAY_MS = 1200;   // 節目の演出のあとにカード（§6.3 の 1.5 秒以内）
+  const HINT_MS = 3000;
+  const SHAKE_MS = 400;
+  const FF_MAX_SEC = 36000;           // ff・advance の上限（§7.4）
+  const CARD_PRIORITY = ["help", "away", "end", "stage", "order"];
+
+  const DEPT_IDS = ["cut", "plant", "carry", "peel", "beam", "plank", "shop"];
+  const DEPT_NAME_FALLBACK = { cut: "きこり", plant: "なえぎ", carry: "はこぶ", peel: "かわむき", beam: "かくざい", plank: "いた", shop: "おみせ" };
+  const DEPT_UNLOCK_FALLBACK = { cut: 1, plant: 1, carry: 1, peel: 1, beam: 2, plank: 3, shop: 1 };
+  const LINE_DEPTS_FALLBACK = ["peel", "beam", "plank"];
+  const STAGE_NAME_FALLBACK = ["こや", "こうば", "こうじょう", "みなと"];
+  const EXPAND_COST_FALLBACK = [1500, 60000, 2500000];
+  // 節目のカードに出す「増えたもの」（3 つまで。§3.6）
+  const STAGE_NEWS = {
+    2: ["かくざいの だい", "マネージャー", "だいくさん"],
+    3: ["いたの だい", "おおぐちの ちゅうもん", "ひのき"],
+    4: ["けやき", "ふねの しょうにん", "おおきな ふねの ちゅうもん"]
+  };
+  // 部署の「1ぷんに ○」の単位（plank は 角材1本 → 板4枚 なので 4 倍して「まい」）
+  const RATE_UNIT = { cut: ["ぽん", 1], plant: ["ほん", 1], carry: ["ぽん", 1], peel: ["ぽん", 1], beam: ["ぽん", 1], plank: ["まい", 4], shop: ["にん", 1] };
+  const PRODUCT = { peeled: ["むきまるた", "こ"], beams: ["かくざい", "ぽん"], planks: ["いた", "まい"] };
+
+  const HINT_MONEY = "おかねが たりないよ";
+  const HINT_MAX = "これいじょう ふやせないよ";
+  const HINT_MGR_LOCKED = "こうばに なると やとえるよ";
+  const HINT_BROKEN = "ほぞんが よめなかったので さいしょから はじめるよ";
+
+  const now = () => performance.now();
+  const $ = (id) => document.getElementById(id);
+  const body = document.body;
+  function safeCall(fn, fallback) { try { const v = fn(); return v === undefined ? fallback : v; } catch (e) { console.error("もくもくこうば:", e); return fallback; } }
+
+  const el = {
+    hud: $("hud"), back: $("back"), title: $("gameTitle"), helpBtn: $("helpBtn"), soundBtn: $("soundBtn"), money: $("money"),
+    goal: $("goal"), goalText: $("goalText"), goalBar: $("goalBar"), expandBtn: $("expandBtn"), orderTag: $("orderTag"), shipCount: $("shipCount"),
+    scene: $("scene"), canvas: $("sceneCanvas"), sheet: $("sheet"), sheetTitle: $("sheetTitle"), sheetClose: $("sheetClose"),
+    awayCard: $("awayCard"), awayText: $("awayText"), awayOk: $("awayOk"),
+    stageCard: $("stageCard"), stageOk: $("stageOk"),
+    orderCard: $("orderCard"), orderAccept: $("orderAccept"), orderLater: $("orderLater"),
+    endCard: $("endCard"), endOk: $("endOk"), help: $("help"), helpOk: $("helpOk"), hint: $("hint")
+  };
+  const missing = ["money", "goalText", "scene", "sheet"].filter((k) => !el[k]);
+  if (missing.length) console.error("もくもくこうば: 画面の部品が見つかりません：" + missing.join(", "));
+
+  document.title = NAME;
+  if (el.title && el.title.textContent !== NAME) el.title.textContent = NAME;
+
+  // ===== 効果音（sfx.js が無くても・表に無い名前でも、音なしで遊べる） =====
+  const rawSfx = window.YubiSfx && typeof window.YubiSfx.create === "function" ? safeCall(() => window.YubiSfx.create("seizai"), null) : null;
+  let silent = 0;                       // advance・catchUp の間は鳴らさない
+  const sfx = {
+    get on() { return rawSfx ? !!rawSfx.on : false; },
+    unlock() { if (rawSfx) try { rawSfx.unlock(); } catch (e) { /* 無視 */ } },
+    toggle() { if (rawSfx) try { return rawSfx.toggle(); } catch (e) { /* 無視 */ } return false; },
+    play(name, arg) { if (rawSfx && !silent) try { rawSfx.play(name, arg); } catch (e) { /* 無視 */ } }
+  };
+  document.addEventListener("pointerdown", () => sfx.unlock(), { capture: true });
+  document.addEventListener("touchend", () => sfx.unlock(), { capture: true });
+  function renderSoundBtn() {
+    if (!el.soundBtn) return;
+    el.soundBtn.setAttribute("aria-pressed", String(!!sfx.on));
+    el.soundBtn.setAttribute("aria-label", sfx.on ? "効果音：オン" : "効果音：オフ");
+  }
+  function toggleSound() { sfx.unlock(); sfx.toggle(); renderSoundBtn(); }
+  renderSoundBtn();
+
+  // ===== 保存の読み書き（できなくても遊べる。§8.1） =====
+  function readKey(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+  function writeKey(key, val) { try { localStorage.setItem(key, val); return true; } catch (e) { return false; } }
+
+  // ===== タイマー（later / clearLater。§7.1） =====
+  const timers = new Set();
+  function later(fn, ms) {
+    const id = setTimeout(() => { timers.delete(id); try { fn(); } catch (e) { console.error("もくもくこうば:", e); } }, ms);
+    timers.add(id);
+    return id;
+  }
+  function cancel(id) { if (id && timers.has(id)) { clearTimeout(id); timers.delete(id); } }
+  function clearLater() { timers.forEach((id) => clearTimeout(id)); timers.clear(); hintTimer = 0; cardUnlockTimer = 0; stageCardTimer = 0; }
+
+  // ===== 状態 =====
+  let state = null;            // SeizaiLogic の state（イミュータブル）
+  let phase = "play";          // play | paused | card（body[data-phase]）
+  let sleeping = false;        // 裏に回っている（rAF を止めている）
+  let overlay = null;          // null | help | away | stage | order | end
+  let cardQueue = [];          // 開くのを待っているカード
+  let cardShownAt = -Infinity;
+  let cardUnlockTimer = 0;
+  let stageCardPending = false; // 節目の演出のあとに出すカード（pagehide でタイマーが消えても出し直す）
+  let stageCardTimer = 0;
+  let focusBack = null;
+  let sheetDept = null;        // 開いているシートの部署
+  let wallLast = Date.now();   // 最後に動いていた実際の時刻（閉じた間を測るだけに使う）
+  let lastAway = null;         // 最後の catchUp の report
+  let saveCount = 0;
+  let saveSince = 0;           // 前の保存から遊んだ秒
+  let saveBlocked = false;     // 壊れた保存を bak に写せなかった（元を消さないため上書きしない）
+  let rafId = 0, lastT = null, acc = 0;
+  let hintTimer = 0;
+  let lastLayoutKey = "";
+  let zonesCache = [];
+  let shownStage = 0;
+  let lastUi = {};             // DOM に書いた値（同じなら書かない）
+  let best = 0;
+
+  const reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
+
+  // ===== 描画（render.js が無くても遊べる・テストできる） =====
+  const R = window.SeizaiRender;
+  const render = (R && typeof R.create === "function" && el.canvas ? safeCall(() => R.create(el.canvas, { calm: !!reduceMotion.matches }), null) : null) || stubRender();
+  if (render.isStub) console.error("もくもくこうば: SeizaiRender が読み込まれていません（render.js）。絵なしで動きます");
+  function stubRender() {
+    let frames = 0, calm = !!reduceMotion.matches;
+    return {
+      isStub: true,
+      layout() { return { worldH: 640, zones: [] }; },
+      frame() { frames += 1; }, burst() {}, setCalm(b) { calm = !!b; }, pause() {}, resume() {},
+      stats() { return { actors: 0, frames, slowFrames: 0, bgRedraws: 0, calm }; }
+    };
+  }
+  const R_call = (name, ...a) => { const f = render[name]; if (typeof f !== "function") return undefined; return safeCall(() => f.apply(render, a), undefined); };
+  let calm = !!reduceMotion.matches;
+  function onCalmChange() { calm = !!reduceMotion.matches; R_call("setCalm", calm); }
+  if (reduceMotion.addEventListener) reduceMotion.addEventListener("change", onCalmChange);
+  else if (reduceMotion.addListener) reduceMotion.addListener(onCalmChange);
+
+  // ===== logic の表を読む（形が違っても落ちないよう、なければ契約の値） =====
+  function deptInfo(id) {
+    const D = L.DEPTS;
+    let d = null;
+    if (Array.isArray(D)) d = D.find((x) => x && x.id === id) || null;
+    else if (D && typeof D === "object") d = D[id] || null;
+    return d && typeof d === "object" ? d : {};
+  }
+  const deptName = (id) => { const n = deptInfo(id).name; return typeof n === "string" && n ? n : DEPT_NAME_FALLBACK[id] || id; };
+  function isLineDept(id) {
+    const s = state && state.depts && state.depts[id];
+    if (s && typeof s === "object") { if ("lines" in s) return true; if ("staff" in s) return false; }
+    const k = deptInfo(id).kind;
+    if (k === "line" || k === "台" || k === "lines") return true;
+    if (k === "staff" || k === "人") return false;
+    return LINE_DEPTS_FALLBACK.includes(id);
+  }
+  const countOf = (id) => { const s = state && state.depts && state.depts[id]; return s ? (isLineDept(id) ? s.lines : s.staff) | 0 : 0; };
+  function stageInfo(n) {
+    const S = L.STAGES;
+    const s = Array.isArray(S) ? (S[n - 1] && S[n - 1].stage === n ? S[n - 1] : S.find((x) => x && x.stage === n) || S[n - 1]) : (S && S[n]) || null;
+    return s && typeof s === "object" ? s : {};
+  }
+  const stageName = (n) => { const v = stageInfo(n).name; return typeof v === "string" && v ? v : STAGE_NAME_FALLBACK[n - 1] || ""; };
+  function expandCost(n) {
+    const s = stageInfo(n);
+    for (const k of ["expandCost", "cost", "expand"]) if (Number.isFinite(s[k])) return s[k];
+    return EXPAND_COST_FALLBACK[n - 1] || 0;
+  }
+  function deptUnlock(id) {
+    const d = deptInfo(id);
+    for (const k of ["stage", "from", "unlock", "minStage"]) if (Number.isFinite(d[k])) return d[k];
+    return DEPT_UNLOCK_FALLBACK[id] || 1;
+  }
+  const yen = (n) => safeCall(() => L.formatYen(n), null) || (Math.floor(Number(n) || 0).toLocaleString("ja-JP") + " えん");
+  const goalOf = () => (state ? safeCall(() => L.goalOf(state), null) : null);
+  const ratesOf = () => (state ? safeCall(() => L.rates(state), {}) || {} : {});
+  const bottleneck = () => (state ? safeCall(() => L.bottleneck(state), null) : null);
+  const productOf = (stage) => safeCall(() => L.productOf(stage), null) || (stage >= 3 ? "planks" : stage === 2 ? "beams" : "peeled");
+  const goalReached = (g) => !!(g && Number.isFinite(g.done) && Number.isFinite(g.need) && g.need > 0 && g.done >= g.need && g.kind !== "ship");
+
+  // ===== 保存（§8） =====
+  function saveNow() {
+    if (!state) return false;
+    const at = Date.now();
+    wallLast = at;
+    saveSince = 0;
+    if (saveBlocked) return false;
+    const raw = safeCall(() => L.makeSave(state, at), null);
+    if (typeof raw !== "string") return false;
+    const ok = writeKey(KEY_SAVE, raw);
+    if (ok) saveCount += 1;
+    return ok;
+  }
+  function writeBest(n) {
+    const cur = safeCall(() => L.validateBest(readKey(KEY_BEST)), 0) || 0;
+    best = Math.max(cur, n | 0);
+    if (best > cur) writeKey(KEY_BEST, String(best));
+  }
+  // 読めない保存の元を bak へ写す（bak が既にあれば上書きしない＝最初の壊れた保存を残す。§8.3）
+  function keepBroken(raw) {
+    if (raw === null || raw === undefined) return true;
+    if (readKey(KEY_BAK) !== null) return true;
+    return writeKey(KEY_BAK, String(raw));
+  }
+  // logic の state の形を、保存と同じ検証に通す（gostage・ships・setState・addmoney）
+  function normalize(obj, keepV) {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
+    let raw;
+    try { raw = JSON.stringify(Object.assign({}, obj, { v: keepV && obj.v !== undefined ? obj.v : L.SAVE_VERSION || 1, savedAt: Date.now() })); } catch (e) { return null; }
+    const r = safeCall(() => L.loadSave(raw), null);
+    return r && r.state ? r.state : null;
+  }
+
+  // ===== ヒント =====
+  function setHint(text, ms) {
+    if (!el.hint) return;
+    const t = text || "";
+    if (el.hint.textContent !== t) el.hint.textContent = t;
+    cancel(hintTimer);
+    hintTimer = 0;
+    if (t) hintTimer = later(() => { hintTimer = 0; if (el.hint) el.hint.textContent = ""; }, ms || HINT_MS);
+  }
+
+  // ===== 進め方（§7.1） =====
+  function setPhase(p) {
+    phase = p;
+    body.dataset.phase = p;
+  }
+  function phaseNow() { return sleeping ? "paused" : overlay ? "card" : "play"; }
+
+  // 1 回 step する。events を返す
+  function stepOnce(dt, collect) {
+    const r = safeCall(() => L.step(state, dt), null);
+    if (!r || !r.state) return [];
+    state = r.state;
+    const evs = Array.isArray(r.events) ? r.events : [];
+    if (evs.length) handleEvents(evs);
+    if (collect) for (const e of evs) collect.push(e);
+    saveSince += dt;
+    return evs;
+  }
+  function ensureLoop() {
+    if (rafId || sleeping || !state) return;
+    rafId = requestAnimationFrame(frame);
+  }
+  function stopLoop() { if (rafId) cancelAnimationFrame(rafId); rafId = 0; lastT = null; acc = 0; }
+  function frame(t) {
+    rafId = 0;
+    if (sleeping || !state) return;
+    const dt = lastT === null ? 0 : Math.min(MAX_FRAME_SEC, Math.max(0, (t - lastT) / 1000));
+    lastT = t;
+    acc += dt;
+    const evs = [];
+    let n = 0;
+    while (acc >= STEP && n < MAX_STEPS_PER_FRAME) {
+      stepOnce(STEP, evs);
+      acc -= STEP;
+      n += 1;
+    }
+    if (acc > STEP) acc = 0;              // 足りない分は捨てる（重い端末で早送りしない）
+    const w = Date.now();
+    if (w - wallLast >= WALL_EVERY_MS || w < wallLast) wallLast = w;   // 毎秒覚える（時計が戻っても今の時刻にそろえる）
+    if (saveSince >= SAVE_EVERY_SEC) saveNow();
+    R_call("frame", state, evs, dt);
+    updateUi();
+    ensureLoop();
+  }
+
+  // ===== 出来事（step の events） =====
+  function handleEvents(evs) {
+    for (const e of evs) {
+      if (!e || typeof e.kind !== "string") continue;
+      switch (e.kind) {
+        case "made":
+          if (e.dept === "cut") sfx.play("chop");
+          else if (e.dept === "peel" || e.dept === "beam" || e.dept === "plank") sfx.play("saw");
+          break;
+        case "sold":
+          sfx.play("sell");   // 間引きは sfx.js の側（担当D）
+          bump(el.money);
+          break;
+        case "order":
+          sfx.play("order");
+          saveNow();
+          openCard("order");
+          break;
+        case "delivered":
+          sfx.play("deliver", state && state.stage === 4 ? "ship" : undefined);   // みなとでは船で届ける
+          R_call("burst", "deliver", null);
+          setHint(`ちゅうもんを とどけたよ！ おれい ${yen(e.yen)}`, 4000);
+          saveNow();
+          break;
+        case "goal":
+          sfx.play("best");
+          if (state && state.stage < 4) setHint("めあてを たっせい！ ひろげられるよ", 4000);
+          break;
+        case "ship":
+          if (e.ending) {
+            sfx.play("deliver", "ship");
+            R_call("burst", "ship", null);
+            writeBest(5);
+            saveNow();
+            openCard("end");
+          } else {
+            sfx.play("deliver", "ship");
+            R_call("burst", "ship", null);
+            setHint(`ふねが でたよ！ おれい ${yen(e.yen)}`, 4000);
+            bump(el.shipCount);
+            saveNow();
+          }
+          break;
+        default: break;
+      }
+    }
+  }
+  function bump(node) {
+    if (!node || calm) return;
+    node.classList.remove("bump");
+    void node.offsetWidth;
+    node.classList.add("bump");
+  }
+
+  // ===== 閉じた間（ここ1か所だけで足す。半分の速さは catchUp の中。§7.1・§4.3） =====
+  function addAway(seconds) {
+    if (!state) return null;
+    const before = state;
+    silent += 1;
+    let r;
+    try { r = safeCall(() => L.catchUp(state, seconds), null); } finally { silent -= 1; }
+    if (!r || !r.state) return null;
+    state = r.state;
+    const rep = r.report && typeof r.report === "object" ? r.report : { seconds: 0, effective: 0, capped: false, earned: 0 };
+    lastAway = rep;
+    // 閉じている間に起きたこと（注文が来た・エンディング・船が出た）
+    if (!before.cleared && state.cleared) { writeBest(5); cardQueueAdd("end"); }
+    else if ((state.ships | 0) > (before.ships | 0)) bump(el.shipCount);
+    if (state.order && !state.order.accepted && (!before.order || before.order.id !== state.order.id)) cardQueueAdd("order");
+    if ((Number(rep.seconds) || 0) >= AWAY_CARD_MIN_SEC) openCard("away");
+    else flushCards();
+    saveNow();
+    R_call("frame", state, [], 0);
+    updateUi();
+    return rep;
+  }
+
+  // 裏に回す（hidden・pagehide）
+  function sleep() {
+    if (sleeping) return;
+    if (state) saveNow();                  // wallLast もここで覚える
+    sleeping = true;
+    stopLoop();
+    R_call("pause");
+    setPhase("paused");
+  }
+  // 表に戻る（visible・pageshow）。閉じていた秒を足すのは sleeping のときの1回だけ（二重に足さない）
+  function wake() {
+    if (!sleeping || document.hidden) return;
+    sleeping = false;
+    const sec = safeCall(() => L.awaySeconds(wallLast, Date.now()), 0) || 0;
+    wallLast = Date.now();
+    restoreTimers();
+    addAway(sec);
+    wallLast = Date.now();
+    R_call("resume");
+    setPhase(phaseNow());
+    ensureLoop();
+  }
+  // pagehide の clearLater で消えた続きを戻す
+  function restoreTimers() {
+    if (hintTimer === 0 && el.hint && el.hint.textContent) el.hint.textContent = "";
+    if (overlay && !cardUnlockTimer) {
+      const left = CARD_LOCK_MS - (now() - cardShownAt);
+      if (left > 0) cardUnlockTimer = later(unlockCardButtons, left); else unlockCardButtons();
+    }
+    if (stageCardPending && !stageCardTimer) { stageCardPending = false; openCard("stage"); }
+    document.querySelectorAll(".shake").forEach((b) => b.classList.remove("shake"));
+  }
+
+  // ===== カード（§5.3） =====
+  const CARDS = {
+    help: { box: () => el.help, primary: () => el.helpOk },
+    away: { box: () => el.awayCard, primary: () => el.awayOk },
+    stage: { box: () => el.stageCard, primary: () => el.stageOk },
+    order: { box: () => el.orderCard, primary: () => el.orderAccept },
+    end: { box: () => el.endCard, primary: () => el.endOk }
+  };
+  function cardQueueAdd(kind) {
+    if (overlay === kind || cardQueue.includes(kind)) return;
+    cardQueue.push(kind);
+    cardQueue.sort((a, b) => CARD_PRIORITY.indexOf(a) - CARD_PRIORITY.indexOf(b));
+  }
+  function openCard(kind) {
+    if (!CARDS[kind]) return;
+    if (overlay) { if (overlay !== kind) cardQueueAdd(kind); return; }
+    cardQueue = cardQueue.filter((k) => k !== kind);
+    const box = CARDS[kind].box();
+    if (!box) return;
+    if (kind === "order" && !(state && state.order && !state.order.accepted)) return;   // 受けた・届いた後の古い札は出さない
+    fillCard(kind);
+    focusBack = document.activeElement;
+    box.hidden = false;
+    box.setAttribute("aria-modal", "true");
+    overlay = kind;
+    if (!sleeping) setPhase("card");
+    cardShownAt = now();
+    lockCardButtons(box);
+    if (kind === "away") sfx.play("away");
+    const p = CARDS[kind].primary();
+    if (p) { try { p.focus({ preventScroll: true }); } catch (e) { try { p.focus(); } catch (e2) { /* 無視 */ } } }
+  }
+  function lockCardButtons(box) {
+    box.querySelectorAll("button").forEach((b) => { if (b.id !== "back") b.setAttribute("aria-disabled", "true"); b.dataset.cardLock = "1"; });
+    cancel(cardUnlockTimer);
+    cardUnlockTimer = later(unlockCardButtons, CARD_LOCK_MS);
+  }
+  function unlockCardButtons() {
+    cardUnlockTimer = 0;
+    document.querySelectorAll("[data-card-lock]").forEach((b) => { b.removeAttribute("aria-disabled"); delete b.dataset.cardLock; });
+  }
+  const cardLocked = () => now() - cardShownAt < CARD_LOCK_MS;
+  function closeCard(kind) {
+    if (overlay !== kind) return false;
+    const box = CARDS[kind].box();
+    if (box) box.hidden = true;
+    overlay = null;
+    unlockCardButtons();
+    cancel(cardUnlockTimer);
+    if (!sleeping) setPhase("play");
+    const fb = focusBack; focusBack = null;
+    if (fb && fb.isConnected && fb !== document.body && !(box && box.contains(fb))) { try { fb.focus({ preventScroll: true }); } catch (e) { /* 無視 */ } }
+    flushCards();
+    updateUi();
+    return true;
+  }
+  function flushCards() {
+    if (overlay || !cardQueue.length) return;
+    const next = cardQueue.shift();
+    openCard(next);
+  }
+  function setText(node, text) { if (node && node.textContent !== text) node.textContent = text; }
+  function fillCard(kind) {
+    if (kind === "away") {
+      const r = lastAway || { earned: 0, sold: 0, capped: false };
+      const p = PRODUCT[productOf(state ? state.stage : 1)] || PRODUCT.peeled;
+      setText(el.awayText, `おかえり！ るすの あいだに ${yen(r.earned)} かせいだよ`);
+      setText($("awayNote"), r.capped ? "2じかん いじょう たったので 2じかんぶん だよ" : "とじている あいだは はんぶんの はやさで、2じかん まで はたらくよ");
+      setText($("awaySold"), `うった ${p[0]}：${Math.max(0, Math.floor(Number(r.sold) || 0)).toLocaleString("ja-JP")}${p[1]}`);
+      if (!$("awayNote") && el.awayText) {
+        // 担当B の HTML に注記の場所が無いときは、本文に続けて書く
+        el.awayText.textContent += "。" + (r.capped ? "2じかん いじょう たったので 2じかんぶん だよ" : "とじている あいだは はんぶんの はやさで、2じかん まで はたらくよ");
+      }
+    } else if (kind === "stage") {
+      const n = state ? state.stage : 1;
+      setText($("stageTitle"), `${stageName(n)}に なった！`);
+      const news = (STAGE_NEWS[n] || []).slice(0, 3);
+      const list = $("stageList");
+      if (list) {
+        list.textContent = "";
+        for (const s of news) { const li = document.createElement("li"); li.textContent = s; list.append(li); }
+      }
+      const txt = $("stageText");
+      if (txt) txt.textContent = news.length ? "ふえたもの：" + news.join("・") : "";
+    } else if (kind === "order") {
+      const o = state && state.order;
+      if (!o) return;
+      const p = PRODUCT[productOf(state.stage)] || PRODUCT.planks;
+      setText($("orderText"), `${o.who || "おきゃくさん"}：${p[0]} ${num(o.need)}${p[1]} → おれい ${yen(o.reward)}`);
+    } else if (kind === "end") {
+      const s = state || {};
+      const t = Math.max(0, Math.floor(Number(s.t) || 0));
+      const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60);
+      const planks = s.totals ? Math.floor(Number(s.totals.planks) || 0) : 0;
+      setText($("endText"), `おおきな ふねが でたよ！ あそんだ じかん ${h}じかん${m}ふん・つくった いた ${num(planks)}まい`);
+    }
+  }
+  const num = (n) => Math.max(0, Math.floor(Number(n) || 0)).toLocaleString("ja-JP");
+
+  // 遊び方（§5.3）
+  function showHelp() {
+    if (overlay && overlay !== "help") return false;
+    if (overlay === "help") return closeHelp();
+    openCard("help");
+    return true;
+  }
+  function closeHelp() {
+    if (overlay !== "help") return false;
+    writeKey(KEY_HELP, "1");
+    return closeCard("help");
+  }
+
+  // ===== シート（§5.2） =====
+  function ensureSheetParts() {
+    if (!el.sheet) return;
+    const make = (tag, attrs, parent) => {
+      const n = document.createElement(tag);
+      for (const k in attrs) { if (k === "text") n.textContent = attrs[k]; else n.setAttribute(k, attrs[k]); }
+      (parent || el.sheet).append(n);
+      return n;
+    };
+    if (!el.sheetTitle) el.sheetTitle = make("h2", { id: "sheetTitle" });
+    if (!$("sheetInfo")) make("p", { id: "sheetInfo" });
+    let box = $("sheetBuys") || el.sheet;
+    for (const what of ["staff", "line", "level", "mgr"]) {
+      if (!el.sheet.querySelector(`[data-buy="${what}"]`)) make("button", { type: "button", "data-buy": what }, box);
+    }
+    if (!$("mgrFast")) make("button", { type: "button", id: "mgrFast", "aria-pressed": "false", text: "はやい" }, box);
+    if (!$("mgrGain")) make("button", { type: "button", id: "mgrGain", "aria-pressed": "false", text: "もうかる" }, box);
+    if (!el.sheetClose) el.sheetClose = make("button", { type: "button", id: "sheetClose", text: "とじる", "aria-label": "とじる" });
+  }
+  function openSheet(dept) {
+    if (!el.sheet || !DEPT_IDS.includes(dept)) return false;
+    ensureSheetParts();
+    sheetDept = dept;
+    el.sheet.dataset.dept = dept;
+    el.sheet.hidden = false;
+    el.sheet.classList.add("open");
+    lastUi.sheetKey = "";
+    renderSheet();
+    return true;
+  }
+  function closeSheet() {
+    if (!el.sheet || !sheetDept) return false;
+    sheetDept = null;
+    delete el.sheet.dataset.dept;
+    el.sheet.classList.remove("open");
+    el.sheet.hidden = true;
+    return true;
+  }
+  function setBtn(btn, label, price, disabled, reason) {
+    if (!btn) return;
+    const lab = btn.querySelector("[data-part=label]"), pr = btn.querySelector("[data-part=price]");
+    const text = price ? `${label} ${price}` : label;
+    if (lab || pr) { setText(lab, label); setText(pr, price || ""); }
+    else setText(btn, reason ? `${text}（${reason}）` : text);
+    if (disabled) btn.setAttribute("aria-disabled", "true"); else btn.removeAttribute("aria-disabled");
+    const why = btn.querySelector("[data-part=reason]");
+    if (why) setText(why, reason || "");
+    btn.dataset.reason = reason || "";
+  }
+  function reasonText(reason, what, dept) {
+    if (reason === "money") return HINT_MONEY;
+    if (reason === "max") return HINT_MAX;
+    if (reason === "locked") {
+      if (what === "mgr" && deptUnlock(dept) <= (state ? state.stage : 1)) return HINT_MGR_LOCKED;
+      return `${stageName(deptUnlock(dept))}に なると つかえるよ`;
+    }
+    return "";
+  }
+  // 買えるか（state はイミュータブルなので、試しに buy を呼んで理由だけ見る）
+  function tryBuy(dept, what) {
+    const c = safeCall(() => L.costOf(state, dept, what), null);
+    if (Number.isFinite(c)) return { cost: c, ok: state.money >= c, reason: state.money >= c ? null : "money" };
+    const r = safeCall(() => L.buy(state, dept, what), null);
+    return { cost: null, ok: false, reason: r && r.reason ? r.reason : "max" };
+  }
+  function renderSheet() {
+    if (!sheetDept || !state || !el.sheet) return;
+    const d = sheetDept;
+    const ds = (state.depts && state.depts[d]) || {};
+    const line = isLineDept(d);
+    const cnt = countOf(d);
+    const lv = ds.level | 0 || 1;
+    const unlocked = deptUnlock(d) <= state.stage;
+    setText(el.sheetTitle, unlocked ? `${deptName(d)}（${cnt}${line ? "だい" : "にん"}・Lv${lv}）` : deptName(d));
+    const rate = Number(ratesOf()[d]) || 0;
+    const [unit, mul] = RATE_UNIT[d] || ["こ", 1];
+    const perMin = rate * 60 * mul;
+    const perMinText = perMin < 10 ? (Math.floor(perMin * 10) / 10).toString() : Math.floor(perMin).toLocaleString("ja-JP");
+    const jam = bottleneck() === d;
+    setText($("sheetInfo"), unlocked ? `1ぷんに ${perMinText}${unit}${jam ? "。ここが つまっているよ" : ""}` : `${stageName(deptUnlock(d))}に なると つかえるよ`);
+    const sheetRate = $("sheetRate"); if (sheetRate) setText(sheetRate, unlocked ? `1ぷんに ${perMinText}${unit}` : "");
+    const sheetJam = $("sheetJam"); if (sheetJam) { setText(sheetJam, jam ? "ここが つまっているよ" : ""); sheetJam.hidden = !jam; }
+    el.sheet.dataset.jam = jam ? "1" : "0";
+    const q = (w) => el.sheet.querySelector(`[data-buy="${w}"]`);
+    const labels = {
+      staff: "＋1にん",
+      line: "＋1だい",
+      level: lv >= (L.LEVEL_MAX || 50) ? "きかい" : `きかいを よくする Lv${lv}→${lv + 1}`,
+      mgr: "マネージャーを やとう"
+    };
+    for (const w of ["staff", "line", "level", "mgr"]) {
+      const b = q(w);
+      if (!b) continue;
+      const fits = w === "staff" ? !line : w === "line" ? line : true;
+      const hired = w === "mgr" && !!ds.mgr;
+      b.hidden = !unlocked || !fits || hired;
+      if (b.hidden) continue;
+      const t = tryBuy(d, w);
+      if (t.cost === null && t.reason === "max") setBtn(b, labels[w], "", true, "さいだい");
+      else if (t.cost === null) setBtn(b, labels[w], "", true, reasonText(t.reason, w, d));
+      else setBtn(b, labels[w], yen(t.cost), !t.ok, t.ok ? "" : HINT_MONEY);
+    }
+    const f = $("mgrFast"), g = $("mgrGain");
+    const showMgr = unlocked && !!ds.mgr;
+    for (const [b, k] of [[f, "fast"], [g, "gain"]]) {
+      if (!b) continue;
+      b.hidden = !showMgr;
+      b.setAttribute("aria-pressed", String(ds.mgr === k));
+    }
+  }
+  function doBuy(dept, what, btn) {
+    if (!state) return { ok: false, reason: "locked" };
+    const d = dept || sheetDept;
+    if (!DEPT_IDS.includes(d)) return { ok: false, reason: "locked" };
+    const r = safeCall(() => L.buy(state, d, what), null);
+    if (r && r.ok && r.state) {
+      state = r.state;
+      sfx.play(what === "mgr" ? "hire" : "buy");
+      R_call("burst", "buy", d);
+      saveNow();
+      updateUi(true);
+      return { ok: true };
+    }
+    const reason = r && r.reason ? r.reason : "money";
+    sfx.play("deny");
+    setHint(reasonText(reason, what, d) || HINT_MONEY);
+    if (btn && !calm) {
+      btn.classList.remove("shake");
+      void btn.offsetWidth;
+      btn.classList.add("shake");
+      later(() => btn.classList.remove("shake"), SHAKE_MS);
+    }
+    return { ok: false, reason };
+  }
+  function doSetMgr(dept, kind) {
+    if (!state) return { ok: false };
+    const d = dept || sheetDept;
+    const r = safeCall(() => L.setMgr(state, d, kind), null);
+    if (r && r.ok && r.state) {
+      state = r.state;
+      sfx.play("toggle");
+      saveNow();
+      updateUi(true);
+      return { ok: true };
+    }
+    return { ok: false };
+  }
+
+  // ===== 場所を押す（§7.2） =====
+  function tapZone(dept) {
+    if (!state) return { ok: false };
+    if (dept === "goods") {
+      const r = safeCall(() => L.callCustomer(state), null);
+      if (r && r.ok && r.state) {
+        state = r.state;
+        sfx.play("cheer");
+        setHint("おきゃくさんを よんだよ", 2000);
+        updateUi();
+        return { ok: true, kind: "call" };
+      }
+      const reason = r && r.reason ? r.reason : "cooldown";
+      setHint(reason === "full" ? "おきゃくさんが いっぱいだよ" : "すこし まってね", 2000);
+      return { ok: false, kind: "call", reason };
+    }
+    if (!DEPT_IDS.includes(dept)) return { ok: false };
+    openSheet(dept);
+    const r = safeCall(() => L.boost(state, dept), null);
+    if (r && r.ok && r.state) {
+      state = r.state;
+      sfx.play("cheer");
+      R_call("burst", "boost", dept);
+      updateUi(true);
+      return { ok: true, kind: "boost", sheet: dept };
+    }
+    updateUi(true);
+    return { ok: false, kind: "boost", reason: r && r.reason ? r.reason : "cooldown", sheet: dept };
+  }
+
+  // ===== 広げる・注文 =====
+  function doExpand() {
+    if (!state) return { ok: false, reason: "none" };
+    const r = safeCall(() => L.expand(state), null);
+    if (!r || !r.ok || !r.state) {
+      const g = goalOf();
+      if (goalReached(g) && el.expandBtn && !el.expandBtn.hidden) { sfx.play("deny"); setHint(HINT_MONEY); }
+      return { ok: false, reason: r && r.reason ? r.reason : "goal" };
+    }
+    state = r.state;
+    writeBest(state.stage);
+    saveNow();
+    closeSheet();
+    relayout(true);
+    R_call("burst", "stage", null);
+    sfx.play("stage", state.stage);
+    updateUi(true);
+    stageCardPending = true;
+    cancel(stageCardTimer);
+    stageCardTimer = later(() => { stageCardTimer = 0; stageCardPending = false; openCard("stage"); }, calm ? 0 : STAGE_CARD_DELAY_MS);
+    return { ok: true, stage: state.stage };
+  }
+  function doAcceptOrder() {
+    if (!state) return { ok: false };
+    const r = safeCall(() => L.acceptOrder(state), null);
+    if (!r || !r.ok || !r.state) return { ok: false };
+    state = r.state;
+    sfx.play("buy");
+    saveNow();
+    if (overlay === "order") closeCard("order");
+    updateUi(true);
+    return { ok: true };
+  }
+
+  // ===== 画面の表示（logic の関数の値をそのまま。同じなら書かない） =====
+  function updateUi(force) {
+    if (!state) return;
+    if (force) lastUi = {};
+    const st = state.stage | 0;
+    if (shownStage !== st) { shownStage = st; body.dataset.stage = String(st); relayout(true); }
+    const m = yen(state.money);
+    if (lastUi.money !== m) { lastUi.money = m; setText(el.money, m); if (el.money) el.money.dataset.value = String(state.money); }
+    const g = goalOf();
+    if (g) {
+      const gt = String(g.text || "");
+      if (lastUi.goal !== gt) { lastUi.goal = gt; setText(el.goalText, gt); }
+      if (el.goalBar) {
+        const need = Math.max(1, Number(g.need) || 1), done = Math.max(0, Math.min(need, Number(g.done) || 0));
+        const key = done + "/" + need;
+        if (lastUi.bar !== key) {
+          lastUi.bar = key;
+          el.goalBar.setAttribute("aria-valuemin", "0");
+          el.goalBar.setAttribute("aria-valuemax", String(need));
+          el.goalBar.setAttribute("aria-valuenow", String(Math.floor(done)));
+          el.goalBar.style.setProperty("--p", String(done / need));
+        }
+      }
+    }
+    if (el.expandBtn) {
+      const reached = goalReached(g) && st < 4;
+      const can = reached && !!safeCall(() => L.canExpand(state), false);
+      const key = reached ? (can ? "c" : "n") + st : "h";
+      if (lastUi.expand !== key) {
+        lastUi.expand = key;
+        el.expandBtn.hidden = !reached;
+        if (reached) {
+          const label = `${stageName(st + 1)}に ひろげる（${yen(expandCost(st))}）`;
+          const lab = el.expandBtn.querySelector("[data-part=label]");
+          if (lab) setText(lab, label); else setText(el.expandBtn, label);
+          if (can) el.expandBtn.removeAttribute("aria-disabled"); else el.expandBtn.setAttribute("aria-disabled", "true");
+        }
+      }
+    }
+    if (el.orderTag) {
+      const o = state.order;
+      let t = "";
+      if (o) {
+        const p = PRODUCT[productOf(st)] || PRODUCT.planks;
+        t = o.accepted ? `ちゅうもん：${p[0]} ${num(o.got)}/${num(o.need)}` : "ちゅうもんが きているよ";
+      }
+      if (lastUi.order !== t) {
+        lastUi.order = t;
+        el.orderTag.hidden = !t;
+        setText(el.orderTag, t);
+        el.orderTag.dataset.accepted = o && o.accepted ? "1" : "0";
+      }
+    }
+    if (el.shipCount) {
+      const n = state.ships | 0;
+      const t = n >= 1 ? `とどけた ふね ${num(n)} せき` : "";
+      if (lastUi.ships !== t) { lastUi.ships = t; el.shipCount.hidden = n < 1; setText(el.shipCount, t); el.shipCount.dataset.value = String(n); }
+    }
+    updateZones();
+    if (sheetDept) {
+      const key = [sheetDept, state.money, st, JSON.stringify(state.depts && state.depts[sheetDept]), bottleneck(), Math.floor((Number(ratesOf()[sheetDept]) || 0) * 600)].join("|");
+      if (lastUi.sheetKey !== key) { lastUi.sheetKey = key; renderSheet(); }
+    }
+  }
+
+  // ===== 場所のボタン（.zone）の配置と、読み上げの文 =====
+  function relayout(force) {
+    if (!el.scene || !state) return;
+    const w = el.scene.clientWidth | 0, h = el.scene.clientHeight | 0;
+    const key = state.stage + ":" + w + "x" + h;
+    if (!force && key === lastLayoutKey) return;
+    lastLayoutKey = key;
+    const res = R_call("layout", state.stage, w, h);
+    zonesCache = res && Array.isArray(res.zones) ? res.zones : [];
+    placeZones();
+  }
+  function placeZones() {
+    if (!el.scene || !zonesCache.length) return;   // 配置が無いときは担当B の HTML のまま
+    const host = (el.canvas && el.canvas.parentElement) || el.scene;
+    const ox = el.canvas && el.canvas.parentElement === host ? el.canvas.offsetLeft : 0;
+    const oy = el.canvas && el.canvas.parentElement === host ? el.canvas.offsetTop : 0;
+    const seen = new Set();
+    for (const z of zonesCache) {
+      if (!z || typeof z.dept !== "string") continue;
+      let b = el.scene.querySelector(`.zone[data-dept="${z.dept}"]`);
+      if (!b) {
+        b = document.createElement("button");
+        b.type = "button";
+        b.className = "zone";
+        b.dataset.dept = z.dept;
+        host.append(b);
+      }
+      seen.add(b);
+      b.hidden = false;
+      b.style.left = Math.round(ox + (Number(z.x) || 0)) + "px";
+      b.style.top = Math.round(oy + (Number(z.y) || 0)) + "px";
+      b.style.width = Math.max(44, Math.round(Number(z.w) || 0)) + "px";
+      b.style.height = Math.max(44, Math.round(Number(z.h) || 0)) + "px";
+    }
+    el.scene.querySelectorAll(".zone[data-dept]").forEach((b) => { if (!seen.has(b)) b.hidden = true; });
+    lastUi.zones = "";
+  }
+  function updateZones() {
+    if (!el.scene || !state) return;
+    const t = Number(state.t) || 0;
+    const jam = bottleneck();
+    el.scene.querySelectorAll(".zone[data-dept]").forEach((b) => {
+      const d = b.dataset.dept;
+      let label, cool = 0, boost = 0;
+      if (d === "goods") {
+        const goods = state.buf ? Math.floor(Number(state.buf.goods) || 0) : 0;
+        const p = PRODUCT[productOf(state.stage)] || PRODUCT.peeled;
+        label = `うりもの ${num(goods)}${p[1]}。おすと おきゃくさんを よぶよ`;
+        const left = (Number(state.callUntil) || 0) - t;
+        cool = left > 0 ? Math.min(1, left / (L.CALL_COOLDOWN || 10)) : 0;
+      } else {
+        const ds = state.depts && state.depts[d];
+        if (!ds || deptUnlock(d) > state.stage) label = `${deptName(d)}：${stageName(deptUnlock(d))}に なると つかえるよ`;
+        else {
+          label = `${deptName(d)}：${countOf(d)}${isLineDept(d) ? "だい" : "にん"}。${jam === d ? "つまっているよ。" : ""}おすと がんばるよ`;
+          const left = (Number(ds.cooldownUntil) || 0) - t;
+          cool = left > 0 ? Math.min(1, left / (L.BOOST_COOLDOWN || 15)) : 0;
+          boost = (Number(ds.boostUntil) || 0) > t ? 1 : 0;
+        }
+      }
+      const c = Math.ceil(cool * 20) / 20;
+      if (b.getAttribute("aria-label") !== label) b.setAttribute("aria-label", label);
+      if (b.dataset.cool !== String(c)) { b.dataset.cool = String(c); b.style.setProperty("--cool", String(c)); }
+      if (b.dataset.boost !== String(boost)) b.dataset.boost = String(boost);
+      if ((b.dataset.jam === "1") !== (jam === d)) b.dataset.jam = jam === d ? "1" : "0";
+    });
+  }
+  if (window.ResizeObserver && el.scene) new ResizeObserver(() => relayout(false)).observe(el.scene);
+  window.addEventListener("resize", () => relayout(false));
+  window.addEventListener("orientationchange", () => relayout(false));
+
+  // ===== 入力（input.js） =====
+  function onCommand(cmd) {
+    const cardCmd = { awayOk: "away", stageOk: "stage", orderAccept: "order", orderLater: "order", endOk: "end", helpOk: "help" };
+    if (cardCmd[cmd]) {
+      if (overlay !== cardCmd[cmd] || cardLocked()) return;    // 出た直後の連打で押し間違えない（§13-7）
+      sfx.unlock();
+      if (cmd === "helpOk") closeHelp();
+      else if (cmd === "orderAccept") doAcceptOrder();
+      else closeCard(cardCmd[cmd]);
+      return;
+    }
+    switch (cmd) {
+      case "esc":
+        if (overlay) {
+          if (cardLocked() || overlay === "end") return;        // エンディングのカードは Esc で閉じない
+          if (overlay === "help") closeHelp();
+          else closeCard(overlay);                              // 注文は「あとで」と同じ（札は残る）
+        } else closeSheet();
+        break;
+      case "help": sfx.unlock(); showHelp(); break;
+      case "sound": toggleSound(); break;
+      case "expand": if (!overlay && el.expandBtn && !el.expandBtn.hidden) doExpand(); break;
+      case "orderTag": if (!overlay && state && state.order && !state.order.accepted) openCard("order"); break;
+      case "sheetClose": closeSheet(); break;
+      case "mgrFast": doSetMgr(sheetDept, "fast"); break;
+      case "mgrGain": doSetMgr(sheetDept, "gain"); break;
+      case "outside": if (!overlay) closeSheet(); break;
+      case "back": saveNow(); clearLater(); break;              // a のまま移動する
+      default: break;
+    }
+  }
+  const I = window.SeizaiInput;
+  const detachInput = I && typeof I.attach === "function" ? I.attach(document, {
+    onZone: (dept) => { if (!overlay) { sfx.unlock(); tapZone(dept); } },
+    onBuy: (what, btn) => { if (!overlay) { sfx.unlock(); doBuy(sheetDept, what, btn); } },
+    onCommand,
+    isCardOpen: () => !!overlay,
+    cardEl: () => (overlay && CARDS[overlay] ? CARDS[overlay].box() : null)
+  }) : null;
+  if (!detachInput) console.error("もくもくこうば: SeizaiInput が読み込まれていません（input.js）");
+
+  // ===== 中断と再開（§7.1） =====
+  document.addEventListener("visibilitychange", () => { if (document.hidden) sleep(); else wake(); });
+  window.addEventListener("pagehide", () => { sleep(); clearLater(); });
+  window.addEventListener("pageshow", (e) => { if (e.persisted || sleeping) wake(); });
+
+  // ===== テスト用の公開 API（§7.3） =====
+  function snapshot() {
+    const s = state || {};
+    const st = render.stats ? safeCall(() => render.stats(), {}) || {} : {};
+    return {
+      phase, stage: s.stage | 0, money: Number(s.money) || 0, rates: ratesOf(), bottleneck: bottleneck(), goal: goalOf(),
+      order: s.order ? Object.assign({}, s.order) : null, ships: s.ships | 0, cleared: !!s.cleared,
+      sheet: sheetDept, overlay, queue: cardQueue.slice(),
+      actors: st.actors | 0, frames: st.frames | 0, slowFrames: st.slowFrames | 0, bgRedraws: st.bgRedraws | 0,
+      wallLast, lastAway: lastAway ? JSON.parse(JSON.stringify(lastAway)) : null, saveCount, calm, timers: timers.size,
+      sleeping, hint: el.hint ? el.hint.textContent : "", best
+    };
+  }
+  function advance(sec) {
+    const s = Math.max(0, Math.min(FF_MAX_SEC, Number(sec) || 0));
+    if (!state || !s) return snapshot();
+    const n = Math.round(s / STEP);
+    silent += 1;
+    try {
+      for (let i = 0; i < n; i++) stepOnce(STEP, null);
+    } finally { silent -= 1; }
+    saveNow();
+    R_call("frame", state, [], 0);
+    updateUi(true);
+    return snapshot();
+  }
+  function setStateApi(obj) {
+    const s = normalize(obj, true);
+    if (!s) return false;
+    state = s;
+    wallLast = Date.now();
+    saveNow();
+    relayout(true);
+    R_call("frame", state, [], 0);
+    updateUi(true);
+    return true;
+  }
+  window.SeizaiGame = Object.freeze({
+    getState: snapshot,
+    logic() { return state ? JSON.parse(JSON.stringify(state)) : null; },
+    advance,
+    away(sec) { return addAway(Number(sec)); },
+    tapZone(dept) { return tapZone(String(dept)); },
+    buy(dept, what) { return doBuy(String(dept), String(what), null); },
+    setMgr(dept, kind) { return doSetMgr(String(dept), String(kind)); },
+    acceptOrder() { return doAcceptOrder(); },
+    expand() { return doExpand(); },
+    setState: setStateApi,
+    save() { return saveNow(); }
+  });
+
+  // ===== デバッグ命令（?debug=1 のときだけ。§7.4） =====
+  function gostage(n) {
+    const stage = Math.round(Number(n));
+    if (!(stage >= 1 && stage <= 4)) throw new Error("stage は 1〜4");
+    const base = safeCall(() => L.newGame(state ? state.seed : Date.now() >>> 0), null);
+    if (!base) throw new Error("newGame が動かない");
+    // その段の上限を、logic に聞いて決める（お金を最大にして買えるだけ買い、買えた数＝上限）
+    let s = normalize(Object.assign({}, base, { stage, money: MONEY_MAX }));
+    if (!s) throw new Error("段を変えられない");
+    const target = {};
+    for (const d of DEPT_IDS) {
+      if (deptUnlock(d) > stage) continue;
+      const what = isLineDept(d) ? "line" : "staff";
+      let t = s, k = 0;
+      while (k < 50) { const r = safeCall(() => L.buy(t, d, what), null); if (!r || !r.ok) break; t = r.state; k += 1; }
+      const ds = t.depts[d] || {};
+      const cap = (what === "line" ? ds.lines : ds.staff) | 0;
+      target[d] = { what, n: d === "plant" ? Math.floor(cap / 2) : Math.max(1, Math.floor(cap / 2)) };
+    }
+    const depts = {};
+    for (const d of Object.keys(s.depts || {})) {
+      const ds = Object.assign({}, s.depts[d]);
+      if (target[d]) {
+        if (target[d].what === "line") ds.lines = target[d].n; else ds.staff = target[d].n;
+        ds.level = 10;
+      }
+      depts[d] = ds;
+    }
+    const keepMoney = state ? state.money : 0;
+    const ns = normalize(Object.assign({}, s, { depts, money: keepMoney, goal: { done: 0 }, order: null, ships: 0, cleared: false, ship: { got: 0 } }));
+    if (!ns) throw new Error("段を変えられない");
+    setStateApi(ns);
+    writeBest(stage);
+    return { stage: state.stage, depts: target };
+  }
+  function rateTable() {
+    const r = ratesOf(), out = [];
+    const jam = bottleneck();
+    for (const d of DEPT_IDS) {
+      const ds = (state && state.depts && state.depts[d]) || {};
+      out.push({ dept: d, name: deptName(d), perMin: Math.round((Number(r[d]) || 0) * 600) / 10, count: countOf(d), level: ds.level | 0, mgr: ds.mgr || null, jam: jam === d });
+    }
+    const st = render.stats ? safeCall(() => render.stats(), {}) || {} : {};
+    return { stage: state ? state.stage : 0, price: safeCall(() => L.priceOf(state), 0), product: productOf(state ? state.stage : 1), bottleneck: jam, actors: st.actors | 0, depts: out };
+  }
+  const D = window.YubiDebug;
+  if (D && typeof D.command === "function") {
+    safeCall(() => {
+      D.command("ff", (a) => { const sec = Math.max(0, Math.min(FF_MAX_SEC, a && a.sec !== undefined ? Number(a.sec) || 0 : 60)); return { sec, state: advance(sec) }; },
+        { desc: "時間を早送り（開いたまま）", args: "{ sec }（既定 60、最大 36000）" });
+      D.command("away", (a) => { const r = addAway(Number(a && a.sec)); if (!r) throw new Error("足せなかった"); return r; },
+        { desc: "閉じていたことにする（上限 2 時間・半分の速さ）", args: "{ sec }" });
+      D.command("addmoney", (a) => {
+        const y = Math.floor(Number(a && a.yen) || 0);
+        if (!state) throw new Error("まだ はじまっていない");
+        state = Object.freeze(Object.assign({}, state, { money: Math.max(0, Math.min(MONEY_MAX, Math.floor((Number(state.money) || 0) + y))) }));
+        saveNow();
+        updateUi(true);
+        return { money: state.money, text: yen(state.money) };
+      }, { desc: "お金を足す（MONEY_MAX まで）", args: "{ yen }" });
+      D.command("gostage", (a) => gostage(a && a.stage), { desc: "その段の始めへ飛ぶ（人・台は上限の半分、きかい Lv10）", args: "{ stage }（1〜4）" });
+      D.command("neworder", () => {
+        if (!state || state.stage < 3) throw new Error("こうじょう から");
+        if (state.order) throw new Error("もう ちゅうもんが でている");
+        // 次の1つが売れたら注文が来るところまで数えを進め、来るまで（最大 120 秒）進める
+        const s = normalize(Object.assign({}, state, { soldSinceOrder: Math.max(0, ORDER_EVERY - 1) }));
+        if (!s) throw new Error("出せなかった");
+        state = s;
+        for (let i = 0; i < 1200 && !state.order; i++) {
+          if (i % 50 === 0) { const c = safeCall(() => L.callCustomer(state), null); if (c && c.ok && c.state) state = c.state; }
+          stepOnce(STEP, null);
+        }
+        updateUi(true);
+        if (!state.order) throw new Error("出せなかった（売り物が ない）");
+        if (overlay !== "order") openCard("order");
+        return state.order;
+      }, { desc: "大口の注文をすぐ出す（こうじょう から）", args: "なし" });
+      D.command("ships", (a) => {
+        if (!state || state.stage !== 4) throw new Error("みなと だけ");
+        const n = Math.max(0, Math.min(SHIPS_MAX, Math.floor(Number(a && a.n) || 0)));
+        const got = Math.max(0, Math.floor(Number(a && a.got) || 0));
+        const s = normalize(Object.assign({}, state, { ships: n, cleared: n >= 1, ship: { got } }));
+        if (!s || !setStateApi(s)) throw new Error("変えられなかった");
+        return { ships: state.ships, got: state.ship ? state.ship.got : 0, need: safeCall(() => L.shipNeed(state.ships), null) };
+      }, { desc: "届けた船の数といまの積んだ数を変える（みなと だけ）", args: "{ n, got }" });
+      D.command("rates", () => rateTable(), { desc: "部署ごとの速さ・つまり・売値・人の数", args: "なし" });
+    }, null);
+  }
+
+  // ===== 起動（§7.1・§8.3） =====
+  (function boot() {
+    setPhase("play");
+    if (el.sheet) el.sheet.hidden = true;
+    best = safeCall(() => L.validateBest(readKey(KEY_BEST)), 0) || 0;
+    const raw = readKey(KEY_SAVE);
+    let loaded = raw === null ? null : safeCall(() => L.loadSave(raw), null);
+    let awaySec = 0;
+    if (loaded && loaded.state) {
+      state = loaded.state;
+      awaySec = safeCall(() => L.awaySeconds(loaded.savedAt, Date.now()), 0) || 0;
+    } else {
+      if (raw !== null) {
+        // 読めない・新しい版の保存：元を bak へ写してから新しく始める（写せなければ上書きしない＝元を消さない）
+        if (!keepBroken(raw)) saveBlocked = true;
+        later(() => setHint(HINT_BROKEN, 5000), 0);
+      }
+      state = safeCall(() => L.newGame(Date.now() >>> 0), null);
+      if (!state) throw new Error("もくもくこうば: newGame が動きません");
+    }
+    if ((state.stage | 0) > best) writeBest(state.stage | 0);
+    if (state.cleared) writeBest(5);
+    body.dataset.stage = String(state.stage | 0);
+    shownStage = state.stage | 0;
+    relayout(true);
+    const firstTime = !safeCall(() => L.validateFlag(readKey(KEY_HELP)), false);
+    if (firstTime) openCard("help");
+    wallLast = Date.now();
+    if (loaded && loaded.state) addAway(awaySec);   // 60 秒以上ならおかえりカード（遊び方が先）
+    else saveNow();
+    wallLast = Date.now();
+    R_call("frame", state, [], 0);
+    updateUi(true);
+    sfx.play("start");
+    if (document.hidden) { sleeping = true; R_call("pause"); setPhase("paused"); }
+    else { setPhase(phaseNow()); ensureLoop(); }
+  })();
+})();
+
+// オフラインでも遊べるようにする（https か localhost のときだけ有効）
+if ("serviceWorker" in navigator && window.isSecureContext && location.protocol !== "file:") {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("../../sw.js").catch(() => { /* 登録できなくてもゲームは遊べる */ });
+  });
+}
