@@ -254,7 +254,7 @@ export const tests = [
     },
   },
   {
-    id: 'BL6', tier: 'smoke', node: true, title: 'いろびん：ソルバー（解けない盤は solved:false・待ち瓶がある盤の手順の位置がずれない・注文の順で解けるかどうかは変わらない・上限で exhausted）',
+    id: 'BL6', tier: 'smoke', node: true, title: 'いろびん：ソルバー（解けない盤は solved:false・待ち瓶がある盤の手順の位置がずれない・布の無い面では注文の順で解けるかどうかは変わらない・上限で exhausted）',
     run({ check, root }) {
       const L = load(root);
       // 解けない：空きがなく、どの一番上も合わない
@@ -268,16 +268,17 @@ export const tests = [
       let wst = waitB, wok = o.solved, waited = false;
       if (o.solved) for (const [f, t] of o.moves) { const r = L.applyMove(wst, f, t); if (r.outcome.kind !== 'pour') { wok = false; break; } if (r.outcome.sealed !== null && !r.outcome.deliveries.length) waited = true; wst = r.state; }
       check('待ち瓶ができる盤：solve の手順を applyMove で順に当てると、途中で待ち瓶ができ、最後は won（手の位置がずれない）', o.solved === true && wok && waited && wst.won === true, { o, waited, won: wst.won });
-      // 届けても空き瓶は増えないので、注文の順は「解けるかどうか」を変えない（待ち瓶は注ぐ元にも相手にもならない）
+      // 届けても空き瓶は増えないので、注文の順は「解けるかどうか」を変えない（待ち瓶は注ぐ元にも相手にもならない）。
+      // 布の瓶がある面は注文の順が効く（契約 §17.9）ので、布の無い面（6・7・27 面）で確かめる
       const pairs = [];
-      for (const lv of [6, 11, 18]) {
+      for (const lv of [6, 7, 27]) {
         const st = L.createLevel(lv).state;
         const q = [...st.slots, ...st.queue].reverse();
         const rev = { ...JSON.parse(J(st)), slots: q.slice(0, 2), queue: q.slice(2) };
         const a1 = L.solve(st), a2 = L.solve(rev), a3 = L.solve(st, { anyOrder: true });
-        pairs.push({ lv, a: a1.solved, rev: a2.solved, any: a3.solved });
+        pairs.push({ lv, a: a1.solved, rev: a2.solved, any: a3.solved, cloth: st.bottles.some((b) => b.cover !== null) });
       }
-      check('注文の順を逆にしても、anyOrder でも、解けるかどうかは同じ（生成した 6・11・18 面）', pairs.every((x) => x.a === true && x.rev === true && x.any === true), pairs);
+      check('布の無い面では、注文の順を逆にしても、anyOrder でも、解けるかどうかは同じ（生成した 6・7・27 面）', pairs.every((x) => x.a === true && x.rev === true && x.any === true && !x.cloth), pairs);
       // 解ける盤：moves を applyMove で再生すると won
       const easy = mk([[0, 1, 0], [1, 0, 1], [1, 0], []], { slots: [0, 1], queue: [], total: 2 });
       const e = L.solve(easy);
@@ -554,13 +555,14 @@ export const tests = [
     },
   },
   {
-    id: 'BL13', tier: 'smoke', node: true, title: 'いろびん 布の生成：1〜2000 面が決定的（抜き取り）・全部解ける（solution を applyMove で再生して won・布は全部取れる）・paramsFor の表のとおり（1〜7 面は布なし、25 面以降は空き瓶の布なし）・1本の布の瓶に同じ色4段が無い',
+    id: 'BL13', tier: 'smoke', node: true, title: 'いろびん 布の生成：1〜2000 面が決定的（抜き取り）・全部解ける（solution を applyMove で再生して won・布は全部取れる）・paramsFor の表のとおり（1〜7 面は布なし、8 面は中身あり cover 1、15〜24 面は空き瓶 0.4、25 面以降は空き瓶の布なし）・中身ありの布の cover の幅・1本の布の瓶に同じ色4段が無い・25 面以降の布の面の半分以上で布が効いている（§17.9）',
     run({ check, root }) {
       const L = load(root);
       const N = 2000;
       const bad = [], tbl = [], det = [];
       const fb = { 0: 0, 1: 0, 2: 0 };
-      let maxMs = 0, maxAt = 0, clothLv = 0, emptyCl = 0, fullCl = 0;
+      let maxMs = 0, maxAt = 0, clothLv = 0, emptyCl = 0, fullCl = 0, effN = 0, effYes = 0;
+      const covBad = [];
       const t0 = Date.now();
       for (let lv = 1; lv <= N; lv++) {
         const a = Date.now();
@@ -569,15 +571,25 @@ export const tests = [
         if (lv % 7 === 0 || lv <= 30) { if (J(L.createLevel(lv)) !== J(c)) det.push(lv); }
         const { state: s, info } = c, p = L.paramsFor(lv);
         fb[info.fallback] = (fb[info.fallback] || 0) + 1;
-        // 面の表（契約 §17.2 の最終の表）
+        // 面の表（契約 §17.2 の最終の表と §17.9）
         const wantCloths = lv <= 7 ? 0 : lv <= 24 ? 1 : (lv % 2 === 0 ? 1 : 0);
-        const wantEmpty = lv <= 7 ? 0 : lv <= 24 ? 0.7 : 0;
+        const wantEmpty = lv <= 7 ? 0 : lv === 8 ? 0 : lv <= 14 ? 0.7 : lv <= 24 ? 0.4 : 0;
         if (p.cloths !== wantCloths || (wantCloths > 0 && p.clothEmpty !== wantEmpty)) tbl.push({ lv, cloths: p.cloths, clothEmpty: p.clothEmpty });
         const cov = s.bottles.filter((b) => b.cover !== null);
         if (lv <= 7 && cov.length) bad.push(`${lv}: 1〜7 面に布がある`);
         if (lv >= 25 && cov.some((b) => b.cells.length === 0)) bad.push(`${lv}: 25 面以降に空き瓶の布がある`);
         if (info.fallback === 0 && cov.length !== p.cloths) bad.push(`${lv}: 布の瓶 ${cov.length} 本≠${p.cloths}`);
         if (cov.length) clothLv++;
+        // 中身ありの布の cover の幅（§17.9）：8 面は 1、8〜14 面は 1〜total/3、15〜24 面は total/3〜total/2、25 面以降は total/2±1
+        const T = s.total, [cLo, cHi] = lv === 8 ? [1, 1] : lv <= 14 ? [1, Math.ceil(T / 3)] : lv <= 24 ? [Math.ceil(T / 3), Math.ceil(T / 2)] : [Math.ceil(T / 2) - 1, Math.ceil(T / 2) + 1];
+        if (info.fallback === 0) for (const b of cov) if (b.cells.length > 0 && !(b.cover >= cLo && b.cover <= cHi)) covBad.push({ lv, cover: b.cover, want: [cLo, cHi] });
+        if (lv === 8 && !(cov.length === 1 && cov[0].cells.length > 0 && cov[0].cover === 1)) covBad.push({ lv, intro: cov.map((b) => [b.cells.length, b.cover]) });
+        // 布が効いているか（§17.9）：cover を 1 にした同じ面より、注文の順どおりに解く探索量が 1.5 倍以上（25〜600 面の布の面）
+        if (lv >= 25 && lv <= 600 && cov.length) {
+          const one = JSON.parse(J(s)); one.bottles.forEach((b) => { if (b.cover !== null) b.cover = 1; });
+          const r = L.solve(JSON.parse(J(s)), { nodeLimit: 400000 }), r1 = L.solve(one, { nodeLimit: 400000 });
+          effN++; if (r.nodes >= 1.5 * r1.nodes) effYes++;
+        }
         for (const b of cov) {
           if (b.cells.length === 0) emptyCl++; else fullCl++;
           if (!(b.cells.length === 0 || b.cells.length === L.CAP)) bad.push(`${lv}: 布の瓶の中身が ${b.cells.length} 段（空き瓶か 4 段のはず）`);
@@ -598,7 +610,9 @@ export const tests = [
         if (bad.length > 20) break;
       }
       const total = Date.now() - t0;
-      check(`paramsFor の布の表（1〜7 面 0 本、8〜24 面 1 本・空き瓶 0.7、25 面以降は偶数面 1 本・奇数面 0 本・空き瓶 0）が 1〜${N} 面で正しい`, tbl.length === 0, tbl.slice(0, 6));
+      check(`paramsFor の布の表（1〜7 面 0 本、8〜24 面 1 本・空き瓶 8 面 0／9〜14 面 0.7／15〜24 面 0.4、25 面以降は偶数面 1 本・奇数面 0 本・空き瓶 0）が 1〜${N} 面で正しい`, tbl.length === 0, tbl.slice(0, 6));
+      check(`中身ありの布の cover の幅（8 面は中身あり cover 1、〜14 面 1〜total/3、15〜24 面 total/3〜total/2、25 面以降 total/2±1）`, covBad.length === 0, covBad.slice(0, 6));
+      check(`25〜600 面の布の面の半分以上で布が効いている（cover 1 より探索量 1.5 倍以上）：${effYes}/${effN}＝${Math.round(100 * effYes / Math.max(1, effN))}%`, effN > 0 && effYes * 2 >= effN, { effYes, effN });
       check(`1〜${N} 面：布の本数・中身（空き瓶か 4 段、同じ色 4 段なし）・cover・瓶 11 本以内・solution を再生すると won で布は全部取れる（布の面 ${clothLv}・空き瓶の布 ${emptyCl}・中身ありの布 ${fullCl}）`, bad.length === 0 && clothLv > 0 && emptyCl > 0 && fullCl > 0, bad.slice(0, 8));
       check(`決定的（1〜30 面と 7 の倍数の面を 2 回作って JSON が一致）`, det.length === 0, det.slice(0, 8));
       check(`fallback 2（固定の予備の面）が出ない（0:${fb[0]} 1:${fb[1]} 2:${fb[2]}）`, !fb[2], fb);

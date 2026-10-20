@@ -58,20 +58,26 @@
   // 面の難しさの表（契約 §3.2・§17.2）。from 面から次の行の from-1 面まで
   // 1 面は空き瓶 2 本（届けた瓶が消えるルールに合わせて見直し。空き瓶 1 本だと最初の 2 手のうち 1 手で解けなくなった）
   // cloths＝布の瓶の本数、clothEmpty＝布の瓶1本ごとに空き瓶になる確率（それ以外は中身あり＝色水が入っている）
-  // clothsOn: "even"＝布は偶数面だけ（奇数面は布なし）。9 色の面は瓶が 11 本で空き瓶の布を足せず、中身ありの布だけになる。
-  //   中身ありの布は、ゆるい遊び方のクリアの割合をおよそ半分にする（9 色で 22%→9%）ので、1 面おきにする
+  // clothCover＝中身ありの布の cover（何人届けたら取れるか）の決め方（契約 §17.9）：
+  //   "intro"＝1（8 面だけ。はじめての布は中身あり・すぐ開く）、"early"＝1〜total の 1/3、
+  //   "mid"＝total の 1/3〜1/2、"late"＝total の半分前後（9 色で 4〜6）。"late" の面は、布の中の色のお客さんが
+  //   前の方に来る列を選び、さらに「cover を 1 にしたときより解く探索量が 1.5 倍以上」の面を優先して選ぶ
+  // clothsOn: "even"＝布は偶数面だけ（奇数面は布なし）。9 色の面は瓶が 11 本で空き瓶の布を足せず、中身ありの布だけになる
   const LEVELS = Object.freeze([
-    { from: 1,  colors: 2, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0 },
-    { from: 2,  colors: 3, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0 },
-    { from: 3,  colors: 4, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0 },
-    { from: 4,  colors: 5, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0 },
-    { from: 6,  colors: 6, empties: 2, hidden: "none", order: "random", cloths: 0, clothEmpty: 0 },
-    { from: 8,  colors: 6, empties: 2, hidden: "none", order: "random", cloths: 1, clothEmpty: 0.7 },
-    { from: 10, colors: 7, empties: 2, hidden: Object.freeze([12, 14]), order: "random", cloths: 1, clothEmpty: 0.7 },
-    { from: 15, colors: 8, empties: 2, hidden: "odd", order: "random",  cloths: 1, clothEmpty: 0.7 },
-    { from: 25, colors: 9, empties: 2, hidden: "odd", order: "random",  cloths: 1, clothEmpty: 0, clothsOn: "even" },
-    { from: 40, colors: 9, empties: 2, hidden: "all", order: "random",  cloths: 1, clothEmpty: 0, clothsOn: "even" }
+    { from: 1,  colors: 2, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0, clothCover: "early" },
+    { from: 2,  colors: 3, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0, clothCover: "early" },
+    { from: 3,  colors: 4, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0, clothCover: "early" },
+    { from: 4,  colors: 5, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0, clothCover: "early" },
+    { from: 6,  colors: 6, empties: 2, hidden: "none", order: "random", cloths: 0, clothEmpty: 0, clothCover: "early" },
+    { from: 8,  colors: 6, empties: 2, hidden: "none", order: "random", cloths: 1, clothEmpty: 0.7, clothCover: "early" },
+    { from: 10, colors: 7, empties: 2, hidden: Object.freeze([12, 14]), order: "random", cloths: 1, clothEmpty: 0.7, clothCover: "early" },
+    { from: 15, colors: 8, empties: 2, hidden: "odd", order: "random",  cloths: 1, clothEmpty: 0.4, clothCover: "mid" },
+    { from: 25, colors: 9, empties: 2, hidden: "odd", order: "random",  cloths: 1, clothEmpty: 0, clothCover: "late", clothsOn: "even" },
+    { from: 40, colors: 9, empties: 2, hidden: "all", order: "random",  cloths: 1, clothEmpty: 0, clothCover: "late", clothsOn: "even" }
   ].map((r) => Object.freeze(r)));
+
+  const CLOTH_INTRO_LEVEL = 8;
+  const CLOTH_COVERS = Object.freeze(["intro", "early", "mid", "late"]);
 
   // 生成の予算の分け方：表どおり → 易しい側（fallback 1）→ 固定の面（fallback 2）
   const RESERVE_FALLBACK1 = 50000;
@@ -149,7 +155,10 @@
     else if (Array.isArray(r.hidden)) hidden = r.hidden.indexOf(n) >= 0;
     else hidden = false;
     const cloths = r.clothsOn === "even" && n % 2 === 1 ? 0 : r.cloths;
-    return Object.freeze({ colors: r.colors, empties: r.empties, hidden, order: r.order, cloths, clothEmpty: r.clothEmpty });
+    // 8 面（はじめての布）は中身あり・cover 1 の入門（契約 §17.9）
+    const intro = n === CLOTH_INTRO_LEVEL;
+    return Object.freeze({ colors: r.colors, empties: r.empties, hidden, order: r.order, cloths,
+      clothEmpty: intro ? 0 : r.clothEmpty, clothCover: intro ? "intro" : r.clothCover });
   }
 
   // ---------------------------------------------------------------- 詰めた形の瓶
@@ -373,7 +382,7 @@
         bots, ids, slots, queue: state.queue.slice(), qi: 0, served, total, any: false,
         level: normLevel(state.level),
         params: p ? Object.freeze({ colors: p.colors, empties: p.empties, hidden: p.hidden === true, order: p.order,
-          cloths: p.cloths, clothEmpty: p.clothEmpty }) : paramsFor(state.level),
+          cloths: p.cloths, clothEmpty: p.clothEmpty, clothCover: p.clothCover }) : paramsFor(state.level),
         moves
       };
     } catch (e) {
@@ -639,11 +648,14 @@
     return { ids, bots };
   }
 
-  // 布の cover（何人届けたら取れるか）。中身ありは早め（1〜total の 1/3）、空き瓶は遅め（total の半分〜total-1）。
-  // 中身ありの布が取れるまで、その中の色はそろえられない。遅いほど詰まりやすいので早めにする（契約 §17.2 の追記）
-  function pickCover(rng, total, empty) {
+  // 布の cover（何人届けたら取れるか）。空き瓶は遅め（total の半分〜total-1）。中身ありは mode で決める（契約 §17.9）：
+  // "intro"＝1、"early"＝1〜total の 1/3、"mid"＝total の 1/3〜1/2、"late"＝total の半分前後（±1。9 色で 4〜6）
+  function pickCover(rng, total, empty, mode) {
     let lo, hi;
     if (empty) { lo = Math.max(1, Math.ceil(total / 2)); hi = Math.max(lo, total - 1); }
+    else if (mode === "intro") { lo = 1; hi = 1; }
+    else if (mode === "mid") { lo = Math.max(1, Math.ceil(total / 3)); hi = Math.ceil(total / 2); }
+    else if (mode === "late") { lo = Math.max(1, Math.ceil(total / 2) - 1); hi = Math.ceil(total / 2) + 1; }
     else { lo = 1; hi = Math.max(1, Math.ceil(total / 3)); }
     hi = Math.min(hi, total - 1, MAX_COVER);
     if (hi < lo) hi = lo;
@@ -674,9 +686,9 @@
     }
     if (!chunks) return null;
     const bots = chunks.map((cells) => packBottle(cells, cells.map((_, i) => p.hidden && i < CAP - 1), false));
-    for (let i = 0; i < content; i++) bots[i] |= pickCover(rng, total, false) << COVER_SHIFT;   // 色の瓶の先頭 content 本に布
+    for (let i = 0; i < content; i++) bots[i] |= pickCover(rng, total, false, p.clothCover) << COVER_SHIFT;   // 色の瓶の先頭 content 本に布
     for (let i = 0; i < p.empties; i++) bots.push(0);
-    for (const e of emptyCloth) if (e) bots.push(pickCover(rng, total, true) << COVER_SHIFT);
+    for (const e of emptyCloth) if (e) bots.push(pickCover(rng, total, true, p.clothCover) << COVER_SHIFT);
     if (shuffleOrder) shuffle(rng, bots);
     return { ids, bots };
   }
@@ -704,9 +716,11 @@
 
   // params で1回分の生成を試す。成功したら { bots, queue, solution }
   function tryParams(rng, p, level, maxNodes, acc) {
+    let spare = null;              // "late" の面：効いていなくても解けた最初の候補
+    acc.picks = 0;
     for (let t = 0; t < GEN_TRIES; t++) {
       const left = maxNodes - acc.nodes;
-      if (left < MIN_SOLVE_NODES) return null;
+      if (left < MIN_SOLVE_NODES) return spare;
       const dl = deal(rng, p, p.order === "random" || level >= 6);
       if (!dl) continue;
       acc.tries++;
@@ -720,21 +734,64 @@
         if (queue.length !== p.colors) continue;
         return { bots: dl.bots, queue, solution: r.moves };
       } else {
+        const late = p.cloths > 0 && p.clothCover === "late";
         let queue = shuffle(rng, dl.ids.slice());
         if (p.cloths > 0) {
-          // 布で届けられない注文が両方の枠をふさぐ列は、解く前に捨てて並べ直す（ソルバーの局面を節約する）
-          let k = 0;
-          while (!queueFeasible(dl.bots, queue) && k < QUEUE_TRIES) { queue = shuffle(rng, queue); k++; }
-          if (k >= QUEUE_TRIES) continue;
+          // 布で届けられない注文が両方の枠をふさぐ列は、解く前に捨てて並べ直す（ソルバーの局面を節約する）。
+          // "late" の面は、布の中の色のお客さんが前の方（布が取れる前）に来る列を選ぶ（無ければ行き詰まらない列）
+          let k = 0, ok = null;
+          for (; k < QUEUE_TRIES; k++) {
+            if (queueFeasible(dl.bots, queue)) {
+              if (!late || queueFront(dl.bots, queue)) { ok = queue; break; }
+              if (!ok) ok = queue;
+            }
+            queue = shuffle(rng, queue.slice());
+          }
+          if (!ok) continue;
+          queue = ok;
         }
         const c = startCtx(dl.bots, queue, p.colors);
-        const r = solveCtx(c, limit);
+        // 選んでいる途中（解けた候補がもうある）は、PICK_NODES を超えて探さない
+        // "late" の面は 1 候補 LATE_SOLVE_LIMIT 局面まで（これより重い候補は捨てて次へ。1 面の生成を速く保つ）
+        const lim = late ? Math.min(limit, LATE_SOLVE_LIMIT) : limit;
+        const r = solveCtx(c, spare ? Math.min(lim, PICK_NODES - acc.nodes) : lim);
         acc.nodes += r.nodes;
-        if (!r.solved) continue;
-        return { bots: dl.bots, queue, solution: r.moves };
+        if (!r.solved) { if (spare && acc.nodes >= PICK_NODES) return spare; continue; }
+        const got = { bots: dl.bots, queue, solution: r.moves };
+        if (!late) return got;
+        // 布が順番に効いているか：cover を 1 にした同じ面を解く探索量の 1.5 倍以上かかるなら「効いている」。
+        // cover 1 の側は r.nodes / 1.5 局面までで打ち切る（解けたら効いている。打ち切りなら効いていない）
+        if (!spare) spare = got;
+        if (acc.picks >= PICK_TRIES || acc.nodes >= PICK_NODES) return spare;
+        acc.picks++;
+        const cap = Math.floor(r.nodes / CLOTH_EFFECT);
+        if (cap < 1) continue;
+        const one = dl.bots.map((b) => (coverOf(b) ? (b & ~COVER_MASK) | (1 << COVER_SHIFT) : b));
+        const r1 = solveCtx(startCtx(one, queue, p.colors), Math.max(1, Math.min(cap, maxNodes - acc.nodes)));
+        acc.nodes += r1.nodes;
+        if (r1.solved) return got;
       }
     }
-    return null;
+    return spare;
+  }
+
+  // "late" の面の選び方（契約 §17.9）
+  const CLOTH_EFFECT = 1.5;      // cover 1 のときより探索量がこの倍以上なら「布が効いている」
+  const PICK_TRIES = 8;          // 効いている面を探して比べる候補の数（解けた候補ごとに 1）
+  const LATE_SOLVE_LIMIT = 15000;
+  const PICK_NODES = 25000;      // 探すのはここまで（局面の数）。超えたら最初に解けた候補を使う
+
+  // 布の中の色の注文が、その布が取れる前（served < cover）に見えている枠に来るか
+  function queueFront(bots, queue) {
+    for (const b of bots) {
+      const k = coverOf(b);
+      if (!k) continue;
+      for (let i = 0; i < len(b); i++) {
+        const at = queue.indexOf(col(b, i));
+        if (at >= 0 && at < k + ORDER_SLOTS - 1) return true;
+      }
+    }
+    return false;
   }
 
   // 注文の列が、布の決まりだけで見て行き詰まらないか（必要条件。解けるかはソルバーが確かめる）。
@@ -764,7 +821,7 @@
   // 必ず解ける固定の予備の面（fallback 2）
   const SPARE = Object.freeze({
     cells: [[0, 1, 2, 0], [1, 2, 0, 1], [2, 0, 1, 2], [], []],
-    params: Object.freeze({ colors: 3, empties: 2, hidden: false, order: "easy", cloths: 0, clothEmpty: 0 })
+    params: Object.freeze({ colors: 3, empties: 2, hidden: false, order: "easy", cloths: 0, clothEmpty: 0, clothCover: "early" })
   });
 
   function buildState(level, params, bots, queue) {
@@ -846,7 +903,8 @@
   function easierParams(p) {
     let colors = p.colors, empties = p.empties + 1;
     if (colors + empties > MAX_BOTTLES) { empties = p.empties; colors = Math.max(2, colors - 1); }
-    return Object.freeze({ colors, empties, hidden: p.hidden, order: "easy", cloths: p.cloths, clothEmpty: p.clothEmpty });
+    return Object.freeze({ colors, empties, hidden: p.hidden, order: "easy", cloths: p.cloths, clothEmpty: p.clothEmpty,
+      clothCover: p.clothCover });
   }
 
   function sanitizeParams(o) {
@@ -855,8 +913,9 @@
     const cloths = isInt(o.cloths) ? Math.min(Math.max(0, o.cloths), colors - 1, 3) : 0;
     const ce = Number(o.clothEmpty);
     const clothEmpty = Number.isFinite(ce) ? Math.min(1, Math.max(0, ce)) : 0;
+    const clothCover = CLOTH_COVERS.indexOf(o.clothCover) >= 0 ? o.clothCover : "early";
     return Object.freeze({ colors, empties, hidden: o.hidden === true, order: o.order === "random" ? "random" : "easy",
-      cloths, clothEmpty });
+      cloths, clothEmpty, clothCover });
   }
 
   // ---------------------------------------------------------------- 再生と保存

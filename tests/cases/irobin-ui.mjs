@@ -835,13 +835,14 @@ export const tests = [
       }
       await ctx.close();
       // 2. 届けの連鎖：待っていた瓶が 6 本以上続けて届く手を、20 面から順に探す（布の追加で 20 面の連鎖は 3 本になったため。
-      //    いまは 45 面の 38 手目で 6 本）。注ぐ〜届け終わりまで実時間で 4.5 秒以内
+      //    いまは 45 面の 38 手目で 6 本）。注ぐ〜届け終わりまで実時間で 4.5 秒以内。
+      //    布が同じ手で取れる手（布の演出が足される）は除く（§17.9 で 36 面の 6 本の連鎖に布の演出が付いたため）
       const c2 = await openG(browser, 'BW16 連鎖', { opts: { clock: false }, extra: { 'irobin.best': '19' } });
       const info = await c2.page.evaluate(() => {
         const L = window.IrobinLogic;
         for (let lv = 20; lv <= 120; lv++) {
           const c = L.createLevel(lv); let st = c.state; let at = -1, n = 0;
-          c.info.solution.forEach((m, i) => { const r = L.applyMove(st, m[0], m[1]); if (r.outcome.deliveries.length > n) { n = r.outcome.deliveries.length; at = i; } st = r.state; });
+          c.info.solution.forEach((m, i) => { const r = L.applyMove(st, m[0], m[1]); if (r.outcome.deliveries.length > n && !r.outcome.unveiled.length) { n = r.outcome.deliveries.length; at = i; } st = r.state; });
           if (n >= 6) return { lv, sol: c.info.solution, at, n };
         }
         return { lv: 0, sol: [], at: -1, n: 0 };
