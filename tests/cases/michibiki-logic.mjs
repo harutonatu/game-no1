@@ -108,8 +108,8 @@ export const tests = [
       const K = { NAME: 'ミチビキ空港', STEP: 1 / 60, LIVES: 3, CRASH_LIFE: 1, PLANE_R: 12, PICK_R: 34, CRASH_D: 20, NEAR_D: 56, ZONE_R: 22, LAND_DOT: 0.7, APPROACH_D: 48, APPROACH_ROOM: 80, RUNWAY_LEN: 96, RUNWAY_W: 22, WARN_S: 2, FIRST_SPAWN_S: 2, LAND_S: 1.2, CRASH_BREATH: 2, SAFE_SPAWN_D: 80, MAX_PLANES: 10, PATH_STEP: 6, MAX_PATH: 400, SAVE_KEY_BEST: 'michibiki.best', SAVE_KEY_HELP: 'michibiki.help' };
       const kBad = Object.entries(K).filter(([k, v]) => L[k] !== v).map(([k, v]) => ({ k, want: v, got: L[k] }));
       check('定数が契約 §3.1 のとおり', kBad.length === 0, kBad);
-      check('LAYOUTS は tall 320×520・wide 520×320、SPEED は slow 24・normal 32・fast 46、COLOR_STEPS は [0, 6, 18]',
-        J(L.LAYOUTS) === J({ tall: { w: 320, h: 520 }, wide: { w: 520, h: 320 } }) && J(L.SPEED) === J({ slow: 24, normal: 32, fast: 46 }) && J(L.COLOR_STEPS) === J([0, 6, 18]), { LAYOUTS: L.LAYOUTS, SPEED: L.SPEED, COLOR_STEPS: L.COLOR_STEPS });
+      check('LAYOUTS は tall 320×520・wide 520×320、SPEED は slow 24・normal 32・fast 46、COLOR_STEPS は [0, 4, 12]（§19 C2）',
+        J(L.LAYOUTS) === J({ tall: { w: 320, h: 520 }, wide: { w: 520, h: 320 } }) && J(L.SPEED) === J({ slow: 24, normal: 32, fast: 46 }) && J(L.COLOR_STEPS) === J([0, 4, 12]), { LAYOUTS: L.LAYOUTS, SPEED: L.SPEED, COLOR_STEPS: L.COLOR_STEPS });
       check('0 < LAND_DOT < 1（向きを見るが、ぴったりでなくてよい）', L.LAND_DOT > 0 && L.LAND_DOT < 1, L.LAND_DOT);
       check('CRASH_D < 2×PLANE_R（かすっただけでは落ちない）、PICK_R×2 ≥ 44（つかみやすい）、NEAR_D > CRASH_D', L.CRASH_D < 2 * L.PLANE_R && L.PICK_R * 2 >= 44 && L.NEAR_D > L.CRASH_D, null);
       const CO = L.COLORS;
@@ -154,10 +154,10 @@ export const tests = [
         check(`${layout}：はじめ（colors 1）は あかだけ open、あお・きいろは open: false`, J(r1.map((r) => r.open)) === J([true, false, false]), r1);
       }
       // §3.4 の難しさ
-      const cf = [[0, 1], [5, 1], [6, 2], [17, 2], [18, 3], [29, 3], [30, 3], [1000, 3]];
-      check('colorsFor：0〜5 → 1、6〜17 → 2、18〜 → 3', cf.every(([n, w]) => L.colorsFor(n) === w), cf.map(([n]) => [n, L.colorsFor(n)]));
-      const si = [[0, 6.5], [5, 5.8], [6, 5.66], [10, 5.1], [17, 4.12], [18, 3.98], [20, 3.7], [29, 2.44], [30, 2.4], [1000, 2.4]];
-      check('spawnInterval：max(2.4, 6.5 − 0.14 × landed) 秒', si.every(([n, w]) => near(L.spawnInterval(n), w, 1e-9)), si.map(([n]) => [n, L.spawnInterval(n)]));
+      const cf = [[0, 1], [3, 1], [4, 2], [5, 2], [11, 2], [12, 3], [17, 3], [18, 3], [29, 3], [30, 3], [1000, 3]];
+      check('colorsFor：0〜3 → 1、4〜11 → 2、12〜 → 3（§19 C2）', cf.every(([n, w]) => L.colorsFor(n) === w), cf.map(([n]) => [n, L.colorsFor(n)]));
+      const si = [[0, 6.5], [5, 5.8], [6, 5.66], [10, 5.1], [11, 4.88], [17, 3.56], [18, 3.34], [20, 2.9], [24, 2.02], [25, 2.0], [29, 2.0], [30, 2.0], [1000, 2.0]];
+      check('spawnInterval：max(2.0, 6.5 − 0.14 × min(n, 10) − 0.22 × max(0, n − 10)) 秒（§19 C1）', si.every(([n, w]) => near(L.spawnInterval(n), w, 1e-9)), si.map(([n]) => [n, L.spawnInterval(n)]));
       const ma = [[0, 3], [3, 3], [4, 4], [5, 4], [6, 4], [8, 5], [17, 7], [18, 7], [20, 8], [27, 9], [28, 10], [29, 10], [30, 10], [1000, 10]];
       check('maxAlive：min(MAX_PLANES, 3 + floor(landed / 4))', ma.every(([n, w]) => L.maxAlive(n) === w), ma.map(([n]) => [n, L.maxAlive(n)]));
       const odd = [-1, -100, 2.5, 5.9, 'abc', '6', null, undefined, NaN, Infinity, {}, []];
@@ -165,10 +165,10 @@ export const tests = [
       for (const v of odd) {
         try {
           const c = L.colorsFor(v), i = L.spawnInterval(v), m = L.maxAlive(v), k = L.kindFor(v, 0.1);
-          if (![1, 2, 3].includes(c) || !(i >= 2.4 && i <= 6.5) || !(Number.isInteger(m) && m >= 3 && m <= 10) || !['slow', 'normal', 'fast'].includes(k)) oBad.push(`${String(v)}: ${c}/${i}/${m}/${k}`);
+          if (![1, 2, 3].includes(c) || !(i >= 2.0 && i <= 6.5) || !(Number.isInteger(m) && m >= 3 && m <= 10) || !['slow', 'normal', 'fast'].includes(k)) oBad.push(`${String(v)}: ${c}/${i}/${m}/${k}`);
         } catch (e) { oBad.push(`${String(v)}: 例外 ${e.message}`); }
       }
-      check(`負・小数・文字・null などでも例外を出さず、範囲内の値（colors 1〜3・間隔 2.4〜6.5・maxAlive 3〜10・kind）`, oBad.length === 0, oBad);
+      check(`負・小数・文字・null などでも例外を出さず、範囲内の値（colors 1〜3・間隔 2.0〜6.5・maxAlive 3〜10・kind）`, oBad.length === 0, oBad);
       check('負の landed は 0 と同じ（1 色・6.5 秒・3 機）', L.colorsFor(-1) === 1 && near(L.spawnInterval(-1), 6.5) && L.maxAlive(-1) === 3, [L.colorsFor(-1), L.spawnInterval(-1), L.maxAlive(-1)]);
     },
   },
@@ -372,10 +372,10 @@ export const tests = [
     },
   },
   {
-    id: 'FL6', tier: 'smoke', node: true, title: 'ミチビキ空港 難しさ：着陸 5→6 で2色・17→18 で3色、open の出来事、開いた直後の1機目が新しい色、出る間隔（landed 0 と 30 で spawnInterval ×0.85〜1.15）、maxAlive（上限に達したら予告を出さずに待つ）、kindFor（10 と 24 の境界）',
+    id: 'FL6', tier: 'smoke', node: true, title: 'ミチビキ空港 難しさ：着陸 3→4 で2色・11→12 で3色（§19 C2）、open の出来事、開いた直後の1機目が新しい色、出る間隔（landed 0 は 6.5 秒・30 は 2.0 秒の ×0.85〜1.15）、maxAlive（上限に達したら予告を出さずに待つ）、kindFor（10 と 24 の境界）',
     run({ check, root }) {
       const L = load(root);
-      for (const [from, color] of [[5, 1], [17, 2]]) {
+      for (const [from, color] of [[3, 1], [11, 2]]) {
         const s = world(L, [P(L, 0, 0, 40, 170, 1, 0)], { landed: from });
         const r = run(L, s, 300, (x) => x.landed > from);
         const op = ofType(r.evs, 'open');
@@ -400,10 +400,10 @@ export const tests = [
       };
       const gBad = [];
       for (const landed of [0, 30]) for (let seed = 1; seed <= 6; seed++) {
-        const g = gap(landed, seed), I = L.spawnInterval(landed);
+        const g = gap(landed, seed), I = landed === 0 ? 6.5 : 2.0;   // 契約の値（spawnInterval 自身とは比べない）
         if (g === null || g < I * 0.85 - 0.05 || g > I * 1.15 + 0.05) gBad.push({ landed, seed, gap: g, I });
       }
-      check('予告と次の予告の間は spawnInterval(landed) ×0.85〜1.15（landed 0 は 約 6.5 秒、30 は 約 2.4 秒）', gBad.length === 0, gBad);
+      check('予告と次の予告の間は 契約の間隔 ×0.85〜1.15（landed 0 は 約 6.5 秒、30 は 約 2.0 秒）', gBad.length === 0, gBad);
       // kindFor
       const dist = (n) => { const c = { slow: 0, normal: 0, fast: 0 }; for (let i = 0; i < 1000; i++) c[L.kindFor(n, i / 1000)]++; return c; };
       const k9 = dist(9), k10 = dist(10), k23 = dist(23), k24 = dist(24);
@@ -412,19 +412,24 @@ export const tests = [
     },
   },
   {
-    id: 'FL7', tier: 'smoke', node: true, title: 'ミチビキ空港 出現：newGame は予告1つ（FIRST_SPAWN_S）、回の1機目は左の辺、予告から WARN_S 後に同じ位置・同じ色で出る、SAFE_SPAWN_D の中に機体がいたら待つ、出る位置が辺の 15〜85%・向きが場の中央の箱へ、同じ種・同じ入力なら同じ結果（advance 3600 の JSON）、Math.random を書き換えても同じ',
+    id: 'FL7', tier: 'smoke', node: true, title: 'ミチビキ空港 出現：newGame は予告1つ（FIRST_SPAWN_S）、回の1機目は左の辺の決まった帯から手前の点へ（§19 B4）、予告から WARN_S 後に同じ位置・同じ色で出る、SAFE_SPAWN_D の中に機体がいたら待つ、出る位置が辺の 15〜85%・向きが場の中央の箱へ、同じ種・同じ入力なら同じ結果（advance 3600 の JSON）、Math.random を書き換えても同じ',
     run({ check, root }) {
       const L = load(root);
       const FT = Math.round(L.FIRST_SPAWN_S / L.STEP), WT = Math.round(L.WARN_S / L.STEP);
       const g = L.newGame(12345);
       check('newGame：tick 0・landed 0・lives 3・over false・colors 1・機体なし・予告 1 つ（spawnTick = FIRST_SPAWN_S のコマ）・stats が 0', g.tick === 0 && g.landed === 0 && g.lives === 3 && g.over === false && g.colors === 1 && g.planes.length === 0 && g.warns.length === 1 && g.warns[0].spawnTick === FT && g.layout === 'tall' && g.w === 320 && g.h === 520 && J(g.stats) === J({ crashes: 0, guidedLandings: 0, freeLandings: 0, bounces: 0, wrongWays: 0 }), g);
       check('newGame の layout が変なら tall、wide は 520×320', L.newGame(1, 'bogus').layout === 'tall' && L.newGame(1, 'wide').w === 520 && L.newGame(1, 'wide').h === 320, null);
+      // 回の1機目（§3.4・§19 B4）：左の辺の、入り口の線から中央の側へ 100〜140 の所（tall y 270〜310・wide y 200〜240）から、手前の点へまっすぐ
+      const FIRST = { tall: { y0: 270, y1: 310, ax: 52, ay: 170 }, wide: { y0: 200, y1: 240, ax: 82, ay: 100 } };
       const firstBad = [];
       for (let seed = 1; seed <= 200; seed++) for (const layout of ['tall', 'wide']) {
-        const w = L.newGame(seed, layout).warns[0], H = L.LAYOUTS[layout].h;
-        if (!(Math.abs(w.x - L.PLANE_R) < 0.5 && w.color === 0 && w.dx > 0 && w.y >= H * 0.15 - 0.5 && w.y <= H * 0.85 + 0.5)) firstBad.push({ seed, layout, w });
+        const w = L.newGame(seed, layout).warns[0], F = FIRST[layout];
+        const ux = F.ax - w.x, uy = F.ay - w.y, ul = Math.hypot(ux, uy);
+        if (!(w.id === 0 && Math.abs(w.x - L.PLANE_R) < 0.5 && w.color === 0 && w.kind === 'normal' && w.y >= F.y0 - 0.5 && w.y <= F.y1 + 0.5 && Math.abs(w.dx - ux / ul) < 1e-6 && Math.abs(w.dy - uy / ul) < 1e-6)) firstBad.push({ seed, layout, w });
       }
-      check('回の1機目（200 種 × 2 layout）は あか・左の辺（x = PLANE_R）・辺の 15〜85%・右向き', firstBad.length === 0, firstBad.slice(0, 5));
+      check('回の1機目（200 種 × 2 layout）は id 0・あか・ふつう・左の辺（x = PLANE_R）・tall y 270〜310／wide y 200〜240、向きは手前の点 tall (52,170)・wide (82,100) へ', firstBad.length === 0, firstBad.slice(0, 5));
+      const idle = run(L, L.newGame(31), 900);
+      check('1機目は何もしなければ着陸しない（手前の点を通って入り口の横を抜ける。15 秒で landed 0）', idle.s.landed === 0 && !ofType(idle.evs, 'land').some((e) => e.id === 0), ofType(idle.evs, 'land'));
       const b1 = L.advance(g, FT - 2).state, b2 = L.advance(g, FT + 1).state;
       const p0 = b2.planes[0];
       check(`1機目は FIRST_SPAWN_S（${FT} コマ）で出る：少し前は予告のまま、少し後に機体（同じ色・予告の位置から 1 コマ分以内）`, b1.planes.length === 0 && b1.warns.length === 1 && b2.planes.length === 1 && p0.color === g.warns[0].color && p0.id === g.warns[0].id && hyp(p0.x, p0.y, g.warns[0].x, g.warns[0].y) <= p0.speed * L.STEP * 2 + 1e-6, { b1: b1.warns, p0 });
@@ -461,12 +466,12 @@ export const tests = [
             if (e.type === 'spawn') {
               spawns++;
               const p = plane(s, e.id);
-              if (p && !(Math.abs(Math.hypot(p.dx, p.dy) - 1) < 1e-9 && rayHitsBox(p.x, p.y, p.dx, p.dy, w * 0.25 - 1, w * 0.75 + 1, h * 0.25 - 1, h * 0.75 + 1))) posBad.push({ seed, spawn: p });
+              if (p && p.id !== 0 && !(Math.abs(Math.hypot(p.dx, p.dy) - 1) < 1e-9 && rayHitsBox(p.x, p.y, p.dx, p.dy, w * 0.25 - 1, w * 0.75 + 1, h * 0.25 - 1, h * 0.75 + 1))) posBad.push({ seed, spawn: p });
             }
           }
         }
       }
-      check(`予告の位置は四辺のどれか（x か y が PLANE_R の所）・辺の 15〜85%、出た向きは単位ベクトルで場の中央の箱（25〜75%）へ（${spawns} 機、辺 ${[...edges].join('・')}）`, posBad.length === 0 && edges.size === 4 && spawns > 100, posBad.slice(0, 5));
+      check(`予告の位置は四辺のどれか（x か y が PLANE_R の所）・辺の 15〜85%、出た向きは単位ベクトルで場の中央の箱（25〜75%）へ（1機目を除く。${spawns} 機、辺 ${[...edges].join('・')}）`, posBad.length === 0 && edges.size === 4 && spawns > 100, posBad.slice(0, 5));
       // 決定的
       const inputs = (s0) => { let s = s0; const evs = []; for (let i = 0; i < 3600; i++) { if (i === 200 && s.planes[0]) { const sp = L.setPath(s, s.planes[0].id, [[80, 200], [200, 300]]); if (sp.ok) s = sp.state; } const r = L.update(s); s = r.state; evs.push(r.events); } return J({ s, evs }); };
       const a1 = J(L.advance(L.newGame(777), 3600)), a2 = J(L.advance(L.newGame(777), 3600));

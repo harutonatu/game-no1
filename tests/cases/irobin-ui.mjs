@@ -1172,4 +1172,27 @@ export const tests = [
       await c2.ctx.close();
     },
   },
+  {
+    id: 'BW19', tier: 'full', title: 'いろびん（ミチビキ空港 §19 A3 の横展開）：クリアのカードが出た直後に pagehide → pageshow しても、押せない見た目（aria-disabled）が外れて「つぎの めんへ」が押せる',
+    async run({ browser, check }) {
+      const { ctx, page } = await openG(browser, 'BW19');
+      const sol = await solutionOf(page);
+      if (!sol) throw new Error('solution() が null');
+      await playMoves(page, sol);
+      let s = await gs(page);
+      for (let i = 0; i < 80 && s.overlay !== 'clear'; i++) { await page.evaluate(() => window.IrobinGame.skip()); await wait(page, 20); s = await gs(page); }
+      const r = await page.evaluate(() => {
+        const locked = !!document.querySelector('#card .btns button[aria-disabled]');
+        window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+        window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+        return { locked };
+      });
+      await wait(page, 600);
+      const after = await page.evaluate(() => [...document.querySelectorAll('#card .btns button')].map((b) => b.getAttribute('aria-disabled')));
+      check(`クリアのカード（${s.overlay}）が出た直後（押せない見た目 ${r.locked}）に pagehide → pageshow しても、0.4 秒後にボタンの aria-disabled が外れる（${after.join(',')}）`, s.overlay === 'clear' && r.locked && after.length > 0 && after.every((x) => x === null), { r, after });
+      await clickCmd(page, 'next'); await wait(page, 200);
+      check('「つぎの めんへ」が押せる（面 2）', (await gs(page)).level === 2, (await gs(page)).level);
+      await ctx.close();
+    },
+  },
 ];

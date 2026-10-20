@@ -1271,4 +1271,26 @@ export const tests = [
       await L2.ctx.close();
     },
   },
+  {
+    id: 'QW20', tier: 'full', title: 'まとめてポン（ミチビキ空港 §19 A3 の横展開）：終わりのカードが出た直後に pagehide → pageshow しても、押せない見た目（aria-disabled）が外れて「もう一度」が押せる',
+    async run({ browser, check }) {
+      const { ctx, page } = await openG(browser, 'QW20');
+      await fresh(page, 1);
+      await playToOver(page);
+      let shown = false;
+      for (let i = 0; i < 100 && !shown; i++) { shown = await page.evaluate(() => !document.querySelector('#overlay').hidden && !!document.querySelector('#againBtn')); if (!shown) await wait(page, 20); }
+      const r = await page.evaluate(() => {
+        const locked = !!document.querySelector('#card .btns button[aria-disabled]');
+        window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+        window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+        return { locked };
+      });
+      await wait(page, 800);
+      const after = await page.evaluate(() => [...document.querySelectorAll('#card .btns button')].map((b) => b.getAttribute('aria-disabled')));
+      check(`終わりのカードが出た直後（押せない見た目 ${r.locked}）に pagehide → pageshow しても、0.6 秒後にボタンの aria-disabled が外れる（${after.join(',')}）`, shown && r.locked && after.length > 0 && after.every((x) => x === null), { shown, r, after });
+      await page.evaluate(() => document.querySelector('#againBtn').click()); await wait(page, 300);
+      check('「もう一度」が押せる（新しい回）', (await gs(page)).over === false && (await gs(page)).moves === 0, null);
+      await ctx.close();
+    },
+  },
 ];

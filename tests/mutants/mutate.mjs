@@ -169,8 +169,8 @@ const M = [
   ['MF3 ミチビキ空港：ぶつかると片方だけ消える', 'ルール', 'games/michibiki/logic.js', 'gone.add(a.id); gone.add(b.id);', 'gone.add(b.id);'],
   ['MF4 ミチビキ空港：端で跳ね返らず外へ出る', 'ルール', 'games/michibiki/logic.js', 'if (bounce(p, s.w, s.h)) {', 'if (false && bounce(p, s.w, s.h)) {'],
   ['MF5 ミチビキ空港：道が終わると止まる（直進しない）', 'ルール', 'games/michibiki/logic.js', 'if (p.pathI >= p.path.length) { p.path = null; p.pathI = 0; }', 'if (p.pathI >= p.path.length) { p.path = null; p.pathI = 0; p.speed = 0; left = 0; }'],
-  ['MF6 ミチビキ空港：最初から2色（COLOR_STEPS の 6 を 0 に）', 'ルール', 'games/michibiki/logic.js', 'const COLOR_STEPS = Object.freeze([0, 6, 18]);', 'const COLOR_STEPS = Object.freeze([0, 0, 18]);'],
-  ['MF7 ミチビキ空港：出る間隔が短くならない', 'ルール', 'games/michibiki/logic.js', 'const INTERVAL_DROP = 14;', 'const INTERVAL_DROP = 0;'],
+  ['MF6 ミチビキ空港：最初から2色（COLOR_STEPS の 4 を 0 に。§19 C2 で [0, 4, 12]）', 'ルール', 'games/michibiki/logic.js', 'const COLOR_STEPS = Object.freeze([0, 4, 12]);', 'const COLOR_STEPS = Object.freeze([0, 0, 12]);'],
+  ['MF7 ミチビキ空港：出る間隔が短くならない（§19 C1 の式ごと）', 'ルール', 'games/michibiki/logic.js', 'const v = INTERVAL_START - INTERVAL_DROP * Math.min(n, INTERVAL_KNEE) - INTERVAL_DROP2 * Math.max(0, n - INTERVAL_KNEE);', 'const v = INTERVAL_START;'],
   ['MF8 ミチビキ空港：ライフ 0 で終わらない', 'ルール', 'games/michibiki/logic.js', 'if (s.lives <= 0) {', 'if (s.lives < 0) {'],
   ['MF9 ミチビキ空港：着陸の動き中もぶつかる', 'ルール', 'games/michibiki/logic.js', 'const fly = s.planes.filter((p) => p.phase === "fly").sort(', 'const fly = s.planes.slice().sort('],
   ['MF10 ミチビキ空港：予告なしにすぐ出る', 'ルール', 'games/michibiki/logic.js', 'spawnTick: s.tick + (isInt(opt.delay) ? opt.delay : WARN_T)', 'spawnTick: s.tick + (isInt(opt.delay) ? opt.delay : 0)'],
@@ -188,6 +188,14 @@ const M = [
   ['MF22 ミチビキ空港：wrongway を区域にいる間ずっと出す（wrongIn を見ない）', 'ルール', 'games/michibiki/logic.js', '} else if (p.wrongIn !== inZone.color) {', '} else {'],
   ['MF23 ミチビキ空港：suggestPath が手前の点を通らず、入り口へ一直線', 'ルール', 'games/michibiki/logic.js', /if \(pu > -APPROACH_D\) \{[\s\S]*?pts\.push\(A\);[^\n]*\n/, ''],
   ['MF24 ミチビキ空港：setPath の guided が向きを見ない（区域に入れば true）', 'ルール', 'games/michibiki/logic.js', 'if (u && u[0] * rw.dx + u[1] * rw.dy >= LAND_DOT) { guided = true; break; }', 'if (true) { guided = true; break; }'],
+  // §19 レビュー後の直し（A1・A2・A3・A7・B2）と、いろびん・まとめてポンの pageshow（A3 の横展開）
+  ['MF25 ミチビキ空港：着陸してもすぐベストを保存しない（§19 A2）', '保存', 'games/michibiki/main.js', 'saveBestNow();\n', ''],
+  ['MF26 ミチビキ空港：最初の setPath で機体のそばの点を捨てない（うしろをつかむと Uターン。§19 A1）', '操作', 'games/michibiki/main.js', '} else d.pending = d.pending.slice(k);', '}'],
+  ['MF27 ミチビキ空港：pageshow で終わりのカードを出し直さない（§19 A3）', '閉じ込め', 'games/michibiki/main.js', 'window.addEventListener("pageshow", () => {\n    if (hintTimer', 'window.addEventListener("pageshow-x", () => {\n    if (hintTimer'],
+  ['MF28 ミチビキ空港：同じ機体を2本目の指でもなぞれる（§19 A7）', '操作', 'games/michibiki/main.js', 'for (const d of drawings.values()) if (d.id === id) return false;', ''],
+  ['MF29 ミチビキ空港：「さいしょから」が確認なしで始め直す（§19 B2）', '誤タップ', 'games/michibiki/main.js', 'else if (cmd === "restart") showRestartConfirm();', 'else if (cmd === "restart") startGame(newSeed());'],
+  ['MB22 いろびん：pageshow でクリアのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/irobin/main.js', 'window.addEventListener("pageshow", () => {\n    if (overlayKind !== "clear") return;', 'window.addEventListener("pageshow-x", () => {\n    if (overlayKind !== "clear") return;'],
+  ['MQ41 まとめてポン：pageshow で終わりのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/matomete/main.js', 'window.addEventListener("pageshow", () => {\n    if (overlayKind !== "over") return;', 'window.addEventListener("pageshow-x", () => {\n    if (overlayKind !== "over") return;'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

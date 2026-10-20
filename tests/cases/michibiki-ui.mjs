@@ -5,7 +5,8 @@
 //   時間はページの時計ではなく manual(true) と tick(n) で進める（§14 の 11）。カードのロック・ヒントの 3 秒などのタイマーだけ page.clock（wait）で進める。
 //   機体は spawn({ color, kind, x, y, dx, dy })（forceSpawn。x・y・dx・dy はロジック担当の拡張）で決まった所に出し、出るまで（WARN_S = 120 コマ）tick で待つ。
 //   無いときに合格にしない（空振りの合格を作らない）：MichibikiGame が無ければ例外で不合格にする。
-//   smoke：FW1〜FW5。full：FW6〜FW19（FW15・FW18 は CDP なので Chromium だけ、FW10 は AudioContext が要る）。
+//   smoke：FW1〜FW5・FW20・FW21。full：FW6〜FW19・FW22・FW23（FW15・FW18・FW23 は CDP なので Chromium だけ、FW10 は AudioContext が要る）。
+//   FW20〜FW23 は契約 §19（レビュー後の直し）の確認。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -17,6 +18,7 @@ const STD_V = () => view('i13', 'p', 'app');
 const RED = { ex: 100, ey: 170, dx: 1, dy: 0 };        // tall のあかの滑走路（§3.3）
 const HINT_WRONG = 'やじるしの むきから はいろう';
 const SEED = 3;
+const REV_SEEDS = [4, 6, 9, 14, 15, 16];   // 逆向きに回り込む間、ほかの機体がぶつかってこない種（FW1・FW19。ぶつかったら次へ）
 
 // ---------- 開く ----------
 async function openM(browser, label, { v = STD_V(), opts = {}, extra = {}, help = true, start = true } = {}) {
@@ -93,6 +95,17 @@ async function crashOnce(p) {
   return u.s;
 }
 // おまかせ（guide）で着陸を重ね、landed ≥ n にする。終わってしまったら次の種で（決まった種の並びなので結果は毎回同じ）
+// 今の回のまま、おまかせで landed ≥ n まで進める
+const guideUntil = (p, n, maxTicks = 30000) => p.evaluate(([n, maxTicks]) => {
+  const G = window.MichibikiGame, evs = [];
+  for (let t = 0; t < maxTicks; t += 6) {
+    for (const q of G.getState().planes) if (q.phase === 'fly' && q.pathLeft === 0) G.guide(q.id);
+    for (const e of G.tick(6) || []) evs.push({ ...e, tick: G.getState().tick });
+    const s = G.getState();
+    if (s.landed >= n || s.over) return { s, evs };
+  }
+  return { s: G.getState(), evs };
+}, [n, maxTicks]);
 async function landN(p, n, { seeds = [1, 2, 3, 4, 5, 6, 7, 8], layout = 'tall', maxTicks = 30000 } = {}) {
   for (const sd of seeds) {
     await fresh(p, sd, layout);
@@ -143,14 +156,18 @@ export const tests = [
       const d1 = await dom(page);
       check(`進めると着陸して landed 1・#score「1」（data-value ${d1.scoreV}）・land の出来事 guided: true`, u.ok && u.s.landed === 1 && d1.score === '1' && d1.scoreV === '1' && u.evs.some((e) => e.type === 'land' && e.guided === true), { s: u.s.landed, d1, evs: u.evs.filter((e) => e.type !== 'near') });
       check('道で導いた着陸は stats.guidedLandings 1', u.s.stats.guidedLandings === 1, u.s.stats);
-      // 逆向き
-      await fresh(page);
-      const q2 = await firstPlane(page);
-      await mbDrag(page, badPath(q2));
-      const p2 = (await gs(page)).planes.find((x) => x.id === q2.id);
-      check('奥の側から逆向きに入り口を通る道は guided: false（道は付く）', !!p2 && p2.pathLeft > 0 && p2.guided === false, p2);
-      const u2 = await until(page, `s.planes.some((x) => x.id === ${q2.id} && x.pathLeft === 0 && x.x < 70)`, 2400);
-      const d2 = await dom(page);
+      // 逆向き（ほかの機体がこの機体にぶつかったときだけ、次の種でやり直す。種の並びは決まっているので毎回同じ）
+      let q2, p2, u2, d2, used = null;
+      for (const sd of REV_SEEDS) {
+        await fresh(page, sd);
+        q2 = await firstPlane(page);
+        await mbDrag(page, badPath(q2));
+        p2 = (await gs(page)).planes.find((x) => x.id === q2.id);
+        u2 = await until(page, `s.planes.some((x) => x.id === ${q2.id} && x.pathLeft === 0 && x.x < 70) || evs.some((e) => e.type === 'crash')`, 2400);
+        d2 = await dom(page);
+        if (!u2.evs.some((e) => e.type === 'crash')) { used = sd; break; }
+      }
+      check(`奥の側から逆向きに入り口を通る道は guided: false（道は付く。種 ${used}）`, used !== null && !!p2 && p2.pathLeft > 0 && p2.guided === false, p2);
       check(`進めても着陸せずに通り過ぎる（landed ${u2.s.landed}・♥ ${d2.lives}・wrongway ${u2.evs.filter((e) => e.type === 'wrongway').length} 回）`, u2.ok && u2.s.landed === 0 && d2.score === '0' && d2.lives === '3' && u2.evs.some((e) => e.type === 'wrongway' && e.id === q2.id), { s: u2.s.landed, d2, evs: u2.evs.filter((e) => e.type !== 'near') });
       await ctx.close();
     },
@@ -178,6 +195,8 @@ export const tests = [
       const d1 = await dom(page);
       check(`0.6 秒後に終わりのカード（data-kind over・「おしまい！」・「1 き ちゃくりく」・#againBtn にフォーカス）: ${d1.card}`, d1.overlay === 'over' && /おしまい/.test(d1.card) && /1\s*き ちゃくりく/.test(d1.card) && (await page.evaluate(() => document.activeElement?.id)) === 'againBtn', d1);
       check('カードに「みちびいた 1 き・ぶつかった 3かい」', /みちびいた 1 き/.test(d1.card) && /ぶつかった 3かい/.test(d1.card), d1.card);
+      const tip = await page.evaluate(() => document.querySelector('#overTip')?.textContent.trim() || null);
+      check(`2 機以下（1 機）で終わると #overTip「つぎは かっそうろの やじるしを よく みてね」（${tip}。§19 B9）`, tip === 'つぎは かっそうろの やじるしを よく みてね', tip);
       // page.click は待ちの間にページの時計が進むので、ページの中で押す（出てから 0.05 秒）
       await page.evaluate(() => document.querySelector('#againBtn').click()); await wait(page, 50);
       check('カードが出た直後（0.6 秒以内）に #againBtn を押しても何も起きない', (await dom(page)).overlay === 'over' && (await gs(page)).over === true, await dom(page));
@@ -345,14 +364,15 @@ export const tests = [
       await T(page, 10);
       check('つづけると同じ局面から進む（layout tall・tick が続きから）', s2.phase === 'playing' && s2.layout === 'tall' && s2.tick === s0.tick && (await gs(page)).tick === s0.tick + 10, { s2: s2.tick });
       await page.click('#pauseBtn'); await wait(page, 50);
-      await page.click('#restartBtn'); await wait(page, 100);
+      await page.click('#restartBtn'); await wait(page, 50);
+      await page.click('#restartOkBtn'); await wait(page, 100);
       const s3 = await gs(page);
       check(`次の回（さいしょから）は横向きの wide（${s3.layout}・${s3.w}×${s3.h}）、#app[data-layout] も wide`, s3.layout === 'wide' && s3.w === 520 && s3.h === 320 && (await dom(page)).layout === 'wide', { layout: s3.layout });
       await ctx.close();
     },
   },
   {
-    id: 'FW8', tier: 'full', title: 'ミチビキ空港 キーボード：→ で機体を選ぶ、1 で あかの滑走路へ道が付く（guided）、P で一時停止／つづける、M で音、? で遊び方、カードが開いているときは場が反応しない',
+    id: 'FW8', tier: 'full', title: 'ミチビキ空港 キーボード：→ ← で機体を選ぶ（Tab は選ばずボタンへ）、1 で あかの滑走路へ道が付く（guided）、P で一時停止／つづける、M で音、? で遊び方、カードが開いているときは場が反応しない',
     async run({ browser, check }) {
       const { ctx, page } = await openM(browser, 'FW8');
       const q = await firstPlane(page);
@@ -363,6 +383,14 @@ export const tests = [
       check('1 で あかの滑走路へのおまかせの道（guided・残りの点あり）', p1.pathLeft > 0 && p1.guided === true, p1);
       const u = await until(page, 's.landed >= 1', 2400);
       check('その道で着陸する', u.ok, u.s.landed);
+      const q3 = await firstPlane(page);
+      await page.focus('#back');
+      await page.keyboard.press('Tab'); await wait(page, 30);
+      const tb = await page.evaluate(() => ({ active: document.activeElement?.id || document.activeElement?.tagName, sel: window.MichibikiGame.getState().selected }));
+      check(`Tab は機体を選ばず、ふつうにボタンへ移る（${tb.active}・selected ${tb.sel}。§19 A8）`, tb.sel === null && tb.active !== 'back' && tb.active !== 'BODY', tb);
+      await page.keyboard.press('ArrowLeft'); await wait(page, 30);
+      check(`← でも機体を選べる（${q3.id}）`, (await gs(page)).selected === q3.id, (await gs(page)).selected);
+      await page.keyboard.press('Escape'); await wait(page, 30);
       await page.keyboard.press('p'); await wait(page, 30);
       const a = (await gs(page)).phase;
       await page.keyboard.press('P'); await wait(page, 30);
@@ -444,11 +472,14 @@ export const tests = [
       check(`pick → lock → land の順、warn・near も鳴る（${[...new Set(ps1.map((p) => p.n))].join(',')}）`, u.ok && idx('pick') >= 0 && idx('lock') > idx('pick') && idx('land') > idx('lock') && idx('warn') >= 0 && idx('near') >= 0, ps1.map((p) => p.n));
       const ld = ps1.find((p) => p.n === 'land');
       check(`land に着陸数（${ld && ld.a}）を渡す`, ld && ld.a === 1, ld);
-      // open：着陸 6
-      await landN(page, 6, { seeds: [1, 2, 3, 4, 5, 6] });
+      // open：着陸 4（§19 C2）。音の部品の上限を使い切らないよう、3 機のあと実時間で 1 秒待ってから 4 機目
+      const r3 = await landN(page, 3, { seeds: [1, 2, 3, 4, 5, 6] });
+      await sleep(1000);
+      const r4 = await guideUntil(page, 4);
+      if (r4.s.landed < 4) throw new Error(`種 ${r3.seed} で 4 機目が着陸しない`);
       await sleep(300);
       const op = (await plays(page)).find((p) => p.n === 'open');
-      check(`着陸 6 で あおの滑走路が開くと open（引数 ${op && op.a}）`, !!op && op.a === 1, op);
+      check(`着陸 4 で あおの滑走路が開くと open（引数 ${op && op.a}）`, !!op && op.a === 1, op);
       // crash・over
       let s = await gs(page);
       for (let i = 0; i < 4 && !s.over; i++) { s = await crashOnce(page); await sleep(250); }
@@ -492,12 +523,12 @@ export const tests = [
         ...s.runways.filter((r) => r.open && !has('runway', r.color)).map((r) => `滑走路 ${r.color}`),
       ];
       check(`機体 ${s.planes.length}・予告 ${s.warns.length}・開いた滑走路 ${s.runways.filter((r) => r.open).length} の印が描かれ、位置と色が state と一致（marks ${mk.length}）`, s.planes.length >= 1 && s.warns.length >= 1 && lack.length === 0, { lack, mk });
-      const r6 = await landN(page, 6, { seeds: [1, 2, 3, 4, 5, 6] });
+      const r6 = await landN(page, 4, { seeds: [1, 2, 3, 4, 5, 6] });
       const h6 = await hintText(page);
       check(`あおが開いたヒントに色の名前と印（「${h6}」）`, /あお/.test(h6) && /△/.test(h6), h6);
       const s6 = await gs(page);
       check('あおが開くと滑走路の印も あお で描く', s6.drawLog.marks.some((m) => m.kind === 'runway' && m.color === 1), s6.drawLog.marks.filter((m) => m.kind === 'runway'));
-      const r18 = await landN(page, 18, { seeds: [r6.seed, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], maxTicks: 60000 });
+      const r18 = await landN(page, 12, { seeds: [r6.seed, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], maxTicks: 60000 });
       const h18 = await hintText(page);
       const s18 = await gs(page);
       check(`3色の滑走路が開いた状態（colors ${s18.colors}）で、きいろのヒントに色の名前と印（「${h18}」）、3本とも印あり`, s18.colors === 3 && /きいろ/.test(h18) && /□/.test(h18) && [0, 1, 2].every((c) => s18.drawLog.marks.some((m) => m.kind === 'runway' && m.color === c)), { h18, seed: r18.seed });
@@ -527,13 +558,14 @@ export const tests = [
     },
   },
   {
-    id: 'FW13', tier: 'full', title: 'ミチビキ空港 色が増える：着陸 6 で あおが開く（open の出来事・ヒント・colors 2・滑走路が open）、次に出る機体が あお',
+    id: 'FW13', tier: 'full', title: 'ミチビキ空港 色が増える：着陸 4 で あおが開く（§19 C2）（open の出来事・ヒント・colors 2・滑走路が open）、次に出る機体が あお',
     async run({ browser, check }) {
       const { ctx, page } = await openM(browser, 'FW13');
-      const r = await landN(page, 6, { seeds: [1, 2, 3, 4, 5, 6] });
+      const r = await landN(page, 4, { seeds: [1, 2, 3, 4, 5, 6] });
       const op = r.evs.filter((e) => e.type === 'open');
+      const l4 = r.evs.find((e) => e.type === 'land' && e.landed === 4);
       const s = await gs(page);
-      check(`着陸 6 で open { color: 1 } が1回、colors 2、あおの滑走路が open（種 ${r.seed}）`, op.length === 1 && op[0].color === 1 && s.colors === 2 && s.runways.find((x) => x.color === 1).open === true && s.runways.find((x) => x.color === 2).open === false, { op, colors: s.colors });
+      check(`着陸 4 で open { color: 1 } が1回（4 機目の着陸と同じコマ ${l4 && l4.tick}・open ${op[0] && op[0].tick}）、colors 2、あおの滑走路が open（種 ${r.seed}）`, op.length === 1 && op[0].color === 1 && !!l4 && op[0].tick === l4.tick && s.colors === 2 && s.runways.find((x) => x.color === 1).open === true && s.runways.find((x) => x.color === 2).open === false, { op, colors: s.colors });
       check(`ヒント「あおい ひこうきが くるよ！ △の かっそうろへ」（${await hintText(page)}）`, /あおい ひこうきが くるよ/.test(await hintText(page)) && /△の かっそうろへ/.test(await hintText(page)), await hintText(page));
       const u = await until(page, 'evs.some((e) => e.type === "warn")', 900);
       const w = u.evs.find((e) => e.type === 'warn');
@@ -582,8 +614,9 @@ export const tests = [
       const ta = await page.evaluate(() => getComputedStyle(document.querySelector('#field')).touchAction);
       check(`#field のダブルタップで touchend を止め（${ev.map((e) => e.p).join(',')}）・touch-action ${ta}・拡大しない`, ev.length === 2 && ev.every((e) => e.p) && ta === 'none' && (await page.evaluate(() => window.visualViewport.scale)) === 1, { ev, ta });
       // 4機を出す（2本指・4本指の両方に使う）
-      const ids = [];
-      for (const o of [{ x: 60, y: 460, dx: 1, dy: 0 }, { x: 260, y: 400, dx: -1, dy: 0 }, { x: 160, y: 250, dx: 0, dy: 1 }, { x: 250, y: 500, dx: -1, dy: 0 }]) ids.push(await spawnAt(page, { color: 1, kind: 'normal', ...o }));
+      const ids = await page.evaluate(() => [{ x: 60, y: 460, dx: 1, dy: 0 }, { x: 260, y: 400, dx: -1, dy: 0 }, { x: 160, y: 250, dx: 0, dy: 1 }, { x: 250, y: 500, dx: -1, dy: 0 }].map((o) => window.MichibikiGame.spawn({ color: 1, kind: 'normal', ...o }).id));
+      const us = await until(page, `${JSON.stringify(ids)}.every((id) => s.planes.some((q) => q.id === id))`, 600);
+      if (!us.ok) throw new Error('4 機が出ない: ' + JSON.stringify(us.s.warns));
       const pos = async () => { const s = await gs(page); return ids.map((id) => s.planes.find((p) => p.id === id)); };
       let ps = await pos();
       const multi = async (planes, targets) => {
@@ -723,20 +756,25 @@ export const tests = [
     },
   },
   {
-    id: 'FW19', tier: 'full', title: 'ミチビキ空港 向きの矢印と逆向き：drawLog.arrows に 3 本の滑走路すべての矢印（閉じた滑走路も open: false）があり、向きが runways と一致・位置が入り口の近く。逆向きで区域に入ると着陸せず通り過ぎ、その滑走路の矢印が lit（0.6 秒後に消える）、#hint「やじるしの むきから はいろう」、同じ回で4回目の逆向きではヒントが出ない',
+    id: 'FW19', tier: 'full', title: 'ミチビキ空港 向きの矢印と逆向き：drawLog.arrows に 3 本の滑走路すべての矢印（閉じた滑走路も open: false）があり、向きが runways と一致・位置が入り口の近く。逆向きで区域に入ると着陸せず通り過ぎ、その滑走路の矢印が lit（0.6 秒後に消える）、#hint「やじるしの むきから はいろう」、同じ回で4回目の逆向きではヒントが出ない（ほかの機体の逆向きも回の3回に数える）',
     async run({ browser, check }) {
       const { ctx, page } = await openM(browser, 'FW19');
-      await fresh(page, 1);      // 種 1：ほかの機体がこの機体の4回の回り道にぶつからない（種 3 では2回目の前にぶつかる）
       await T(page, 1);
       const s = await gs(page), ar = s.drawLog.arrows;
       const aBad = s.runways.filter((r) => { const a = ar.find((x) => x.color === r.color); return !a || a.dx !== r.dx || a.dy !== r.dy || a.open !== r.open || Math.hypot(a.x - r.ex, a.y - r.ey) > 22 || a.lit; });
       check(`矢印が 3 本（${ar.length}）、向き・open（${ar.map((a) => a.open).join(',')}）が runways と一致、入り口から ZONE_R 以内、はじめは光っていない`, ar.length === 3 && s.runways.length === 3 && aBad.length === 0 && ar.filter((a) => !a.open).length === 2, { ar, runways: s.runways });
+      let hints = [], lits = [], landed = 0, lost = false, used = null, cum = 0, expects = [];
+      for (const sd of REV_SEEDS) {
+      await fresh(page, sd);
       const q = await firstPlane(page);
       await page.evaluate(([id, pts]) => window.MichibikiGame.drawPath(id, pts), [q.id, badPath(q).slice(1)]);
-      const hints = [], lits = [];
-      let landed = 0, lost = false;
+      hints = []; lits = []; landed = 0; lost = false; let crashed = false;
+      cum = 0; expects = [];   // ヒントは回の中の wrongway（ほかの機体の分も）3 回まで
+      await page.evaluate(() => { window.__mbWrong = 0; });
       for (let k = 0; k < 4; k++) {
-        const u = await until(page, `evs.some((e) => e.type === 'wrongway' && e.id === ${q.id})`, 2400);
+        const u = await until(page, `evs.some((e) => e.type === 'wrongway' && e.id === ${q.id}) || evs.some((e) => e.type === 'crash' && e.ids.includes(${q.id}))`, 2400);
+        if (u.evs.some((e) => e.type === 'crash' && e.ids.includes(q.id))) { crashed = true; break; }
+        for (const e of u.evs) if (e.type === 'wrongway') { cum++; if (e.id === q.id) expects.push(cum <= 3); }
         if (!u.ok) { lost = `${k + 1} 回目の wrongway が無い（${JSON.stringify(u.evs.filter((e) => e.type !== 'bounce').slice(-5))}・${JSON.stringify(u.s.planes.find((x) => x.id === q.id))}）`; break; }
         hints.push(u.s.hint.trim());
         const st = u.s;
@@ -747,14 +785,121 @@ export const tests = [
           lits.push((await gs(page)).drawLog.arrows.find((a) => a.color === 0).lit);
         }
         // 区域を出たら、また逆向きに入る道（ヒントが消える 3 秒を待つ）
-        const out = await until(page, `s.planes.some((x) => x.id === ${q.id} && x.x < 72)`, 600);
+        const out = await until(page, `s.planes.some((x) => x.id === ${q.id} && x.x < 72) || evs.some((e) => e.type === 'crash' && e.ids.includes(${q.id}))`, 600);
+        cum += out.evs.filter((e) => e.type === 'wrongway').length;
+        if (out.evs.some((e) => e.type === 'crash' && e.ids.includes(q.id))) { crashed = true; break; }
         if (!out.ok) { lost = `${k} 回目のあと区域を出ない（${JSON.stringify(out.s.planes.find((x) => x.id === q.id))}）`; break; }
         await wait(page, 3100);
         await page.evaluate((id) => window.MichibikiGame.drawPath(id, [[40, 120], [40, 100], [170, 100], [170, 170], [130, 170], [100, 170], [70, 170], [50, 170]]), q.id);
       }
-      check('逆向きで区域に4回入っても、その機体は着陸しない（落ちずに残る）', !lost && landed === 0, { lost, landed });
+      if (!crashed) { used = sd; break; }
+      }
+      check(`逆向きで区域に4回入っても、その機体は着陸しない（落ちずに残る。種 ${used}）`, used !== null && !lost && landed === 0, { lost, landed, used });
       check(`1回目の逆向きで あかの矢印が lit: true、0.6 秒後に false（${lits.slice(0, 2).join('→')}）`, lits[0] === true && lits[1] === false, lits);
-      check(`1〜3回目は #hint「${HINT_WRONG}」、4回目は出ない（${hints.map((h) => h || '（なし）').join(' / ')}）`, hints.length === 4 && hints.slice(0, 3).every((h) => h.includes(HINT_WRONG)) && !hints[3].includes(HINT_WRONG), hints);
+      check(`回の中の wrongway（ほかの機体の分も数える）3 回目までは #hint「${HINT_WRONG}」、それより後は出ない（${hints.map((h, i) => `${expects[i] ? '出る' : '出ない'}:${h || '（なし）'}`).join(' / ')}）`, hints.length === 4 && expects.length === 4 && expects[0] === true && expects[3] === false && hints.every((h, i) => h.includes(HINT_WRONG) === expects[i]), { hints, expects });
+      await ctx.close();
+    },
+  },
+  // ================= §19 レビュー後の直し =================
+  {
+    id: 'FW20', tier: 'smoke', title: 'ミチビキ空港 §19 A1・A4：機体のうしろ 30 をつかんで前へなぞっても Uターンしない（最初の setPath で機体から PICK_R 以内の先頭の点を捨てる）、少し（場の単位 8 未満）動かして 300ms より長く押して離してもタップとして選ぶ',
+    async run({ browser, check }) {
+      const { ctx, page } = await openM(browser, 'FW20', { v: SMOKE_V() });
+      const id = await spawnAt(page, { color: 1, kind: 'normal', x: 120, y: 470, dx: 1, dy: 0 });
+      const p = (await gs(page)).planes.find((q) => q.id === id);
+      await mbDrag(page, [[p.x - 30, p.y], [p.x - 10, p.y], [p.x + 20, p.y], [p.x + 60, p.y], [p.x + 110, p.y]], { steps: 5 });
+      await T(page, 3);
+      const a = (await gs(page)).planes.find((q) => q.id === id);
+      check(`うしろからつかんで前へなぞると、前へ進む（向き dx ${a && a.dx.toFixed(2)}・x ${p.x.toFixed(1)} → ${a && a.x.toFixed(1)}・道 ${a && a.pathLeft} 点）`, !!a && a.dx > 0.9 && a.x > p.x && a.pathLeft > 0, a);
+      // A4：場の単位で 8 未満だけ動かし、400ms 押してから離す
+      const id2 = await spawnAt(page, { color: 1, kind: 'normal', x: 160, y: 300, dx: 0, dy: 1 });
+      const q = (await gs(page)).planes.find((x) => x.id === id2);
+      const [cx, cy] = await scr(page, q.x, q.y);
+      const k = await page.evaluate(() => window.MichibikiGame.getState().scale);
+      await page.mouse.move(cx, cy); await page.mouse.down();
+      await page.mouse.move(cx + Math.min(5 * k, 12), cy, { steps: 3 });
+      await wait(page, 400);
+      await page.mouse.up(); await wait(page, 30);
+      const s2 = await gs(page);
+      check(`少し動かして 400ms 押してから離しても、なぞりにならずタップとして機体を選ぶ（selected ${s2.selected}・道 ${s2.planes.find((x) => x.id === id2)?.pathLeft}）`, s2.selected === id2 && s2.planes.find((x) => x.id === id2).pathLeft === 0, s2.selected);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'FW21', tier: 'smoke', title: 'ミチビキ空港 §19 A2・B2・B9：着陸したらすぐ michibiki.best に保存・#best も更新、「さいしょから」は確認カード（さいしょから？・もどる が primary・Esc／Ⅱ で一時停止カードへ）を出してから やめる で新しい回、ベストは残る。次の回で超えると #score[data-over-best]、終わりのカードの「ベスト こうしん！」は回を始めたときのベストと比べる、2 機以下で終わると #overTip',
+    async run({ browser, check }) {
+      const { ctx, page } = await openM(browser, 'FW21', { v: SMOKE_V() });
+      const q = await firstPlane(page);
+      await page.evaluate((id) => window.MichibikiGame.guide(id), q.id);
+      const u = await until(page, 's.landed >= 1', 2400);
+      check(`着陸したその場で michibiki.best が "1"（${await stored(page, 'michibiki.best')}）・#best も 1`, u.ok && (await stored(page, 'michibiki.best')) === '1' && (await dom(page)).best === '1', await dom(page));
+      await page.click('#pauseBtn'); await wait(page, 50);
+      await page.click('#restartBtn'); await wait(page, 50);
+      const cf = await page.evaluate(() => ({ title: document.querySelector('#overlayTitle')?.textContent.trim(), kind: document.querySelector('#overlay').dataset.kind, phase: window.MichibikiGame.getState().phase, focus: document.activeElement?.id, primary: document.querySelector('#card .primary')?.id, ok: !!document.querySelector('#restartOkBtn'), text: document.querySelector('#card').textContent.replace(/\s+/g, ' ') }));
+      check(`「さいしょから」は確認カード（${cf.title}・data-kind ${cf.kind}・phase ${cf.phase}・primary ${cf.primary}・フォーカス ${cf.focus}）`, cf.title === 'さいしょから？' && cf.kind === 'paused' && cf.phase === 'paused' && cf.primary === 'restartBackBtn' && cf.focus === 'restartBackBtn' && cf.ok && /いまの ゲームを やめて さいしょから？/.test(cf.text), cf);
+      await page.keyboard.press('Escape'); await wait(page, 30);
+      const e1 = await page.evaluate(() => ({ title: document.querySelector('#overlayTitle')?.textContent.trim(), resume: !!document.querySelector('#resumeBtn'), phase: window.MichibikiGame.getState().phase }));
+      await page.click('#restartBtn'); await wait(page, 30);
+      // 確認のカードがヘッダーを覆うので、Ⅱ はページの中で押す（ハンドラの確認）
+      await page.evaluate(() => document.querySelector('#pauseBtn').click()); await wait(page, 30);
+      const e2 = await page.evaluate(() => ({ title: document.querySelector('#overlayTitle')?.textContent.trim(), resume: !!document.querySelector('#resumeBtn'), phase: window.MichibikiGame.getState().phase }));
+      await page.click('#restartBtn'); await wait(page, 30);
+      await page.click('#restartBackBtn'); await wait(page, 30);
+      const e3 = await page.evaluate(() => ({ title: document.querySelector('#overlayTitle')?.textContent.trim(), resume: !!document.querySelector('#resumeBtn'), landed: window.MichibikiGame.getState().landed }));
+      check(`確認中に Esc・Ⅱ・「もどる」で一時停止カード（ひとやすみ）へ戻り、回はそのまま（${e1.title}／${e2.title}／${e3.title}・landed ${e3.landed}）`, [e1, e2, e3].every((e) => e.title === 'ひとやすみ' && e.resume) && e1.phase === 'paused' && e2.phase === 'paused' && e3.landed === 1, { e1, e2, e3 });
+      await page.click('#restartBtn'); await wait(page, 30);
+      await page.click('#restartOkBtn'); await wait(page, 100);
+      const s1 = await gs(page);
+      check(`「やめる」で新しい回（landed ${s1.landed}・phase ${s1.phase}）、ベストは 1 のまま（保存 ${await stored(page, 'michibiki.best')}・#best ${(await dom(page)).best}）`, s1.phase === 'playing' && s1.landed === 0 && s1.best === 1 && (await stored(page, 'michibiki.best')) === '1' && (await dom(page)).best === '1', s1.landed);
+      // 次の回で 2 機（回を始めたときのベスト 1 を超える）→ ぶつかって終わり
+      const r = await landN(page, 2, { seeds: [1, 2, 3, 4, 5, 6] });
+      const ob = await page.evaluate(() => document.querySelector('#score').dataset.overBest);
+      check(`回を始めたときのベスト 1 を超えると #score[data-over-best="1"]（${ob}）、保存も 2（種 ${r.seed}）`, ob === '1' && (await stored(page, 'michibiki.best')) === '2', ob);
+      let s = await gs(page);
+      for (let i = 0; i < 5 && !s.over; i++) s = await crashOnce(page);
+      await wait(page, 700);
+      const card = (await dom(page)).card;
+      const tip = await page.evaluate(() => document.querySelector('#overTip')?.textContent.trim() || null);
+      check(`終わりのカードは「ベスト こうしん！」（回を始めたときのベスト 1 と比べる）: ${card}`, s.over && /ベスト こうしん/.test(card), card);
+      check(`#overTip は 2 機以下で終わったときだけ（この回 ${s.landed} 機・${tip}）`, s.landed <= 2 ? tip === 'つぎは かっそうろの やじるしを よく みてね' : tip === null, { landed: s.landed, tip });
+      await ctx.close();
+    },
+  },
+  {
+    id: 'FW22', tier: 'full', title: 'ミチビキ空港 §19 A3：終わって 0.6 秒以内に pagehide → pageshow でも、終わりのカードが出て「もういちど」が押せる（押せない見た目も外れる）',
+    async run({ browser, check }) {
+      const { ctx, page } = await openM(browser, 'FW22');
+      let s = await gs(page);
+      for (let i = 0; i < 5 && !s.over; i++) s = await crashOnce(page);
+      await page.evaluate(() => { window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })); window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); });
+      await wait(page, 700);
+      const r = await page.evaluate(() => { const b = document.querySelector('#againBtn'); return { kind: document.querySelector('#overlay').hidden ? null : document.querySelector('#overlay').dataset.kind, again: !!b, locked: b ? b.getAttribute('aria-disabled') : 'なし' }; });
+      check(`over（${s.over}）のすぐ後に pagehide → pageshow しても、カードが出て（${r.kind}）押せない見た目が外れる（aria-disabled ${r.locked}）`, s.over && r.kind === 'over' && r.again && r.locked === null, r);
+      await page.evaluate(() => document.querySelector('#againBtn').click()); await wait(page, 100);
+      const s2 = await gs(page);
+      check(`「もういちど」で新しい回（phase ${s2.phase}・lives ${s2.lives}）`, s2.phase === 'playing' && s2.lives === 3 && !s2.over, s2.phase);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'FW23', tier: 'full', cdp: 'CDP の2点タッチ', title: 'ミチビキ空港 §19 A7：同じ機体を2本の指でなぞっても、2本目の指は無視（道は1本目の指のとおり）',
+    async run({ browser, check }) {
+      const { ctx, page } = await newPage(browser, custom(390, 664, null, 'iPhone 13 Safari'), 'FW23', { device: 'iPhone 13', clock: true });
+      await gotoM(page);
+      const id = await spawnAt(page, { color: 1, kind: 'normal', x: 160, y: 430, dx: 1, dy: 0 });
+      const p = (await gs(page)).planes.find((q) => q.id === id);
+      const t = await touch(ctx, page);
+      const a0 = await scr(page, p.x, p.y), b0 = await scr(page, p.x + 4, p.y + 4);
+      await t.send('touchStart', [{ x: a0[0], y: a0[1], id: 1 }]); await sleep(30);
+      await t.send('touchStart', [{ x: a0[0], y: a0[1], id: 1 }, { x: b0[0], y: b0[1], id: 2 }]);
+      for (let k = 1; k <= 10; k++) {
+        const a = await scr(page, p.x + 10 * k, p.y - 6 * k), b = await scr(page, p.x - 6 * k, p.y + 6 * k);
+        await t.send('touchMove', [{ x: a[0], y: a[1], id: 1 }, { x: b[0], y: b[1], id: 2 }]); await sleep(30);
+      }
+      await t.send('touchEnd', []); await sleep(50);
+      await T(page, 20);
+      const q = (await gs(page)).planes.find((x) => x.id === id);
+      check(`2本目の指は無視され、機体は1本目の指の道（右上）へ進む（向き ${q && q.dx.toFixed(2)}, ${q && q.dy.toFixed(2)}）`, !!q && q.dx > 0 && q.dy < 0, q);
       await ctx.close();
     },
   },
