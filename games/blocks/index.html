@@ -242,12 +242,17 @@
     /* 高さの低い横持ちはスコア欄を2列に詰めて、DROP などのボタンと重ならないようにする */
     .stats { padding-top: 46px; gap: 0 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .stats .stat.score, .stats .stat.best { grid-column: 1 / -1; }
-    .stat b { font-size: 14px; }
-    .stat.score b { font-size: 17px; }
+    /* 行の高さは px で固定する（line-height: normal はフォントで変わり、Hiragino・JetBrains Mono・IPA ゴシックなどで
+       数px ずつ高さが違う。568×320 で欄が DROP に 1px 重なった：X-16）。HOLD 欄の見出しも同じ */
+    .box .label, .stats .label { line-height: 14px; }
+    .stat b { font-size: 14px; line-height: 17px; }
+    .stat.score b { font-size: 17px; line-height: 20px; }
   }
-  /* iPhone SE 横など、さらに低い横持ちでは BEST を省く（ゲームオーバー画面には表示される） */
+  /* iPhone SE 横など、さらに低い横持ちでは BEST を省き（ゲームオーバー画面には表示される）、HOLD の絵を少し低くして
+     左の列（HOLD・スコア欄・DROP と十字キー）が高さ 320px に余裕をもって入るようにする */
   @media (orientation: landscape) and (max-height: 360px) {
     .stat.best { display: none; }
+    .hold canvas { height: 40px; }
   }
   /* iPhone SE を Safari で横持ち（高さ約 270〜319px。320 以上は従来の配置で重ならない）：左右の列が縦に入りきらず、DROP が LEVEL/LINES に、
      HOLD が NEXT に重なっていた（K1）。HOLD 欄は見出しと絵を横に並べて低くし、スコア欄は SCORE・LEVEL・LINES を
