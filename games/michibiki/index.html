@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ゆびあそび">
+<meta name="theme-color" content="#16202b">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<!-- 表示名は main.js が MichibikiLogic.NAME で上書きする（ここに書く文字は控え） -->
+<title>ミチビキ空港</title>
+<!-- デバッグ表示（?debug=1 のときだけ動く。読めなくてもゲームは動く） -->
+<script src="../../common/debug.js"></script>
+<style>
+  /* 配置（契約 §6.2）：縦向きは上から「← メニュー / 名前 / ？ Ⅱ ♪」・点数の帯（ちゃくりく・ベスト・♥）・場・ヒント。
+     横向きで背が低い（高さ 500px 以下）ときは、上の帯と点数の帯を1行（44px）にまとめ、場をその下に。ヒントは場の下端に重ねる */
+  :root {
+    --bg: #16202b;
+    --panel: #22303f;
+    --line: #34465a;
+    --ink: #eef2f5;
+    --muted: #9fb0c0;
+    --hint: #d3dde6;
+    --accent: #f0a43a;
+    --accent-ink: #231705;
+    --gold: #ffe08a;
+    --heart: #ff6b6b;
+    --font-display: "Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif;
+    --font-text: "Hiragino Sans", system-ui, sans-serif;
+    --head-h: 44px;
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  /* ダブルタップ拡大・ピンチ拡大を止める（iOS Safari は user-scalable=no を無視するため CSS と JS の両方で防ぐ） */
+  html { overscroll-behavior: none; touch-action: manipulation; }
+  body {
+    margin: 0;
+    font-size: 16px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-display);
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+  .app {
+    box-sizing: border-box;
+    height: 100%;
+    padding-top: max(6px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(6px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(8px, env(safe-area-inset-left, 0px));
+    padding-right: max(8px, env(safe-area-inset-right, 0px));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-areas: "head" "stats" "play" "hint";
+    gap: 4px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  /* ===== 上の帯 ===== */
+  .head {
+    grid-area: head;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 6px;
+    min-width: 0;
+    min-height: var(--head-h);
+  }
+  .back {
+    position: relative;
+    z-index: 30;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 10px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    font: 700 16px var(--font-text);
+    text-decoration: none;
+    white-space: nowrap;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+  }
+  .back:active { filter: brightness(1.3); }
+  h1.title { margin: 0; min-width: 0; font-size: 16px; line-height: 1.2; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+  .head-tools { display: flex; gap: 4px; }
+  .tool {
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink);
+    font: 700 18px var(--font-display);
+    padding: 0 6px;
+    touch-action: manipulation;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tool:active:not(:disabled) { filter: brightness(1.3); background: var(--panel); }
+  #soundBtn[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ===== 点数の帯 ===== */
+  .stats {
+    grid-area: stats;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 4px;
+    min-width: 0;
+  }
+  .stat {
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 2px 8px 3px;
+    border-radius: 10px;
+    background: var(--panel);
+    box-shadow: 0 0 0 1px var(--line);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    line-height: 1.15;
+    overflow: hidden;
+  }
+  .stat .lbl { font: 700 12px/1.2 var(--font-text); color: var(--muted); white-space: nowrap; }
+  .stat b { display: block; max-width: 100%; font: 800 19px/1.15 var(--font-display); font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: clip; }
+  .stat b[data-size="m"] { font-size: 16px; }
+  #score.bump { animation: bump 0.28s ease-out; }
+  @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.22); } 100% { transform: scale(1); } }
+  #score[data-over-best="1"] { color: var(--gold); }
+  .lives { display: flex; gap: 1px; font: 800 19px/1.15 var(--font-display); white-space: nowrap; }
+  .lives span { display: inline-block; color: var(--heart); }
+  .lives span.lost { color: var(--muted); opacity: 0.55; }
+  .lives span.break { animation: heartBreak 0.6s ease-out; }
+  @keyframes heartBreak { 0% { transform: scale(1.5) rotate(-12deg); color: #fff; } 60% { transform: scale(0.8) rotate(10deg); } 100% { transform: scale(1); } }
+
+  /* ===== 場 ===== */
+  .play {
+    grid-area: play;
+    position: relative;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    touch-action: none;
+  }
+  #field {
+    display: block;
+    flex: 0 0 auto;
+    width: 320px;
+    height: 520px;
+    border-radius: 10px;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    outline: none;
+  }
+
+  /* ヒント：2行分の高さに固定し、文言が変わっても配置が動かない */
+  .hint {
+    grid-area: hint;
+    box-sizing: border-box;
+    margin: 0;
+    height: 2.6em;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--hint);
+    font: 14px/1.3 var(--font-text);
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    pointer-events: none;
+  }
+
+  @media (max-width: 360px) {
+    .head { column-gap: 3px; }
+    .back { padding: 0 5px; font-size: 15px; }
+    h1.title { font-size: 12px; letter-spacing: -0.05em; }
+    .head-tools { gap: 2px; }
+    .stat { padding: 2px 6px 3px; }
+  }
+  @media (orientation: portrait) and (max-height: 620px) {
+    .hint { font-size: 13px; }
+    .stat b, .lives { font-size: 17px; }
+    .stat b[data-size="m"] { font-size: 15px; }
+  }
+
+  /* 横向きで背が低い：上の帯と点数の帯を1行に。ヒントは場の下端に重ねる（場の高さを削らない。SE 横で倍率 0.7 以上） */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .app {
+      padding-top: max(0px, env(safe-area-inset-top, 0px));
+      padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
+      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-rows: var(--head-h) minmax(0, 1fr);
+      grid-template-areas: "head stats" "play play";
+      gap: 0 6px;
+    }
+    .head { grid-template-columns: auto auto; column-gap: 4px; }
+    /* 名前は場所を取るので、横向きでは見えない形にする（読み上げには残す） */
+    h1.title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .back { padding: 0 8px; }
+    .stats { grid-template-columns: minmax(0, auto) minmax(0, auto) auto; justify-content: end; gap: 3px; align-self: center; }
+    .stat { flex-direction: row; gap: 3px; padding: 0 5px; height: 36px; align-items: center; }
+    .stat b, .lives { font-size: 16px; }
+    .stat b[data-size="m"] { font-size: 14px; }
+    .hint {
+      grid-area: play;
+      align-self: end;
+      justify-self: center;
+      height: auto;
+      max-width: 90%;
+      margin-bottom: 4px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      background: rgba(13, 20, 28, 0.82);
+      font-size: 13px;
+      z-index: 2;
+    }
+    .hint:empty { display: none; }
+  }
+
+  /* ===== カード（遊び方・ひとやすみ・おしまい） ===== */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    box-sizing: border-box;
+    display: flex;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    padding-top: calc(max(6px, env(safe-area-inset-top, 0px)) + var(--head-h) + 8px);
+    padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
+    padding-right: max(10px, env(safe-area-inset-right, 0px));
+    background: rgba(10, 16, 24, 0.55);
+  }
+  .overlay[data-kind="help"], .overlay[data-kind="over"] { background: rgba(10, 16, 24, 0.72); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+  .card {
+    width: min(400px, 100%);
+    box-sizing: border-box;
+    margin: auto;
+    flex: 0 0 auto;
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+    box-shadow: 0 0 0 1px var(--line), 0 20px 50px rgba(0, 0, 0, 0.5);
+  }
+  .card h2 { margin: 0; font-size: 23px; line-height: 1.3; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+  .card p { margin: 0; font: 16px/1.5 var(--font-text); word-break: keep-all; overflow-wrap: anywhere; }
+  .card p.big { font: 900 38px/1.15 var(--font-display); color: var(--gold); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .card p.big small { font-size: 18px; color: var(--ink); margin-left: 4px; }
+  .card p.best-new { color: var(--accent); font-weight: 700; }
+  .card p.close { color: var(--gold); font-weight: 700; }
+  .card p.small { color: var(--muted); font-size: 14px; }
+  .card ol.rules { margin: 0; padding-left: 1.3em; text-align: left; font: 15px/1.5 var(--font-text); display: flex; flex-direction: column; gap: 6px; word-break: keep-all; overflow-wrap: anywhere; }
+  .card .pics { display: flex; justify-content: center; gap: 14px; margin-top: 4px; }
+  .card .pics figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; font: 700 12px/1.2 var(--font-text); color: var(--muted); }
+  .card .pics svg { display: block; width: 92px; height: 46px; }
+  .card .btns { display: flex; flex-direction: column; gap: 8px; }
+  .card .btns button {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 44px;
+    min-height: 48px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    border: 1px solid #4a5d74;
+    background: #34485e;
+    color: #fff;
+    font: 700 16px/1.3 var(--font-text);
+    touch-action: manipulation;
+    word-break: keep-all;
+  }
+  .card .btns button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .card .btns button:active:not([aria-disabled="true"]) { filter: brightness(1.2); }
+  @media (orientation: portrait) and (max-height: 620px) {
+    .card { padding: 12px 14px; gap: 8px; }
+    .card h2 { font-size: 20px; }
+    .card ol.rules { font-size: 14px; line-height: 1.45; gap: 4px; }
+    .card .pics svg { width: 80px; height: 40px; }
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    /* 横向き：カードは「← メニュー」の右に置き、上の帯の高さぶん下げない */
+    .overlay { padding-top: max(4px, env(safe-area-inset-top, 0px)); padding-bottom: max(4px, env(safe-area-inset-bottom, 0px)); padding-left: calc(max(10px, env(safe-area-inset-left, 0px)) + 112px); }
+    .card { width: min(560px, 100%); padding: 8px 14px; gap: 5px; }
+    .card h2 { font-size: 18px; }
+    .card p { font-size: 14px; line-height: 1.4; }
+    .card p.big { font-size: 26px; }
+    .card ol.rules { font-size: 13px; line-height: 1.35; gap: 2px; }
+    .card .pics { margin-top: 0; }
+    .card .pics svg { width: 70px; height: 32px; }
+    .card .btns { flex-direction: row; }
+    .card .btns button { min-height: 44px; padding: 4px 6px; font-size: 14px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app" data-phase="help" data-layout="tall">
+  <header class="head">
+    <a id="back" class="back" href="../../">← メニュー</a>
+    <h1 class="title" id="gameTitle">ミチビキ空港</h1>
+    <div class="head-tools">
+      <button class="tool" id="helpBtn" type="button" aria-label="あそびかた">？</button>
+      <button class="tool" id="pauseBtn" type="button" aria-label="ひとやすみ">Ⅱ</button>
+      <button class="tool" id="soundBtn" type="button" aria-label="効果音" aria-pressed="true">♪</button>
+    </div>
+  </header>
+
+  <div class="stats" aria-label="てんすう">
+    <div class="stat"><span class="lbl">ちゃくりく</span><b id="score" data-value="0">0</b></div>
+    <div class="stat"><span class="lbl">ベスト</span><b id="best" data-value="0">0</b></div>
+    <div class="stat"><span class="lives" id="lives" data-lives="3" aria-label="のこり 3" role="img"><span>♥</span><span>♥</span><span>♥</span></span></div>
+  </div>
+
+  <section class="play" id="playView">
+    <canvas id="field" aria-label="ひこうきの ば" role="img" data-layout="tall"></canvas>
+  </section>
+
+  <p class="hint" id="hint" role="status" aria-live="polite"></p>
+</div>
+
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="overlayTitle" hidden>
+  <div class="card" id="card"><h2 id="overlayTitle"></h2></div>
+</div>
+
+<script src="../../common/sfx.js"></script>
+<script src="logic.js"></script>
+<script src="render.js"></script>
+<script src="input.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
