@@ -480,7 +480,7 @@
     const coverOf = (b) => (b && Number.isSafeInteger(b.cover) ? b.cover : null);
     const coverLeft = (b) => { const c = coverOf(b); return c === null ? 0 : Math.max(0, c - servedView); };
     function bottleLabel(num, b) {
-      if (coverOf(b) !== null) return `${num}ばん。ぬのを かぶった びん。あと ${coverLeft(b)} にん とどけると あく`;
+      if (coverOf(b) !== null) return coverLeft(b) > 0 ? `${num}ばん。ぬのを かぶった びん。あと ${coverLeft(b)} にん とどけると あく` : `${num}ばん。ぬのを かぶった びん。もうすぐ あく`;
       const n = `${num}ばん：`;
       if (!b || !b.cells || !b.cells.length) return n + "から";
       const names = b.cells.map((c, j) => (b.hidden && b.hidden[j] ? "？" : colorInfo(c).name));
@@ -513,7 +513,8 @@
       if (btn.dataset.coverLeft !== left) {
         btn.dataset.coverLeft = left;
         const t = btn.querySelector(".clothtag");
-        if (t) t.innerHTML = `<small>あと</small><b>${left}</b>`;
+        // 残りが 0 になったら「あと 0」は出さず「あいた！」にする（布が取れるまでの間、壊れたように見せない）
+        if (t) t.innerHTML = left === "0" ? '<b class="open">あいた！</b>' : `<small>あと</small><b>${left}</b><small>にん</small>`;
       }
       btn.setAttribute("aria-label", bottleLabel(btn._id + 1, b));
     }
@@ -1181,9 +1182,13 @@
     }
 
     // ---------- 注げない ----------
-    function deny(index) {
+    function deny(index, reason) {
       const btn = buttons[index];
       if (!btn) return;
+      if (reason === "covered") {   // 押した布の札を一瞬ふくらませる（動きを減らす設定では色を変えるだけ。CSS 側）
+        const tg = btn.querySelector(".clothtag");
+        if (tg) { tg.classList.remove("pop"); void tg.offsetWidth; tg.classList.add("pop"); setTimeout(() => tg.classList.remove("pop"), 600); }
+      }
       if (calm) {
         btn.classList.add("calm-glow");
         tween(250, () => {}, ease.linear).then(() => btn.classList.remove("calm-glow"));

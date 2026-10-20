@@ -65,7 +65,7 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | ゼンマイさんぽ（games/zenmai/）の変更 | smoke ＋ `ONLY=ZL1,ZL2,ZL3,ZL4,ZL5,ZL6,ZL7,ZU6,ZU7,ZU8,ZU9,ZU10,ZU11,ZU12,ZU13,ZU14 node tests/run.mjs full`（ステージの数値は ZL、画面は ZU） |
 | ピカッと早押し（games/pikatto/）の変更 | smoke ＋ `ONLY=PK5,PK6,PK7,PK8,PK9,PK12,PK14,PK16,PK17,PK18 node tests/run.mjs full`（ルール・保存を変えたら `ONLY=PK1,PK3,PK9,PK15,PK16 M=MP1,MP2,MP3,MP4,MP5,MP6,MP7 node tests/mutants/mutate.mjs both`） |
 | ハシわたり（games/hashi/）の変更 | smoke ＋ `ONLY=HW5,HW6,HW7,HW8,HW9,HW10,HW11,HW12,HW13 node tests/run.mjs full`（ロジックだけなら `ONLY=HL1,HL2,HL3,HL4,HL5,HL6,HL7,HL8 node tests/run.mjs smoke`、0 秒） |
-| いろびん（games/irobin/）の変更 | smoke ＋ `ONLY=BW5,BW6,BW7,BW8,BW9,BW10,BW11,BW12,BW13,BW14,BW15,BW16 node tests/run.mjs full`（ロジックだけなら `ONLY=BL1,BL2,BL3,BL4,BL5,BL6,BL7,BL8,BL9,BL10,BL11,BL12,BL13,BL14 node tests/run.mjs smoke`、4 秒。ルール・保存・生成を変えたら `ONLY=BL1,…,BL14,BW1,…,BW18 M=MB1,…,MB17,MB19 node tests/mutants/mutate.mjs both`。MB18 は欠番） |
+| いろびん（games/irobin/）の変更 | smoke ＋ `ONLY=BW5,BW6,BW7,BW8,BW9,BW10,BW11,BW12,BW13,BW14,BW15,BW16 node tests/run.mjs full`（ロジックだけなら `ONLY=BL1,BL2,BL3,BL4,BL5,BL6,BL7,BL8,BL9,BL10,BL11,BL12,BL13,BL14 node tests/run.mjs smoke`、4 秒。ルール・保存・生成を変えたら `ONLY=BL1,…,BL14,BW1,…,BW18 M=MB1,…,MB17,MB19,MB20,MB21 node tests/mutants/mutate.mjs both`。MB18 は欠番） |
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
 | テストを変えたとき・中身の仕組み（点数計算・保存・日付・ルール）を変えたとき | `node tests/mutants/mutate.mjs both`（そのゲームの分だけ。テストがわざと入れた不具合を見つけられるか） |
 
@@ -318,6 +318,8 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | MB16 いろびん：布の瓶に注げる（布を見るのは注ぐ元だけ） | 検出（BL12, BL13, BW18） | 検出（BL12, BL13, BW18） |
 | MB17 いろびん：古い v:2 の手をそのまま再生する（布の前のルールの手を捨てない） | 検出（BL7, BL14） | 検出（BL7, BL14） |
 | MB19 いろびん：布の瓶を押すと選べる | 検出（BW18） | 検出（BW18） |
+| MB20 いろびん：届けた瓶の跡を残さず詰める | 検出（BW17） | 検出（BW17） |
+| MB21 いろびん：布の札の残りを 0 のまま表示する | 検出（BW18） | 検出（BW18） |
 
 いろびんの布の瓶（2026-10-20、v22、Chromium・`PORT=9900 WORKERS=2`、`ONLY=BL1〜BL14,BW1〜BW18`）：MB1〜MB17・MB19 を smoke 14/18・full 18/18 で検出（smoke の見逃し MB8・MB9・MB11・MB12 は full の BW9・BW6/BW8・BW16 で見つける設計）。MB18（新しい色の4段を布の外にも配る）はユーザー決定で「新しい色」を作らないので欠番。表の MB1〜MB14 の検出欄はこの回の結果に更新した。
 

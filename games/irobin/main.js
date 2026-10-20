@@ -35,7 +35,9 @@
   const DOOM_NODE_LIMIT = 3000;   // 詰み予備軍を調べる上限（局面の数。上限に届いたら何も言わない）
   // 布の瓶（§17.4）
   const HINT_CLOTH_FIRST = "ぬのの びんは、おきゃくさんに とどけると あくよ。どの いろから とどけるか かんがえよう";
-  const clothHint = (m) => `ぬのの びんは、おきゃくさんに あと ${m} にん とどけると あくよ`;
+  // 横向きで背が低い画面（SE 横）はヒントの欄が狭いので、短い文にする
+  const shortHint = () => { try { return !!(window.matchMedia && window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches); } catch (e) { return false; } };
+  const clothHint = (m) => (shortHint() ? `ぬのの びんは あと ${m} にん とどけると あくよ` : `ぬのの びんは、おきゃくさんに あと ${m} にん とどけると あくよ`);
   const DENY_HINT = {
     covered: "ぬのの びんは、おきゃくさんに とどけると あくよ",
     mismatch: "いろが ちがうよ。うえの いろが おなじ びんか、からの びんに そそげるよ",
@@ -134,7 +136,7 @@
   }
   const coverOf = (b) => (b && Number.isSafeInteger(b.cover) ? b.cover : null);
   const hasCloth = (s) => !!(s && Array.isArray(s.bottles) && s.bottles.some((b) => coverOf(b) !== null));
-  const idleHint = () => (doomed ? HINT_DOOMED : clothTip && moves.length === 0 ? HINT_CLOTH_FIRST : level <= 2 && moves.length === 0 ? HINT_FIRST : HINT_IDLE);
+  const idleHint = () => (doomed ? HINT_DOOMED : clothTip && moves.length === 0 ? (shortHint() ? "ぬのの びんは とどけると あくよ" : HINT_CLOTH_FIRST) : level <= 2 && moves.length === 0 ? HINT_FIRST : HINT_IDLE);
   const isStuckNow = () => !!(state && !state.won && safeCall(() => L.isStuck(state), false));
   const restPhase = () => (state && state.won ? "clear" : isStuckNow() ? "stuck" : selected !== null ? "selected" : "idle");
 
@@ -499,9 +501,9 @@
       <ol class="rules">
         <li>びんを おして、べつの びんを おすと <b>そそげる</b>よ（<b>おなじ いろ</b>の うえ か、<b>からの びん</b>に）。</li>
         <li>4つ そろうと <b>せん</b>。うえの <b>トレイと おなじ いろ</b>なら おきゃくさんに とどくよ。まだ いない いろは、その ばしょで まつよ。</li>
-        <li>「？」は うえを どかすと みえる。<b>ぬのの びん</b>は とどけると あくよ。こまったら「1手もどす」「やりなおし」。</li>
+        <li>「？」は うえを どかすと みえるよ。<b>ぬのの びん</b>は、とどけた にんずで あくよ。</li>
       </ol>
-      <p class="note">キー：やじるし・エンター・すうじ（10ぽんめまで）で えらぶ。U もどす、M おと。</p>
+      <p class="note">こまったら「1手もどす」「やりなおし」。キー：やじるし・エンター・すうじ（10ぽんめまで）で えらぶ。U もどす、M おと。</p>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");
   }
   function closeCard() {

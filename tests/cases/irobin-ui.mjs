@@ -1102,6 +1102,58 @@ export const tests = [
       const h6 = await hintText(page), tip6 = await page.evaluate(() => document.querySelector('#board')?.dataset.clothTip);
       check(`irobin.cloth が "1" なら、次の布の面ではふつうのヒント（${h6}・tip ${tip6}）`, !/どの いろから/.test(h6 || '') && tip6 !== '1', { h6, tip6 });
       await ctx.close();
+      // 届けの連鎖の途中：札の数が 1 ずつ減り、残り 0 の「あと 0」は出ない（「あいた！」か、布が取れて札が無い）
+      const findChain = (p) => p.evaluate(() => {
+        const L = window.IrobinLogic;
+        for (let lv = 8; lv <= 80; lv++) {
+          const c = L.createLevel(lv); let st = c.state;
+          for (let i = 0; i < c.info.solution.length; i++) {
+            const r = L.applyMove(st, c.info.solution[i][0], c.info.solution[i][1]);
+            const n = r.outcome.deliveries.length;
+            const cl = st.bottles.find((b) => b.cover !== null && b.cover - st.served >= 2 && b.cover - st.served <= n);
+            if (n >= 2 && cl) return { lv, at: i, sol: c.info.solution, cid: cl.id, left0: cl.cover - st.served };
+            st = r.state;
+          }
+        }
+        return null;
+      });
+      const c3 = await openG(browser, 'BW18 連鎖', { v: SMOKE_V(), opts: { clock: false }, extra: { 'irobin.best': '1', 'irobin.cloth': '1' } });
+      const ch = await findChain(c3.page);
+      check(`届けが 2 人以上続く手で布が 0 まで進む面がある（${ch ? `${ch.lv} 面・${ch.at + 1} 手目・布 id ${ch.cid}・残り ${ch.left0}` : 'なし'}）`, !!ch, ch);
+      if (ch) {
+        await gotoG(c3.page, { 'irobin.best': String(ch.lv - 1), 'irobin.cloth': '1' });
+        await playMoves(c3.page, ch.sol.slice(0, ch.at));
+        const seq = await c3.page.evaluate(([f, t, id]) => new Promise((ok) => {
+          const g = window.IrobinGame, a = performance.now(), out = [];
+          let last = null;
+          const tick = () => {
+            const b = document.querySelector(`#board .bottle[data-id="${id}"]`);
+            const tg = b && b.querySelector('.clothtag');
+            const cur = b ? `${b.dataset.covered || ''}|${b.dataset.coverLeft ?? ''}|${tg ? tg.textContent.replace(/\s+/g, '') : ''}` : 'none';
+            if (cur !== last) { out.push(cur); last = cur; }
+            if (!g.getState().busy && performance.now() - a > 300 && g.getState().phase !== 'pouring') ok(out); else if (performance.now() - a > 9000) ok(out); else requestAnimationFrame(tick);
+          };
+          g.pick(f); g.pick(t); requestAnimationFrame(tick);
+        }), [...ch.sol[ch.at], ch.cid]);
+        const lefts = seq.filter((x) => x.startsWith('1|')).map((x) => Number(x.split('|')[1]));
+        const steps1 = lefts.every((v, i) => i === 0 || lefts[i - 1] - v === 1);
+        const no0 = seq.every((x) => !/あと0/.test(x)) && seq.filter((x) => x.startsWith('1|0|')).every((x) => /あいた！/.test(x));
+        check(`連鎖の途中で札が 1 ずつ減る（${lefts.join('→')}）、「あと 0」は出ず 0 のときは「あいた！」（${seq.join(' / ')}）、最後は札が無い`,
+          lefts.length >= 2 && lefts[0] === ch.left0 && lefts[lefts.length - 1] === 0 && steps1 && no0 && !seq[seq.length - 1].startsWith('1|'), seq);
+      }
+      await c3.ctx.close();
+      // 布の札を押すと札が一瞬ふくらむ（pop クラス）。動きを減らす設定でも pop は付き、動かさず色だけ変わる
+      for (const calmOn of [false, true]) {
+        const cp = await openG(browser, `BW18 pop ${calmOn}`, { v: SMOKE_V(), opts: calmOn ? { clock: false, reducedMotion: 'reduce' } : { clock: false }, extra: { 'irobin.best': String(cs.lv - 1), 'irobin.cloth': '1' } });
+        await cp.page.click(`#board .bottle[data-id="${cs.cid}"]`); await wait(cp.page, 120);
+        const pp = await cp.page.evaluate((id) => {
+          const tg = document.querySelector(`#board .bottle[data-id="${id}"] .clothtag`); const cs2 = getComputedStyle(tg);
+          return { pop: tg.classList.contains('pop'), anim: cs2.animationName, bg: cs2.backgroundColor };
+        }, cs.cid);
+        check(`布を押すと札が一瞬ふくらむ${calmOn ? '（動きを減らす設定：動かさず色だけ変える）' : ''}（pop ${pp.pop}・animation ${pp.anim}・背景 ${pp.bg}）`,
+          pp.pop && (calmOn ? pp.anim === 'none' && pp.bg !== 'rgb(255, 250, 240)' : pp.anim === 'clothPop'), pp);
+        await cp.ctx.close();
+      }
       // 動きを減らす設定：布が取れる手（届け→布）が 0.5 秒以内に終わる
       const c2 = await openG(browser, 'BW18 calm', { v: SMOKE_V(), opts: { clock: false, reducedMotion: 'reduce' }, extra: { 'irobin.best': String(cs.lv - 1), 'irobin.cloth': '1' } });
       await playMoves(c2.page, cs.sol.slice(0, cs.at));

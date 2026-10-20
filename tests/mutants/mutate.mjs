@@ -98,6 +98,8 @@ const M = [
   ['MB16 いろびん：布の瓶に注げる（布を見るのは注ぐ元だけ）', 'ルール', 'games/irobin/logic.js', 'if ((s | d) & COVER_MASK) return R_COVERED;', 'if (s & COVER_MASK) return R_COVERED;'],
   ['MB17 いろびん：古い v:2 の手をそのまま再生する（布の前のルールの手を捨てない）', '保存データ互換', 'games/irobin/logic.js', '    if ((o.v === 1 || o.v === 2) && Number.isSafeInteger(o.level) && o.level >= 1) return { level: o.level, moves: [] };\n    if (o.v !== SAVE_V) return null;', '    if (o.v === 1 && Number.isSafeInteger(o.level) && o.level >= 1) return { level: o.level, moves: [] };\n    if (o.v !== SAVE_V && o.v !== 2) return null;'],
   ['MB19 いろびん：布の瓶を押すと選べる（布の判定を外す）', '操作', 'games/irobin/main.js', '    if (coverOf(b) !== null) {\n      const m = Math.max(0, coverOf(b)', '    if (false) {\n      const m = Math.max(0, coverOf(b)'],
+  ['MB20 いろびん：届けた瓶の跡を残さず詰める（render の replaceChild(emptyPlace…) を removeChild にする）', '演出', 'games/irobin/render.js', 'btn.parentNode.replaceChild(emptyPlace(btn._id), btn);', 'btn.parentNode.removeChild(btn);'],
+  ['MB21 いろびん：布の札の残りを 0 のまま表示する（「あいた！」にしない）', '演出', 'games/irobin/render.js', 'left === "0" ? \'<b class="open">あいた！</b>\' : ', 'false ? \'<b class="open">あいた！</b>\' : '],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;
