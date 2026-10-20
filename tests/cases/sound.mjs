@@ -7,7 +7,7 @@ import vm from 'node:vm';
 import { BASE, T48, BLK, KIRI, custom, newPage, seed, ST, sleep, wait, SFX_SPY, plays, starts, kiriStart, kiriWaitObj, kiriSlash, kiriSnap } from '../lib.mjs';
 
 const V = () => custom(390, 844, null, 'iPhone 13');
-const PAGES = [['games/blocks/index.html', 'blocks'], ['games/2048/index.html', 'tiles'], ['games/kiritori/index.html', 'kiritori'], ['games/irocode/index.html', 'irocode'], ['games/zenmai/index.html', 'zenmai'], ['games/pikatto/index.html', 'pikatto'], ['games/irobin/index.html', 'irobin', ['games/irobin/render.js', 'games/irobin/main.js', 'games/irobin/input.js']], ['games/matomete/index.html', 'matomete', ['games/matomete/render.js', 'games/matomete/main.js', 'games/matomete/input.js']], ['index.html', 'menu']];
+const PAGES = [['games/blocks/index.html', 'blocks'], ['games/2048/index.html', 'tiles'], ['games/kiritori/index.html', 'kiritori'], ['games/irocode/index.html', 'irocode'], ['games/zenmai/index.html', 'zenmai'], ['games/pikatto/index.html', 'pikatto'], ['games/irobin/index.html', 'irobin', ['games/irobin/render.js', 'games/irobin/main.js', 'games/irobin/input.js']], ['games/matomete/index.html', 'matomete', ['games/matomete/render.js', 'games/matomete/main.js', 'games/matomete/input.js']], ['games/michibiki/index.html', 'michibiki', ['games/michibiki/render.js', 'games/michibiki/main.js', 'games/michibiki/input.js']], ['index.html', 'menu']];
 
 export const tests = [
   {
@@ -18,7 +18,7 @@ export const tests = [
       sandbox.globalThis = sandbox; vm.createContext(sandbox); vm.runInContext(src, sandbox);
       check('common/sfx.js が window.YubiSfx.create を定義する', typeof sandbox.YubiSfx?.create === 'function');
       for (const [page, game, extra] of PAGES) {
-        // extra：音を鳴らすコードが別の .js にある画面（いろびん・まとめてポン）。音名の検査は BL10・QW16 が play("名前") を読んで行うので、ここでは読み込み順と create だけ見る
+        // extra：音を鳴らすコードが別の .js にある画面（いろびん・まとめてポン）。音名の検査は BL10・QW16・FL11 が play("名前") を読んで行うので、ここでは読み込み順と create だけ見る
         const html = fs.readFileSync(path.join(root, page), 'utf8') + (extra || []).map((f) => '\n' + fs.readFileSync(path.join(root, f), 'utf8')).join('');
         const names = sandbox.YubiSfx.create(game).names || [];
         const calls = [...html.matchAll(/sfx\.play\(\s*(["'`])([^"'`]+)\1/g)].map((m) => m[2]);

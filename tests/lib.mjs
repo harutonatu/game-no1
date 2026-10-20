@@ -284,6 +284,26 @@ export async function kiriAutoplay(page, cond, { maxMs = 60000, step = 150, lazy
   return kiriSnap(page);
 }
 
+// ---------- ミチビキ空港 ----------
+// 場の単位の点の列を、MichibikiGame.toScreen で画面の座標にして、本物のマウスでなぞる（1本の指の線）。
+// キリトリの kiriSwipe と同じく、先に manual(true) でロジックの時間を止めてから座標を読む（機体が動いて外れない）。
+// 早送り中のページでは、ページの時間も止めたまま（frozen）なぞる。steps は点と点の間の pointermove の数
+export async function mbDrag(page, points, { steps = 4 } = {}) {
+  const scr = await page.evaluate((pts) => {
+    const G = window.MichibikiGame;
+    if (!G) throw new Error('window.MichibikiGame が無い');
+    G.manual(true);
+    return pts.map(([x, y]) => { const r = G.toScreen(x, y); return Array.isArray(r) ? [r[0], r[1]] : [r.x, r.y]; });
+  }, points);
+  return frozen(page, async () => {
+    await page.mouse.move(scr[0][0], scr[0][1]);
+    await page.mouse.down();
+    for (let i = 1; i < scr.length; i++) await page.mouse.move(scr[i][0], scr[i][1], { steps });
+    await page.mouse.up();
+    return scr;
+  });
+}
+
 // ブロックパズルの乱数を固定する（ブロックの出順を毎回同じにする）
 export const fixedRandom = () => { let a = 42; Math.random = () => { a = (a * 1103515245 + 12345) % 2147483648; return a / 2147483648; }; };
 

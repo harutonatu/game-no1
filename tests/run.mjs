@@ -38,6 +38,8 @@ export const GROUPS = [
   { key: 'BW', title: 'BW いろびん 画面（遊べる・保存・戻る・画面内・横向き・中断・キーボード・音・色覚・オフライン）', file: 'irobin-ui.mjs', weight: { smoke: 8, full: 40 } },
   { key: 'QL', title: 'QL まとめてポン 計算ロジック(Node)', file: 'matomete-logic.mjs', weight: { smoke: 0, full: 0 } },
   { key: 'QW', title: 'QW まとめてポン 画面（2回タップ・保存・戻る・全部消し・終わり・お助け・見た目・画面内・キーボード・音・オフライン・タッチ・メニュー）', file: 'matomete-ui.mjs', weight: { smoke: 8, full: 45 } },
+  { key: 'FL', title: 'FL ミチビキ空港 計算ロジック(Node)', file: 'michibiki-logic.mjs', weight: { smoke: 0, full: 0 } },
+  { key: 'FW', title: 'FW ミチビキ空港 画面（なぞる・着陸・ぶつかる・保存・戻る・中断・画面内・横向き・キーボード・音・色覚・オフライン）', file: 'michibiki-ui.mjs', weight: { smoke: 8, full: 45 } },
 ];
 
 const args = process.argv.slice(2);
@@ -161,7 +163,7 @@ async function main() {
     errors.push(...r.errors);
   }
   // 全ページ共通の確認は最後に1回だけ（各グループで集めたコンソールエラーをまとめる）
-  if (plan.some((g) => !['L', 'ZL', 'HL', 'BL', 'QL'].includes(g.key))) {
+  if (plan.some((g) => !['L', 'ZL', 'HL', 'BL', 'QL', 'FL'].includes(g.key))) {
     const ok = errors.length === 0;
     items.push({ id: 'X1', title: '全ページでコンソールエラー・ページエラー 0', ok, ms: 0, checks: [{ name: `コンソールエラー・ページエラー ${errors.length} 件`, ok, detail: ok ? undefined : errors.slice(0, 20) }] });
     console.log(`■ 共通\n  ${ok ? 'PASS' : 'FAIL'}  X1  全ページでコンソールエラー・ページエラー 0${ok ? '' : '\n        ' + JSON.stringify(errors.slice(0, 10))}`);
