@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ゆびあそび">
+<meta name="theme-color" content="#1d2a22">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<!-- 表示名は main.js が SeizaiLogic.NAME で上書きする（ここに書く文字は控え） -->
+<title>もくもくこうば</title>
+<!-- デバッグ表示（?debug=1 のときだけ動く。読めなくてもゲームは動く） -->
+<script src="../../common/debug.js"></script>
+<style>
+  /* 配置（契約 §5.1）：縦向きは上から #hud（← メニュー / 名前 / ？ ♪、おかね）・#goal・#scene（上下スクロール）・#sheet（開いたとき）・#hint。
+     横向きで背が低い（高さ 500px 以下）ときは、左に #scene、右の列に #hud・#goal・#sheet・#hint */
+  :root {
+    --bg: #1d2a22;
+    --panel: #2a3a30;
+    --panel2: #34483b;
+    --line: #46604f;
+    --ink: #f2f5ef;
+    --muted: #b3c2b6;
+    --accent: #f0a43a;
+    --accent-ink: #231705;
+    --gold: #ffd84d;
+    --jam: #ffd84d;
+    --font-display: "Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif;
+    --font-text: "Hiragino Sans", system-ui, sans-serif;
+    --head-h: 44px;
+    --side-w: clamp(240px, 38vw, 340px);
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  /* ダブルタップ拡大・ピンチ拡大を止める（iOS Safari は user-scalable=no を無視するため CSS でも防ぐ） */
+  html { overscroll-behavior: none; touch-action: manipulation; }
+  body {
+    margin: 0;
+    font-size: 16px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-display);
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+  button { font-family: inherit; touch-action: manipulation; -webkit-touch-callout: none; }
+  button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .app {
+    box-sizing: border-box;
+    height: 100%;
+    padding-top: max(4px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(8px, env(safe-area-inset-left, 0px));
+    padding-right: max(8px, env(safe-area-inset-right, 0px));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "hud" "goal" "scene" "sheet" "hint";
+    gap: 4px;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  /* ===== #hud ===== */
+  .hud { grid-area: hud; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 6px;
+    min-width: 0;
+    min-height: var(--head-h);
+  }
+  .back {
+    position: relative;
+    z-index: 30;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 10px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    font: 700 16px var(--font-text);
+    text-decoration: none;
+    white-space: nowrap;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+  }
+  .back:active { filter: brightness(1.3); }
+  h1.title { margin: 0; min-width: 0; font-size: 16px; line-height: 1.15; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+  .head-tools { display: flex; gap: 8px; }
+  .tool {
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink);
+    font: 700 18px var(--font-display);
+    padding: 0 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tool:active { filter: brightness(1.3); background: var(--panel); }
+  #soundBtn[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
+  .purse {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    column-gap: 10px;
+    row-gap: 0;
+    min-width: 0;
+    padding: 0 4px;
+  }
+  .purse .lbl { font: 700 12px var(--font-text); color: var(--muted); margin-right: 6px; }
+  #money { font: 900 22px/1.2 var(--font-display); color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; display: inline-block; transform-origin: left center; }
+  #money.bump { animation: bump 0.28s ease-out; }
+  @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.12); } 100% { transform: scale(1); } }
+  #shipCount { font: 700 13px/1.3 var(--font-text); color: var(--ink); white-space: nowrap; }
+  #shipCount { display: inline-block; }
+  #shipCount.bump { animation: bump 0.4s ease-out; }
+
+  /* ===== #goal ===== */
+  .goal {
+    grid-area: goal;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    border-radius: 10px;
+    background: var(--panel);
+    box-shadow: 0 0 0 1px var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  #goalText { margin: 0; font: 700 14px/1.35 var(--font-text); word-break: keep-all; overflow-wrap: anywhere; }
+  .goal-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  #goalBar {
+    flex: 1 1 auto;
+    min-width: 40px;
+    height: 12px;
+    border-radius: 6px;
+    background: #17211b;
+    box-shadow: inset 0 0 0 1px var(--line);
+    overflow: hidden;
+  }
+  #goalFill { display: block; height: 100%; width: 0%; background: repeating-linear-gradient(135deg, #7ccf6b 0 8px, #5fb54f 8px 16px); border-radius: 6px; transition: width 0.3s ease-out; }
+  #expandBtn {
+    flex: 0 1 auto;
+    max-width: 62%;
+    box-sizing: border-box;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 4px 12px;
+    border-radius: 12px;
+    border: 0;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font: 800 15px/1.25 var(--font-text);
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    animation: glow 1.6s ease-in-out infinite;
+  }
+  #expandBtn:active { filter: brightness(1.15); }
+  @keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(240, 164, 58, 0.0); } 50% { box-shadow: 0 0 0 4px rgba(240, 164, 58, 0.45); } }
+  #orderTag {
+    margin: 0;
+    align-self: flex-start;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: #4a3b16;
+    box-shadow: 0 0 0 1px #8a6d1f;
+    color: var(--gold);
+    font: 700 13px/1.4 var(--font-text);
+    overflow-wrap: anywhere;
+  }
+
+  /* ===== #scene（上下スクロール。canvas は見えている所の大きさで sticky） ===== */
+  .scene {
+    grid-area: scene;
+    position: relative;
+    min-height: 0;
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    border-radius: 10px;
+    background: #e4dccb;
+    scrollbar-width: thin;
+  }
+  .scene-inner { position: relative; width: 100%; min-height: 100%; }
+  #sceneCanvas { position: sticky; top: 0; display: block; width: 100%; height: 300px; pointer-events: none; }
+  .zone {
+    position: absolute;
+    left: 0; top: 0;
+    min-width: 44px;
+    min-height: 44px;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: transparent;
+    font-size: 12px;
+    touch-action: pan-y;
+    cursor: pointer;
+  }
+  .zone:active { background: rgba(255, 255, 255, 0.14); }
+  .zone[aria-expanded="true"], .zone[data-open="1"] { box-shadow: inset 0 0 0 3px #ffffff; }
+  .zone:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+  .zone-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* ===== #sheet（買う板） ===== */
+  .sheet {
+    grid-area: sheet;
+    position: relative;
+    z-index: 5;
+    min-width: 0;
+    box-sizing: border-box;
+    max-height: 46vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 6px 8px 8px;
+    border-radius: 12px;
+    background: var(--panel);
+    box-shadow: 0 0 0 1px var(--line), 0 -6px 20px rgba(0, 0, 0, 0.35);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .sheet-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  #sheetTitle { flex: 1 1 auto; min-width: 0; margin: 0; font: 800 17px/1.25 var(--font-display); overflow-wrap: anywhere; word-break: keep-all; }
+  #sheetClose { flex: 0 0 auto; }
+  #sheetInfo { margin: 0; font: 700 14px/1.35 var(--font-text); color: var(--muted); overflow-wrap: anywhere; word-break: keep-all; }
+  #sheetInfo[data-jam="1"], #sheetInfo .jam { color: var(--jam); }
+  .buys { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .buys > .wide { grid-column: 1 / -1; }
+  .buy {
+    box-sizing: border-box;
+    min-height: 52px;
+    min-width: 44px;
+    padding: 4px 8px;
+    border-radius: 12px;
+    border: 1px solid #5c7a66;
+    background: var(--panel2);
+    color: #fff;
+    font: 700 14px/1.3 var(--font-text);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    text-align: center;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+  .buy:active:not([aria-disabled="true"]) { filter: brightness(1.2); }
+  .buy .what { font-weight: 800; }
+  .buy .cost { font: 800 14px/1.25 var(--font-display); color: var(--gold); font-variant-numeric: tabular-nums; }
+  .buy .note { font: 600 12px/1.3 var(--font-text); color: var(--muted); }
+  .buy .note:empty { display: none; }
+  .buy[aria-disabled="true"] { background: #26332b; border-style: dashed; border-color: #4b6152; color: var(--muted); }
+  .buy[aria-disabled="true"] .cost { color: var(--muted); }
+  .buy.deny, .shake { animation: shake 0.3s ease-in-out; }
+  @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+  .mgr-switch:not(:has(button:not([hidden]))) { display: none; }
+  .mgr-switch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .mgr-switch button {
+    box-sizing: border-box;
+    min-height: 48px;
+    min-width: 44px;
+    padding: 4px 6px;
+    border-radius: 12px;
+    border: 2px solid #5c7a66;
+    background: transparent;
+    color: var(--ink);
+    font: 700 14px/1.25 var(--font-text);
+    word-break: keep-all;
+  }
+  .mgr-switch button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; }
+  .mgr-switch button small { font: 600 12px/1.25 var(--font-text); opacity: 0.9; white-space: nowrap; }
+  .mgr-switch button[aria-pressed="true"] { background: #f0a43a; border-color: #f0a43a; color: var(--accent-ink); }
+  .mgr-switch button[aria-pressed="true"] > span::before { content: "✓ "; }
+
+  /* ヒント：2行分の高さに固定し、文言が変わっても配置が動かない */
+  .hint {
+    grid-area: hint;
+    box-sizing: border-box;
+    margin: 0;
+    height: 2.6em;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: #dbe5dc;
+    font: 13px/1.3 var(--font-text);
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    pointer-events: none;
+  }
+
+  @media (max-width: 360px) {
+    .head { column-gap: 4px; }
+    .back { padding: 0 6px; font-size: 14px; }
+    h1.title { font-size: 14px; letter-spacing: 0; }
+    .head-tools { gap: 6px; }
+    #money { font-size: 20px; }
+    #goalText { font-size: 13px; }
+    #expandBtn { font-size: 14px; padding: 4px 8px; }
+    .buy { font-size: 13px; padding: 4px 6px; }
+  }
+  @media (orientation: portrait) and (max-height: 620px) {
+    .hint { height: 2.4em; font-size: 12px; }
+    .sheet { max-height: 44vh; gap: 4px; padding: 4px 8px 6px; }
+    .buy { min-height: 48px; }
+  }
+
+  /* 横向きで背が低い：左に #scene、右の列に #hud・#goal・#sheet・#hint（シートは右の列に出す） */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .app {
+      max-width: none;
+      padding-top: max(4px, env(safe-area-inset-top, 0px));
+      padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
+      grid-template-columns: minmax(0, 1fr) var(--side-w);
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      grid-template-areas: "scene hud" "scene goal" "scene sheet" "scene hint";
+      gap: 3px 6px;
+    }
+    .head { display: flex; justify-content: space-between; column-gap: 4px; }
+    /* 名前は場所を取るので、横向きでは見えない形にする（読み上げには残す） */
+    h1.title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .back { padding: 0 8px; font-size: 15px; justify-self: start; }
+    .purse { padding: 0 2px; }
+    #money { font-size: 19px; }
+    .goal { padding: 4px 6px; gap: 3px; }
+    #goalText { font-size: 13px; line-height: 1.3; }
+    #expandBtn { font-size: 13px; padding: 2px 8px; }
+    /* シートは #goal の上に重ねて出す（右の列の高さが足りないため。閉じると #goal がまた見える） */
+    .sheet { grid-row: 2 / 4; grid-column: 2; max-height: none; min-height: 0; align-self: stretch; box-shadow: 0 0 0 1px var(--line); padding: 4px 6px 6px; gap: 4px; }
+    #sheetTitle { font-size: 15px; }
+    #sheetInfo { font-size: 13px; }
+    .buys { gap: 4px; }
+    .buy { min-height: 46px; font-size: 13px; padding: 2px 4px; }
+    .buy .cost { font-size: 13px; }
+    .mgr-switch button { min-height: 44px; font-size: 13px; }
+    .hint { height: auto; min-height: 1.3em; max-height: 2.6em; font-size: 12px; }
+  }
+
+  /* ===== カード（遊び方・おかえり・節目・注文・エンディング） ===== */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    box-sizing: border-box;
+    display: flex;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    padding-top: calc(max(4px, env(safe-area-inset-top, 0px)) + var(--head-h) + 8px);
+    padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
+    padding-right: max(10px, env(safe-area-inset-right, 0px));
+    background: rgba(12, 20, 15, 0.62);
+  }
+  .card {
+    width: min(420px, 100%);
+    box-sizing: border-box;
+    margin: auto;
+    flex: 0 0 auto;
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+    box-shadow: 0 0 0 1px var(--line), 0 20px 50px rgba(0, 0, 0, 0.5);
+  }
+  .card h2 { margin: 0; font-size: 22px; line-height: 1.3; letter-spacing: 0.04em; overflow-wrap: anywhere; word-break: keep-all; }
+  .card p { margin: 0; font: 16px/1.5 var(--font-text); word-break: keep-all; overflow-wrap: anywhere; }
+  .card p.big { font: 900 30px/1.2 var(--font-display); color: var(--gold); font-variant-numeric: tabular-nums; }
+  .card p.small { color: var(--muted); font-size: 14px; }
+  .card ol.rules { margin: 0; padding-left: 1.4em; text-align: left; font: 15px/1.5 var(--font-text); display: flex; flex-direction: column; gap: 6px; word-break: keep-all; overflow-wrap: anywhere; }
+  .card ul.gains { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; text-align: left; font: 700 15px/1.4 var(--font-text); }
+  .card ul.gains li { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 10px; background: var(--panel2); overflow-wrap: anywhere; }
+  .card ul.gains li::before { content: "★"; color: var(--gold); flex: 0 0 auto; }
+  .card .btns { display: flex; flex-direction: column; gap: 8px; }
+  .card .btns button {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 44px;
+    min-height: 48px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    border: 1px solid #5c7a66;
+    background: var(--panel2);
+    color: #fff;
+    font: 700 16px/1.3 var(--font-text);
+    word-break: keep-all;
+  }
+  .card .btns button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .card .btns button:active:not([aria-disabled="true"]) { filter: brightness(1.2); }
+  .card .btns button[aria-disabled="true"] { opacity: 0.6; }
+  .card .pic { display: block; margin: 0 auto; width: 120px; height: 56px; }
+  @media (orientation: portrait) and (max-height: 620px) {
+    .card { padding: 12px 14px; gap: 8px; }
+    .card h2 { font-size: 19px; }
+    .card p { font-size: 15px; line-height: 1.45; }
+    .card p.big { font-size: 26px; }
+    .card ol.rules { font-size: 14px; line-height: 1.45; gap: 4px; }
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    /* 横向き：カードは左の #scene の上に置き、右の列の「← メニュー」を隠さない */
+    .overlay { padding-top: max(4px, env(safe-area-inset-top, 0px)); padding-bottom: max(4px, env(safe-area-inset-bottom, 0px)); padding-right: calc(var(--side-w) + max(14px, env(safe-area-inset-right, 0px))); }
+    .card { width: min(520px, 100%); padding: 8px 12px; gap: 5px; }
+    .card h2 { font-size: 17px; }
+    .card p { font-size: 13px; line-height: 1.4; }
+    .card p.big { font-size: 22px; }
+    .card p.small { font-size: 12px; }
+    .card ol.rules { font-size: 13px; line-height: 1.35; gap: 2px; }
+    .card ul.gains { font-size: 13px; gap: 3px; }
+    .card ul.gains li { padding: 2px 6px; }
+    .card .pic { width: 90px; height: 40px; }
+    .card .btns { flex-direction: row; }
+    .card .btns button { min-height: 44px; padding: 4px 6px; font-size: 14px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+  body[data-calm="1"] *, body[data-calm="1"] *::before, body[data-calm="1"] *::after { animation: none !important; transition: none !important; }
+</style>
+</head>
+<body data-stage="1" data-phase="play">
+<div class="app" id="app">
+  <header class="hud" id="hud">
+    <div class="head">
+      <a id="back" class="back" href="../../">← メニュー</a>
+      <h1 class="title" id="gameTitle">もくもくこうば</h1>
+      <div class="head-tools">
+        <button class="tool" id="helpBtn" type="button" aria-label="あそびかた">？</button>
+        <button class="tool" id="soundBtn" type="button" aria-label="こうかおん" aria-pressed="true">♪</button>
+      </div>
+    </div>
+    <div class="purse">
+      <span><span class="lbl">おかね</span><b id="money" aria-live="off">0 えん</b></span>
+      <span id="shipCount" hidden>とどけた ふね 0 せき</span>
+    </div>
+  </header>
+
+  <section class="goal" id="goal" aria-label="めあて">
+    <p id="goalText">めあて：むきまるたを 100こ うろう（0/100）</p>
+    <div class="goal-row">
+      <div id="goalBar" role="progressbar" aria-label="めあての すすみ" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="goalFill"></span></div>
+      <button id="expandBtn" type="button" hidden>こうばに ひろげる</button>
+    </div>
+    <p id="orderTag" hidden>ちゅうもん：いた 0/0</p>
+  </section>
+
+  <main class="scene" id="scene" aria-label="こうば">
+    <div class="scene-inner" id="sceneInner">
+      <canvas id="sceneCanvas" role="img" aria-label="もりから おみせまで はたらく ひとたち"></canvas>
+      <button class="zone" type="button" data-dept="cut" aria-label="きこり。おすと がんばるよ"></button>
+      <button class="zone" type="button" data-dept="plant" aria-label="なえぎ。おすと がんばるよ"></button>
+      <button class="zone" type="button" data-dept="carry" aria-label="はこぶ。おすと がんばるよ"></button>
+      <button class="zone" type="button" data-dept="peel" aria-label="かわむき。おすと がんばるよ"></button>
+      <button class="zone" type="button" data-dept="beam" aria-label="かくざい。おすと がんばるよ" hidden></button>
+      <button class="zone" type="button" data-dept="plank" aria-label="いた。おすと がんばるよ" hidden></button>
+      <button class="zone" type="button" data-dept="goods" aria-label="うりもの。おすと おきゃくさんを よぶよ"></button>
+      <button class="zone" type="button" data-dept="shop" aria-label="おみせ。おすと がんばるよ"></button>
+    </div>
+  </main>
+
+  <section class="sheet" id="sheet" aria-labelledby="sheetTitle" hidden>
+    <div class="sheet-head">
+      <h2 id="sheetTitle">きこり（1にん・Lv1）</h2>
+      <button class="tool" id="sheetClose" type="button" aria-label="とじる">✕</button>
+    </div>
+    <p id="sheetInfo">1ぷんに 10ぽん</p>
+    <div class="buys" id="sheetBuys">
+      <button class="buy" type="button" data-buy="staff"><span class="what" data-part="label">＋1にん</span><span class="cost" data-part="price">15 えん</span><span class="note" data-part="reason"></span></button>
+      <button class="buy" type="button" data-buy="line" hidden><span class="what" data-part="label">＋1だい</span><span class="cost" data-part="price">100 えん</span><span class="note" data-part="reason"></span></button>
+      <button class="buy" type="button" data-buy="level"><span class="what" data-part="label">きかいを よくする Lv1→2</span><span class="cost" data-part="price">10 えん</span><span class="note" data-part="reason"></span></button>
+      <button class="buy wide" type="button" data-buy="mgr"><span class="what" data-part="label">マネージャーを やとう</span><span class="cost" data-part="price">300 えん</span><span class="note" data-part="reason"></span></button>
+      <div class="mgr-switch wide" id="mgrSwitch">
+        <button type="button" id="mgrFast" aria-pressed="true" hidden><span>はやい</span><small>はやさ 1.5ばい</small></button>
+        <button type="button" id="mgrGain" aria-pressed="false" hidden><span>もうかる</span><small>ねだん ＋25%</small></button>
+      </div>
+    </div>
+  </section>
+
+  <p class="hint" id="hint" role="status" aria-live="polite"></p>
+</div>
+
+<!-- 遊び方 -->
+<div class="overlay" id="help" role="dialog" aria-modal="true" aria-labelledby="helpTitle" hidden>
+  <div class="card">
+    <h2 id="helpTitle">あそびかた</h2>
+    <ol class="rules">
+      <li>もりから おみせまで、みんなが はたらいて おかねが たまるよ。</li>
+      <li>ばしょを おすと、ひとを ふやしたり きかいを よくしたり できるよ。おすと すこし がんばるよ。</li>
+      <li>とじていても はんぶんの はやさで 2じかん まで はたらくよ。めあてを たっせいすると おみせが おおきく なるよ。</li>
+    </ol>
+    <div class="btns"><button type="button" id="helpOk" class="primary">わかった</button></div>
+  </div>
+</div>
+
+<!-- おかえり（るすの あいだ） -->
+<div class="overlay" id="awayCard" role="dialog" aria-modal="true" aria-labelledby="awayTitle" hidden>
+  <div class="card">
+    <h2 id="awayTitle">おかえり！</h2>
+    <p id="awayText">るすの あいだに 0 えん かせいだよ</p>
+    <p class="small" id="awayNote">とじている あいだは はんぶんの はやさで、2じかん まで はたらくよ</p>
+    <p class="small" id="awaySold"></p>
+    <div class="btns"><button type="button" id="awayOk" class="primary">よし！</button></div>
+  </div>
+</div>
+
+<!-- 節目 -->
+<div class="overlay" id="stageCard" role="dialog" aria-modal="true" aria-labelledby="stageTitle" hidden>
+  <div class="card">
+    <h2 id="stageTitle">こうばに なった！</h2>
+    <ul class="gains" id="stageList"></ul>
+    <div class="btns"><button type="button" id="stageOk" class="primary">よし！</button></div>
+  </div>
+</div>
+
+<!-- 大口の注文 -->
+<div class="overlay" id="orderCard" role="dialog" aria-modal="true" aria-labelledby="orderTitle" hidden>
+  <div class="card">
+    <h2 id="orderTitle">おおぐちの ちゅうもん</h2>
+    <p id="orderText"></p>
+    <p class="small" id="orderNote">きげんは ないよ。あとでも うけられるよ</p>
+    <div class="btns">
+      <button type="button" id="orderAccept" class="primary">うける</button>
+      <button type="button" id="orderLater">あとで</button>
+    </div>
+  </div>
+</div>
+
+<!-- エンディング -->
+<div class="overlay" id="endCard" role="dialog" aria-modal="true" aria-labelledby="endTitle" hidden>
+  <div class="card">
+    <h2 id="endTitle">おおきな ふねが でたよ！</h2>
+    <svg class="pic" viewBox="0 0 120 56" aria-hidden="true">
+      <rect x="0" y="40" width="120" height="16" fill="#3d8fc4"/>
+      <path d="M14 30 H104 L92 46 H24 Z" fill="#7a2e2e"/>
+      <rect x="56" y="4" width="3" height="27" fill="#5d3c1d"/>
+      <path d="M60 6 L84 28 H60 Z" fill="#f8f4ea"/>
+      <rect x="22" y="22" width="30" height="8" fill="#f0d39a"/>
+    </svg>
+    <p id="endText">ありがとう！ みなとまで そだったね</p>
+    <p class="small" id="endStats"></p>
+    <div class="btns"><button type="button" id="endOk" class="primary">このまま あそぶ</button></div>
+  </div>
+</div>
+
+<script src="../../common/sfx.js"></script>
+<script src="logic.js"></script>
+<script src="actors.js"></script>
+<script src="render.js"></script>
+<script src="input.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
