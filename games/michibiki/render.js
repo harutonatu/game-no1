@@ -5,7 +5,7 @@
  *
  * MichibikiRender.create(canvas, { calm }) → {
  *   resize(), setField(w, h), toField(cx, cy), toScreen(x, y), draw(state, ui), play(events),
- *   setCalm(bool), pause(), resume(), finishAll(), tutor(points),
+ *   setCalm(bool), pause(), resume(), finishAll(), tutor(points, planeId),
  *   scale, frames, lastDrawMs, drawLog, busy, calm
  * }
  * - 場の座標（場の単位）を、倍率 scale で canvas に描く。canvas は場と同じ縦横比で、.play の中に収まる最大の大きさ（上限 2.0）
@@ -18,10 +18,11 @@
   const L = root.MichibikiLogic || {};
   const num = (v, d) => (typeof v === "number" && Number.isFinite(v) ? v : d);
   const K = {
-    STEP: num(L.STEP, 1 / 60), PLANE_R: num(L.PLANE_R, 12), ZONE_R: num(L.ZONE_R, 22), APPROACH_D: num(L.APPROACH_D, 48),
+    STEP: num(L.STEP, 1 / 60), PLANE_R: num(L.PLANE_R, 12), PICK_R: num(L.PICK_R, 34), ZONE_R: num(L.ZONE_R, 22), APPROACH_D: num(L.APPROACH_D, 48),
     RUNWAY_LEN: num(L.RUNWAY_LEN, 96), RUNWAY_W: num(L.RUNWAY_W, 22), WARN_S: num(L.WARN_S, 2), LAND_S: num(L.LAND_S, 1.2)
   };
   const MAX_SCALE = 2.0;
+  const PLANE_DRAW = 1.2;
   const FIELD_BG = "#223a37";
   const FIELD_EDGE = "#2f504b";
   const GRAY = "#7d8a94";
@@ -367,15 +368,26 @@
       if (pl.near && pl.phase === "fly") {
         const blink = calm ? 1 : 0.45 + 0.55 * Math.abs(Math.sin(clock() / 140));
         ctx.beginPath();
-        ctx.arc(x, y, 19, 0, Math.PI * 2);
+        ctx.arc(x, y, 22, 0, Math.PI * 2);
         ctx.lineWidth = calm ? 4 : 3;
         ctx.strokeStyle = `rgba(255,70,70,${blink})`;
         ctx.stroke();
       }
-      if (sel || holding) {
+      // つかめる範囲（PICK_R）を押す前から薄い丸で見せる（§19 B3）
+      if (pl.phase === "fly" && !sel && !holding) {
         ctx.beginPath();
-        ctx.arc(x, y, 22, 0, Math.PI * 2);
-        ctx.lineWidth = sel ? 3 : 2;
+        ctx.arc(x, y, K.PICK_R, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,255,255,0.07)";
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = "rgba(255,255,255,0.28)";
+        ctx.stroke();
+      }
+      if (sel || holding) {
+        // つかんだ輪：指で隠れないよう、つかめる範囲より少し大きく（§19 B3）
+        ctx.beginPath();
+        ctx.arc(x, y, K.PICK_R + 6, 0, Math.PI * 2);
+        ctx.lineWidth = sel ? 3 : 2.5;
         ctx.strokeStyle = sel ? "#ffffff" : "rgba(255,255,255,0.55)";
         if (sel && !calm) ctx.setLineDash([6, 5]);
         ctx.stroke();
@@ -385,7 +397,7 @@
       ctx.translate(x, y);
       ctx.globalAlpha = a;
       ctx.rotate(Math.atan2(num(pl.dy, 0), num(pl.dx, 1)));
-      ctx.scale(s, s);
+      ctx.scale(s * PLANE_DRAW, s * PLANE_DRAW);   // 見た目だけ 1.2 倍（当たり判定はそのまま。§19 B3）
       ctx.beginPath();
       const kind = pl.kind;
       if (kind === "fast") {
@@ -422,7 +434,7 @@
       // 胴の印（向きに関係なく、いつも同じ向き）
       ctx.save();
       ctx.globalAlpha = a;
-      drawMark(markOf(pl.color), x, y, 4.2 * s, isLight(pl.color) ? "#3a3200" : "#ffffff", 1.8);
+      drawMark(markOf(pl.color), x, y, 4.2 * s * PLANE_DRAW, isLight(pl.color) ? "#3a3200" : "#ffffff", 1.8);
       ctx.restore();
       drawLog.marks.push({ kind: "plane", color: pl.color, x, y });
     }
@@ -483,7 +495,10 @@
     }
     // はじめの「なぞってね」：指が機体から案内の帯を通って入り口へ動く絵
     function drawTutor(f, p) {
-      const pts = f.pts;
+      let pts = f.pts;
+      // 案内の始まりは、機体の今の位置から（動いた機体とずれないように。§19 B10）
+      const tp = f.planeId !== undefined && curState && Array.isArray(curState.planes) ? curState.planes.find((q) => q.id === f.planeId && q.phase === "fly") : null;
+      if (tp && pts && pts.length >= 2) pts = [[tp.x, tp.y]].concat(pts.slice(1));
       if (!pts || pts.length < 2) return;
       const loop = (p * 2) % 1;           // 2回くり返す
       const k = Math.min(1, loop / 0.8);
@@ -521,8 +536,10 @@
     }
 
     // ===== 1コマ描く =====
+    let curState = null;
     function draw(state, ui) {
       const t0 = performance.now();
+      curState = state || null;
       const u = ui || {};
       drawLog = { marks: [], arrows: [] };
       if (state && state.w > 0 && state.h > 0) setField(state.w, state.h);
@@ -585,10 +602,10 @@
         }
       }
     }
-    function tutor(points) {
+    function tutor(points, planeId) {
       if (!Array.isArray(points) || points.length < 2) return;
       effects = effects.filter((f) => f.type !== "tutor");
-      add({ type: "tutor", pts: points, dur: 3200 });
+      add({ type: "tutor", pts: points, planeId, dur: 3200 });
     }
 
     function hexA(hex, a) {

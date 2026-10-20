@@ -291,7 +291,8 @@
         }
         case "near":
           sfx.play("near");
-          if (!nearHintShown) { nearHintShown = true; setHint(HINT_NEAR); }
+          // 早すぎないよう、1機目が着陸してから（またはライフが減ってから）出す（§19 B6）
+          if (!nearHintShown && ((state.landed | 0) >= 1 || (state.lives | 0) < LIVES)) { nearHintShown = true; setHint(HINT_NEAR); }
           break;
         case "bounce": sfx.play("bounce"); break;
         case "open": {
@@ -329,7 +330,7 @@
     const p = planeById(firstPlane.id);
     if (!p || p.phase !== "fly" || (Array.isArray(p.path) && p.pathI < p.path.length)) return;
     const pts = safeCall(() => L.suggestPath(state, p.id), null);
-    if (Array.isArray(pts) && pts.length) render.tutor([[p.x, p.y]].concat(pts));
+    if (Array.isArray(pts) && pts.length) render.tutor([[p.x, p.y]].concat(pts), p.id);
     setHint(HINT_TUTOR, 4000);
   }
 
@@ -405,6 +406,7 @@
     dropDrawingsOf(id);
     selected = null;
     sfx.play(r.guided ? "lock" : "pick");
+    if (el.hint.textContent === HINT_TAP) setHint("");   // 滑走路をタップしたら「タップしても いいよ」は消す（§19 B5）
     redraw();
     return { ok: true, guided: !!r.guided };
   }
@@ -473,12 +475,13 @@
       switch (cmd) {
         case "esc":
           if (overlayKind === "help") closeHelp();
+          else if (phase === "paused" && confirming) showPausedCard();
           else if (phase === "paused") resume();
           else if (phase === "playing") { if (selected !== null) { selected = null; redraw(); } else pause(); }
           break;
         case "pause":
           if (phase === "playing") pause();
-          else if (phase === "paused" && overlayKind === "paused") resume();
+          else if (phase === "paused" && overlayKind === "paused" && !confirming) resume();
           break;
         case "sound": toggleSound(); break;
         case "help": if (overlayKind === "help") closeHelp(); else showHelp(); break;
@@ -616,6 +619,7 @@
     delete el.overlay.dataset.kind;
     el.card.innerHTML = "";
     overlayKind = null;
+    confirming = false;
     const fb = focusBack; focusBack = null;
     if (fb && fb.isConnected && fb !== document.body && !el.overlay.contains(fb)) { try { fb.focus({ preventScroll: true }); } catch (e) { /* 無視 */ } }
   }
@@ -640,7 +644,7 @@
       <h2 id="overlayTitle">あそびかた</h2>
       <ol class="rules">
         <li>ひこうきから ゆびで なぞると、その みちを とぶよ</li>
-        <li class="with-pic">おなじ いろ・おなじ しるしの かっそうろへ、やじるしの むきから はいると 1てん
+        <li class="with-pic">おなじ いろ・おなじ しるしの かっそうろ（ひこうきの みち）へ、やじるしの むきから はいると 1てん
           <div class="pics"><figure>${PIC_GOOD}<figcaption>やじるしの むきから</figcaption></figure><figure>${PIC_BAD}<figcaption>ぎゃくからは ✕</figcaption></figure></div></li>
         <li>ぶつかると ♥が へるよ。♥が なくなったら おしまい</li>
       </ol>
@@ -659,6 +663,7 @@
       startGame(newSeed());
     }
   }
+  let confirming = false;       // 一時停止カードの中で「さいしょから？」を出している間
   function showPausedCard() {
     showCard("paused", `
       <h2 id="overlayTitle">ひとやすみ</h2>
@@ -667,6 +672,18 @@
         <button class="primary" id="resumeBtn" type="button" data-cmd="resume">つづける</button>
         <button id="restartBtn" type="button" data-cmd="restart">さいしょから</button>
       </div>`);
+    confirming = false;
+  }
+  // 「さいしょから」は押し間違えやすいので、確認を出す（§19 B2）。もどるを先（primary）にする
+  function showRestartConfirm() {
+    showCard("paused", `
+      <h2 id="overlayTitle">さいしょから？</h2>
+      <p>いまの ゲームを やめて さいしょから？</p>
+      <div class="btns">
+        <button class="primary" id="restartBackBtn" type="button" data-cmd="restartBack">もどる</button>
+        <button id="restartOkBtn" type="button" data-cmd="restartOk">やめる</button>
+      </div>`);
+    confirming = true;
   }
   function showOverCard() {
     const c = lastOver || { landed: state ? state.landed | 0 : 0, improved: false, prevBest: best, guided: 0, crashes: 0 };
@@ -680,13 +697,15 @@
       <p class="big"><span data-f="n"></span><small>き ちゃくりく</small></p>
       <p class="${noteClass}" data-f="b"></p>
       <p class="small" data-f="s"></p>
+      ${c.landed <= 2 ? '<p class="small" id="overTip" data-f="t"></p>' : ""}
       <div class="btns">
         <button class="primary" id="againBtn" type="button" data-cmd="again">もういちど</button>
         <button id="menuBtn" type="button" data-cmd="menu">メニューへ</button>
       </div>`, {
       n: String(c.landed),
       b: note,
-      s: `みちびいた ${c.guided} き・ぶつかった ${c.crashes}かい`
+      s: `みちびいた ${c.guided} き・ぶつかった ${c.crashes}かい`,
+      t: "つぎは かっそうろの やじるしを よく みてね"
     });
     el.card.setAttribute("aria-label", `おしまい。${c.landed} き ちゃくりく`);
     cardShownAt = now();
@@ -707,11 +726,13 @@
     const cmd = btn.dataset.cmd;
     if (cmd === "helpOk") closeHelp();
     else if (cmd === "resume") resume();
-    else if (cmd === "restart" || cmd === "again") startGame(newSeed());
+    else if (cmd === "restart") showRestartConfirm();
+    else if (cmd === "restartBack") showPausedCard();
+    else if (cmd === "restartOk" || cmd === "again") startGame(newSeed());
     else if (cmd === "menu") goMenu();
   });
   el.helpBtn.addEventListener("click", () => { sfx.unlock(); if (overlayKind === "help") closeHelp(); else showHelp(); });
-  el.pauseBtn.addEventListener("click", () => { sfx.unlock(); if (phase === "playing") pause(); else if (phase === "paused" && overlayKind === "paused") resume(); });
+  el.pauseBtn.addEventListener("click", () => { sfx.unlock(); if (phase === "playing") pause(); else if (phase === "paused" && overlayKind === "paused") { if (confirming) showPausedCard(); else resume(); } });
   el.soundBtn.addEventListener("click", toggleSound);
   el.back.addEventListener("click", () => { clearLater(); });
 
