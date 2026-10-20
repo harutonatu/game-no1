@@ -18,6 +18,9 @@
  *     applyMove の from・to は「今の並びの何番目か」（位置）。保存の手は id で記録する（makeSave の v:2）。
  *     outcome の位置（from・to・sealed・revealed[].bottle・deliveries[].bottle）は、すべて「注ぐ前の並び」の位置
  *     （＝演出の間、画面に並んでいる瓶の位置）。届けた瓶の id は deliveries[].id。
+ *   - 布の瓶（契約 §17）：瓶の cover＝k は「届けた数 served が k 以上になったら布が取れる」。布の瓶は注ぐ元にも相手にも
+ *     ならない。詰めた形ではビット 24〜27 に k（0＝布なし）を持つ。布は「注ぐ → 栓 → 届けの連鎖 → 詰める」の後に取る。
+ *     outcome.unveiled[].bottle は布が取れた後（＝新しい state）の位置。保存の形は v:3（v:2・v:1 は手を捨てる）。
  */
 (function (root) {
   "use strict";
@@ -33,6 +36,7 @@
   const SAVE_KEY_BEST = "irobin.best";
   const SAVE_KEY_SAVE = "irobin.save";
   const SAVE_KEY_HELP = "irobin.help";
+  const SAVE_KEY_CLOTH = "irobin.cloth";   // 布の説明を見たら "1"（契約 §17.3）
   const MAX_BOTTLES = MAX_COLORS + 2;  // 画面が並べる瓶の最大（11 本）。生成はこれを超えない
 
   // 色（契約 §3.1）。Okabe-Ito を土台に、記号つき
@@ -51,18 +55,22 @@
   // お客さんの動物（render の ANIMALS と同じ並び。logic は render に頼らないので写しを持つ）
   const ANIMAL_KEYS = Object.freeze(["kuma", "usagi", "neko", "penguin", "risu", "hitsuji"]);
 
-  // 面の難しさの表（契約 §3.2）。from 面から次の行の from-1 面まで
+  // 面の難しさの表（契約 §3.2・§17.2）。from 面から次の行の from-1 面まで
   // 1 面は空き瓶 2 本（届けた瓶が消えるルールに合わせて見直し。空き瓶 1 本だと最初の 2 手のうち 1 手で解けなくなった）
+  // cloths＝布の瓶の本数、clothEmpty＝布の瓶1本ごとに空き瓶になる確率（それ以外は中身あり＝色水が入っている）
+  // clothsOn: "even"＝布は偶数面だけ（奇数面は布なし）。9 色の面は瓶が 11 本で空き瓶の布を足せず、中身ありの布だけになる。
+  //   中身ありの布は、ゆるい遊び方のクリアの割合をおよそ半分にする（9 色で 22%→9%）ので、1 面おきにする
   const LEVELS = Object.freeze([
-    { from: 1,  colors: 2, empties: 2, hidden: "none", order: "easy" },
-    { from: 2,  colors: 3, empties: 2, hidden: "none", order: "easy" },
-    { from: 3,  colors: 4, empties: 2, hidden: "none", order: "easy" },
-    { from: 4,  colors: 5, empties: 2, hidden: "none", order: "easy" },
-    { from: 6,  colors: 6, empties: 2, hidden: "none", order: "random" },
-    { from: 10, colors: 7, empties: 2, hidden: Object.freeze([12, 14]), order: "random" },
-    { from: 15, colors: 8, empties: 2, hidden: "odd", order: "random" },
-    { from: 25, colors: 9, empties: 2, hidden: "odd", order: "random" },
-    { from: 40, colors: 9, empties: 2, hidden: "all", order: "random" }
+    { from: 1,  colors: 2, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0 },
+    { from: 2,  colors: 3, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0 },
+    { from: 3,  colors: 4, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0 },
+    { from: 4,  colors: 5, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0 },
+    { from: 6,  colors: 6, empties: 2, hidden: "none", order: "random", cloths: 0, clothEmpty: 0 },
+    { from: 8,  colors: 6, empties: 2, hidden: "none", order: "random", cloths: 1, clothEmpty: 0.7 },
+    { from: 10, colors: 7, empties: 2, hidden: Object.freeze([12, 14]), order: "random", cloths: 1, clothEmpty: 0.7 },
+    { from: 15, colors: 8, empties: 2, hidden: "odd", order: "random",  cloths: 1, clothEmpty: 0.7 },
+    { from: 25, colors: 9, empties: 2, hidden: "odd", order: "random",  cloths: 1, clothEmpty: 0, clothsOn: "even" },
+    { from: 40, colors: 9, empties: 2, hidden: "all", order: "random",  cloths: 1, clothEmpty: 0, clothsOn: "even" }
   ].map((r) => Object.freeze(r)));
 
   // 生成の予算の分け方：表どおり → 易しい側（fallback 1）→ 固定の面（fallback 2）
@@ -71,8 +79,8 @@
   const MIN_SOLVE_NODES = 500;   // 残りがこれ未満なら、その段階はあきらめる
 
   // 理由のコード（pourCount の負の戻り値）
-  const R_EMPTY = -1, R_SEALED = -2, R_FULL = -3, R_MISMATCH = -4;
-  const REASON = { "-1": "empty", "-2": "sealed", "-3": "full", "-4": "mismatch" };
+  const R_EMPTY = -1, R_SEALED = -2, R_FULL = -3, R_MISMATCH = -4, R_COVERED = -5;
+  const REASON = { "-1": "empty", "-2": "sealed", "-3": "full", "-4": "mismatch", "-5": "covered" };
 
   // ---------------------------------------------------------------- 小さな道具
 
@@ -140,7 +148,8 @@
     else if (r.hidden === "odd") hidden = n % 2 === 1;
     else if (Array.isArray(r.hidden)) hidden = r.hidden.indexOf(n) >= 0;
     else hidden = false;
-    return Object.freeze({ colors: r.colors, empties: r.empties, hidden, order: r.order });
+    const cloths = r.clothsOn === "even" && n % 2 === 1 ? 0 : r.cloths;
+    return Object.freeze({ colors: r.colors, empties: r.empties, hidden, order: r.order, cloths, clothEmpty: r.clothEmpty });
   }
 
   // ---------------------------------------------------------------- 詰めた形の瓶
@@ -149,6 +158,8 @@
   function hid(b, i) { return (b >>> (8 + 5 * i)) & 1; }
   function len(b) { return b & 7; }
   function isSealedP(b) { return (b & 8) !== 0; }
+  const COVER_SHIFT = 24, COVER_MASK = 15 << COVER_SHIFT, MAX_COVER = 15;
+  function coverOf(b) { return (b >>> COVER_SHIFT) & 15; }   // 0＝布なし
 
   function packBottle(cells, hidden, sealed) {
     let b = cells.length;
@@ -163,6 +174,7 @@
   // 注げるか・注ぐ量。正の数＝注ぐ量、負の数＝理由のコード。番号の範囲と同じ瓶は呼ぶ側が確かめる
   function pourCount(bots, from, to) {
     const s = bots[from], d = bots[to];
+    if ((s | d) & COVER_MASK) return R_COVERED;                  // 布の瓶は注ぐ元にも相手にもならない
     const sl = len(s), dl = len(d);
     if (sl === 0) return R_EMPTY;
     if (isSealedP(s) || isSealedP(d)) return R_SEALED;
@@ -222,9 +234,26 @@
       bots.splice(sealed, 1);                                    // そろった瓶はすぐ届けたものとして消す
       if (ctx.ids) ctx.ids.splice(sealed, 1);
       ctx.served++;
+      unveil(ctx, ev);
       return;
     }
     deliverAll(ctx, ev);
+  }
+
+  // served が cover に届いた布を取る（詰めた後に呼ぶ。ev.unveiled の bottle は新しい並びの位置）
+  function unveil(ctx, ev) {
+    const bots = ctx.bots;
+    for (let i = 0; i < bots.length; i++) {
+      const k = coverOf(bots[i]);
+      if (k === 0 || ctx.served < k) continue;
+      const b = bots[i] & ~COVER_MASK;
+      bots[i] = b;
+      if (ev) {
+        const n = len(b), cells = [], hidden = [];
+        for (let j = 0; j < n; j++) { cells.push(col(b, j)); hidden.push(hid(b, j) === 1); }
+        ev.unveiled.push({ id: ctx.ids ? ctx.ids[i] : i, bottle: i, cells: Object.freeze(cells), hidden: Object.freeze(hidden) });
+      }
+    }
   }
 
   // 見えているお客さんに合う、栓をした瓶を届ける。枠は左から、瓶は番号の小さい方から。来た客にも続けて届ける
@@ -256,7 +285,7 @@
         }
       }
     }
-    if (gone) compact(ctx);
+    if (gone) { compact(ctx); unveil(ctx, ev); }
   }
   const GONE = -1;                                               // 届けて消えた瓶の印（詰めた形の瓶は 0 以上なので重ならない）
 
@@ -301,6 +330,7 @@
       const B = state.bottles;
       if (!Array.isArray(B) || B.length > 16) return null;      // 0 本もありうる（全部届けて空き瓶も無い面）
       const bots = [];
+      const covers = [];
       let ids = [];
       for (const b of B) {
         if (!b || typeof b !== "object" || !Array.isArray(b.cells)) return null;
@@ -314,6 +344,13 @@
           if (cells.length !== CAP || cells.some((x) => x !== cells[0])) return null;
           for (let i = 0; i < h.length; i++) h[i] = false;
         }
+        // 布：null・無い＝布なし。1〜MAX_COVER の整数だけ受ける（served 以下なら、もう取れている）
+        let cover = 0;
+        if (b.cover !== null && b.cover !== undefined) {
+          if (!isInt(b.cover) || b.cover < 1 || b.cover > MAX_COVER || sealed) return null;
+          cover = b.cover;
+        }
+        covers.push(cover);
         bots.push(packBottle(cells, h, sealed));
         ids.push(b.id);
       }
@@ -330,11 +367,13 @@
       for (const x of state.queue) if (!okColor(x)) return null;
       const served = state.served, total = state.total, moves = state.moves;
       if (!okCount(served) || !okCount(total) || !okCount(moves) || served > total) return null;
+      for (let i = 0; i < bots.length; i++) if (covers[i] > served) bots[i] |= covers[i] << COVER_SHIFT;
       const p = state.params && typeof state.params === "object" ? state.params : null;
       return {
         bots, ids, slots, queue: state.queue.slice(), qi: 0, served, total, any: false,
         level: normLevel(state.level),
-        params: p ? Object.freeze({ colors: p.colors, empties: p.empties, hidden: p.hidden === true, order: p.order }) : paramsFor(state.level),
+        params: p ? Object.freeze({ colors: p.colors, empties: p.empties, hidden: p.hidden === true, order: p.order,
+          cloths: p.cloths, clothEmpty: p.clothEmpty }) : paramsFor(state.level),
         moves
       };
     } catch (e) {
@@ -347,7 +386,8 @@
       const n = len(b);
       const cells = [], hidden = [];
       for (let i = 0; i < n; i++) { cells.push(col(b, i)); hidden.push(hid(b, i) === 1); }
-      return Object.freeze({ id: c.ids ? c.ids[k] : k, cells: Object.freeze(cells), hidden: Object.freeze(hidden), sealed: isSealedP(b) });
+      const cv = coverOf(b);
+      return Object.freeze({ id: c.ids ? c.ids[k] : k, cells: Object.freeze(cells), hidden: Object.freeze(hidden), sealed: isSealedP(b), cover: cv ? cv : null });
     });
     return Object.freeze({
       level,
@@ -388,7 +428,7 @@
     if (!chk.ok) return { state, outcome: { kind: "invalid", reason: chk.reason, from, to } };
     const c = toCtx(state);
     const fromId = c.ids[from], toId = c.ids[to];
-    const ev = { revealed: [], deliveries: [], arrivals: [], color: -1, count: 0, sealed: null };
+    const ev = { revealed: [], deliveries: [], arrivals: [], unveiled: [], color: -1, count: 0, sealed: null };
     step(c, from, to, chk.count, ev);
     const ns = fromCtx(c, c.level, c.params, c.moves + 1);
     const won = ns.won;
@@ -398,7 +438,7 @@
       outcome: {
         kind: "pour", from, to, fromId, toId, color: ev.color, count: ev.count,
         revealed: ev.revealed, sealed: ev.sealed, deliveries: ev.deliveries, arrivals: ev.arrivals,
-        won, stuck
+        unveiled: ev.unveiled, won, stuck
       }
     };
   }
@@ -455,7 +495,8 @@
 
   // ---------------------------------------------------------------- ソルバー
 
-  // 局面のキー。瓶の並びは順不同として正規化する（小さい順に並べる）。瓶1本＝24bit を 12bit ずつ2文字に
+  // 局面のキー。瓶の並びは順不同として正規化する（小さい順に並べる）。瓶1本＝28bit（布の k を含む）を 12bit＋16bit の2文字に。
+  // 布が取れるかは served で決まるので、served もキーに入れる（'easy' 用の anyOrder では slots・qi が無いため）
   // 栓をした瓶（待ち瓶）はキーに入れない：注ぐ元にも相手にもならず、届けても空きは増えない（消えるだけ）ので、
   // 栓をした瓶があってもなくても、その先の手はまったく同じ
   const keyBuf = [], keyCodes = [];
@@ -474,6 +515,7 @@
     const codes = keyCodes;
     codes.length = 0;
     for (let i = 0; i < n; i++) codes.push(a[i] & 4095, a[i] >>> 12);
+    codes.push(c.served);
     if (!c.any) codes.push(c.slots[0] + 1, c.slots[1] + 1, c.qi);
     return String.fromCharCode.apply(null, codes);
   }
@@ -488,7 +530,7 @@
     for (let f = 0; f < n; f++) {
       const s = bots[f];
       const sl = len(s);
-      if (sl === 0 || isSealedP(s)) continue;
+      if (sl === 0 || isSealedP(s) || coverOf(s)) continue;
       const top = col(s, sl - 1);
       let run = 1;
       while (run < sl && col(s, sl - 1 - run) === top && !hid(s, sl - 1 - run)) run++;
@@ -567,6 +609,7 @@
         else keep.push(c.bots[i]);
       }
       c.bots = keep;
+      unveil(c, null);
     }
     return solveCtx(c, limit);
   }
@@ -574,8 +617,12 @@
   // ---------------------------------------------------------------- 生成
 
   // 選んだ色を各4段ずつ混ぜて配る。最初からそろった瓶は作らない
+  // 布（p.cloths > 0）：中身ありの布は色の瓶にかぶせ、空き瓶の布は「布をかぶった空き瓶」を1本足す（契約 §17.2）。
+  // 布が無い面は、乱数の使い方を布の追加前と同じにする（1〜7 面は前と同じ面になる）
   function deal(rng, p, shuffleOrder) {
     const ids = shuffle(rng, COLORS.map((x) => x.id)).slice(0, p.colors);
+    const cloths = p.cloths | 0;
+    if (cloths > 0) return dealCloth(rng, p, ids, shuffleOrder);
     let chunks = null;
     for (let t = 0; t < 200 && !chunks; t++) {
       const pool = [];
@@ -592,13 +639,55 @@
     return { ids, bots };
   }
 
+  // 布の cover（何人届けたら取れるか）。中身ありは早め（1〜total の 1/3）、空き瓶は遅め（total の半分〜total-1）。
+  // 中身ありの布が取れるまで、その中の色はそろえられない。遅いほど詰まりやすいので早めにする（契約 §17.2 の追記）
+  function pickCover(rng, total, empty) {
+    let lo, hi;
+    if (empty) { lo = Math.max(1, Math.ceil(total / 2)); hi = Math.max(lo, total - 1); }
+    else { lo = 1; hi = Math.max(1, Math.ceil(total / 3)); }
+    hi = Math.min(hi, total - 1, MAX_COVER);
+    if (hi < lo) hi = lo;
+    return lo + randInt(rng, hi - lo + 1);
+  }
+
+  function dealCloth(rng, p, ids, shuffleOrder) {
+    const total = p.colors;
+    let bottles = p.colors + p.empties;
+    // 布の瓶1本ずつ、空き瓶にするか（瓶が MAX_BOTTLES を超えるときは中身ありにする）
+    const emptyCloth = [];
+    for (let i = 0; i < p.cloths; i++) {
+      let e = rng() < p.clothEmpty;
+      if (e && bottles + 1 > MAX_BOTTLES) e = false;
+      if (e) bottles++;
+      emptyCloth.push(e);
+    }
+    const content = Math.min(p.colors, emptyCloth.filter((e) => !e).length);
+    let chunks = null;
+    for (let t = 0; t < 200 && !chunks; t++) {
+      const pool = [];
+      for (const id of ids) for (let k = 0; k < CAP; k++) pool.push(id);
+      shuffle(rng, pool);
+      const cs = [];
+      for (let i = 0; i < p.colors; i++) cs.push(pool.slice(i * CAP, i * CAP + CAP));
+      if (cs.some((a) => a.every((x) => x === a[0]))) continue;
+      chunks = cs;                                               // 先頭の content 本に布をかぶせる（並びは乱数で混ざっている）
+    }
+    if (!chunks) return null;
+    const bots = chunks.map((cells) => packBottle(cells, cells.map((_, i) => p.hidden && i < CAP - 1), false));
+    for (let i = 0; i < content; i++) bots[i] |= pickCover(rng, total, false) << COVER_SHIFT;   // 色の瓶の先頭 content 本に布
+    for (let i = 0; i < p.empties; i++) bots.push(0);
+    for (const e of emptyCloth) if (e) bots.push(pickCover(rng, total, true) << COVER_SHIFT);
+    if (shuffleOrder) shuffle(rng, bots);
+    return { ids, bots };
+  }
+
   function sealOrderOf(c0, moves) {
     const c = cloneCtx(c0);
     c.any = true;
     const order = [];
     for (const m of moves) {
       const k = pourCount(c.bots, m[0], m[1]);
-      const ev = { revealed: [], deliveries: [], arrivals: [], color: -1, count: 0, sealed: null };
+      const ev = { revealed: [], deliveries: [], arrivals: [], unveiled: [], color: -1, count: 0, sealed: null };
       step(c, m[0], m[1], k, ev);
       if (ev.sealed !== null) order.push(ev.color);
     }
@@ -631,7 +720,13 @@
         if (queue.length !== p.colors) continue;
         return { bots: dl.bots, queue, solution: r.moves };
       } else {
-        const queue = shuffle(rng, dl.ids.slice());
+        let queue = shuffle(rng, dl.ids.slice());
+        if (p.cloths > 0) {
+          // 布で届けられない注文が両方の枠をふさぐ列は、解く前に捨てて並べ直す（ソルバーの局面を節約する）
+          let k = 0;
+          while (!queueFeasible(dl.bots, queue) && k < QUEUE_TRIES) { queue = shuffle(rng, queue); k++; }
+          if (k >= QUEUE_TRIES) continue;
+        }
         const c = startCtx(dl.bots, queue, p.colors);
         const r = solveCtx(c, limit);
         acc.nodes += r.nodes;
@@ -642,10 +737,34 @@
     return null;
   }
 
+  // 注文の列が、布の決まりだけで見て行き詰まらないか（必要条件。解けるかはソルバーが確かめる）。
+  // 色 c は、c が入っている布の瓶が全部取れる（served ≥ その cover）まで届けられない。見えている2枠の注文のうち、
+  // 届けられるものを順に届け、どちらも届けられなくなったら false（届けられる順に届けるのが一番よいので、これで十分）
+  const QUEUE_TRIES = 30;
+  function queueFeasible(bots, queue) {
+    const need = new Array(MAX_COLORS).fill(0);
+    for (const b of bots) {
+      const k = coverOf(b);
+      if (!k) continue;
+      for (let i = 0; i < len(b); i++) { const c = col(b, i); if (need[c] < k) need[c] = k; }
+    }
+    const slots = [];
+    let qi = 0, served = 0;
+    for (let i = 0; i < ORDER_SLOTS; i++) slots.push(qi < queue.length ? queue[qi++] : -1);
+    while (served < queue.length) {
+      let si = -1;
+      for (let i = 0; i < slots.length; i++) if (slots[i] >= 0 && need[slots[i]] <= served) { si = i; break; }
+      if (si < 0) return false;
+      served++;
+      slots[si] = qi < queue.length ? queue[qi++] : -1;
+    }
+    return true;
+  }
+
   // 必ず解ける固定の予備の面（fallback 2）
   const SPARE = Object.freeze({
     cells: [[0, 1, 2, 0], [1, 2, 0, 1], [2, 0, 1, 2], [], []],
-    params: Object.freeze({ colors: 3, empties: 2, hidden: false, order: "easy" })
+    params: Object.freeze({ colors: 3, empties: 2, hidden: false, order: "easy", cloths: 0, clothEmpty: 0 })
   });
 
   function buildState(level, params, bots, queue) {
@@ -703,7 +822,10 @@
     const solution = Object.freeze(got.solution.map((m) => Object.freeze([m[0], m[1]])));
     // 同じ手順を瓶の id で書いたもの（保存の形。replay にそのまま渡せる）
     const solutionIds = Object.freeze((toIdMoves(state, solution) || []).map((m) => Object.freeze(m)));
-    const info = Object.freeze({ level: lv, seed, params, tries: acc.tries, nodes: acc.nodes, fallback, solution, solutionIds });
+    // 布の瓶（id・何人で取れるか・空き瓶か）（契約 §17.3）
+    const cloths = Object.freeze(state.bottles.filter((b) => b.cover !== null)
+      .map((b) => Object.freeze({ id: b.id, cover: b.cover, empty: b.cells.length === 0 })));
+    const info = Object.freeze({ level: lv, seed, params, tries: acc.tries, nodes: acc.nodes, fallback, solution, solutionIds, cloths });
     const out = Object.freeze({ state, info });
     if (!override) {
       cache.set(lv, out);
@@ -719,17 +841,22 @@
     return r.ok && r.state.won === true;
   }
 
-  // 易しい側：空き瓶 +1・注文の順 'easy'。瓶が MAX_BOTTLES を超えるときは、代わりに色を1つ減らす
+  // 易しい側：空き瓶 +1・注文の順 'easy'。瓶が MAX_BOTTLES を超えるときは、代わりに色を1つ減らす。
+  // 布は本数・空き瓶の確率をそのまま
   function easierParams(p) {
     let colors = p.colors, empties = p.empties + 1;
     if (colors + empties > MAX_BOTTLES) { empties = p.empties; colors = Math.max(2, colors - 1); }
-    return Object.freeze({ colors, empties, hidden: p.hidden, order: "easy" });
+    return Object.freeze({ colors, empties, hidden: p.hidden, order: "easy", cloths: p.cloths, clothEmpty: p.clothEmpty });
   }
 
   function sanitizeParams(o) {
     const colors = isInt(o.colors) ? Math.min(MAX_COLORS, Math.max(2, o.colors)) : 2;
     const empties = isInt(o.empties) ? Math.min(MAX_BOTTLES - colors, Math.max(1, o.empties)) : 2;
-    return Object.freeze({ colors, empties, hidden: o.hidden === true, order: o.order === "random" ? "random" : "easy" });
+    const cloths = isInt(o.cloths) ? Math.min(Math.max(0, o.cloths), colors - 1, 3) : 0;
+    const ce = Number(o.clothEmpty);
+    const clothEmpty = Number.isFinite(ce) ? Math.min(1, Math.max(0, ce)) : 0;
+    return Object.freeze({ colors, empties, hidden: o.hidden === true, order: o.order === "random" ? "random" : "easy",
+      cloths, clothEmpty });
   }
 
   // ---------------------------------------------------------------- 再生と保存
@@ -755,15 +882,16 @@
     return Number.isSafeInteger(n) && n >= 0 ? n : 0;
   }
 
-  // 保存の形 v:2 ＝ { v: 2, level, moves: [[fromId, toId], ...] }（手は瓶の id）。
-  // 古い v:1（手は瓶の位置で、届けると空き瓶が出てくる前のルール）は手を捨て、その面の最初から（level だけ使う）
-  const SAVE_V = 2;
+  // 保存の形 v:3 ＝ { v: 3, level, moves: [[fromId, toId], ...] }（手は瓶の id。布の瓶のルール）。
+  // 古い v:2（布の前のルール）と v:1（手は瓶の位置で、届けると空き瓶が出てくる前のルール）は手を捨て、
+  // その面の最初から（level だけ使う。布で面の作りが変わったため）
+  const SAVE_V = 3;
   function validateSave(raw) {
     if (typeof raw !== "string") return null;
     let o;
     try { o = JSON.parse(raw); } catch (e) { return null; }
     if (!o || typeof o !== "object" || Array.isArray(o)) return null;
-    if (o.v === 1 && Number.isSafeInteger(o.level) && o.level >= 1) return { level: o.level, moves: [] };
+    if ((o.v === 1 || o.v === 2) && Number.isSafeInteger(o.level) && o.level >= 1) return { level: o.level, moves: [] };
     if (o.v !== SAVE_V) return null;
     if (!Number.isSafeInteger(o.level) || o.level < 1) return null;
     if (!Array.isArray(o.moves) || o.moves.length > MAX_MOVES_SAVED) return null;
@@ -807,7 +935,7 @@
 
   const api = Object.freeze({
     NAME, CAP, ORDER_SLOTS, MAX_COLORS, MAX_MOVES_SAVED, SOLVE_NODE_LIMIT, GEN_NODE_BUDGET, GEN_TRIES,
-    SAVE_KEY_BEST, SAVE_KEY_SAVE, SAVE_KEY_HELP, COLORS, LEVELS,
+    SAVE_KEY_BEST, SAVE_KEY_SAVE, SAVE_KEY_HELP, SAVE_KEY_CLOTH, COLORS, LEVELS,
     MAX_BOTTLES, ANIMAL_KEYS,
     makeRng, seedFor, paramsFor, createLevel,
     pourCheck, applyMove, legalMoves, isStuck, indexOfId, moveById, toIdMoves,

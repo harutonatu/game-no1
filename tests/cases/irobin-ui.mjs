@@ -4,7 +4,7 @@
 //   テスト用の公開 API（契約 §8.6）：window.IrobinGame = { getState, pick, pour, solution, skip, setLevel, setState }
 //   計算ロジックは BL（irobin-logic.mjs）で確かめ済み。ここでは画面の中の IrobinLogic を「期待値の計算機」として使う。
 //   無いときに合格にしない（空振りの合格を作らない）：IrobinGame が無ければ例外で不合格にする。
-//   smoke：BW1〜BW4・BW17。full：BW5〜BW16（BW14 は CDP のタッチ操作なので Chromium だけ、BW10 は AudioContext が要る）。
+//   smoke：BW1〜BW4・BW17・BW18（布の瓶）。full：BW5〜BW16（BW14 は CDP のタッチ操作なので Chromium だけ、BW10 は AudioContext が要る）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -36,7 +36,7 @@ const stored = (p, k) => p.evaluate((k) => { try { return localStorage.getItem(k
 const J = (x) => JSON.stringify(x);
 // 画面の瓶：段の色（隠れは null）・隠れ・記号の有無
 const domBottles = (p) => p.evaluate(() => [...document.querySelectorAll('#board .bottle')].map((b) => ({
-  i: Number(b.dataset.index), sealed: b.dataset.sealed, selected: b.dataset.selected, waiting: b.dataset.waiting, label: b.getAttribute('aria-label') || '',
+  i: Number(b.dataset.index), id: b.dataset.id, covered: b.dataset.covered === '1', coverLeft: b.dataset.coverLeft ?? null, sealed: b.dataset.sealed, selected: b.dataset.selected, waiting: b.dataset.waiting, label: b.getAttribute('aria-label') || '',
   segs: [...b.querySelectorAll('.seg')].map((s) => ({ c: s.dataset.color, h: s.dataset.hidden, mark: s.querySelector('.mark') ? s.querySelector('.mark').innerHTML.replace(/\s+/g, ' ').trim() : null })),
 })));
 const domNums = (p) => p.evaluate(() => {
@@ -213,7 +213,7 @@ export const tests = [
       await playMoves(page, sol.slice(0, 2));
       const s1 = await gs(page);
       const save = await stored(page, 'irobin.save');
-      check(`2手注ぐと moves 2、irobin.save に v:2・面 4 と手 2 つ（瓶の id）が書かれる（${save}）`, s1.moves === 2 && /"level":\s*4/.test(save || '') && JSON.parse(save).v === 2 && JSON.parse(save).moves.length === 2, { s1: s1.moves, save });
+      check(`2手注ぐと moves 2、irobin.save に v:3・面 4 と手 2 つ（瓶の id）が書かれる（${save}）`, s1.moves === 2 && /"level":\s*4/.test(save || '') && JSON.parse(save).v === 3 && JSON.parse(save).moves.length === 2, { s1: s1.moves, save });
       await page.reload(); await wait(page, 300);
       const s2 = await gs(page);
       check('再読み込みで同じ局面（面・手の数・瓶の中身が同じ）', s2.level === 4 && s2.moves === 2 && J(s2.bottles) === J(s1.bottles) && J(s2.slots) === J(s1.slots) && J(s2.queue) === J(s1.queue), { a: s1.bottles, b: s2.bottles });
@@ -223,7 +223,7 @@ export const tests = [
       const extra = Object.keys(after).filter((k) => !(k in others) && !k.startsWith('irobin.') && k !== 'blockpuzzle.sound');
       check(`ほかのゲームの保存キーは変わらず、新しいキーは irobin.* だけ（変化 ${changed.join(',') || 'なし'}・余分 ${extra.join(',') || 'なし'}）`, changed.length === 0 && extra.length === 0, { changed, extra });
       // 壊れた保存
-      const BAD_SAVE = ['{not json', '', 'null', '[]', '{"v":3,"level":3,"moves":[]}', '{"v":2,"level":0,"moves":[]}', '{"v":2,"level":-2,"moves":[]}', '{"v":2,"level":"3","moves":[]}', '{"v":2,"level":3,"moves":"x"}', '{"v":2,"level":3,"moves":[[0]]}', '{"v":2,"level":3,"moves":[[0,1.5]]}', '{"v":2,"level":3,"moves":[[0,99],[1,2]]}', '{"v":2,"level":3,"moves":[[0,0]]}', '{"v":1,"level":3,"moves":[[0,1],[2,3]]}'];
+      const BAD_SAVE = ['{not json', '', 'null', '[]', '{"v":4,"level":3,"moves":[]}', '{"v":3,"level":0,"moves":[]}', '{"v":3,"level":-2,"moves":[]}', '{"v":3,"level":"3","moves":[]}', '{"v":3,"level":3,"moves":"x"}', '{"v":3,"level":3,"moves":[[0]]}', '{"v":3,"level":3,"moves":[[0,1.5]]}', '{"v":3,"level":3,"moves":[[0,99],[1,2]]}', '{"v":3,"level":3,"moves":[[0,0]]}', '{"v":1,"level":3,"moves":[[0,1],[2,3]]}', '{"v":2,"level":3,"moves":[[0,1],[2,3]]}'];
       const bad = [];
       for (const raw of BAD_SAVE) {
         await seed(page, { 'irobin.help': '1', 'irobin.save': raw });
@@ -234,8 +234,8 @@ export const tests = [
         const isLevel3Start = s.level === 3 && s.moves === 0;     // 形は正しいが注げない手 → 同じ面の最初から
         const isLevel1 = s.level === 1 && s.moves === 0;           // 保存が使えない → 初期値（best 0 → 1 面）
         if (!(isLevel3Start || isLevel1) || s.phase !== 'idle') bad.push(`${raw}: level ${s.level} moves ${s.moves} phase ${s.phase}`);
-        if (/"level":3/.test(raw) && /"v":2/.test(raw) && /"moves":\[\[/.test(raw) && !/\[0,1\.5\]|\[0\]\]/.test(raw) && !isLevel3Start && !isLevel1) bad.push(`${raw}: 面の最初に戻っていない`);
-        if (/"v":1/.test(raw) && !isLevel3Start) bad.push(`${raw}: 古い保存 v:1 は手を捨てて、その面（3 面）の最初から始まるはず（level ${s.level} moves ${s.moves}）`);
+        if (/"level":3/.test(raw) && /"v":3/.test(raw) && /"moves":\[\[/.test(raw) && !/\[0,1\.5\]|\[0\]\]/.test(raw) && !isLevel3Start && !isLevel1) bad.push(`${raw}: 面の最初に戻っていない`);
+        if (/"v":[12]/.test(raw) && !isLevel3Start) bad.push(`${raw}: 古い保存 v:1・v:2 は手を捨てて、その面（3 面）の最初から始まるはず（level ${s.level} moves ${s.moves}）`);
       }
       check(`壊れた irobin.save（${BAD_SAVE.length} 通り）でも落ちず、面の最初（または 1 面）から始まる`, bad.length === 0, bad);
       const BAD_BEST = ['abc', '-5', '1e400', '{}', '1.5', 'NaN', 'Infinity', '', '9007199254740992'];
@@ -312,7 +312,7 @@ export const tests = [
       const SEL = 'a#back, #helpBtn, #soundBtn, #board .bottle, #undoBtn, #restartBtn, .head, #shop, #board, #hint, #tools';
       for (const v of VS) {
         for (const lv of [1, 40]) {
-          const { ctx, page } = await openG(browser, `BW5 ${v.label} ${lv}`, { v, extra: { 'irobin.save': J({ v: 2, level: lv, moves: [] }) } });
+          const { ctx, page } = await openG(browser, `BW5 ${v.label} ${lv}`, { v, extra: { 'irobin.save': J({ v: 3, level: lv, moves: [] }) } });
           const s = await gs(page);
           const r = await layoutProbe(page, SEL, v.safe, { overlapSel: '.head, #shop, #board, #hint, #tools', minSel: 'a#back, #helpBtn, #soundBtn, #board .bottle, #undoBtn, #restartBtn' });
           check(`${v.label} ${v.w}×${v.h}｜${lv} 面（瓶 ${s.bottles.length} 本）：${r.n} 要素が画面内・重なりなし・ボタンと瓶が 44px 以上・横スクロールなし`, s.level === lv && r.n > 0 && r.outside.length === 0 && r.overlaps.length === 0 && r.small.length === 0 && !r.hscroll, { level: s.level, ...r });
@@ -327,7 +327,7 @@ export const tests = [
       const r16 = await layoutProbe(page, SEL, v.safe, { overlapSel: '.head, #shop, #board, #hint, #tools', minSel: 'a#back, #helpBtn, #soundBtn, #board .bottle' });
       check(`16 桁の面番号（${lvl.t}）が「…」で省略されず、ヘッダーからはみ出さず、横スクロールなし`, lvl.t === MAX16 && lvl.fit && lvl.inHead && !lvl.hs && r16.outside.length === 0 && r16.overlaps.length === 0, { lvl, r16 });
       await ctx.close();
-      const w = await openG(browser, 'BW5 hint', { v, extra: { 'irobin.save': J({ v: 2, level: 5, moves: [] }) } });
+      const w = await openG(browser, 'BW5 hint', { v, extra: { 'irobin.save': J({ v: 3, level: 5, moves: [] }) } });
       const hh = async () => w.page.evaluate(() => { const h = document.querySelector('#hint').getBoundingClientRect(), b = document.querySelector('#board').getBoundingClientRect(); return `${Math.round(h.height)}/${Math.round(h.top)}/${Math.round(b.top)}/${Math.round(b.height)}`; });
       const hs = [await hh()];
       const sol = await solutionOf(w.page);
@@ -554,7 +554,7 @@ export const tests = [
   {
     id: 'BW10', tier: 'full', audio: true, title: 'いろびん 効果音：pick・pour・seal・cork・deliver・arrive・clear（・reveal）が起きた順に鳴り、実際に音の部品が動く。♪でオフにすると鳴らない',
     async run({ browser, check }) {
-      const { ctx, page } = await openG(browser, 'BW10', { opts: { initScript: SFX_SPY, touch: false, reducedMotion: 'reduce' }, extra: { 'irobin.save': J({ v: 2, level: 3, moves: [] }) } });
+      const { ctx, page } = await openG(browser, 'BW10', { opts: { initScript: SFX_SPY, touch: false, reducedMotion: 'reduce' }, extra: { 'irobin.save': J({ v: 3, level: 3, moves: [] }) } });
       const names = await page.evaluate(() => YubiSfx.create('irobin').names);
       const want = ['pick', 'drop', 'pour', 'reveal', 'seal', 'cork', 'deliver', 'arrive', 'clear', 'deny', 'undo', 'stuck', 'start', 'best', 'toggle'];
       check(`sfx.js の "irobin" に契約の音名 ${want.length} 個がある`, want.every((n) => names.includes(n)), want.filter((n) => !names.includes(n)));
@@ -614,7 +614,7 @@ export const tests = [
   {
     id: 'BW11', tier: 'full', title: 'いろびん 色覚：各 .seg に記号（.mark）があり色ごとに記号が違う、瓶の aria-label に色の名前、お客さんのトレイにも記号と色の名前',
     async run({ browser, check }) {
-      const { ctx, page } = await openG(browser, 'BW11', { extra: { 'irobin.save': J({ v: 2, level: 9, moves: [] }) } });
+      const { ctx, page } = await openG(browser, 'BW11', { extra: { 'irobin.save': J({ v: 3, level: 9, moves: [] }) } });
       const dom = await domBottles(page), s = await gs(page);
       const segs = dom.flatMap((b) => b.segs).filter((x) => x.h !== '1');
       check(`見えている段 ${segs.length} 個のすべてに記号（.mark）がある`, segs.length > 0 && segs.every((x) => x.mark && x.mark.length > 0), segs.filter((x) => !x.mark).slice(0, 3));
@@ -625,8 +625,14 @@ export const tests = [
       const sigs = colors.map((c) => [...byColor[c]][0]);
       check(`色（${colors.length} 色）ごとに記号が 1 種類で、色が違えば記号も違う`, colors.length >= 6 && oneEach && new Set(sigs).size === colors.length, { colors, sizes: colors.map((c) => byColor[c].size) });
       const names = await page.evaluate(() => window.IrobinLogic.COLORS.map((c) => c.name));
-      const badLabel = dom.filter((b, i) => s.bottles[i].cells.some((c, k) => !s.bottles[i].hidden[k]) && !s.bottles[i].cells.every((c, k) => s.bottles[i].hidden[k] || b.label.includes(names[c]))).map((b) => b.label);
-      check('どの瓶の aria-label にも、中の見えている色の名前がある', badLabel.length === 0 && dom.every((b) => b.label.length > 0), badLabel.slice(0, 3));
+      // 布の瓶（data-covered="1"）は中身を見せない（色の名前を言わない）ので除いて調べ、布の瓶は色の名前を言わないことを別に確かめる
+      const sb = (b) => s.bottles[b.i];
+      const open9 = dom.filter((b) => !b.covered);
+      const badLabel = open9.filter((b) => sb(b).cells.some((c, k) => !sb(b).hidden[k]) && !sb(b).cells.every((c, k) => sb(b).hidden[k] || b.label.includes(names[c]))).map((b) => b.label);
+      check(`布でない瓶 ${open9.length} 本の aria-label に、中の見えている色の名前がある`, open9.length > 0 && badLabel.length === 0 && dom.every((b) => b.label.length > 0), badLabel.slice(0, 3));
+      const cov9 = dom.filter((b) => b.covered);
+      const covLeak = cov9.filter((b) => b.segs.length > 0 || names.some((n) => b.label.includes(n)) || !(sb(b) && sb(b).cover !== null));
+      check(`布の瓶（${cov9.length} 本）は中身の段を描かず、aria-label にも色の名前を出さない（中身が分からない）`, covLeak.length === 0, covLeak.map((b) => b.label));
       const cu = await domCust(page);
       const shown = cu.filter((c) => c && c.color !== '');
       check(`お客さんのトレイに記号（または色の表示）があり、読み上げ用の文に色の名前がある（${shown.map((c) => c.sr).join(' / ')}）`,
@@ -639,7 +645,7 @@ export const tests = [
       const hiddenSigs = new Set(hiddenSegs.map((x) => x.mark));
       const leak = [...hiddenSegs.filter((x) => x.c), ...[...hiddenSigs].filter((m) => m && colorSigs.has(m))];
       if (hiddenSigs.size > 1) leak.push('隠れの記号が段ごとに違う');
-      const labelLeak = d14.filter((b, i) => s14.bottles[i].hidden.some(Boolean) && s14.bottles[i].cells.some((c, k) => s14.bottles[i].hidden[k] && b.label.includes(names[c]) && !s14.bottles[i].cells.some((c2, k2) => !s14.bottles[i].hidden[k2] && c2 === c))).length;
+      const labelLeak = d14.filter((b) => { const x = s14.bottles[b.i]; return x.hidden.some(Boolean) && x.cells.some((c, k) => x.hidden[k] && b.label.includes(names[c]) && !x.cells.some((c2, k2) => !x.hidden[k2] && c2 === c)); }).length;
       check(`隠れの段（${hiddenSegs.length} 個）には色を出さず、「？」の同じ記号だけ（色の記号と重ならない）、aria-label にも隠れた色の名前を出さない（答えが分からない）`, hiddenSegs.length > 0 && leak.length === 0 && labelLeak === 0, { leak, labelLeak });
       await ctx.close();
     },
@@ -790,7 +796,7 @@ export const tests = [
     },
   },
   {
-    id: 'BW16', tier: 'full', title: 'いろびん 伝わる：手はあるがもう解けない局面で doomed・ヒントに「1手もどす」・目印、戻すと消える／届けの連鎖（20 面の 6 本）が 4.5 秒以内に終わる・途中でお客さんを押すと飛ばせる／クリアのカードに めやす と ★／SE 縦で遊び方の閉じるボタンがスクロールなしで見える',
+    id: 'BW16', tier: 'full', title: 'いろびん 伝わる：手はあるがもう解けない局面で doomed・ヒントに「1手もどす」・目印、戻すと消える／届けの連鎖（6 本以上。20 面から探す）が 4.5 秒以内に終わる・途中でお客さんを押すと飛ばせる／クリアのカードに めやす と ★／SE 縦で遊び方の閉じるボタンがスクロールなしで見える',
     async run({ browser, check }) {
       // 1. 詰み予備軍：6 面を決まった乱数で進め、ソルバーが「解けない」と言い切れる局面を探す
       const { ctx, page } = await openG(browser, 'BW16', { extra: { 'irobin.best': '5' } });
@@ -828,10 +834,20 @@ export const tests = [
         check(`選んでやめた後もヒントは「1手もどす」（${await hintText(page)}）`, /1手もどす/.test((await hintText(page)) || '') && (await gs(page)).doomed === true, await gs(page));
       }
       await ctx.close();
-      // 2. 届けの連鎖：20 面の解の 37 手目（index 36）は、待っていた瓶 6 本が続けて届く。実時間で 3.2 秒以内に終わる
+      // 2. 届けの連鎖：待っていた瓶が 6 本以上続けて届く手を、20 面から順に探す（布の追加で 20 面の連鎖は 3 本になったため。
+      //    いまは 45 面の 38 手目で 6 本）。注ぐ〜届け終わりまで実時間で 4.5 秒以内
       const c2 = await openG(browser, 'BW16 連鎖', { opts: { clock: false }, extra: { 'irobin.best': '19' } });
-      await c2.page.evaluate(() => window.IrobinGame.setLevel(20)); await sleep(100);
-      const info = await c2.page.evaluate(() => { const L = window.IrobinLogic; const c = L.createLevel(20); let st = c.state; let at = -1, n = 0; c.info.solution.forEach((m, i) => { const r = L.applyMove(st, m[0], m[1]); if (r.outcome.deliveries.length > n) { n = r.outcome.deliveries.length; at = i; } st = r.state; }); return { sol: c.info.solution, at, n }; });
+      const info = await c2.page.evaluate(() => {
+        const L = window.IrobinLogic;
+        for (let lv = 20; lv <= 120; lv++) {
+          const c = L.createLevel(lv); let st = c.state; let at = -1, n = 0;
+          c.info.solution.forEach((m, i) => { const r = L.applyMove(st, m[0], m[1]); if (r.outcome.deliveries.length > n) { n = r.outcome.deliveries.length; at = i; } st = r.state; });
+          if (n >= 6) return { lv, sol: c.info.solution, at, n };
+        }
+        return { lv: 0, sol: [], at: -1, n: 0 };
+      });
+      check(`待っていた瓶が 6 本以上続けて届く手がある（${info.lv} 面 ${info.at + 1} 手目・${info.n} 本）`, info.n >= 6, { lv: info.lv, n: info.n });
+      await c2.page.evaluate((lv) => window.IrobinGame.setLevel(lv), info.lv || 20); await sleep(100);
       await playMoves(c2.page, info.sol.slice(0, info.at));
       const ms = await c2.page.evaluate(([f, t]) => new Promise((ok) => {
         const g = window.IrobinGame, a = performance.now();
@@ -839,11 +855,11 @@ export const tests = [
         const tick = () => { const s = g.getState(); if (!s.busy && s.phase !== 'pouring') ok(performance.now() - a); else if (performance.now() - a > 12000) ok(99999); else requestAnimationFrame(tick); };
         requestAnimationFrame(tick);
       }), info.sol[info.at]);
-      check(`連鎖 ${info.n} 本：注ぐ（約 0.9 秒）・そろう（約 0.8 秒）・届け全体（約 2.4 秒）が 4.5 秒以内に終わる（${Math.round(ms)}ms。直す前は約 10.7 秒）`, info.n >= 4 && ms < 4500, { ms, n: info.n });
+      check(`連鎖 ${info.n} 本：注ぐ（約 0.9 秒）・そろう（約 0.8 秒）・届け全体（約 2.4 秒）が 4.5 秒以内に終わる（${Math.round(ms)}ms。直す前は約 10.7 秒）`, info.n >= 6 && ms < 4500, { ms, n: info.n });
       // 演出の途中でお客さんを押すと飛ばせる
       await c2.ctx.close();
       const c3 = await openG(browser, 'BW16 飛ばす', { extra: { 'irobin.best': '19' } });
-      await c3.page.evaluate(() => window.IrobinGame.setLevel(20)); await wait(c3.page, 100);
+      await c3.page.evaluate((lv) => window.IrobinGame.setLevel(lv), info.lv || 20); await wait(c3.page, 100);
       await playMoves(c3.page, info.sol.slice(0, info.at));
       await c3.page.evaluate(([f, t]) => { window.IrobinGame.pick(f); window.IrobinGame.pick(t); }, info.sol[info.at]);
       await wait(c3.page, 1500);
@@ -873,63 +889,100 @@ export const tests = [
     },
   },
   {
-    id: 'BW17', tier: 'smoke', title: 'いろびん 届けた瓶は消える：届けると画面の瓶が1本減り空き瓶は増えない・残りがなめらかに寄る（動きを減らす設定では一瞬）・data-index は 0〜で振り直し data-id は state の id・届けの演出中に押した瓶／数字キーが正しい瓶を選ぶ・再読み込みで同じ局面',
+    id: 'BW17', tier: 'smoke', title: 'いろびん 届けた瓶の跡は空いたまま（§17.7）：届けると瓶が1本減り空き瓶は増えない・残りの瓶は動かない（寄せる動きなし、位置が同じ）・跡は空いた置き場所で押しても何もしない・data-index は state の位置／data-id は id／aria-label と数字キーは置き場所の番号（id+1）で固定・空いた場所の数字キーは何もしない・矢印は跡を飛ばす・演出中に押した瓶が正しい瓶を選ぶ・再読み込みで同じ局面（v:3）',
     async run({ browser, check }) {
-      // 届けが起き、その後ろに「選べる瓶」が残る手を探す（届けると後ろの瓶の位置が 1 つ前にずれる）
+      // 届けが起き、その後ろ（置き場所の番号が大きい側）に「選べる瓶」が残る手を探す。前の作りなら、その瓶は1つ前へ寄っていた
       const findCase = (p) => p.evaluate(() => {
         const L = window.IrobinLogic;
+        let first = null;   // 跡の左にも瓶がある手（矢印キーで跡を飛ばすのを見られる）を優先する
         for (let lv = 2; lv <= 12; lv++) {
           const c = L.createLevel(lv); let st = c.state;
           for (let i = 0; i < c.info.solution.length; i++) {
             const [f, t] = c.info.solution[i];
             const r = L.applyMove(st, f, t);
             const d = r.outcome.deliveries;
-            if (d.length === 1 && !r.state.won) {
+            if (d.length === 1 && !r.state.won && d[0].id <= 9) {
               const after = r.state.bottles;
-              const k = after.findIndex((b, j) => j >= d[0].bottle && b.cells.length > 0 && !b.sealed);
-              if (k >= 0) return { lv, at: i, sol: c.info.solution, move: [f, t], gone: d[0], pickId: after[k].id, pickNew: k, pickOld: st.bottles.findIndex((b) => b.id === after[k].id), nBefore: st.bottles.length, emptyBefore: st.bottles.filter((b) => !b.cells.length).length, emptyAfter: after.filter((b) => !b.cells.length).length };
+              const k = after.findIndex((b) => b.id > d[0].id && b.id <= 9 && b.cells.length > 0 && !b.sealed && b.cover === null);
+              const prev = after.filter((b) => b.id < d[0].id).map((b) => b.id).pop();
+              const cand = k >= 0 ? { lv, at: i, sol: c.info.solution, move: [f, t], gone: d[0], pickId: after[k].id, pickNew: k, pickOld: st.bottles.findIndex((b) => b.id === after[k].id), prevId: prev === undefined ? null : prev, nextId: after.filter((b) => b.id > d[0].id).map((b) => b.id)[0], nBefore: st.bottles.length, emptyBefore: st.bottles.filter((b) => !b.cells.length).length, emptyAfter: after.filter((b) => !b.cells.length).length } : null;
+              if (cand && cand.prevId !== null) return cand;
+              if (cand && !first) first = cand;
             }
             st = r.state;
           }
         }
-        return null;
+        return first;
       });
-      const domInfo = (p) => p.evaluate(() => [...document.querySelectorAll('#board .bottle')].map((b) => ({ index: b.dataset.index, id: b.dataset.id, gone: b.dataset.gone || '', n: b.querySelectorAll('.seg').length, label: b.getAttribute('aria-label') || '', tf: b.style.transform || '' })));
+      // #board の子を置き場所の順に：瓶（.bottle）か、空いた置き場所（.place-empty）か、と位置
+      const domInfo = (p) => p.evaluate(() => [...document.querySelectorAll('#board > .bottle, #board > .place-empty')].map((b) => {
+        const r = b.getBoundingClientRect();
+        return { kind: b.classList.contains('bottle') ? 'bottle' : 'empty', index: b.dataset.index, id: b.dataset.id ?? b.dataset.place, gone: b.dataset.gone || '', n: b.querySelectorAll('.seg').length, label: b.getAttribute('aria-label') || '', tf: b.style.transform || '', x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height), pe: getComputedStyle(b).pointerEvents, btn: !!b.querySelector('button') };
+      }));
+      const bottlesOf = (d) => d.filter((x) => x.kind === 'bottle' && !x.gone);
+      const posById = (d) => Object.fromEntries(d.map((x) => [x.id, [x.x, x.y, x.w, x.h]]));
+      const same = (a, b) => a && b && a.every((v, i) => Math.abs(v - b[i]) <= 1);
       const { ctx, page } = await openG(browser, 'BW17', { v: SMOKE_V(), extra: { 'irobin.best': '1' } });
       const cs = await findCase(page);
-      check(`届けが起きて、その後ろに選べる瓶が残る手が見つかる（${cs ? `${cs.lv} 面 ${cs.at + 1} 手目` : 'なし'}）`, !!cs, cs);
+      check(`届けが起きて、その後ろに選べる瓶が残る手が見つかる（${cs ? `${cs.lv} 面 ${cs.at + 1} 手目・届ける瓶 id ${cs.gone.id}` : 'なし'}）`, !!cs, cs);
       if (!cs) { await ctx.close(); return; }
       await page.evaluate((lv) => window.IrobinGame.setLevel(lv), cs.lv); await wait(page, 100);
       await playMoves(page, cs.sol.slice(0, cs.at));
       const s0 = await gs(page), d0 = await domInfo(page);
-      check(`届ける前：画面の瓶 ${d0.length} 本＝state ${s0.bottles.length} 本`, d0.length === s0.bottles.length && d0.length === cs.nBefore, { d0: d0.length, s0: s0.bottles.length });
+      const pos0 = posById(d0);
+      check(`届ける前：画面の瓶 ${bottlesOf(d0).length} 本＝state ${s0.bottles.length} 本`, bottlesOf(d0).length === s0.bottles.length && s0.bottles.length === cs.nBefore, { d0: bottlesOf(d0).length, s0: s0.bottles.length });
       // 届ける手を演出つきで（skip しない）。瓶が飛んでいる間・消えた直後を少しずつ見る
       await page.evaluate(([f, t]) => { window.IrobinGame.pick(f); window.IrobinGame.pick(t); }, cs.move);
       const samples = [];
       for (let i = 0; i < 90; i++) {
         await wait(page, 40);
         const st = await gs(page), d = await domInfo(page);
-        samples.push({ busy: st.busy, n: d.filter((x) => !x.gone).length, all: d.length, moving: d.some((x) => !x.gone && /translate\(/.test(x.tf)) });
+        const live = bottlesOf(d);
+        samples.push({ busy: st.busy, n: live.length, all: d.length, emptyAt: d.findIndex((x) => x.kind === 'empty'), moving: live.some((x) => /translate\(/.test(x.tf) && x.id !== String(cs.move.map((m) => s0.bottles[m].id)[0])), off: live.filter((x) => x.id !== String(s0.bottles[cs.move[0]].id) && !same(pos0[x.id], [x.x, x.y, x.w, x.h])).map((x) => x.id) });
         if (!st.busy) break;
       }
       const s1 = await gs(page), d1 = await domInfo(page);
-      const shrinkAt = samples.findIndex((x) => x.all === cs.nBefore - 1);
-      const movedAfter = shrinkAt >= 0 && samples.slice(shrinkAt).some((x) => x.moving && x.busy);
-      check(`届けると画面の瓶が 1 本減る（${cs.nBefore} → ${d1.length}）・state も同じ・空き瓶は増えない（${cs.emptyBefore} → ${s1.bottles.filter((b) => !b.cells.length).length}。注いだ分だけ）`,
-        d1.length === cs.nBefore - 1 && s1.bottles.length === cs.nBefore - 1 && s1.bottles.filter((b) => !b.cells.length).length === cs.emptyAfter && !d1.some((x) => x.gone), { d1: d1.length, s1: s1.bottles.length });
-      check(`瓶が消えたあと、残りの瓶が前の場所から寄る（演出中に translate のずらしが付き、終わると外れる。${shrinkAt >= 0 ? `${shrinkAt * 40}ms で消えた` : '消えていない'}）`, movedAfter && !d1.some((x) => x.tf), { shrinkAt, samples: samples.slice(Math.max(0, shrinkAt - 2), shrinkAt + 6), tf: d1.map((x) => x.tf) });
-      check('data-index は 0〜で振り直され、data-id は state の id と同じ、aria-label の番号も 1〜で並ぶ', d1.every((x, i) => x.index === String(i) && x.id === String(s1.bottles[i].id) && x.label.startsWith(`${i + 1}ばん`) && x.n === s1.bottles[i].cells.length), d1.map((x) => [x.index, x.id, x.label.slice(0, 4)]));
-      check(`届けた瓶（id ${cs.gone.id}）は画面にも state にも無い`, !d1.some((x) => x.id === String(cs.gone.id)) && !s1.bottles.some((b) => b.id === cs.gone.id), null);
-      // 数字キー：届けた後の並びで数える
-      await page.keyboard.press(String(cs.pickNew + 1)); await wait(page, 60);
+      const shrinkAt = samples.findIndex((x) => x.n === cs.nBefore - 1 && x.emptyAt >= 0);
+      const after = shrinkAt >= 0 ? samples.slice(shrinkAt) : [];
+      check(`届けると画面の瓶が 1 本減る（${cs.nBefore} → ${bottlesOf(d1).length}）・state も同じ・空き瓶は増えない（${cs.emptyBefore} → ${s1.bottles.filter((b) => !b.cells.length).length}。注いだ分だけ）`,
+        bottlesOf(d1).length === cs.nBefore - 1 && s1.bottles.length === cs.nBefore - 1 && s1.bottles.filter((b) => !b.cells.length).length === cs.emptyAfter && !d1.some((x) => x.gone), { d1: bottlesOf(d1).length, s1: s1.bottles.length });
+      check(`瓶が消えたあと、残りの瓶は寄らない（${shrinkAt >= 0 ? `${shrinkAt * 40}ms で消えた` : '消えていない'}。演出中も translate のずらしが付かず、どの瓶も届ける前と同じ位置）`,
+        shrinkAt >= 0 && after.every((x) => !x.moving && x.off.length === 0) && bottlesOf(d1).every((x) => !x.tf && same(pos0[x.id], [x.x, x.y, x.w, x.h])), { shrinkAt, samples: samples.slice(Math.max(0, shrinkAt - 1), shrinkAt + 4), d1: d1.map((x) => [x.id, x.x, x.y]) });
+      const holes0 = d0.filter((x) => x.kind === 'empty').length;   // それより前に届けた瓶の跡
+      const hole = d1.find((x) => x.kind === 'empty' && x.id === String(cs.gone.id));
+      check(`届けた瓶（id ${cs.gone.id}）の跡は空いた置き場所のまま（同じ位置・同じ大きさ、押せない・中にボタンなし）、置き場所の数は ${d0.length} のまま、跡は ${holes0} → ${holes0 + 1} か所`,
+        d1.length === d0.length && !!hole && same(pos0[String(cs.gone.id)], [hole.x, hole.y, hole.w, hole.h]) && hole.pe === 'none' && !hole.btn && d1.filter((x) => x.kind === 'empty').length === holes0 + 1, { hole, was: pos0[String(cs.gone.id)], holes0 });
+      const live1 = bottlesOf(d1);
+      check('data-index は今の state の位置（0〜）、data-id は state の id、aria-label の番号は置き場所の番号（id+1）で届けても変わらない',
+        live1.every((x, i) => x.index === String(i) && x.id === String(s1.bottles[i].id) && x.label.startsWith(`${s1.bottles[i].id + 1}ばん`) && x.n === (s1.bottles[i].cover === null ? s1.bottles[i].cells.length : 0)), live1.map((x) => [x.index, x.id, x.label.slice(0, 4)]));
+      check(`届けた瓶（id ${cs.gone.id}）は瓶としては画面にも state にも無い`, !live1.some((x) => x.id === String(cs.gone.id)) && !s1.bottles.some((b) => b.id === cs.gone.id), null);
+      // 空いた場所を押しても何も起きない
+      const holeHit = await page.evaluate((id) => { const e = document.querySelector(`#board .place-empty[data-place="${id}"]`); if (!e) return null; const r = e.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { x: r.left + r.width / 2, y: r.top + r.height / 2, onBottle: !!(t && t.closest && t.closest('.bottle')) }; }, cs.gone.id);
+      if (holeHit) { await page.mouse.click(holeHit.x, holeHit.y); await wait(page, 60); }
+      const h1 = await gs(page);
+      check(`空いた置き場所を押しても何も選ばれない（selected ${h1.selected}・phase ${h1.phase}・手 ${h1.moves}）`, !!holeHit && !holeHit.onBottle && h1.selected === null && h1.phase === 'idle' && h1.moves === s1.moves, { holeHit, sel: h1.selected });
+      // 数字キー：置き場所の番号（id+1）で数える。空いた場所の番号は何もしない
+      const keyOf = (id) => (id + 1 === 10 ? '0' : String(id + 1));
+      await page.keyboard.press(keyOf(cs.gone.id)); await wait(page, 60);
+      const k0 = await gs(page);
+      check(`空いた場所の数字キー ${keyOf(cs.gone.id)} は何もしない（selected ${k0.selected}）`, k0.selected === null && k0.phase === 'idle', k0.selected);
+      await page.keyboard.press(keyOf(cs.pickId)); await wait(page, 60);
       const k1 = await gs(page);
-      check(`数字キー ${cs.pickNew + 1} で、届けた後の ${cs.pickNew + 1} 本目（id ${cs.pickId}）を選ぶ（selected ${k1.selected}）`, k1.selected === cs.pickNew && k1.bottles[k1.selected] && k1.bottles[k1.selected].id === cs.pickId, k1.selected);
+      check(`数字キー ${keyOf(cs.pickId)} で、置き場所 ${cs.pickId + 1} の瓶（id ${cs.pickId}・今の位置 ${cs.pickNew}）を選ぶ（selected ${k1.selected}）`, k1.selected === cs.pickNew && k1.bottles[k1.selected] && k1.bottles[k1.selected].id === cs.pickId, k1.selected);
       await page.keyboard.press('Escape'); await wait(page, 60);
-      // 再読み込みで同じ局面（保存は v:2・瓶の id の手）
+      // 矢印キー：空いた場所を飛ばして次の瓶へ
+      if (cs.prevId !== null && cs.nextId !== undefined) {
+        await page.focus(`#board .bottle[data-id="${cs.prevId}"]`);
+        await page.keyboard.press('ArrowRight'); await wait(page, 30);
+        const fid = await page.evaluate(() => document.activeElement?.dataset?.id ?? null);
+        check(`矢印 → で、空いた場所（${cs.gone.id + 1}）を飛ばして id ${cs.prevId} から id ${cs.nextId} の瓶へ（${fid}）`, fid === String(cs.nextId), fid);
+      }
+      // 再読み込みで同じ局面（保存は v:3・瓶の id の手）。空いた場所も同じ
       const save = JSON.parse((await stored(page, 'irobin.save')) || '{}');
       await page.reload(); await wait(page, 300);
-      const s2 = await gs(page);
-      check(`再読み込みで同じ局面（保存 v:${save.v}・手 ${save.moves && save.moves.length}。瓶 ${s2.bottles.length} 本・id も同じ）`, save.v === 2 && J(s2.bottles) === J(s1.bottles) && s2.moves === s1.moves && J(s2.slots) === J(s1.slots), { a: s1.bottles.map((b) => b.id), b: s2.bottles.map((b) => b.id) });
+      const s2 = await gs(page), d2 = await domInfo(page);
+      check(`再読み込みで同じ局面（保存 v:${save.v}・手 ${save.moves && save.moves.length}。瓶 ${s2.bottles.length} 本・id も同じ、跡の場所も同じ）`,
+        save.v === 3 && J(s2.bottles) === J(s1.bottles) && s2.moves === s1.moves && J(s2.slots) === J(s1.slots) && J(d2.map((x) => [x.kind, x.id])) === J(d1.map((x) => [x.kind, x.id])), { a: d1.map((x) => [x.kind, x.id]), b: d2.map((x) => [x.kind, x.id]) });
       // 届けの演出中に、後ろの瓶を押す（ボタンの data-index は届ける前の並びのまま）→ 演出を終わらせた後の並びで同じ瓶（id）を選ぶ
       await page.evaluate((lv) => window.IrobinGame.setLevel(lv), cs.lv); await wait(page, 100);
       await playMoves(page, cs.sol.slice(0, cs.at));
@@ -941,22 +994,128 @@ export const tests = [
       check(`演出中（busy ${mid.busy}）に id ${cs.pickId} の瓶（押したときの data-index ${mid.index}）を押すと、届けた後の位置 ${cs.pickNew} の同じ瓶が選ばれる（selected ${p1.selected}）`,
         mid.busy === true && mid.index === String(cs.pickOld) && p1.selected === cs.pickNew && p1.bottles[cs.pickNew].id === cs.pickId && p1.phase === 'selected', { mid, sel: p1.selected });
       await ctx.close();
-      // 動きを減らす設定：寄る動きは無く、注ぐ〜届けて詰めるまで 0.5 秒以内
+      // 動きを減らす設定：寄る動きは無く、注ぐ〜届けるまで 0.5 秒以内
       const c2 = await openG(browser, 'BW17 calm', { v: SMOKE_V(), opts: { clock: false, reducedMotion: 'reduce' }, extra: { 'irobin.best': '1' } });
       await c2.page.evaluate((lv) => window.IrobinGame.setLevel(lv), cs.lv); await sleep(100);
       await playMoves(c2.page, cs.sol.slice(0, cs.at));
-      const r = await c2.page.evaluate(([f, t, n]) => new Promise((ok) => {
+      const r = await c2.page.evaluate(([f, t]) => new Promise((ok) => {
         const g = window.IrobinGame, a = performance.now(); let moved = false;
         g.pick(f); g.pick(t);
         const tick = () => {
           const bs = [...document.querySelectorAll('#board .bottle')];
           if (bs.some((b) => /translate\(/.test(b.style.transform))) moved = true;
           const s = g.getState();
-          if (!s.busy && s.phase !== 'pouring') ok({ ms: performance.now() - a, n: bs.length, moved }); else if (performance.now() - a > 4000) ok({ ms: 9999, n: bs.length, moved }); else requestAnimationFrame(tick);
+          const holes = document.querySelectorAll('#board .place-empty').length;
+          if (!s.busy && s.phase !== 'pouring') ok({ ms: performance.now() - a, n: bs.length, holes, moved }); else if (performance.now() - a > 4000) ok({ ms: 9999, n: bs.length, holes, moved }); else requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
-      }), [...cs.move, cs.nBefore]);
-      check(`動きを減らす設定：届けて瓶が ${cs.nBefore} → ${r.n} 本、寄る動きなし（${r.moved}）、${Math.round(r.ms)}ms で終わる（500ms 未満）`, r.n === cs.nBefore - 1 && !r.moved && r.ms < 500, r);
+      }), cs.move);
+      check(`動きを減らす設定：届けて瓶が ${cs.nBefore} → ${r.n} 本・跡 ${holes0} → ${r.holes} か所、寄る動きなし（${r.moved}）、${Math.round(r.ms)}ms で終わる（500ms 未満）`, r.n === cs.nBefore - 1 && r.holes === holes0 + 1 && !r.moved && r.ms < 500, r);
+      await c2.ctx.close();
+    },
+  },
+  {
+    id: 'BW18', tier: 'smoke', title: 'いろびん 布の瓶（§17.4）：布の瓶の見た目と札（data-covered・data-cover-left・aria-label）、押すと選べず（選んでいた瓶はそのまま）ヒントと deny、はじめての布のヒントと irobin.cloth、届けて布が取れる（札が消え中身が描かれる・音 unveil・空き瓶なら「あきびんが でてきた！」）、動きを減らす設定で 0.5 秒以内、再読み込みで同じ局面',
+    async run({ browser, check }) {
+      // 空き瓶の布が、届け 1 本の手で取れる面を 8 面から探す（取れる手の番号も）
+      const findCloth = (p) => p.evaluate(() => {
+        const L = window.IrobinLogic;
+        for (let lv = 8; lv <= 40; lv++) {
+          const c = L.createLevel(lv); let st = c.state;
+          const cl = st.bottles.find((b) => b.cover !== null);
+          if (!cl || cl.cells.length !== 0 || cl.id > 8) continue;
+          for (let i = 0; i < c.info.solution.length; i++) {
+            const r = L.applyMove(st, c.info.solution[i][0], c.info.solution[i][1]);
+            if (r.outcome.unveiled.length && r.outcome.deliveries.length > 1) break;   // 連鎖の演出の時間が混ざらない面（届け 1 本で取れる）を選ぶ
+            if (r.outcome.unveiled.length) return { lv, at: i, sol: c.info.solution, cid: cl.id, cover: cl.cover, servedBefore: st.served };
+            st = r.state;
+          }
+        }
+        return null;
+      });
+      const clothDom = (p) => p.evaluate(() => [...document.querySelectorAll('#board .bottle')].map((b) => {
+        const tag = b.querySelector('.clothtag');
+        const cs = tag ? getComputedStyle(tag) : null;
+        const small = tag ? [...tag.querySelectorAll('*')].map((e) => parseFloat(getComputedStyle(e).fontSize)) : [];
+        return { id: b.dataset.id, covered: b.dataset.covered || '', left: b.dataset.coverLeft ?? null, label: b.getAttribute('aria-label') || '', segs: b.querySelectorAll('.seg').length, tag: tag ? tag.textContent.replace(/\s+/g, '') : '', tagShown: !!cs && cs.display !== 'none' && cs.visibility !== 'hidden' && tag.getBoundingClientRect().height > 0, minFont: small.length ? Math.min(...small) : 0 };
+      }));
+      const { ctx, page } = await openG(browser, 'BW18', { v: SMOKE_V(), opts: { initScript: SFX_SPY }, extra: { 'irobin.best': '1' } });
+      const cs = await findCloth(page);
+      check(`空き瓶の布が途中で取れる面がある（${cs ? `${cs.lv} 面・布の瓶 id ${cs.cid}・cover ${cs.cover}・${cs.at + 1} 手目で取れる` : 'なし'}）`, !!cs, cs);
+      if (!cs) { await ctx.close(); return; }
+      // はじめて布が出た面：irobin.cloth が無い状態で、その面から始める（best＝面−1）
+      await gotoG(page, { 'irobin.best': String(cs.lv - 1) });
+      const s0 = await gs(page), h0 = await hintText(page);
+      const flag = await stored(page, 'irobin.cloth');
+      const tip = await page.evaluate(() => document.querySelector('#board')?.dataset.clothTip);
+      check(`はじめての布の面（${s0.level} 面）：ヒントが布の説明（${h0}）、#board[data-cloth-tip="1"]（${tip}）、irobin.cloth が "1"（${flag}）`,
+        s0.level === cs.lv && /ぬのの びん/.test(h0 || '') && /どの いろから/.test(h0 || '') && tip === '1' && flag === '1', { h0, tip, flag });
+      // 見た目と札
+      const d0 = await clothDom(page);
+      const cov = s0.bottles.filter((b) => b.cover !== null);
+      const dc = d0.filter((x) => x.covered === '1');
+      const want = (b) => String(b.cover - s0.served);
+      const tagBad = cov.filter((b) => { const x = d0.find((y) => y.id === String(b.id)); return !x || x.covered !== '1' || x.left !== want(b) || x.segs !== 0 || !x.tagShown || !x.tag.includes(want(b)) || x.minFont < 12 || !x.label.startsWith(`${b.id + 1}ばん`) || !/ぬのを かぶった/.test(x.label) || !x.label.includes(`あと ${want(b)} にん`); });
+      check(`布の瓶 ${cov.length} 本：data-covered="1"・data-cover-left＝cover−届けた数・札「あと N」（12px 以上）・中身の段は描かない・aria-label「Nばん。ぬのを かぶった びん。あと M にん…」`, cov.length > 0 && dc.length === cov.length && tagBad.length === 0, { dc, cov: cov.map((b) => [b.id, b.cover]) });
+      check('布の無い瓶には data-covered="1" が無い', d0.filter((x) => !cov.some((b) => String(b.id) === x.id)).every((x) => x.covered !== '1' && x.left === null), null);
+      // 押しても選べない。選んでいた瓶はそのまま
+      const ci = s0.bottles.findIndex((b) => b.id === cs.cid);
+      await page.click(`#board .bottle[data-id="${cs.cid}"]`); await wait(page, 60);
+      const s1 = await gs(page), h1 = await hintText(page), pl1 = (await plays(page)).map((x) => x.n);
+      check(`布の瓶を押すと選べない（selected ${s1.selected}・phase ${s1.phase}）、ヒント「あと ${want(cov.find((b) => b.id === cs.cid))} にん とどけると あく」（${h1}）、deny の音`,
+        s1.selected === null && s1.phase === 'idle' && new RegExp(`あと ${want(cov.find((b) => b.id === cs.cid))} にん`).test(h1 || '') && pl1.includes('deny'), { s1: s1.selected, h1, pl1: pl1.slice(-3) });
+      const other = s0.bottles.findIndex((b) => b.cover === null && b.cells.length > 0 && !b.sealed);
+      await page.evaluate((i) => window.IrobinGame.pick(i), other); await wait(page, 30);
+      await page.evaluate((i) => window.IrobinGame.pick(i), ci); await wait(page, 60);
+      const s2 = await gs(page);
+      check(`瓶を選んでから布の瓶を押しても、選びは解除されず注げない（selected ${s2.selected}・手 ${s2.moves}）`, s2.selected === other && s2.moves === 0 && s2.phase === 'selected', s2);
+      await page.keyboard.press('Escape'); await wait(page, 30);
+      if (cs.cid <= 8) {
+        await page.keyboard.press(String(cs.cid + 1)); await wait(page, 60);
+        const k = await gs(page);
+        check(`数字キー ${cs.cid + 1}（布の瓶の置き場所）でも選べない（selected ${k.selected}）`, k.selected === null, k.selected);
+      }
+      // 布が取れる手の直前まで進める（札の数は届けるたびに減る）
+      await playMoves(page, cs.sol.slice(0, cs.at));
+      const s3 = await gs(page), d3 = await clothDom(page);
+      const x3 = d3.find((x) => x.id === String(cs.cid));
+      check(`届けるたびに札が減る：届けた ${s3.served} 人で「あと ${cs.cover - s3.served}」（${x3 && x3.left}）`, !!x3 && x3.covered === '1' && x3.left === String(cs.cover - s3.served) && cs.cover - s3.served >= 1, x3);
+      // 布が取れる手（演出つき）
+      await page.evaluate(([f, t]) => { window.IrobinGame.pick(f); window.IrobinGame.pick(t); }, cs.sol[cs.at]);
+      for (let i = 0; i < 120; i++) { await wait(page, 50); if (!(await gs(page)).busy) break; }
+      const s4 = await gs(page), d4 = await clothDom(page), h4 = await hintText(page), pl4 = await plays(page);
+      const b4 = s4.bottles.find((b) => b.id === cs.cid), x4 = d4.find((x) => x.id === String(cs.cid));
+      check(`届けて布が取れる：state の cover null、画面の札が消え（data-covered ${x4 && x4.covered}・data-cover-left ${x4 && x4.left}）、中身（空き瓶）が描かれ、aria-label に「ぬの」が無い`,
+        !!b4 && b4.cover === null && !!x4 && x4.covered !== '1' && x4.left === null && x4.segs === b4.cells.length && !x4.tagShown && !/ぬの/.test(x4.label) && x4.label.startsWith(`${cs.cid + 1}ばん`), { b4, x4 });
+      check(`布が取れると音 unveil（表にある音）、空き瓶なら「あきびんが でてきた！」（${h4}）`, pl4.some((x) => x.n === 'unveil' && x.known) && /あきびんが でてきた/.test(h4 || ''), { h4, tail: pl4.slice(-6).map((x) => x.n) });
+      // 布が取れた空き瓶へ注げる
+      const s4i = s4.bottles.findIndex((b) => b.id === cs.cid);
+      const canPour = await page.evaluate((to) => { const L = window.IrobinLogic, g = window.IrobinGame.getState(); return g.bottles.some((b, i) => i !== to && L.pourCheck({ ...g, won: false }, i, to).ok); }, s4i);
+      check('布が取れた空き瓶は注ぐ相手になる', canPour, null);
+      // 再読み込みで同じ局面（布の状態も）
+      const save = JSON.parse((await stored(page, 'irobin.save')) || '{}');
+      await page.reload(); await wait(page, 300);
+      const s5 = await gs(page), d5 = await clothDom(page);
+      check(`再読み込みで同じ局面（v:${save.v}・手 ${s5.moves}・布の状態も同じ）`, save.v === 3 && J(s5.bottles) === J(s4.bottles) && s5.served === s4.served && J(d5.map((x) => [x.id, x.covered === '1', x.left])) === J(d4.map((x) => [x.id, x.covered === '1', x.left])), { a: s4.bottles.map((b) => b.cover), b: s5.bottles.map((b) => b.cover) });
+      // 2 回目からは布の説明を出さない（irobin.cloth が "1"）
+      await page.evaluate(() => window.IrobinGame.setLevel(window.IrobinGame.getState().level + 1)); await wait(page, 100);
+      const h6 = await hintText(page), tip6 = await page.evaluate(() => document.querySelector('#board')?.dataset.clothTip);
+      check(`irobin.cloth が "1" なら、次の布の面ではふつうのヒント（${h6}・tip ${tip6}）`, !/どの いろから/.test(h6 || '') && tip6 !== '1', { h6, tip6 });
+      await ctx.close();
+      // 動きを減らす設定：布が取れる手（届け→布）が 0.5 秒以内に終わる
+      const c2 = await openG(browser, 'BW18 calm', { v: SMOKE_V(), opts: { clock: false, reducedMotion: 'reduce' }, extra: { 'irobin.best': String(cs.lv - 1), 'irobin.cloth': '1' } });
+      await playMoves(c2.page, cs.sol.slice(0, cs.at));
+      const r = await c2.page.evaluate(([f, t, id]) => new Promise((ok) => {
+        const g = window.IrobinGame, a = performance.now();
+        g.pick(f); g.pick(t);
+        const tick = () => {
+          const b = document.querySelector(`#board .bottle[data-id="${id}"]`);
+          const s = g.getState();
+          if (!s.busy && s.phase !== 'pouring') ok({ ms: performance.now() - a, covered: b ? b.dataset.covered || '' : 'none', cover: (s.bottles.find((x) => x.id === id) || {}).cover }); else if (performance.now() - a > 4000) ok({ ms: 9999 }); else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }), [...cs.sol[cs.at], cs.cid]);
+      check(`動きを減らす設定：届けて布が取れるまで ${Math.round(r.ms)}ms（500ms 未満）、札が消える`, r.ms < 500 && r.covered !== '1' && r.cover === null, r);
       await c2.ctx.close();
     },
   },

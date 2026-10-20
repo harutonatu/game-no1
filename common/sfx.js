@@ -9,7 +9,7 @@
  *   const sfx = YubiSfx.create("zenmai");   // ゼンマイさんぽ
  *   const sfx = YubiSfx.create("pikatto");  // ピカッと早押し
  *   const sfx = YubiSfx.create("hashi");    // ハシわたり（grow(ratio)/tip/land/perfect(n)/walk/splash/peek）
- *   const sfx = YubiSfx.create("irobin");   // いろびん（pick/drop/pour(count)/reveal/seal(colorId)/cork/deliver(n)/arrive/clear/deny/undo/stuck）
+ *   const sfx = YubiSfx.create("irobin");   // いろびん（pick/drop/pour(count)/reveal/seal(colorId)/cork/deliver(n)/arrive/clear/deny/undo/stuck/unveil）
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -412,7 +412,15 @@
       // 1手もどす：逆回しの短い音
       undo: () => { const t = N(); noise(t, 0.08, { freq: 700, to: 1800, q: 0.7, vol: 0.035, a: 0.05 }); mallet(A5, t + 0.02, { vol: 0.07, decay: 0.06, bright: 0.3 }); mallet(E5, t + 0.07, { vol: 0.07, decay: 0.09, bright: 0.3 }); },
       // 詰み：下がる2音をやさしい和音で止める
-      stuck: () => { const t = N(); mallet(G5, t, { vol: 0.08, decay: 0.16, bright: 0.25 }); mallet(E5, t + 0.14, { vol: 0.08, decay: 0.3, bright: 0.2 }); mallet(C5, t + 0.14, { vol: 0.04, decay: 0.4, bright: 0.2 }); }
+      stuck: () => { const t = N(); mallet(G5, t, { vol: 0.08, decay: 0.16, bright: 0.25 }); mallet(E5, t + 0.14, { vol: 0.08, decay: 0.3, bright: 0.2 }); mallet(C5, t + 0.14, { vol: 0.04, decay: 0.4, bright: 0.2 }); },
+      // 布が取れる「ふわっ」：布のすれる短い息と、やわらかく上がる2音（reveal の「ぽわん」より高く、ベルで終わる）
+      unveil: () => {
+        const t = N();
+        noise(t, 0.16, { type: "bandpass", freq: 1200, to: 2600, q: 0.6, vol: 0.03, a: 0.06 });
+        partial(E5, t + 0.04, 0.16, { vol: 0.06, from: 600, fromT: 0.06 });
+        partial(A5, t + 0.15, 0.24, { vol: 0.06, from: 800, fromT: 0.06 });
+        bell(E6, t + 0.2, { vol: 0.03, decay: 0.35 });
+      }
     };
 
     const table = Object.assign({}, COMMON,
