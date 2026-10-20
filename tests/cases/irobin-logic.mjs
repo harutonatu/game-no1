@@ -16,10 +16,10 @@ function load(root) {
 }
 
 // ---- 局面を手で組む ----
-// 瓶の指定：色の配列（下→上）。{ c: [...], h: [true,...], sealed: true } で隠れ・栓も指定できる
+// 瓶の指定：色の配列（下→上）。{ c: [...], h: [true,...], sealed: true, cover: k } で隠れ・栓・布（§17）も指定できる
 const B = (spec) => {
   const o = Array.isArray(spec) ? { c: spec } : spec;
-  return { cells: [...o.c], hidden: o.h ? [...o.h] : o.c.map(() => false), sealed: !!o.sealed };
+  return { cells: [...o.c], hidden: o.h ? [...o.h] : o.c.map(() => false), sealed: !!o.sealed, ...(o.cover !== undefined ? { cover: o.cover } : {}) };
 };
 function mk(bottles, { slots = [null, null], queue = [], served = 0, total, moves = 0, won = false, params = { colors: 3, empties: 1, hidden: false, order: 'random' } } = {}) {
   return { level: 1, params, bottles: bottles.map(B), slots: [...slots], queue: [...queue], served, total: total ?? served + slots.filter((x) => x !== null).length + queue.length, moves, won };
@@ -212,7 +212,16 @@ export const tests = [
         const kinds = Object.keys(cnt);
         if (!kinds.every((k) => cnt[k] === 4)) bad.push(`${lv}: 色が4段ずつでない ${J(cnt)}`);
         if (info.fallback < 2 && kinds.length !== p.colors) bad.push(`${lv}: 色の数 ${kinds.length}≠${p.colors}`);
-        if (info.fallback === 0 && s.bottles.length !== p.colors + p.empties) bad.push(`${lv}: 瓶の本数 ${s.bottles.length}`);
+        // 布の瓶（§17）：空き瓶の布は「布をかぶった空き瓶」を1本足す（瓶が1本増える）。中身ありの布は色の瓶にかぶせる（本数は同じ）
+        const cl = Array.isArray(info.cloths) ? info.cloths : null;
+        const covered = s.bottles.filter((b) => b.cover !== null && b.cover !== undefined);
+        const emptyCloth = cl ? cl.filter((c) => c.empty).length : 0;
+        if (!cl) bad.push(`${lv}: info.cloths が無い`);
+        else if (J(cl.map((c) => [c.id, c.cover, c.empty])) !== J(covered.map((b) => [b.id, b.cover, b.cells.length === 0]))) bad.push(`${lv}: info.cloths が state の布の瓶と合わない`);
+        if (info.fallback === 0 && covered.length !== (p.cloths || 0)) bad.push(`${lv}: 布の瓶 ${covered.length} 本≠表の ${p.cloths}`);
+        if (covered.some((b) => !(Number.isInteger(b.cover) && b.cover >= 1 && b.cover < s.total))) bad.push(`${lv}: cover が 1〜total-1 でない`);
+        if (s.bottles.some((b) => !covered.includes(b) && b.cover !== null)) bad.push(`${lv}: 布の無い瓶の cover が null でない`);
+        if (info.fallback === 0 && s.bottles.length !== p.colors + p.empties + emptyCloth) bad.push(`${lv}: 瓶の本数 ${s.bottles.length}（色 ${p.colors}＋空き ${p.empties}＋空き瓶の布 ${emptyCloth}）`);
         if (s.bottles.some((b) => b.cells.length === 4 && new Set(b.cells).size === 1)) bad.push(`${lv}: 最初からそろった瓶がある`);
         if (s.bottles.some((b) => b.sealed)) bad.push(`${lv}: 最初から栓をした瓶がある`);
         if (s.bottles.some((b) => b.cells.length && b.hidden[b.cells.length - 1])) bad.push(`${lv}: 一番上が隠れている`);
@@ -225,10 +234,10 @@ export const tests = [
         if (!Array.isArray(info.solutionIds) || info.solutionIds.length !== (info.solution || []).length) bad.push(`${lv}: solutionIds が solution と同じ長さでない`);
         const rp = L.replay(lv, info.solutionIds);
         if (!(rp.ok && rp.state.won)) bad.push(`${lv}: solutionIds を replay しても won にならない（ok ${rp.ok}、applied ${rp.applied}/${(info.solutionIds || []).length}）`);
-        else if (info.fallback === 0 && !(rp.state.bottles.length === p.empties && rp.state.bottles.every((b) => b.cells.length === 0))) bad.push(`${lv}: クリアの局面が「空き瓶 ${p.empties} 本だけ」でない（${rp.state.bottles.length} 本）`);
+        else if (info.fallback === 0 && !(rp.state.bottles.length === p.empties + emptyCloth && rp.state.bottles.every((b) => b.cells.length === 0 && b.cover === null))) bad.push(`${lv}: クリアの局面が「空き瓶 ${p.empties + emptyCloth} 本だけ（布はすべて取れている）」でない（${rp.state.bottles.length} 本）`);
         if (!(info.nodes <= L.GEN_NODE_BUDGET * 1.5)) bad.push(`${lv}: nodes ${info.nodes}`);
       }
-      check(`${levels.length} 面（1〜60・1000）：決定的・各色4段・最初からそろった瓶なし・隠れの形・注文が各色1つ・id が 0〜・solutionIds を replay すると won、残るのは空き瓶だけ（届けた瓶は全部消える）`, bad.length === 0, bad.slice(0, 8));
+      check(`${levels.length} 面（1〜60・1000）：決定的・各色4段・最初からそろった瓶なし・隠れの形・注文が各色1つ・id が 0〜・solutionIds を replay すると won、残るのは空き瓶だけ（届けた瓶は全部消える。空き瓶の布の面は 1 本多い）・布の瓶の数と cover が info.cloths と合う`, bad.length === 0, bad.slice(0, 8));
       check(`1〜60 面と 1000 面の生成が合計 3 秒以内（${ms}ms。目安 iPhone SE 相当で 1 面 300ms 以内）`, ms <= 3000, ms);
       check(`表のとおりに作れた面（fallback 0）が 8 割以上（0:${fb[0]} 1:${fb[1]} 2:${fb[2]}）`, fb[0] >= levels.length * 0.8, fb);
       const l1 = first[0].state;
@@ -245,7 +254,7 @@ export const tests = [
     },
   },
   {
-    id: 'BL6', tier: 'smoke', node: true, title: 'いろびん：ソルバー（解けない盤は solved:false・待ち瓶がある盤の手順の位置がずれない・注文の順で解けるかどうかは変わらない・上限で exhausted）',
+    id: 'BL6', tier: 'smoke', node: true, title: 'いろびん：ソルバー（解けない盤は solved:false・待ち瓶がある盤の手順の位置がずれない・布の無い面では注文の順で解けるかどうかは変わらない・上限で exhausted）',
     run({ check, root }) {
       const L = load(root);
       // 解けない：空きがなく、どの一番上も合わない
@@ -259,16 +268,17 @@ export const tests = [
       let wst = waitB, wok = o.solved, waited = false;
       if (o.solved) for (const [f, t] of o.moves) { const r = L.applyMove(wst, f, t); if (r.outcome.kind !== 'pour') { wok = false; break; } if (r.outcome.sealed !== null && !r.outcome.deliveries.length) waited = true; wst = r.state; }
       check('待ち瓶ができる盤：solve の手順を applyMove で順に当てると、途中で待ち瓶ができ、最後は won（手の位置がずれない）', o.solved === true && wok && waited && wst.won === true, { o, waited, won: wst.won });
-      // 届けても空き瓶は増えないので、注文の順は「解けるかどうか」を変えない（待ち瓶は注ぐ元にも相手にもならない）
+      // 届けても空き瓶は増えないので、注文の順は「解けるかどうか」を変えない（待ち瓶は注ぐ元にも相手にもならない）。
+      // 布の瓶がある面は注文の順が効く（契約 §17.9）ので、布の無い面（6・7・27 面）で確かめる
       const pairs = [];
-      for (const lv of [6, 11, 18]) {
+      for (const lv of [6, 7, 27]) {
         const st = L.createLevel(lv).state;
         const q = [...st.slots, ...st.queue].reverse();
         const rev = { ...JSON.parse(J(st)), slots: q.slice(0, 2), queue: q.slice(2) };
         const a1 = L.solve(st), a2 = L.solve(rev), a3 = L.solve(st, { anyOrder: true });
-        pairs.push({ lv, a: a1.solved, rev: a2.solved, any: a3.solved });
+        pairs.push({ lv, a: a1.solved, rev: a2.solved, any: a3.solved, cloth: st.bottles.some((b) => b.cover !== null) });
       }
-      check('注文の順を逆にしても、anyOrder でも、解けるかどうかは同じ（生成した 6・11・18 面）', pairs.every((x) => x.a === true && x.rev === true && x.any === true), pairs);
+      check('布の無い面では、注文の順を逆にしても、anyOrder でも、解けるかどうかは同じ（生成した 6・7・27 面）', pairs.every((x) => x.a === true && x.rev === true && x.any === true && !x.cloth), pairs);
       // 解ける盤：moves を applyMove で再生すると won
       const easy = mk([[0, 1, 0], [1, 0, 1], [1, 0], []], { slots: [0, 1], queue: [], total: 2 });
       const e = L.solve(easy);
@@ -301,21 +311,23 @@ export const tests = [
       check('validateBest：壊れた値（""・abc・負・小数・NaN・Infinity・{}・1e400・2^53・null・object）はすべて 0', bb.length === 0, bb.map(String));
       check('validateBest：正しい値はそのまま（"0"→0、"3"→3、7→7、"9007199254740991"）', L.validateBest('0') === 0 && L.validateBest('3') === 3 && L.validateBest(7) === 7 && L.validateBest('9007199254740991') === 9007199254740991, null);
       const good = L.makeSave(5, [[0, 1], [2, 3]]);
-      check('makeSave は JSON 文字列 { v:2, level, moves }（手は瓶の id）', typeof good === 'string' && J(JSON.parse(good)) === J({ v: 2, level: 5, moves: [[0, 1], [2, 3]] }), good);
+      check('makeSave は JSON 文字列 { v:3, level, moves }（手は瓶の id。布の瓶のルール）', typeof good === 'string' && J(JSON.parse(good)) === J({ v: 3, level: 5, moves: [[0, 1], [2, 3]] }), good);
       check('validateSave：makeSave した文字列は { level, moves } に戻る', J(L.validateSave(good)) === J({ level: 5, moves: [[0, 1], [2, 3]] }), L.validateSave(good));
       const sv = (x) => L.validateSave(typeof x === 'string' ? x : J(x));
       const bad = [
-        ['壊れた JSON', '{not json'], ['空文字', ''], ['null', null], ['配列', '[]'], ['v が無い', { level: 1, moves: [] }], ['v が 3', { v: 3, level: 1, moves: [] }], ['v が文字', { v: '2', level: 1, moves: [] }],
-        ['level 0', { v: 2, level: 0, moves: [] }], ['level 負', { v: 2, level: -1, moves: [] }], ['level 小数', { v: 2, level: 1.5, moves: [] }], ['level 文字', { v: 2, level: '3', moves: [] }],
-        ['level 2^53', { v: 2, level: 9007199254740992, moves: [] }], ['moves が無い', { v: 2, level: 1 }], ['moves が配列でない', { v: 2, level: 1, moves: 'x' }],
-        ['手が1要素', { v: 2, level: 1, moves: [[0]] }], ['手が3要素', { v: 2, level: 1, moves: [[0, 1, 2]] }], ['手が小数', { v: 2, level: 1, moves: [[0, 1.5]] }], ['手が文字', { v: 2, level: 1, moves: [['0', '1']] }], ['手が null', { v: 2, level: 1, moves: [null] }], ['手が数', { v: 2, level: 1, moves: [3] }],
-        ['長すぎ', { v: 2, level: 1, moves: Array.from({ length: L.MAX_MOVES_SAVED + 1 }, () => [0, 1]) }],
-        ['v:1 で level 0', { v: 1, level: 0, moves: [] }], ['v:1 で level 文字', { v: 1, level: '3', moves: [] }],
+        ['壊れた JSON', '{not json'], ['空文字', ''], ['null', null], ['配列', '[]'], ['v が無い', { level: 1, moves: [] }], ['v が 4', { v: 4, level: 1, moves: [] }], ['v が 0', { v: 0, level: 1, moves: [] }], ['v が文字', { v: '3', level: 1, moves: [] }],
+        ['level 0', { v: 3, level: 0, moves: [] }], ['level 負', { v: 3, level: -1, moves: [] }], ['level 小数', { v: 3, level: 1.5, moves: [] }], ['level 文字', { v: 3, level: '3', moves: [] }],
+        ['level 2^53', { v: 3, level: 9007199254740992, moves: [] }], ['moves が無い', { v: 3, level: 1 }], ['moves が配列でない', { v: 3, level: 1, moves: 'x' }],
+        ['手が1要素', { v: 3, level: 1, moves: [[0]] }], ['手が3要素', { v: 3, level: 1, moves: [[0, 1, 2]] }], ['手が小数', { v: 3, level: 1, moves: [[0, 1.5]] }], ['手が文字', { v: 3, level: 1, moves: [['0', '1']] }], ['手が null', { v: 3, level: 1, moves: [null] }], ['手が数', { v: 3, level: 1, moves: [3] }],
+        ['長すぎ', { v: 3, level: 1, moves: Array.from({ length: L.MAX_MOVES_SAVED + 1 }, () => [0, 1]) }],
+        ['v:1 で level 0', { v: 1, level: 0, moves: [] }], ['v:1 で level 文字', { v: 1, level: '3', moves: [] }], ['v:2 で level 0', { v: 2, level: 0, moves: [] }], ['v:2 で level 小数', { v: 2, level: 2.5, moves: [] }],
       ].filter(([, x]) => sv(x) !== null).map(([n]) => n);
       check('validateSave：壊れた JSON・v 違い・level 0/負/小数/文字・moves が配列でない/手の形違い/長すぎ はすべて null', bad.length === 0, bad);
-      check('validateSave：手が MAX_MOVES_SAVED ちょうどは通る、空の手でも通る', sv({ v: 2, level: 1, moves: Array.from({ length: L.MAX_MOVES_SAVED }, () => [0, 1]) }) !== null && sv({ v: 2, level: 12, moves: [] }) !== null, null);
+      check('validateSave：手が MAX_MOVES_SAVED ちょうどは通る、空の手でも通る', sv({ v: 3, level: 1, moves: Array.from({ length: L.MAX_MOVES_SAVED }, () => [0, 1]) }) !== null && sv({ v: 3, level: 12, moves: [] }) !== null, null);
       const old = sv({ v: 1, level: 7, moves: [[0, 1], [2, 3]] });
       check('古い保存 v:1（届けると空き瓶が出てきた前のルールの手）は手を捨てて、その面の最初から（{ level: 7, moves: [] }）', J(old) === J({ level: 7, moves: [] }), old);
+      const old2 = sv({ v: 2, level: 9, moves: [[0, 1], [2, 3]] });
+      check('古い保存 v:2（布の前のルールの手）も手を捨てて、その面の最初から（{ level: 9, moves: [] }）', J(old2) === J({ level: 9, moves: [] }), old2);
       // replay（手は瓶の id）
       const r0 = L.replay(2, []);
       check('replay：手が無ければ createLevel と同じ局面、ok:true・applied 0', r0.ok === true && r0.applied === 0 && J(r0.state) === J(L.createLevel(2).state), r0.applied);
@@ -397,8 +409,8 @@ export const tests = [
       const sandbox = { localStorage: { getItem: () => null, setItem() {} }, navigator: {} };
       sandbox.globalThis = sandbox; vm.createContext(sandbox); vm.runInContext(src, sandbox);
       const names = sandbox.YubiSfx?.create('irobin')?.names || [];
-      const need = ['pick', 'drop', 'pour', 'reveal', 'seal', 'cork', 'deliver', 'arrive', 'clear', 'deny', 'undo', 'stuck', 'start', 'best', 'toggle'];
-      check(`"irobin" の効果音の表に契約 §9 の音名がすべてある（${names.length} 個）`, need.every((n) => names.includes(n)), need.filter((n) => !names.includes(n)));
+      const need = ['pick', 'drop', 'pour', 'reveal', 'seal', 'cork', 'deliver', 'arrive', 'clear', 'deny', 'undo', 'stuck', 'unveil', 'start', 'best', 'toggle'];
+      check(`"irobin" の効果音の表に契約 §9・§17.5 の音名（unveil を含む）がすべてある（${names.length} 個）`, need.every((n) => names.includes(n)), need.filter((n) => !names.includes(n)));
       const used = new Set();
       for (const f of ['render.js', 'main.js', 'input.js', 'index.html']) {
         const p = path.join(dir, f); if (!fs.existsSync(p)) continue;
@@ -477,7 +489,184 @@ export const tests = [
       }
       check(`届けるたびに瓶が届けた本数だけ減り、空き瓶は増えない（注いで空いた瓶の分だけ）。2・6・12・20・40 面の解（届け ${deliveriesSeen} 回）`, bad.length === 0 && deliveriesSeen > 0, bad.slice(0, 6));
       check('瓶の id：fromId・toId・deliveries の id が正しく、届けた id は消え、残りは並び順のまま・中身も同じ id に付いていく。消えた id では注げない', idBad.length === 0, idBad.slice(0, 6));
-      check('途中で保存（v:2・id の手）→ validateSave → replay で、同じ局面に戻る', saveBad.length === 0, saveBad);
+      check('途中で保存（v:3・id の手）→ validateSave → replay で、同じ局面に戻る', saveBad.length === 0, saveBad);
+    },
+  },
+
+  {
+    id: 'BL12', tier: 'smoke', node: true, title: 'いろびん 布の瓶：pourCheck の covered の順・布の瓶へ／から注げない・届けた数が cover に届いた手で unveiled に出て cover:null（1人早くは取れない）・空き瓶の布で空き瓶が増える・隠れの面は一番上だけ見える・イミュータブル',
+    run({ check, root }) {
+      const L = load(root);
+      // 0:[0,0,0] 1:[0] 2:布(cover 1)[1,1,2,2] 3:布(cover 2)空き瓶 4:[] 5:栓[3,3,3,3] 6:[1,1,1] 7:[1]
+      const S = mk([[0, 0, 0], [0], { c: [1, 1, 2, 2], cover: 1 }, { c: [], cover: 2 }, [], { c: [3, 3, 3, 3], sealed: true }, [1, 1, 1], [1]], { slots: [0, 1], queue: [2] });
+      const snap = J(S);
+      const R = (f, t) => L.pourCheck(S, f, t);
+      const ng = (f, t, why) => { const r = R(f, t); return !!r && r.ok === false && r.reason === why; };
+      check('布の瓶から（中身あり）・布の瓶へ（空き瓶の布にも、空の瓶からでも）は covered', ng(2, 4, 'covered') && ng(0, 3, 'covered') && ng(7, 3, 'covered') && ng(2, 0, 'covered'), [R(2, 4), R(0, 3), R(7, 3), R(2, 0)]);
+      check('判定の順：range → same → covered → empty → sealed（同じ布の瓶は same、範囲外は range、空の元＋布の相手・布の元＋栓の相手は covered）',
+        ng(2, 2, 'same') && ng(3, 99, 'range') && ng(4, 3, 'covered') && ng(3, 5, 'covered') && ng(4, 0, 'empty') && ng(5, 0, 'sealed'), [R(2, 2), R(3, 99), R(4, 3), R(3, 5)]);
+      const W = mk([[], { c: [1, 2], cover: 1 }, { c: [0, 0, 0, 0] }], { slots: [null, null], queue: [], served: 1, total: 1, won: true });
+      const w = L.pourCheck(W, 1, 0);
+      check('クリア後は布の瓶でも won（won が一番先）', !!w && w.ok === false && w.reason === 'won', w);
+      const inv = L.applyMove(S, 0, 3);
+      check('applyMove で布の瓶へ注ぐと invalid（reason covered）・state はそのまま', inv.outcome.kind === 'invalid' && inv.outcome.reason === 'covered' && J(inv.state) === snap, inv.outcome);
+      const lm = L.legalMoves(S);
+      check(`legalMoves に布の瓶（位置 2・3）を含む手が無い（${J(lm)}）`, lm.length > 0 && !lm.some(([f, t]) => [2, 3].includes(f) || [2, 3].includes(t)), lm);
+      check('はじめは布がかぶったまま（cover 1・2、届けた数 0）', S.bottles[2].cover === 1 && S.bottles[3].cover === 2, null);
+      // 1) 色 0 がそろって届く → served 1 → cover 1 の布が取れる（cover 2 はまだ。1 人早くは取れない）
+      const r1 = L.applyMove(S, 1, 0), o1 = r1.outcome, s1 = r1.state;
+      check('1 人届けた手（served 1）：unveiled は cover 1 の瓶（id 2）だけ。bottle は新しい並びの位置、cells・hidden は取れた瓶の中身',
+        o1.kind === 'pour' && s1.served === 1 && o1.unveiled.length === 1 && o1.unveiled[0].id === 2 && s1.bottles[o1.unveiled[0].bottle].id === 2 && J(o1.unveiled[0].cells) === '[1,1,2,2]' && J(o1.unveiled[0].hidden) === '[false,false,false,false]', o1.unveiled);
+      const b2 = s1.bottles.find((b) => b.id === 2), b3 = s1.bottles.find((b) => b.id === 3);
+      check('取れた瓶は cover:null（中身はそのまま）、cover 2 の瓶はまだ cover 2（1 人早くは取れない）', b2 && b2.cover === null && J(b2.cells) === '[1,1,2,2]' && b3 && b3.cover === 2, { b2, b3 });
+      check('ふつうの瓶は cover:null', s1.bottles.filter((b) => b.id !== 3).every((b) => b.cover === null), s1.bottles.map((b) => b.cover));
+      const p2 = L.pourCheck(s1, s1.bottles.findIndex((b) => b.id === 2), s1.bottles.findIndex((b) => b.id === 4));
+      check('布が取れた瓶は注ぐ元になる（空の瓶へ count 2）', p2.ok === true && p2.count === 2, p2);
+      check('元の state は変わらない（イミュータブル）', J(S) === snap, null);
+      // 2) 色 1 がそろって届く → served 2 → 空き瓶の布（cover 2）が取れて、使える空き瓶が 1 本増える
+      const usable = (st) => st.bottles.filter((b) => b.cells.length === 0 && b.cover === null && !b.sealed).length;
+      const i7 = s1.bottles.findIndex((b) => b.id === 7), i6 = s1.bottles.findIndex((b) => b.id === 6);
+      const r2 = L.applyMove(s1, i7, i6), o2 = r2.outcome, s2 = r2.state;
+      check('2 人目を届けた手（served 2）：空き瓶の布（id 3）が取れる。unveiled は cells []・bottle は新しい並びの位置',
+        o2.kind === 'pour' && s2.served === 2 && o2.deliveries.length === 1 && o2.unveiled.length === 1 && o2.unveiled[0].id === 3 && J(o2.unveiled[0].cells) === '[]' && s2.bottles[o2.unveiled[0].bottle].id === 3 && s2.bottles[o2.unveiled[0].bottle].cover === null, { u: o2.unveiled, served: s2.served });
+      check(`使える空き瓶が、注いで空いた 1 本＋布が取れた 1 本で ${usable(s1)} → ${usable(s2)} 本`, usable(s2) === usable(s1) + 2, { before: usable(s1), after: usable(s2) });
+      const r2b = L.applyMove(s1, s1.bottles.findIndex((b) => b.id === 2), s1.bottles.findIndex((b) => b.id === 4));
+      check('届けの無い手では unveiled は空の配列（布は取れない）', r2b.outcome.kind === 'pour' && Array.isArray(r2b.outcome.unveiled) && r2b.outcome.unveiled.length === 0 && r2b.state.bottles.find((b) => b.id === 3).cover === 2, r2b.outcome);
+      // 3) 隠れの面：布が取れると一番上だけ見え、ほかは「？」のまま
+      const H = mk([[0, 0, 0], [0], { c: [1, 2, 1, 2], h: [true, true, true, false], cover: 1 }, []], { slots: [0, null], queue: [], total: 2, params: { colors: 3, empties: 1, hidden: true, order: 'random' } });
+      const hs = J(H);
+      const r3 = L.applyMove(H, 1, 0), u3 = r3.outcome.unveiled[0];
+      const hb = r3.state.bottles.find((b) => b.id === 2);
+      check('隠れの面で取れた瓶は、一番上だけ見え下の 3 段は隠れのまま（unveiled の hidden も同じ）', !!u3 && J(u3.hidden) === '[true,true,true,false]' && hb && hb.cover === null && J(hb.hidden) === '[true,true,true,false]', { u3, hb });
+      check('隠れの面でも元の state は変わらない', J(H) === hs, null);
+      // 凍結した state でも例外なし
+      const fr = (o) => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); Object.values(o).forEach(fr); } return o; };
+      let threw = null;
+      try { const F = fr(JSON.parse(snap)); L.applyMove(F, 1, 0); L.applyMove(F, 0, 3); L.legalMoves(F); L.solve(F); } catch (e) { threw = String(e); }
+      check('凍結した布つきの state を渡しても例外にならない', threw === null, threw);
+      // ソルバーも布を考える：布が取れるまで注げない盤を解き、手順を applyMove で再生すると won
+      // 盤：0:[0,0,0] 1:[0] 2:布(cover 1)[1,1,1] 3:[1] 4:[]。色 0 を届けて布が取れてから、1 を 2 へ注ぐしかない
+      const CS = mk([[0, 0, 0], [0], { c: [1, 1, 1], cover: 1 }, [1], []], { slots: [0, 1], queue: [] });
+      const sv = L.solve(CS), solvedOk = (() => { if (!sv.solved) return false; let st = CS; for (const [f, t] of sv.moves) { const r = L.applyMove(st, f, t); if (r.outcome.kind !== 'pour') return false; st = r.state; } return st.won; })();
+      const dead = mk([[0, 0, 0], [1], { c: [0], cover: 2 }, [1, 1, 1]], { slots: [0, 1], queue: [], total: 2 });
+      const dv = L.solve(dead);
+      check('布が取れないと解けない盤（色 0 の最後の 1 段が cover 2 の布の中）は solved:false', dv.solved === false && dv.exhausted === false, dv);
+      check('solve は布の決まりで解き、手順を applyMove で再生すると won（布の瓶を使う手が出ない）', sv.solved === true && solvedOk, { solved: sv.solved, n: sv.moves && sv.moves.length });
+    },
+  },
+  {
+    id: 'BL13', tier: 'smoke', node: true, title: 'いろびん 布の生成：1〜2000 面が決定的（抜き取り）・全部解ける（solution を applyMove で再生して won・布は全部取れる）・paramsFor の表のとおり（1〜7 面は布なし、8 面は中身あり cover 1、15〜24 面は空き瓶 0.4、25 面以降は空き瓶の布なし）・中身ありの布の cover の幅・1本の布の瓶に同じ色4段が無い・25 面以降の布の面の半分以上で布が効いている（§17.9）',
+    run({ check, root }) {
+      const L = load(root);
+      const N = 2000;
+      const bad = [], tbl = [], det = [];
+      const fb = { 0: 0, 1: 0, 2: 0 };
+      let maxMs = 0, maxAt = 0, clothLv = 0, emptyCl = 0, fullCl = 0, effN = 0, effYes = 0;
+      const covBad = [];
+      const t0 = Date.now();
+      for (let lv = 1; lv <= N; lv++) {
+        const a = Date.now();
+        const c = L.createLevel(lv);
+        const ms = Date.now() - a; if (ms > maxMs) { maxMs = ms; maxAt = lv; }
+        if (lv % 7 === 0 || lv <= 30) { if (J(L.createLevel(lv)) !== J(c)) det.push(lv); }
+        const { state: s, info } = c, p = L.paramsFor(lv);
+        fb[info.fallback] = (fb[info.fallback] || 0) + 1;
+        // 面の表（契約 §17.2 の最終の表と §17.9）
+        const wantCloths = lv <= 7 ? 0 : lv <= 24 ? 1 : (lv % 2 === 0 ? 1 : 0);
+        const wantEmpty = lv <= 7 ? 0 : lv === 8 ? 0 : lv <= 14 ? 0.7 : lv <= 24 ? 0.4 : 0;
+        if (p.cloths !== wantCloths || (wantCloths > 0 && p.clothEmpty !== wantEmpty)) tbl.push({ lv, cloths: p.cloths, clothEmpty: p.clothEmpty });
+        const cov = s.bottles.filter((b) => b.cover !== null);
+        if (lv <= 7 && cov.length) bad.push(`${lv}: 1〜7 面に布がある`);
+        if (lv >= 25 && cov.some((b) => b.cells.length === 0)) bad.push(`${lv}: 25 面以降に空き瓶の布がある`);
+        if (info.fallback === 0 && cov.length !== p.cloths) bad.push(`${lv}: 布の瓶 ${cov.length} 本≠${p.cloths}`);
+        if (cov.length) clothLv++;
+        // 中身ありの布の cover の幅（§17.9）：8 面は 1、8〜14 面は 1〜total/3、15〜24 面は total/3〜total/2、25 面以降は total/2±1
+        const T = s.total, [cLo, cHi] = lv === 8 ? [1, 1] : lv <= 14 ? [1, Math.ceil(T / 3)] : lv <= 24 ? [Math.ceil(T / 3), Math.ceil(T / 2)] : [Math.ceil(T / 2) - 1, Math.ceil(T / 2) + 1];
+        if (info.fallback === 0) for (const b of cov) if (b.cells.length > 0 && !(b.cover >= cLo && b.cover <= cHi)) covBad.push({ lv, cover: b.cover, want: [cLo, cHi] });
+        if (lv === 8 && !(cov.length === 1 && cov[0].cells.length > 0 && cov[0].cover === 1)) covBad.push({ lv, intro: cov.map((b) => [b.cells.length, b.cover]) });
+        // 布が効いているか（§17.9）：cover を 1 にした同じ面より、注文の順どおりに解く探索量が 1.5 倍以上（25〜600 面の布の面）
+        if (lv >= 25 && lv <= 600 && cov.length) {
+          const one = JSON.parse(J(s)); one.bottles.forEach((b) => { if (b.cover !== null) b.cover = 1; });
+          const r = L.solve(JSON.parse(J(s)), { nodeLimit: 400000 }), r1 = L.solve(one, { nodeLimit: 400000 });
+          effN++; if (r.nodes >= 1.5 * r1.nodes) effYes++;
+        }
+        for (const b of cov) {
+          if (b.cells.length === 0) emptyCl++; else fullCl++;
+          if (!(b.cells.length === 0 || b.cells.length === L.CAP)) bad.push(`${lv}: 布の瓶の中身が ${b.cells.length} 段（空き瓶か 4 段のはず）`);
+          if (b.cells.length === L.CAP && b.cells.every((x) => x === b.cells[0])) bad.push(`${lv}: 布の瓶に同じ色 4 段（取れた瞬間にそろってしまう）`);
+          if (!(Number.isInteger(b.cover) && b.cover >= 1 && b.cover <= s.total - 1)) bad.push(`${lv}: cover ${b.cover} が 1〜total-1 でない`);
+        }
+        if (s.bottles.length > (L.MAX_BOTTLES || 11)) bad.push(`${lv}: 瓶が ${s.bottles.length} 本（11 本を超える）`);
+        if (!(info.nodes <= L.GEN_NODE_BUDGET)) bad.push(`${lv}: nodes ${info.nodes}`);
+        // 解ける：solution を applyMove で再生して won。布は途中で全部取れる
+        let st = s, unv = 0;
+        for (const [f, t] of info.solution) {
+          const r = L.applyMove(st, f, t);
+          if (r.outcome.kind !== 'pour') { bad.push(`${lv}: solution の手が注げない（${r.outcome.reason}）`); break; }
+          unv += r.outcome.unveiled.length; st = r.state;
+        }
+        if (!st.won) bad.push(`${lv}: solution で won にならない`);
+        else if (st.bottles.some((b) => b.cover !== null) || unv !== cov.length) bad.push(`${lv}: 布が取れないまま終わった（取れた ${unv}/${cov.length}）`);
+        if (bad.length > 20) break;
+      }
+      const total = Date.now() - t0;
+      check(`paramsFor の布の表（1〜7 面 0 本、8〜24 面 1 本・空き瓶 8 面 0／9〜14 面 0.7／15〜24 面 0.4、25 面以降は偶数面 1 本・奇数面 0 本・空き瓶 0）が 1〜${N} 面で正しい`, tbl.length === 0, tbl.slice(0, 6));
+      check(`中身ありの布の cover の幅（8 面は中身あり cover 1、〜14 面 1〜total/3、15〜24 面 total/3〜total/2、25 面以降 total/2±1）`, covBad.length === 0, covBad.slice(0, 6));
+      check(`25〜600 面の布の面の半分以上で布が効いている（cover 1 より探索量 1.5 倍以上）：${effYes}/${effN}＝${Math.round(100 * effYes / Math.max(1, effN))}%`, effN > 0 && effYes * 2 >= effN, { effYes, effN });
+      check(`1〜${N} 面：布の本数・中身（空き瓶か 4 段、同じ色 4 段なし）・cover・瓶 11 本以内・solution を再生すると won で布は全部取れる（布の面 ${clothLv}・空き瓶の布 ${emptyCl}・中身ありの布 ${fullCl}）`, bad.length === 0 && clothLv > 0 && emptyCl > 0 && fullCl > 0, bad.slice(0, 8));
+      check(`決定的（1〜30 面と 7 の倍数の面を 2 回作って JSON が一致）`, det.length === 0, det.slice(0, 8));
+      check(`fallback 2（固定の予備の面）が出ない（0:${fb[0]} 1:${fb[1]} 2:${fb[2]}）`, !fb[2], fb);
+      check(`生成が速い：1 面の最大 ${maxMs}ms（${maxAt} 面。目安 300ms 以内）、合計 ${total}ms`, maxMs <= 300, { maxMs, maxAt, total });
+    },
+  },
+  {
+    id: 'BL14', tier: 'smoke', node: true, title: 'いろびん 保存 v:3（布）：v:3 の途中保存を replay すると布の状態も同じ局面、v:2・v:1 は手を捨てて面の最初から、布の瓶を使う手は replay で止まる',
+    run({ check, root }) {
+      const L = load(root);
+      // 布が途中で取れる面を探す（空き瓶の布と中身ありの布の両方）
+      const found = { empty: null, full: null };
+      for (let lv = 8; lv <= 40 && !(found.empty && found.full); lv++) {
+        const { state: s0, info } = L.createLevel(lv);
+        let st = s0;
+        for (let k = 0; k < info.solution.length; k++) {
+          const r = L.applyMove(st, info.solution[k][0], info.solution[k][1]);
+          st = r.state;
+          for (const u of r.outcome.unveiled) {
+            const key = u.cells.length ? 'full' : 'empty';
+            if (!found[key]) found[key] = { lv, k, info, st };
+          }
+        }
+      }
+      check(`布が途中で取れる面がある（空き瓶 ${found.empty && found.empty.lv} 面・中身あり ${found.full && found.full.lv} 面）`, !!found.empty && !!found.full, null);
+      const bad = [];
+      for (const f of [found.empty, found.full].filter(Boolean)) {
+        const ids = f.info.solutionIds;
+        for (const cut of [Math.max(0, f.k - 1), f.k + 1]) {   // 布が取れる前と、取れた後
+          const raw = L.makeSave(f.lv, ids.slice(0, cut));
+          const o = JSON.parse(raw);
+          const sv = L.validateSave(raw);
+          const rp = sv && L.replay(f.lv, sv.moves);
+          let st = L.createLevel(f.lv).state;
+          for (const [a, b] of f.info.solution.slice(0, cut)) st = L.applyMove(st, a, b).state;
+          if (o.v !== 3) bad.push(`${f.lv}: makeSave の v が ${o.v}`);
+          if (!(rp && rp.ok && rp.applied === cut && J(rp.state) === J(st))) bad.push(`${f.lv}: ${cut} 手の保存を replay した局面が違う（布の状態 ${rp && J(rp.state.bottles.map((b) => b.cover))} / ${J(st.bottles.map((b) => b.cover))}）`);
+        }
+      }
+      check('v:3 の途中保存（布が取れる前・後）→ validateSave → replay で、布の状態（cover）も含めて同じ局面', bad.length === 0, bad);
+      // v:2・v:1（布の前のルール）の手は捨てる
+      const f = found.full || found.empty;
+      if (f) {
+        const some = f.info.solutionIds.slice(0, 3);
+        const v2 = L.validateSave(J({ v: 2, level: f.lv, moves: some })), v1 = L.validateSave(J({ v: 1, level: f.lv, moves: some }));
+        check(`古い v:2・v:1 の保存は手を捨てて、その面（${f.lv} 面）の最初から（{ level, moves: [] }）`, J(v2) === J({ level: f.lv, moves: [] }) && J(v1) === J({ level: f.lv, moves: [] }), { v2, v1 });
+        const rp0 = L.replay(f.lv, v2 ? v2.moves : null);
+        check('捨てた後の replay は createLevel と同じ最初の局面（布もかぶったまま）', !!rp0 && rp0.ok && rp0.applied === 0 && J(rp0.state) === J(L.createLevel(f.lv).state) && rp0.state.bottles.some((b) => b.cover !== null), rp0 && rp0.applied);
+        // 布の瓶を使う手は replay で止まる
+        const s0 = L.createLevel(f.lv).state;
+        const cid = s0.bottles.find((b) => b.cover !== null).id, other = s0.bottles.find((b) => b.cover === null && b.cells.length > 0).id;
+        const rb = L.replay(f.lv, [[other, cid]]), rb2 = L.replay(f.lv, [[cid, other]]);
+        check('布の瓶へ／から注ぐ手（id）を含む保存は replay で止まる（ok:false・applied 0）', rb.ok === false && rb.applied === 0 && rb2.ok === false && rb2.applied === 0, { rb: rb.applied, rb2: rb2.applied });
+      }
     },
   },
 ];

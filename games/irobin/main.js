@@ -22,6 +22,7 @@
   const KEY_BEST = L.SAVE_KEY_BEST || "irobin.best";
   const KEY_SAVE = L.SAVE_KEY_SAVE || "irobin.save";
   const KEY_HELP = L.SAVE_KEY_HELP || "irobin.help";
+  const KEY_CLOTH = L.SAVE_KEY_CLOTH || "irobin.cloth";
   const CARD_LOCK_MS = 400;     // カードを出してから押せない時間
   const BOARD_BLOCK_MS = 300;   // カードを閉じた直後、瓶の押下を受けない時間
 
@@ -32,7 +33,13 @@
   // 手は残っているが、もう全部は届けられない（ソルバーが上限内で「解けない」と言い切れたときだけ）
   const HINT_DOOMED = "この ままだと ぜんぶは とどけられないよ。「1手もどす」を おしてみてね";
   const DOOM_NODE_LIMIT = 3000;   // 詰み予備軍を調べる上限（局面の数。上限に届いたら何も言わない）
+  // 布の瓶（§17.4）
+  const HINT_CLOTH_FIRST = "ぬのの びんは、おきゃくさんに とどけると あくよ。どの いろから とどけるか かんがえよう";
+  // 横向きで背が低い画面（SE 横）はヒントの欄が狭いので、短い文にする
+  const shortHint = () => { try { return !!(window.matchMedia && window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches); } catch (e) { return false; } };
+  const clothHint = (m) => (shortHint() ? `ぬのの びんは あと ${m} にん とどけると あくよ` : `ぬのの びんは、おきゃくさんに あと ${m} にん とどけると あくよ`);
   const DENY_HINT = {
+    covered: "ぬのの びんは、おきゃくさんに とどけると あくよ",
     mismatch: "いろが ちがうよ。うえの いろが おなじ びんか、からの びんに そそげるよ",
     full: "その びんは いっぱいだよ",
     sealed: "せんを した びんには いれられないよ",
@@ -104,6 +111,8 @@
   let lastClear = null;         // { level, moves, improved, par }
   let par = 0;                  // この面の目安の手数（生成時にソルバーが見つけた解の長さ。最短とは限らない）
   let doomed = false;           // 手はあるが、もう解けない（ソルバーが言い切れたとき）
+  let clothTipLevel = 0;        // 布の説明を出した面（やりなおしても同じ面なら出す）
+  let clothTip = false;         // はじめて布が出た面（面の最初のヒントを布の説明にし、布の瓶を指さす）
 
   const reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
   const render = R.create({ board: el.board, shop: el.shop, fx: el.fx }, { calm: !!reduceMotion.matches, sfx });
@@ -113,8 +122,21 @@
   const shownPhase = () => (paused ? "paused" : phase);
   function syncPhase() { el.playView.dataset.phase = shownPhase(); }
   function setPhase(p) { phase = p; syncPhase(); renderTools(); }
-  function setHint(text) { const t = text || ""; if (el.hint.textContent !== t) el.hint.textContent = t; }
-  const idleHint = () => (doomed ? HINT_DOOMED : level <= 2 && moves.length === 0 ? HINT_FIRST : HINT_IDLE);
+  // ヒントは2行分の高さに固定。長い文言は字を 15→12px まで小さくして収める（配置は動かさない）
+  function setHint(text) {
+    const t = text || "";
+    if (el.hint.textContent === t) return;
+    el.hint.textContent = t;
+    el.hint.style.fontSize = "";
+    if (!t) return;
+    for (const px of [14, 13, 12]) {
+      if (el.hint.scrollHeight <= el.hint.clientHeight + 1) break;
+      el.hint.style.fontSize = px + "px";
+    }
+  }
+  const coverOf = (b) => (b && Number.isSafeInteger(b.cover) ? b.cover : null);
+  const hasCloth = (s) => !!(s && Array.isArray(s.bottles) && s.bottles.some((b) => coverOf(b) !== null));
+  const idleHint = () => (doomed ? HINT_DOOMED : clothTip && moves.length === 0 ? (shortHint() ? "ぬのの びんは とどけると あくよ" : HINT_CLOTH_FIRST) : level <= 2 && moves.length === 0 ? HINT_FIRST : HINT_IDLE);
   const isStuckNow = () => !!(state && !state.won && safeCall(() => L.isStuck(state), false));
   const restPhase = () => (state && state.won ? "clear" : isStuckNow() ? "stuck" : selected !== null ? "selected" : "idle");
 
@@ -141,6 +163,8 @@
     el.restartBtn.dataset.attention = need && moves.length > 0 ? "1" : "0";
     // 最初の2面は、注文（トレイ）を指さす
     el.shop.dataset.tip = level <= 2 && moves.length === 0 && phase !== "clear" ? "1" : "0";
+    // はじめて布が出た面は、布の瓶の札を指さす
+    el.board.dataset.clothTip = clothTip && moves.length === 0 && phase !== "clear" ? "1" : "0";
   }
   // 手は残っているのに、もう全部は届けられない局面かどうか（注ぎ終わって落ち着いたときに1回だけ調べる）。
   // 上限に届いた（exhausted）ときは言い切れないので何も言わない。setState の局面（テスト用・色が4段そろわないこともある）は調べない
@@ -177,6 +201,8 @@
     }
     return { base, st, hist, ok, created };
   }
+  // 置き場所の数（§17.7）：面の最初の瓶の本数（id は 0〜本数-1）
+  const placesOf = (s) => (s && Array.isArray(s.bottles) ? s.bottles.reduce((m, b) => Math.max(m, Number.isSafeInteger(b.id) ? b.id + 1 : 0), s.bottles.length) : 0);
   const ordersOf = (s) => [].concat(s && s.slots || [], s && s.queue || []).filter((x) => x !== null && x !== undefined);
   function startLevel(lv, mv) {
     clearLater();
@@ -200,7 +226,12 @@
     selected = null;
     doomed = false;
     par = b.created && b.created.info && Array.isArray(b.created.info.solution) ? b.created.info.solution.length : 0;
-    render.build(state, { orders: ordersOf(b.base) });
+    // はじめて布が出た面：布の説明を出し、見たことを保存する
+    // （やりなおしで同じ面に戻ったときも出す。保存は見せた時点で "1"）
+    const clothSeen = safeCall(() => L.validateFlag(readKey(KEY_CLOTH)), false);
+    clothTip = hasCloth(b.base) && (clothTipLevel === n || (!clothSeen && moves.length === 0));
+    if (clothTip) { clothTipLevel = n; if (!clothSeen) writeKey(KEY_CLOTH, "1"); }
+    render.build(state, { orders: ordersOf(b.base), places: b.base.bottles.length });
     render.update(state, { selected: null });
     if (state.won) {   // 最後の手まで保存されていた（クリアの記録の前に閉じた）
       const r = L.recordBest(best, level);
@@ -250,6 +281,14 @@
     }
     const b = state.bottles[i];
     if (!Number.isInteger(i) || !b) return null;
+    // 布の瓶：選べない。揺らしてヒント。選んでいる瓶があっても、その選びは解除しない（§17.4）
+    if (coverOf(b) !== null) {
+      const m = Math.max(0, coverOf(b) - (Number(state.served) || 0));
+      setHint(clothHint(m));
+      render.deny(i, "covered");
+      sfx.play("deny");
+      return "covered";
+    }
     if (selected === null) {
       if (!b.cells || b.cells.length === 0) { setHint(DENY_HINT.empty); render.deny(i, "empty"); return null; }
       if (b.sealed) { setHint("せんを した びんは うごかせないよ"); render.deny(i, "sealed"); return null; }
@@ -297,6 +336,11 @@
     return "pour";
   }
 
+  // 布が取れたときの一言（§17.8）：空き瓶なら「あきびんが でてきた！」、中身あり（色水）なら何も言わない（null。音と光だけ）
+  function unveilHint(o) {
+    const list = Array.isArray(o && o.unveiled) ? o.unveiled : [];
+    return list.some((u) => !Array.isArray(u.cells) || u.cells.length === 0) ? "あきびんが でてきた！" : null;
+  }
   function afterPour(o, wasDoomed) {
     if (state.won) { onClear(); return; }
     if (o.stuck || isStuckNow()) {
@@ -315,6 +359,8 @@
       return;
     }
     if (selected !== null) { setHint(HINT_SELECTED); return; }
+    const uh = unveilHint(o);
+    if (uh) { setHint(uh); return; }
     const del = Array.isArray(o.deliveries) ? o.deliveries : [];
     const auto = del.filter((d) => d.bottle !== o.sealed);   // まっていた びんが、来たお客さんに じどうで届いた
     if (auto.length) {
@@ -408,7 +454,7 @@
       const base = custom;
       flush();
       state = base; history = []; moves = []; selected = null; doomed = false;
-      render.build(state, { orders: ordersOf(base) });
+      render.build(state, { orders: ordersOf(base), places: placesOf(base) });
       hud();
       setPhase(restPhase());
       setHint(idleHint());
@@ -455,9 +501,9 @@
       <ol class="rules">
         <li>びんを おして、べつの びんを おすと <b>そそげる</b>よ（<b>おなじ いろ</b>の うえ か、<b>からの びん</b>に）。</li>
         <li>4つ そろうと <b>せん</b>。うえの <b>トレイと おなじ いろ</b>なら おきゃくさんに とどくよ。まだ いない いろは、その ばしょで まつよ。</li>
-        <li>「？」は うえを どかすと みえる。こまったら「1手もどす」「やりなおし」（なんかいでも）。</li>
+        <li>「？」は うえを どかすと みえるよ。<b>ぬのの びん</b>は、とどけた にんずで あくよ。</li>
       </ol>
-      <p class="note">キー：やじるし・エンター・すうじ（10ぽんめまで）で えらぶ。U もどす、M おと。</p>
+      <p class="note">こまったら「1手もどす」「やりなおし」。キー：やじるし・エンター・すうじ（10ぽんめまで）で えらぶ。U もどす、M おと。</p>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");
   }
   function closeCard() {
@@ -567,7 +613,7 @@
       if (!b || !Array.isArray(b.cells) || b.cells.length > capN || !b.cells.every(okColor)) return null;
       const hidden = Array.isArray(b.hidden) ? b.hidden.map(Boolean) : b.cells.map(() => false);
       if (hidden.length !== b.cells.length) return null;
-      bottles.push({ id: b.id, cells: b.cells.slice(), hidden, sealed: !!b.sealed });
+      bottles.push({ id: b.id, cells: b.cells.slice(), hidden, sealed: !!b.sealed, cover: Number.isSafeInteger(b.cover) && b.cover >= 0 ? b.cover : null });
     }
     // 瓶の id：無い・重なるときは並び順（0〜）にする（logic と同じ決まり）
     const ids = bottles.map((b) => b.id);
@@ -633,8 +679,8 @@
       render.finishAll();
       custom = st;
       level = st.level;
-      state = st; history = []; moves = []; selected = null; doomed = false; par = 0;
-      render.build(state, { orders: ordersOf(st) });
+      state = st; history = []; moves = []; selected = null; doomed = false; par = 0; clothTip = false;
+      render.build(state, { orders: ordersOf(st), places: placesOf(st) });
       hud();
       setPhase(restPhase());
       setHint(phase === "stuck" ? HINT_STUCK : idleHint());

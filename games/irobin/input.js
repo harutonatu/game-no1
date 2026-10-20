@@ -12,7 +12,7 @@
  *     （Enter・Space はボタンの標準の click に任せる。キーで押した click は via 'key'）
  *   - ダブルタップ拡大の抑止：#board と .tools で、350ms 以内の2回目のタップの touchend を止め、click は自分で送る。
  *     dblclick・gesturestart/change/end も止める。
- *   - キーボード：←→ で左右、↑↓ で上下の段（board.dataset.cols）、1〜9・0 で番号の瓶、U・Backspace で undo、R で restart、
+ *   - キーボード：←→ で左右、↑↓ で上下の段（board.dataset.cols。空いた置き場所は飛ばす）、1〜9・0 で置き場所の番号（id+1）の瓶、U・Backspace で undo、R で restart、
  *     Esc で deselect（カードが開いていれば close）、M で sound、? / で help。
  *     #overlay が見えている間は Esc 以外を無視する。修飾キー（Ctrl・Cmd・Alt）つきは無視する。
  *   - isBlocked() が true の間は onPick を呼ばない。
@@ -88,6 +88,7 @@
     for (const type of ["gesturestart", "gesturechange", "gestureend"]) on(doc, type, (e) => e.preventDefault(), { passive: false });
 
     // ---- キーボード ----
+    // 置き場所は瓶の id で固定（届けた瓶の跡は空いたまま。§17.7）。並びは #board の中の順＝置き場所の順。
     // 並んでいる瓶（飛んでいる瓶を除く）の中で何番目か。data-index は届けの演出中に古いことがあるので使わない
     function focusedIndex() {
       const a = doc.activeElement;
@@ -95,6 +96,7 @@
       const i = bottles().indexOf(a);
       return i >= 0 ? i : null;
     }
+    const placeOf = (btn) => { const p = idOf(btn); return p === undefined ? -1 : p; };
     function focusBottle(index) {
       const list = bottles();
       if (!list.length) return;
@@ -116,15 +118,23 @@
         next = cur + dx;
         if (next < 0 || next >= list.length) return;   // 端で止まる
       } else if (dy) {
-        next = cur + dy * cols;
-        if (next < 0) return;
-        if (next >= list.length) {
-          // 下の段が短いときは、その段の最後へ
-          const row = Math.floor(cur / cols);
-          const lastRow = Math.floor((list.length - 1) / cols);
-          if (row >= lastRow) return;
-          next = list.length - 1;
+        // 上下の段：置き場所の段と列で考える。行った先が空いた場所なら、その段のいちばん近い列の瓶へ。
+        // その段に瓶が無ければ、さらに先の段へ（空いた場所は飛ばす）
+        const p = placeOf(list[cur]);
+        if (p < 0) return;
+        const row = Math.floor(p / cols), col = p % cols;
+        const lastRow = list.reduce((m, b) => Math.max(m, Math.floor(placeOf(b) / cols)), 0);
+        next = -1;
+        for (let r = row + dy; r >= 0 && r <= lastRow && next < 0; r += dy) {
+          let bestD = Infinity;
+          list.forEach((b, i) => {
+            const q = placeOf(b);
+            if (q < 0 || Math.floor(q / cols) !== r) return;
+            const d = Math.abs((q % cols) - col);
+            if (d < bestD) { bestD = d; next = i; }
+          });
         }
+        if (next < 0) return;
       }
       focusBottle(next);
     }
@@ -152,12 +162,15 @@
         default: break;
       }
       if (/^[0-9]$/.test(key)) {
+        // 番号は置き場所の番号（id + 1）で、届けても変わらない。空いた場所の番号は何もしない
         const n = key === "0" ? 10 : Number(key);
         const list = bottles();
-        if (n > list.length) return;
+        const i = list.findIndex((b) => placeOf(b) === n - 1);
         e.preventDefault();
-        focusBottle(n - 1);
-        pick(n - 1, "key", idOf(list[n - 1]));
+        if (i < 0) return;
+        focusBottle(i);
+        const idx = Number(list[i].dataset.index);
+        pick(Number.isInteger(idx) ? idx : i, "key", idOf(list[i]));
       }
     });
 
