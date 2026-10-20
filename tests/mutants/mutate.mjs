@@ -3,6 +3,7 @@
 //   node tests/mutants/mutate.mjs [smoke|full|both]     （既定 both）
 //   M=M7,M10 で変異を絞る。結果は表と tests/mutants/result.json（.gitignore 対象外の一時結果。コミットしない）
 // 置換前の文字列が見つからないときは「!! 置換対象なし」と表示する（アプリが変わったら、ここの文字列を直す）
+// 置換前は文字列か正規表現（最初の1か所だけ）、置換後は文字列か関数（String.prototype.replace と同じ）
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,7 +14,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
 const RUN = path.resolve(HERE, '../run.mjs');
 const which = process.argv[2] || 'both';
-// [名前, リスク, ファイル, 置換前, 置換後]
+// [名前, リスク, ファイル, 置換前（文字列か正規表現）, 置換後（文字列か関数）]
 const OVER_BTNS = `<div class="row"><button class="cta primary" type="button" data-cmd="restart">もう一度</button></div>
         <div class="row">
           <button class="cta" type="button" data-cmd="undo">1手戻す</button>
@@ -85,9 +86,10 @@ const M = [
   ['MH5 ハシわたり：隠れたとき（visibilitychange で hidden）押下を取り消さない', '中断', 'games/hashi/main.js', 'if (phase === "growing") abortHold();', ''],
   ['MH6 ハシわたり：「もう一度」で clearLater() を呼ばない（古い回のタイマーが残る）', 'タイマー', 'games/hashi/main.js', 'clearLater();   // 前の回のタイマーを片付ける（もう一度・起動）', ''],
   // ---- 版の表示（メニュー）。版を上げる手順が崩れたときの検出 ----
-  ['MV1 版の数字だけ上げ忘れる（version.js が古いまま。sw.js は v20）', '更新', 'common/version.js', 'version: "v20"', 'version: "v19"'],
+  // MV1・MV3 は正規表現で今の版・日付を読み、1つずらす（版を上げるたびに直さなくてよい）
+  ['MV1 版の数字だけ上げ忘れる（version.js が1つ前の版のまま。sw.js は今の版）', '更新', 'common/version.js', /version: "v(\d+)"/, (_, n) => `version: "v${Number(n) - 1}"`],
   ['MV2 version.js を事前キャッシュから外す（オフラインで版が出ない）', 'オフライン', 'sw.js', '  "./common/version.js",\n', ''],
-  ['MV3 更新日が YYYY-MM-DD でない', '表示', 'common/version.js', 'date: "2026-10-19"', 'date: "2026/10/19"'],
+  ['MV3 更新日が YYYY-MM-DD でない（今の日付の - を / にする）', '表示', 'common/version.js', /date: "(\d{4})-(\d{2})-(\d{2})"/, (_, y, m, d) => `date: "${y}/${m}/${d}"`],
   // ---- 日付・時刻（いろコード）。日付の処理を足したら、ここにも変異を足す（tests/README.md「日付・時計」）----
   ['MD1 いろコード：todayStr を UTC の日付にする（toISOString 由来。日本の0〜9時台に前日になる）', '日付', 'games/irocode/logic.js', 'return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());', 'return d.toISOString().slice(0, 10);'],
   ['MD2 いろコード：todayStr の月が 1 ずれる（getMonth() + 1 を外す）', '日付', 'games/irocode/logic.js', 'pad2(d.getMonth() + 1)', 'pad2(d.getMonth())'],
@@ -175,7 +177,7 @@ try {
     const dir = path.join(TMP, id);
     copyApp(dir);
     const f = path.join(dir, file), src = fs.readFileSync(f, 'utf8');
-    if (!src.includes(from)) { console.log(`!! ${name}: 置換対象が見つからない（${file}）`); rows.push({ name, risk, error: '置換対象なし' }); continue; }
+    if (typeof from === 'string' ? !src.includes(from) : !from.test(src)) { console.log(`!! ${name}: 置換対象が見つからない（${file}）`); rows.push({ name, risk, error: '置換対象なし' }); continue; }
     fs.writeFileSync(f, src.replace(from, to));
     const row = { name, risk };
     for (const t of tiers) {

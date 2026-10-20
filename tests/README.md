@@ -30,6 +30,25 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | `JSON` | — | 結果を JSON に書き出すパス |
 | `CLOCK` | — | `0` で待ち時間の早送りを止め、すべて実時間で待つ（早送りのせいで合否が変わっていないかの確認用） |
 | `TEST_TIMEOUT` | `60000` | 1 項目の上限（ms）。止まっても全体は止まらない |
+| `HEADED` | — | `1` で画面を出してブラウザを起動する（既定はヘッドレス）。下の「画面を出して流す」 |
+
+### 画面を出して流す（HEADED=1）
+
+**公開の条件はこれまでどおりヘッドレスでよい**です。`HEADED=1` は、WebKit のヘッドレスで「Target crashed」が出て落ちるとき（課題 MT-14）の代わりの流し方です。開始時の表示行に「画面: あり」と出ます。
+
+```sh
+# クラウド（Linux、画面が無い）：xvfb-run -a で仮の画面を用意する
+HEADED=1 BROWSER=webkit WORKERS=1 xvfb-run -a node tests/run.mjs smoke
+```
+
+```powershell
+# Windows PowerShell（画面があるので xvfb-run は不要）
+$env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
+```
+
+- Linux で画面（`DISPLAY`）が無いのに `HEADED=1` にすると、「xvfb-run -a をつけてください」と出て止まります。
+- PowerShell の `$env:` は、そのウィンドウを閉じるまで残ります。ヘッドレスに戻すときは `Remove-Item Env:HEADED`。
+- **会社の PC には監視ソフトがあり、ヘッドレスのブラウザが止められる可能性があります。テスト（Playwright）を使ってよいか、会社の決まりを確かめてから使ってください。**
 
 ### いろコード（I グループ）の見方
 

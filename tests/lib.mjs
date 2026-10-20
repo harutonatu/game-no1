@@ -23,7 +23,12 @@ export const BROWSER = process.env.BROWSER || 'chromium';
 if (!['chromium', 'webkit'].includes(BROWSER)) throw new Error('BROWSER は chromium か webkit: ' + BROWSER);
 export const browserType = pw[BROWSER];
 export const IS_CHROMIUM = BROWSER === 'chromium';
-export const launchBrowser = () => browserType.launch(IS_CHROMIUM ? { args: ['--autoplay-policy=no-user-gesture-required'] } : {});
+// HEADED=1 で画面を出して起動する（既定はヘッドレス）。WebKit のヘッドレスで Target crashed が出るときの代わりの流し方（課題 MT-14）
+export const HEADED = process.env.HEADED === '1';
+if (HEADED && process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+  throw new Error('HEADED=1 ですが画面（DISPLAY）がありません。コマンドの前に xvfb-run -a をつけてください（例：HEADED=1 BROWSER=webkit WORKERS=1 xvfb-run -a node tests/run.mjs smoke）');
+}
+export const launchBrowser = () => browserType.launch({ headless: !HEADED, ...(IS_CHROMIUM ? { args: ['--autoplay-policy=no-user-gesture-required'] } : {}) });
 
 export const PORT = Number(process.env.PORT || 8800);
 export const ORIGIN = `http://127.0.0.1:${PORT}`;

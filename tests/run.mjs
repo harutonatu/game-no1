@@ -6,6 +6,7 @@
 //   BROWSER=chromium|webkit（既定 chromium）  WORKERS=4（グループ単位の並列数）  PORT=8800（並列 i 番目は PORT+i を使う）
 //   ONLY=D2,S1（項目を絞る）  JSON=path（結果を JSON で書き出す）  VERBOSE=1（合格した確認も表示）
 //   CLOCK=0（待ち時間の早送りを止める）  TEST_TIMEOUT=60000（1項目の上限 ms）
+//   HEADED=1（画面を出してブラウザを起動。Linux で画面が無いときは xvfb-run -a を前につける）
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -48,6 +49,11 @@ const root = path.resolve(args[1] || process.env.GAME_ROOT || path.join(HERE, '.
 if (!fs.existsSync(path.join(root, 'index.html'))) { console.error('配信ディレクトリに index.html がない: ' + root); process.exit(2); }
 const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null;
 const BROWSER = process.env.BROWSER || 'chromium';
+// HEADED=1 なのに画面が無い（Linux で DISPLAY が無い）ときは、ここで分かりやすく止める（tests/lib.mjs でも同じ確認をする）
+if (process.env.HEADED === '1' && process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+  console.error('HEADED=1 ですが画面（DISPLAY）がありません。コマンドの前に xvfb-run -a をつけてください。\n  例：HEADED=1 BROWSER=webkit WORKERS=1 xvfb-run -a node tests/run.mjs smoke');
+  process.exit(2);
+}
 const pick = (t) => (tier === 'full' || t.tier === 'smoke') && (!ONLY || ONLY.includes(t.id));
 
 if (isWorker) await worker(args[2]); else await main();
@@ -107,7 +113,7 @@ async function main() {
   for (const g of GROUPS) mods[g.key] = (await import('./cases/' + g.file)).tests;
   const plan = GROUPS.filter((g) => mods[g.key].some(pick));
   const target = tier === 'smoke' ? 15 : 60;
-  console.log(`ゆびあそび 統合テスト [${tier}]  ブラウザ: ${BROWSER}  並列: ${WORKERS}  早送り: ${process.env.CLOCK === '0' ? 'なし' : 'あり'}`);
+  console.log(`ゆびあそび 統合テスト [${tier}]  ブラウザ: ${BROWSER}  並列: ${WORKERS}  早送り: ${process.env.CLOCK === '0' ? 'なし' : 'あり'}  画面: ${process.env.HEADED === '1' ? 'あり' : 'なし'}`);
   console.log(`配信: ${root}  → http://127.0.0.1:${PORT}〜${PORT + WORKERS - 1}/game-no1/\n`);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'yubi-tests-'));
   const results = {};
