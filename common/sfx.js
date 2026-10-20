@@ -11,6 +11,7 @@
  *   const sfx = YubiSfx.create("hashi");    // ハシわたり（grow(ratio)/tip/land/perfect(n)/walk/splash/peek）
  *   const sfx = YubiSfx.create("irobin");   // いろびん（pick/drop/pour(count)/reveal/seal(colorId)/cork/deliver(n)/arrive/clear/deny/undo/stuck/unveil）
  *   const sfx = YubiSfx.create("matomete"); // まとめてポン（select(n)/pop(n)/fall/allclear/over/deny/undo/blast(r)/streak(n)）
+ *   const sfx = YubiSfx.create("michibiki"); // ミチビキ空港（warn/pick/lock/land(n)/near/crash/bounce/open(color)/over）
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -27,6 +28,8 @@
   const STAGGER = { slice: 0.03 };
   const STAGGER_MAX = 0.24;
   const GAP = { move: 0.03, rotate: 0.03, hold: 0.05, merge: 0.03, tap: 0.04, undo: 0.06, launch: 0.07, miss: 0.08, tick: 0.045, unwind: 0.045, limit: 0.25, step: 0.08, grow: 0.05, walk: 0.08, pour: 0.05, pick: 0.03, arrive: 0.08, select: 0.03, pop: 0.03 };
+  // ミチビキ空港だけの間引き（lock・land は ブロック・ハシわたりにも同じ名前の音があるので、全体の GAP に入れずにこのゲームだけに効かせる）
+  const GAP_MICHIBIKI = { warn: 0.2, near: 0.5, bounce: 0.15, land: 0.05, lock: 0.1 };
 
   function create(game, opts) {
     opts = opts || {};
@@ -497,8 +500,51 @@
       }
     };
 
+    // ミチビキ空港：着陸の「ふわっ → ポーン」が気持ちよさの中心。着陸数 n で五音音階を少しずつ上がり、5 の倍数で和音とベル。
+    // 一番高い基音でも A6（1760Hz）まで（10 段で一回りして戻る）。知らせの音（warn・near）は小さく短く、ぶつかった音は低く短く責めない
+    const landFreq = (n) => { const i = Math.max(0, (Math.floor(Number(n)) || 1) - 1) % 10; return C5 * Math.pow(2, (12 * Math.floor(i / 5) + PENTA[i % 5]) / 12); };
+    const MICHIBIKI = {
+      // 予告「ぴこっ」：高めの2音を小さく
+      warn: () => { const t = N(); partial(E6, t, 0.06, { vol: 0.035, a: 0.002 }); partial(A5 * 2, t + 0.07, 0.08, { vol: 0.03, a: 0.002 }); },
+      // 機体をつかむ・選ぶ「こっ」
+      pick: () => wood(820, N(), { vol: 0.07, dur: 0.04, jit: 20 }),
+      // 道が同じ色の滑走路につながった「ちりん」
+      lock: () => { const t = N(); bell(E6, t, { vol: 0.045, decay: 0.3 }); bell(A5 * 2, t + 0.06, { vol: 0.03, decay: 0.35 }); },
+      // 着陸：下りてくる「ふわっ」（ノイズ）＋マリンバの「ポーン」＋5度上。5 の倍数は和音とベル
+      land: (n) => {
+        const f = landFreq(n), t = N(), k = Math.floor(Number(n)) || 0;
+        noise(t, 0.12, { type: "lowpass", freq: 1600, to: 400, vol: 0.03, a: 0.03 });
+        mallet(f, t + 0.05, { vol: 0.13, decay: 0.32, bright: 0.45, jit: 4 });
+        mallet(f * 1.5, t + 0.11, { vol: 0.07, decay: 0.22, bright: 0.3, jit: 4 });
+        if (k > 0 && k % 5 === 0) {
+          [1, 1.26, 1.5].forEach((m, i) => partial(Math.min(f, 1050) * m, t + 0.17 + i * 0.05, 0.4, { vol: 0.035, a: 0.006 }));
+          bell(Math.min(f * 2, 2100), t + 0.3, { vol: 0.045, decay: 0.5 });
+        }
+      },
+      // 近すぎる「ぴぴっ」：耳に痛くない高さ（D6 前後）で短く2回
+      near: () => { const t = N(); partial(1174.7, t, 0.05, { vol: 0.04, a: 0.002 }); partial(1174.7, t + 0.09, 0.05, { vol: 0.04, a: 0.002 }); },
+      // ぶつかった「どすん」：低く短く
+      crash: () => {
+        const t = N();
+        partial(98, t, 0.24, { vol: 0.14, from: 170, fromT: 0.05, a: 0.002 });
+        noise(t, 0.16, { type: "lowpass", freq: 520, vol: 0.08, a: 0.002 });
+        wood(160, t + 0.01, { vol: 0.08, dur: 0.07, jit: 15 });
+      },
+      // 端で跳ね返る「こつ」：ごく小さく
+      bounce: () => wood(480, N(), { vol: 0.035, dur: 0.03, jit: 25 }),
+      // 新しい滑走路が開く：短いファンファーレ（約 0.8 秒）。色 id で少しだけ高さを変える
+      open: (color) => {
+        const t = N(), lift = [1, 1.125, 1.26][Number(color)] || 1;
+        [C5, E5, G5].forEach((f, i) => mallet(f * lift, t + i * 0.08, { vol: 0.1, decay: 0.16 }));
+        mallet(C6 * lift, t + 0.26, { vol: 0.12, decay: 0.45 });
+        [C5, G5].forEach((f) => partial(f * lift, t + 0.26, 0.5, { vol: 0.035, a: 0.01 }));
+        bell(Math.min(G6 * lift, 2100), t + 0.34, { vol: 0.04, decay: 0.45 });
+      }
+    };
+
     const table = Object.assign({}, COMMON,
-      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : game === "hashi" ? HASHI : game === "irobin" ? IROBIN : game === "matomete" ? MATOMETE : {});
+      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : game === "hashi" ? HASHI : game === "irobin" ? IROBIN : game === "matomete" ? MATOMETE : game === "michibiki" ? MICHIBIKI : {});
+    const gap = game === "michibiki" ? Object.assign({}, GAP, GAP_MICHIBIKI) : GAP;
 
     return {
       get on() { return on; },
@@ -514,7 +560,7 @@
         if (!on || !ready()) return;
         try {
           const now = ctx.currentTime;
-          if (GAP[name] && last[name] != null && now - last[name] < GAP[name]) return; // 連打の間引き
+          if (gap[name] && last[name] != null && now - last[name] < gap[name]) return; // 連打の間引き
           last[name] = now;
           let off = 0;
           if (STAGGER[name]) {

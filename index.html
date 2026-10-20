@@ -178,7 +178,8 @@
     { name: "ピカッと早押し", desc: "ひかったら タップ！ いちばん はやいのは だれ？", url: "games/pikatto/", bestText: () => pikattoBest(), art: "pikatto" },
     { name: "ハシわたり", desc: "ながおしで くきを のばして、つぎの葉へ", url: "games/hashi/", best: "hashi.best", art: "hashi" },
     { name: "いろびん", desc: "いろみずを そろえて、どうぶつに とどけよう", url: "games/irobin/", bestText: () => irobinBest(), art: "irobin" },
-    { name: "まとめてポン", desc: "おなじ いろを まとめて ポン！ たくさん けすほど たかいてん", url: "games/matomete/", bestText: () => matometeBest(), art: "matomete" }
+    { name: "まとめてポン", desc: "おなじ いろを まとめて ポン！ たくさん けすほど たかいてん", url: "games/matomete/", bestText: () => matometeBest(), art: "matomete" },
+    { name: "ミチビキ空港", desc: "ゆびで みちを かいて、おなじ いろの かっそうろへ", url: "games/michibiki/", bestText: () => michibikiBest(), art: "michibiki" }
   ];
 
   // ===== 小さな絵（Canvas で描く。画像ファイルは使わない） =====
@@ -503,6 +504,72 @@
         ctx.beginPath(); ctx.arc(px + dx * s, py + dy * s, Math.max(1.5, s * 0.13), 0, Math.PI * 2); ctx.fill();
       });
     },
+    // 上から見た滑走路2本（あか○は右向き・あお△は左向き。入り口に矢印）と、回り込んで矢印の向きから入る点線の道をたどる飛行機2機
+    michibiki(ctx, w, h) {
+      const u = Math.min(w, h), ox = (w - u) / 2, oy = (h - u) / 2;
+      const P = (x, y) => [ox + x * u, oy + y * u];
+      const RED = "#D55E00", BLUE = "#0072B2";
+      // 滑走路：入り口 (ex, ey) から向き d（+1 右・−1 左）へ伸びる帯
+      const runway = (ex, ey, d, col, mark) => {
+        const len = 0.42, bw = 0.15;
+        const [x0, y0] = P(d > 0 ? ex : ex - len, ey - bw / 2);
+        ctx.fillStyle = "#3a4054";
+        roundRect(ctx, x0, y0, len * u, bw * u, u * 0.03); ctx.fill();
+        ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, u * 0.03);
+        roundRect(ctx, x0, y0, len * u, bw * u, u * 0.03); ctx.stroke();
+        // まん中の白い破線
+        ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.lineWidth = Math.max(1, u * 0.012);
+        ctx.setLineDash([u * 0.035, u * 0.03]);
+        ctx.beginPath(); ctx.moveTo(...P(ex + d * 0.12, ey)); ctx.lineTo(...P(ex + d * 0.38, ey)); ctx.stroke();
+        ctx.setLineDash([]);
+        // 入り口の矢印（向きを形で示す）
+        const [ax, ay] = P(ex + d * 0.06, ey), s = u * 0.045;
+        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = Math.max(1.5, u * 0.025); ctx.lineCap = "round"; ctx.lineJoin = "round";
+        ctx.beginPath(); ctx.moveTo(ax - d * s * 0.6, ay - s); ctx.lineTo(ax + d * s * 0.6, ay); ctx.lineTo(ax - d * s * 0.6, ay + s); ctx.stroke();
+        // 印（○・△）を奥の側に
+        const [mx, my] = P(ex + d * 0.3, ey), r = u * 0.04;
+        ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.5, u * 0.022);
+        ctx.beginPath();
+        if (mark === "o") ctx.arc(mx, my, r, 0, Math.PI * 2);
+        else { ctx.moveTo(mx, my - r); ctx.lineTo(mx + r, my + r * 0.8); ctx.lineTo(mx - r, my + r * 0.8); ctx.closePath(); }
+        ctx.stroke();
+      };
+      // 点線の道（点の間を中点でなめらかにつなぐ）
+      const path = (pts, col) => {
+        const q = pts.map(([x, y]) => P(x, y));
+        ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.5, u * 0.022); ctx.lineCap = "round";
+        ctx.setLineDash([u * 0.03, u * 0.035]);
+        ctx.beginPath(); ctx.moveTo(...q[0]);
+        for (let i = 1; i < q.length - 1; i++) {
+          ctx.quadraticCurveTo(q[i][0], q[i][1], (q[i][0] + q[i + 1][0]) / 2, (q[i][1] + q[i + 1][1]) / 2);
+        }
+        ctx.lineTo(...q[q.length - 1]); ctx.stroke();
+        ctx.setLineDash([]);
+      };
+      // 小さな飛行機（上から見た形。進む向きへ回す）
+      const plane = (x, y, tx, ty, col) => {
+        const [px, py] = P(x, y), s = u * 0.085;
+        ctx.save();
+        ctx.translate(px, py); ctx.rotate(Math.atan2(ty - y, tx - x));
+        ctx.fillStyle = col; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = Math.max(1, u * 0.014); ctx.lineJoin = "round";
+        ctx.beginPath();
+        ctx.moveTo(s * 1.1, 0);                                                                              // 機首
+        ctx.lineTo(s * 0.25, s * 0.18); ctx.lineTo(-s * 0.05, s * 0.95); ctx.lineTo(-s * 0.3, s * 0.95);     // 右の翼
+        ctx.lineTo(-s * 0.25, s * 0.18); ctx.lineTo(-s * 0.75, s * 0.15); ctx.lineTo(-s * 0.95, s * 0.45); ctx.lineTo(-s * 1.05, s * 0.45);
+        ctx.lineTo(-s * 1.0, 0);                                                                             // 尾
+        ctx.lineTo(-s * 1.05, -s * 0.45); ctx.lineTo(-s * 0.95, -s * 0.45); ctx.lineTo(-s * 0.75, -s * 0.15); ctx.lineTo(-s * 0.25, -s * 0.18);
+        ctx.lineTo(-s * 0.3, -s * 0.95); ctx.lineTo(-s * 0.05, -s * 0.95); ctx.lineTo(s * 0.25, -s * 0.18);  // 左の翼
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.restore();
+      };
+      runway(0.44, 0.27, 1, RED, "o");
+      runway(0.56, 0.73, -1, BLUE, "t");
+      // あか：左下から上へ回り込み、左から入る。あお：右上から下へ回り込み、右から入る
+      path([[0.13, 0.58], [0.09, 0.38], [0.18, 0.27], [0.44, 0.27]], RED);
+      path([[0.87, 0.42], [0.92, 0.62], [0.82, 0.73], [0.56, 0.73]], BLUE);
+      plane(0.13, 0.62, 0.13, 0.5, RED);
+      plane(0.87, 0.38, 0.87, 0.5, BLUE);
+    },
     // 絵が用意されていないゲーム用：頭文字のタイル
     fallback(ctx, w, h, game) {
       const m = Math.round(w * 0.12);
@@ -592,6 +659,12 @@
       const n = Number(raw);
       return Number.isSafeInteger(n) && n >= 1 ? n.toLocaleString() + " てん" : "";
     } catch (e) { return ""; }
+  }
+
+  // ミチビキ空港：michibiki.best（一番多い着陸数）。readBest と同じ決まりで読み、1 以上のときだけ「N き」（前の「Best」はカードの見出しが出す）、それ以外は空
+  function michibikiBest() {
+    const n = readBest("michibiki.best");
+    return n >= 1 ? n.toLocaleString() + " き" : "";
   }
 
   // ===== 効果音（common/sfx.js、案A「木のおもちゃ箱」。設定はゲームと共通、メニューに切り替えボタンはない） =====
