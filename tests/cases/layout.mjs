@@ -43,6 +43,12 @@ const SCREENS = {
     // 詳しい画面内の確認（横向き・iPad・16桁）は BW5。ここは他のゲームと同じ画面ごとの共通確認
     probe: (page, safe) => layoutProbe(page, 'a#back, .tool, .bottle, .cta, .head, #shop, #board, #hint, #tools', safe, { overlapSel: '.head, #shop, #board, #hint, #tools', minSel: 'a#back, .tool, .bottle, .cta' }),
   },
+  matomete: {
+    label: 'まとめてポン（プレイ中・ベスト 7 桁）',
+    async open(page) { await seed(page, { 'matomete.help': '1', 'matomete.best': '9999999' }); await page.goto(BASE + 'games/matomete/'); await wait(page, 200); },
+    // 詳しい画面内の確認（横向き・iPad・カード・7桁の点数）は QW8。ここは他のゲームと同じ画面ごとの共通確認
+    probe: (page, safe) => layoutProbe(page, 'a#back, .tool, .cta, .head, .stats, #board, #hint, .tools', safe, { overlapSel: '.head, .stats, #board, #hint, .tools', minSel: 'a#back, .tool, .cta' }),
+  },
 };
 // キリトリ道場のスコア欄：SCORE・BEST に 7 桁（1,234,567）を入れても「…」で省略されず、欄の高さ・道場の大きさが変わらない
 async function kiriStatsProbe(page) {
@@ -147,6 +153,7 @@ export const tests = [
       });
       await screenCheck(browser, check, v, 'pikatto');
       await screenCheck(browser, check, v, 'irobin');
+      await screenCheck(browser, check, v, 'matomete');
       const { ctx, page } = await newPage(browser, v, 'V1 桁数', { clock: true });
       const d = await blocksStatsProbe(page, v.safe);
       check('SE縦 ブロック：SCORE 1,234,567・LINES 9,999・LEVEL 99 が「…」で省略されず、盤面・欄の高さも変わらない', d.ok, d);
@@ -167,6 +174,7 @@ export const tests = [
       await screenCheck(browser, check, v, 'kiri');
       await screenCheck(browser, check, v, 'pikatto');
       await screenCheck(browser, check, v, 'irobin');
+      await screenCheck(browser, check, v, 'matomete');
       // K1（SE を Safari で横持ち 568×270：DROP が LEVEL/LINES に、HOLD が NEXT に重なっていた）を smoke でも確かめる
       await screenCheck(browser, check, view('SE', 'l', 'safari'), 'blocks');
     },

@@ -1,6 +1,6 @@
 # ゆびあそび 統合テスト（tests/）
 
-ゲーム集「ゆびあそび」（メニュー・ブロックパズル・ばいばいタイル・キリトリ道場・いろコード・ゼンマイさんぽ・ピカッと早押し・ハシわたり・いろびん の8本）を、本物のブラウザで動かして確かめるテストです。
+ゲーム集「ゆびあそび」（メニュー・ブロックパズル・ばいばいタイル・キリトリ道場・いろコード・ゼンマイさんぽ・ピカッと早押し・ハシわたり・いろびん・まとめてポン の9本）を、本物のブラウザで動かして確かめるテストです。
 アプリのファイル（index.html・games/・common/・sw.js・manifest.webmanifest・icons/）には触れず、読むだけです。
 設計・項目の対応表は [design.md](design.md) にあります。
 
@@ -66,6 +66,7 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | ピカッと早押し（games/pikatto/）の変更 | smoke ＋ `ONLY=PK5,PK6,PK7,PK8,PK9,PK12,PK14,PK16,PK17,PK18 node tests/run.mjs full`（ルール・保存を変えたら `ONLY=PK1,PK3,PK9,PK15,PK16 M=MP1,MP2,MP3,MP4,MP5,MP6,MP7 node tests/mutants/mutate.mjs both`） |
 | ハシわたり（games/hashi/）の変更 | smoke ＋ `ONLY=HW5,HW6,HW7,HW8,HW9,HW10,HW11,HW12,HW13 node tests/run.mjs full`（ロジックだけなら `ONLY=HL1,HL2,HL3,HL4,HL5,HL6,HL7,HL8 node tests/run.mjs smoke`、0 秒） |
 | いろびん（games/irobin/）の変更 | smoke ＋ `ONLY=BW5,BW6,BW7,BW8,BW9,BW10,BW11,BW12,BW13,BW14,BW15,BW16 node tests/run.mjs full`（ロジックだけなら `ONLY=BL1,BL2,BL3,BL4,BL5,BL6,BL7,BL8,BL9,BL10,BL11 node tests/run.mjs smoke`、2 秒。ルール・保存・生成を変えたら `ONLY=BL1,…,BL11,BW1,…,BW17 M=MB1,MB2,MB3,MB4,MB5,MB6,MB7,MB8,MB9,MB10,MB11,MB12,MB13,MB14 node tests/mutants/mutate.mjs both`） |
+| まとめてポン（games/matomete/）の変更 | smoke ＋ `ONLY=QW4,QW5,QW6,QW7,QW8,QW9,QW10,QW11,QW12,QW13,QW14,QW15 node tests/run.mjs full`（ロジックだけなら `ONLY=QL1,QL2,QL3,QL4,QL5,QL6,QL7,QL8,QL9 node tests/run.mjs full`、数秒。ルール・保存・2回タップを変えたら `ONLY=QL1,…,QL9,QW1,…,QW16 M=MQ1,MQ2,…,MQ18 node tests/mutants/mutate.mjs both`） |
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
 | テストを変えたとき・中身の仕組み（点数計算・保存・日付・ルール）を変えたとき | `node tests/mutants/mutate.mjs both`（そのゲームの分だけ。テストがわざと入れた不具合を見つけられるか） |
 
@@ -93,6 +94,8 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | HW | ハシわたり 画面 | DOM と `window.HashiGame`（getState・holdFor・lenToCross・setRandom・skip）で：渡る・表示の一致、落ちる・いのち・もう一度、ベストの保存、戻れる、画面内・横向きの重なり、中断（hidden・遊び方）、キーボード、タイマーの片付け、時計、効果音、ダブルタップ抑止、設定、オフライン（HW1〜HW13、hashi-ui.mjs） |
 | BL | いろびん 計算ロジック（Node） | `games/irobin/logic.js` を直接呼ぶ：定数・COLORS（9色で色と記号がすべて違う）・paramsFor が面の表どおり（境界と壊れた値）、pourCheck・applyMove の決まりと reason の順・注ぐ量（見えている同じ色の続きと空きの小さい方）、そろう・届ける・届けた瓶は消える（瓶が1本減り空き瓶は増えない・残りは詰めて id は変わらない）・待ち瓶・連鎖の順・全部届けて won、イミュータブルとおかしな引数、生成（1〜60 面と 1000 面が決定的・各色4段・最初からそろった瓶なし・隠れの形・solutionIds を再生すると won・合計3秒以内・1 面は最初の手で詰まない）、ソルバー（解けない盤・待ち瓶がある盤で手の位置がずれない・注文の順で解けるかどうかは変わらない・上限で exhausted）、保存の検証（validateBest・validateSave の v:2 と古い v:1・makeSave・recordBest・validateFlag・replay は瓶の id）、詰み、隠れた色、静的（音名・読み込み順・APP_FILES・メニューの名前が NAME と同じ）、BL11 は生成した面の解を通して瓶の本数・空き瓶・id・途中保存の再生（BL1〜BL11、irobin-logic.mjs） |
 | BW | いろびん 画面 | DOM と `window.IrobinGame`（getState・pick・pour・solution・skip・setLevel・setState）で：注ぐ・表示の一致（隠れの段は data-color が空）、solution() で1面クリア・ベスト保存・next、途中の再読み込みと壊れた保存・ほかのゲームのキー、メニューへ戻れる、画面内（SE 縦横・iPad・11本の面・16桁・ヒントの高さ・カード）、お助け（1手もどす・やりなおし）、詰み、キーボード、中断（hidden・遊び方）、効果音の順、色覚（記号）、動きを減らす、オフライン、ダブルタップ抑止（CDP）、メニューのカード、詰み予備軍・届けの連鎖の長さ・めやすと★・遊び方の閉じるボタン（BW16）、届けた瓶は消える（画面の瓶が1本減る・残りが寄る・data-index の振り直しと data-id・演出中に押した瓶と数字キーが正しい瓶を選ぶ・再読み込み）（BW17、smoke）（BW1〜BW17、irobin-ui.mjs） |
+| QL | まとめてポン 計算ロジック（Node） | `games/matomete/logic.js` を直接呼ぶ：定数・COLORS、かたまり（上下左右・斜めは別）・1個は消せない、(n−2)² と全部消し +1000、落下と左詰め、終わりの判定、同じ種で同じ盤・最初から消せない盤を出さない、replay・保存の検証、イミュータブル・例外を出さない、1000 回の乱数プレイで不変条件（QL1〜QL9、matomete-logic.mjs） |
+| QW | まとめてポン 画面 | DOM と `window.MatometeGame`（state・tapCell・select・remove・undo・restart・newSeed・cellRect・isAnimating・skip）で：2回タップ（1回目は選ぶだけ・札「n こ ＋p てん」・data-selected・選び直し・盤の外と空のマスで選びをやめる・1個のマスはヒントと揺れ・消したあとの盤が別実装と同じ）（QW1）、保存（v:1・再読み込みで同じ局面・hidden で保存・壊れた保存 16 通りとベスト・保存不可・ほかのキー）（QW2）、どこからでも戻れる・遊び方は初回だけ（QW3）、静的：音名・読み込み順・APP_FILES（QW16、Node）、全部消し（お祝い・+1000・1516 点・カードの 0.6 秒ロック・終わった回を再開しない）（QW4）、終わり（ベストのキーの分け方・むずかしい⇔ふつう）（QW5）、お助け（1手もどす・U・さいしょからの確認）（QW6）、canvas の色＝state（はじめ・落下・左詰め）と cellRect（QW7）、画面内（SE 縦横・13 横・iPad・7 桁・12px・たてむきの案内・カード）（QW8）、キーボード（QW9）、動きを減らす（QW10）、効果音（QW11）、オフライン（QW12）、タッチの2回タップと拡大の抑止（QW13、CDP）、色覚・ベスト超えの目印（QW14）、メニューのカード（QW15）（QW1〜QW16、matomete-ui.mjs） |
 | DG | デバッグ表示（common/debug.js） | 無効なら DOM・console に触れない（全ページ）、?debug=1 でボタン・エラーの件数・パネル・コピー用の文字、メニュー→ゲームでも有効、?debug=0 と「デバッグを終わる」で消える、命令（help・info・layout・state・storage・tap・logs）の形と安全なエラー、ボタンが全ページ（SE 縦横・最初の画面とプレイ中）で押せる要素に重ならない、パネルの文字 12px・ボタン 44px・touch-action、オフライン（DG1〜DG6、debug.mjs）。わざと起こすエラーには印 DGTEST を付け、X1 の集計から外す |
 | X1 | 共通 | 全ページでコンソールエラー 0（最後に 1 回） |
 
@@ -314,6 +317,24 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | MB12 いろびん：届けの連鎖を短くしない | 見逃し（smoke では見逃す設計） | 検出（BW16） |
 | MB13 いろびん：届けたあと空き瓶を足す（旧仕様に戻す） | 検出（BL3, BL5, BL11, BW17） | 検出（BL3, BL5, BL11, BW17） |
 | MB14 いろびん：演出中に押した瓶を押したボタンの位置で選ぶ（瓶の番号のずれ） | 検出（BW17） | 検出（BW17） |
+| MQ1 まとめてポン：斜めもつながったかたまりにする | 検出（QL2, QW1） | 検出（QL2, QW1, QW4, QW7, QW9, QW10, QW11, QW13） |
+| MQ2 まとめてポン：1個でも消せる（canRemove と applyRemove の両方） | 検出（QL2, QL7） | 検出（QL2, QL7） |
+| MQ3 まとめてポン：点数を (n−1)² にする | 検出（QL3, QW1） | 検出（QL3, QL9, QW1, QW4, QW9） |
+| MQ4 まとめてポン：全部消しの +1000 がない | 検出（QL3） | 検出（QL3, QL9, QW4） |
+| MQ5 まとめてポン：空いた列を左へ詰めない | 検出（QL4） | 検出（QL4, QL9, QW4, QW5, QW7, QW11） |
+| MQ6 まとめてポン：終わりの判定が逆（消せるのに終わる・消せないのに続く） | 検出（QL5, QL7, QW1, QW2, QW3） | 検出（QL5, QL7, QL9, QW1, QW2, QW3, QW4, QW5, QW6, QW7, QW8, QW9, QW10, QW11, QW13, QW14） |
+| MQ7 まとめてポン：validateSave が保存の v を見ない | 検出（QL7） | 検出（QL7） |
+| MQ8 まとめてポン：2回目を待たずに1回のタップで消す | 検出（QW1, QW2, QW3） | 検出（QW1, QW2, QW3, QW4, QW5, QW7, QW8, QW9, QW10, QW11, QW13） |
+| MQ9 まとめてポン：消したあと上のマスが落ちない（すきまが残る） | 検出（QL4, QW1） | 検出（QL4, QL9, QW1, QW4, QW7, QW9, QW10, QW11, QW13） |
+| MQ10 まとめてポン：終わりのカードが出た直後も押せる（0.6 秒のロックなし） | 見逃し（smoke では見逃す設計） | 検出（QW4） |
+| MQ11 まとめてポン：1手もどすで局面が戻らない（手の記録だけ減る） | 見逃し（smoke では見逃す設計） | 検出（QW6, QW9） |
+| MQ12 まとめてポン：render.js を事前キャッシュから外す（オフラインで開かない） | 検出（QW16） | 検出（QW16, QW12） |
+| MQ13 まとめてポン：recordBest が低い点でもベストを上書きする | 検出（QL7） | 検出（QL7, QW5） |
+| MQ14 まとめてポン：カードを閉じた直後の押下が盤に届く | 見逃し（smoke では見逃す設計） | 検出（QW13） |
+| MQ15 まとめてポン：開いたとき保存から再開しない | 検出（QW2） | 検出（QW2, QW4） |
+| MQ16 まとめてポン：むずかしいのベストも ふつうのキーに書く | 見逃し（smoke では見逃す設計） | 検出（QW5） |
+| MQ17 まとめてポン：メニューのベストが壊れた値（負・小数）も表示する | 見逃し（smoke では見逃す設計） | 検出（QW15） |
+| MQ18 まとめてポン：消える音 pop に消した数を渡さない（いつも同じ高さ） | 見逃し（smoke では見逃す設計） | 検出（QW11） |
 
 ※ M19 は本来 full の P9 で見つけるもの。smoke で P8 が落ちたのは、同時に 2 つの的を切った・落としたときに P8 が 1 つずつ前提で判定していたため（負荷の高いときだけ起きる）。P8 を「切った数・落とした数に合わせて判定」と「軌跡の 0.2 秒はページの時間を止めて進める」に直した。直した後に M19 を smoke で流し直し、見逃し（設計どおり full のみ）を確認した。
 

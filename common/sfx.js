@@ -10,6 +10,7 @@
  *   const sfx = YubiSfx.create("pikatto");  // ピカッと早押し
  *   const sfx = YubiSfx.create("hashi");    // ハシわたり（grow(ratio)/tip/land/perfect(n)/walk/splash/peek）
  *   const sfx = YubiSfx.create("irobin");   // いろびん（pick/drop/pour(count)/reveal/seal(colorId)/cork/deliver(n)/arrive/clear/deny/undo/stuck）
+ *   const sfx = YubiSfx.create("matomete"); // まとめてポン（select(n)/pop(n)/fall/allclear/over/deny/undo）
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -25,7 +26,7 @@
   // 同じ処理の中で続けて鳴らすとき、鳴らす時刻をこの秒数ずつずらす（currentTime は1つの処理の中では進まないため、間引かずに順に鳴らす）
   const STAGGER = { slice: 0.03 };
   const STAGGER_MAX = 0.24;
-  const GAP = { move: 0.03, rotate: 0.03, hold: 0.05, merge: 0.03, tap: 0.04, undo: 0.06, launch: 0.07, miss: 0.08, tick: 0.045, unwind: 0.045, limit: 0.25, step: 0.08, grow: 0.05, walk: 0.08, pour: 0.05, pick: 0.03, arrive: 0.08 };
+  const GAP = { move: 0.03, rotate: 0.03, hold: 0.05, merge: 0.03, tap: 0.04, undo: 0.06, launch: 0.07, miss: 0.08, tick: 0.045, unwind: 0.045, limit: 0.25, step: 0.08, grow: 0.05, walk: 0.08, pour: 0.05, pick: 0.03, arrive: 0.08, select: 0.03, pop: 0.03 };
 
   function create(game, opts) {
     opts = opts || {};
@@ -415,8 +416,53 @@
       stuck: () => { const t = N(); mallet(G5, t, { vol: 0.08, decay: 0.16, bright: 0.25 }); mallet(E5, t + 0.14, { vol: 0.08, decay: 0.3, bright: 0.2 }); mallet(C5, t + 0.14, { vol: 0.04, decay: 0.4, bright: 0.2 }); }
     };
 
+    // まとめてポン：「ポン」とはじける音が気持ちよさの中心。消した数 n が多いほど五音音階で高く・音が重なって明るくなる。
+    // 一番高い基音でも A6（1760Hz）までにして、耳に痛くしない（高い倍音はマスターの lowpass で丸める）
+    const POP_STEPS = [2, 3, 4, 5, 6, 8, 10, 13, 16, 20];   // この数以上で 1 段上がる（2個＝ド … 20個以上＝2オクターブ目のラ）
+    const popStep = (n) => { const k = Math.floor(Number(n)) || 2; let i = 0; while (i < POP_STEPS.length - 1 && k >= POP_STEPS[i + 1]) i++; return i; };
+    const popFreq = (i) => C5 * Math.pow(2, (12 * Math.floor(i / 5) + PENTA[i % 5]) / 12);
+    const MATOMETE = {
+      // 選ぶ「こつ」：軽い木の音。大きなかたまりほど少しだけ高い
+      select: (n) => {
+        const i = popStep(n), t = N();
+        wood(560 + i * 40, t, { vol: 0.06, dur: 0.035, jit: 20 });
+        partial(popFreq(i) * 2 > 1900 ? popFreq(i) : popFreq(i) * 2, t + 0.01, 0.06, { vol: 0.025 });
+      },
+      // はじける「ポン」：下から持ち上がる泡の音＋マリンバ。3段目から5度上、5段目からベル、7段目から和音のきらきら、
+      // 9段目（16個以上）は低い支えも足す。部品は最大 20 個ほど（同時発音の上限 36 の中に収める）
+      pop: (n) => {
+        const i = popStep(n), f = popFreq(i), t = N();
+        partial(f, t, 0.08, { vol: 0.07, from: f * 0.55, fromT: 0.025, a: 0.002 });
+        mallet(f, t + 0.012, { vol: 0.1 + i * 0.006, decay: 0.12 + i * 0.02, bright: 0.35 + i * 0.03, jit: 4 });
+        if (i >= 3) mallet(f * 1.5, t + 0.05, { vol: 0.07, decay: 0.16, bright: 0.3, jit: 4 });
+        if (i >= 5) bell(Math.min(f * 2, 2100), t + 0.08, { vol: 0.03 + (i - 5) * 0.004, decay: 0.35 });
+        if (i >= 7) [1, 1.26, 1.5].forEach((m, k) => partial(Math.min(f, 1050) * m, t + 0.11 + k * 0.04, 0.3, { vol: 0.03, a: 0.006 }));
+        if (i >= 9) mallet(f / 4, t + 0.02, { vol: 0.07, decay: 0.35, bright: 0.15 });
+      },
+      // 上のマスが落ちて着く「とん」：低く小さく（何度も鳴るので控えめ）
+      fall: () => { const t = N(); wood(190, t, { vol: 0.05, dur: 0.055, jit: 20 }); noise(t, 0.04, { type: "lowpass", freq: 600, vol: 0.025, a: 0.003 }); },
+      // 全部消し：かけ上がり＋長い和音＋ベル（1.3 秒ほど）
+      allclear: () => {
+        const t = N();
+        [C5, E5, G5, C6, E6].forEach((f, i) => mallet(f, t + i * 0.07, { vol: 0.1, decay: i === 4 ? 0.45 : 0.16 }));
+        [C5, E5, G5].forEach((f) => partial(f, t + 0.38, 0.75, { vol: 0.04, a: 0.01 }));
+        bell(G6, t + 0.42, { vol: 0.05, decay: 0.55 });
+        bell(C6 * 2, t + 0.6, { vol: 0.04, decay: 0.6 });
+      },
+      // 終わり：ゆっくり下がって、やさしい和音で止まる（責めない）
+      over: () => {
+        const t = N();
+        [G5, E5, C5].forEach((f, i) => mallet(f, t + i * 0.14, { vol: 0.09, decay: 0.25, bright: 0.3 }));
+        [C5, G5].forEach((f) => mallet(f / 2, t + 0.42, { vol: 0.06, decay: 0.45, bright: 0.2 }));
+      },
+      // 1個だけで消せない：小さく低い「こつ」
+      deny: () => wood(210, N(), { vol: 0.07, dur: 0.05, jit: 20 }),
+      // 1手もどす：逆回しの短い音
+      undo: () => { const t = N(); noise(t, 0.08, { freq: 700, to: 1800, q: 0.7, vol: 0.035, a: 0.05 }); mallet(A5, t + 0.02, { vol: 0.07, decay: 0.06, bright: 0.3 }); mallet(E5, t + 0.07, { vol: 0.07, decay: 0.09, bright: 0.3 }); }
+    };
+
     const table = Object.assign({}, COMMON,
-      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : game === "hashi" ? HASHI : game === "irobin" ? IROBIN : {});
+      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : game === "hashi" ? HASHI : game === "irobin" ? IROBIN : game === "matomete" ? MATOMETE : {});
 
     return {
       get on() { return on; },

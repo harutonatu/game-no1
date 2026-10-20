@@ -19,6 +19,26 @@ const OVER_BTNS = `<div class="row"><button class="cta primary" type="button" da
           <button class="cta" type="button" data-cmd="undo">1手戻す</button>
           <button class="cta" type="button" data-cmd="menu">メニューへ</button>
         </div>`;
+// まとめてポン MQ2：「1個でも消せる」は canRemove と applyRemove の両方を変える（2つは logic.js の中で続いているので、間をまとめて置き換える）
+const MQ2_FROM = `    return (x > 0 && g[x - 1][y] === v) || (x < COLS - 1 && g[x + 1][y] === v)
+      || (y > 0 && g[x][y - 1] === v) || (y < ROWS - 1 && g[x][y + 1] === v);
+  }
+
+  function invalid(state, reason) {
+    return { state, outcome: Object.freeze({ kind: "invalid", reason }) };
+  }
+
+  function applyRemove(state, x, y) {
+    try {
+      if (!okState(state)) return invalid(state, "range");
+      if (state.over === true) return invalid(state, "over");
+      if (!inRange(x, y)) return invalid(state, "range");
+      const g0 = state.grid;
+      const color = g0[x][y];
+      if (color === null) return invalid(state, "empty");
+      const cells = gridGroup(g0, x, y);
+      if (cells.length < 2) return invalid(state, "single");`;
+const MQ2_TO = MQ2_FROM.replace(/return \(x > 0[\s\S]*?=== v\);/, 'return true;').replace('      if (cells.length < 2) return invalid(state, "single");', '');
 const M = [
   ['M1 2048 で1手に2回合体する', '計算', 'games/2048/index.html', 'canMerge = false;      // 1手で1タイルは1回だけ合体', '/* removed */'],
   ['M2 ブロックの pagehide でベストを保存しない', 'データ消失', 'games/blocks/index.html', 'window.addEventListener("pagehide", commitBest);', ''],
@@ -93,6 +113,25 @@ const M = [
   ['MB12 いろびん：届けの連鎖を短くしない（6 本続くと約 10 秒待たされる）', '演出', 'games/irobin/render.js', 'const fast = rest > 0 ? Math.max(0.12, Math.min(0.45, Math.max(CHAIN_MIN, CHAIN_BUDGET - used) / rest)) : 1;', 'const fast = 1;'],
   ['MB13 いろびん：届けたあと空き瓶を足す（旧仕様に戻す：届けた瓶が同じ場所の空の瓶に置き換わる）', 'ルール', 'games/irobin/logic.js', 'bots[b] = GONE;                                      // 届けた瓶は消える（空の瓶は出てこない）', 'bots[b] = 0;                                         // (変異) 旧仕様'],
   ['MB14 いろびん：演出中に押した瓶を、押したボタンの位置で選ぶ（届けて詰めた後の並びとずれる）', '操作', 'games/irobin/main.js', 'if (Number.isSafeInteger(id)) {\n      i = safeCall', 'if (false) {\n      i = safeCall'],
+  // ---- まとめてポン（games/matomete/）。かたまり・消す・落下・左詰め・点数・終わり・保存・2回タップ・ロックの仕組みを変えたときだけ流す ----
+  ['MQ1 まとめてポン：斜めもつながったかたまりにする', 'ルール', 'games/matomete/logic.js', 'if (cy < ROWS - 1 && !seen[k + 1] && g[cx][cy + 1] === v) { seen[k + 1] = 1; stack.push(k + 1); }', 'if (cy < ROWS - 1 && !seen[k + 1] && g[cx][cy + 1] === v) { seen[k + 1] = 1; stack.push(k + 1); }\n      for (const d of [ROWS + 1, ROWS - 1, -ROWS + 1, -ROWS - 1]) { const n = k + d, nx = (n / ROWS) | 0, ny = n - nx * ROWS; if (n >= 0 && n < COLS * ROWS && Math.abs(nx - cx) === 1 && Math.abs(ny - cy) === 1 && !seen[n] && g[nx][ny] === v) { seen[n] = 1; stack.push(n); } }'],
+  ['MQ2 まとめてポン：1個でも消せる（canRemove と applyRemove の両方）', 'ルール', 'games/matomete/logic.js', MQ2_FROM, MQ2_TO],
+  ['MQ3 まとめてポン：点数を (n−1)² にする', '計算', 'games/matomete/logic.js', 'return (n - 2) * (n - 2);', 'return (n - 1) * (n - 1);'],
+  ['MQ4 まとめてポン：全部消しの +1000 がない', '計算', 'games/matomete/logic.js', 'const bonus = allClear ? ALL_CLEAR_BONUS : 0;', 'const bonus = 0;'],
+  ['MQ5 まとめてポン：空いた列を左へ詰めない', 'ルール', 'games/matomete/logic.js', 'if (g[cx][0] === null) continue;', ''],
+  ['MQ6 まとめてポン：終わりの判定が逆（消せるのに終わる・消せないのに続く）', 'ルール', 'games/matomete/logic.js', 'const over = allClear || !gridHasMoves(g2);', 'const over = allClear || gridHasMoves(g2);'],
+  ['MQ7 まとめてポン：validateSave が保存の v を見ない', '保存データ互換', 'games/matomete/logic.js', 'if (o.v !== SAVE_V) return null;', ''],
+  ['MQ8 まとめてポン：2回目を待たずに1回のタップで消す', '操作', 'games/matomete/main.js', 'if (selected && selected.cells.some((c) => c[0] === x && c[1] === y)) return doRemove(x, y);', 'return doRemove(x, y);'],
+  ['MQ9 まとめてポン：消したあと上のマスが落ちない（すきまが残る）', 'ルール', 'games/matomete/logic.js', 'if (cy !== w) {', 'if (false) {'],
+  ['MQ10 まとめてポン：終わりのカードが出た直後も押せる（0.6 秒のロックなし）', '操作', 'games/matomete/main.js', 'if (overlayKind === "over" && now() - cardShownAt < CARD_LOCK_MS) return;', ''],
+  ['MQ11 まとめてポン：1手もどすで局面が戻らない（手の記録だけ減る）', 'お助け', 'games/matomete/main.js', 'state = history.pop();\n    moves.pop();', 'history.pop();\n    moves.pop();'],
+  ['MQ12 まとめてポン：render.js を事前キャッシュから外す（オフラインで開かない）', 'オフライン', 'sw.js', '  "./games/matomete/render.js",\n', ''],
+  ['MQ13 まとめてポン：recordBest が低い点でもベストを上書きする', 'データ消失', 'games/matomete/logic.js', 'const improved = s > p;', 'const improved = true;'],
+  ['MQ14 まとめてポン：カードを閉じた直後の押下が盤に届く', 'タッチ操作', 'games/matomete/main.js', 'blockUntil = now() + BOARD_BLOCK_MS;', 'blockUntil = 0;'],
+  ['MQ15 まとめてポン：開いたとき保存から再開しない', 'データ消失', 'games/matomete/main.js', 'if (sv) ok = startGame(sv.seed, sv.mode, sv.moves);', ''],
+  ['MQ16 まとめてポン：むずかしいのベストも ふつうのキーに書く', 'データ', 'games/matomete/main.js', 'writeKey(KEY_BEST[mode], String(best));', 'writeKey(KEY_BEST.normal, String(best));'],
+  ['MQ17 まとめてポン：メニューのベストが壊れた値（負・小数）も表示する', '保存データ互換', 'index.html', 'return Number.isSafeInteger(n) && n >= 1 ? n.toLocaleString() + " てん" : "";', 'return n !== 0 ? n.toLocaleString() + " てん" : "";'],
+  ['MQ18 まとめてポン：消える音 pop に消した数を渡さない（いつも同じ高さ）', '効果音', 'games/matomete/render.js', 'snd("pop", a.removedCells.length);', 'snd("pop", 2);'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

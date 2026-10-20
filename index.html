@@ -177,7 +177,8 @@
     { name: "ゼンマイさんぽ", desc: "ネジを巻いて、崖の手前でぴたりと止める", url: "games/zenmai/", bestText: () => zenmaiBest(), art: "zenmai" },
     { name: "ピカッと早押し", desc: "ひかったら タップ！ いちばん はやいのは だれ？", url: "games/pikatto/", bestText: () => pikattoBest(), art: "pikatto" },
     { name: "ハシわたり", desc: "ながおしで くきを のばして、つぎの葉へ", url: "games/hashi/", best: "hashi.best", art: "hashi" },
-    { name: "いろびん", desc: "いろみずを そろえて、どうぶつに とどけよう", url: "games/irobin/", bestText: () => irobinBest(), art: "irobin" }
+    { name: "いろびん", desc: "いろみずを そろえて、どうぶつに とどけよう", url: "games/irobin/", bestText: () => irobinBest(), art: "irobin" },
+    { name: "まとめてポン", desc: "おなじ いろを まとめて ポン！ たくさん けすほど たかいてん", url: "games/matomete/", bestText: () => matometeBest(), art: "matomete" }
   ];
 
   // ===== 小さな絵（Canvas で描く。画像ファイルは使わない） =====
@@ -464,6 +465,44 @@
       ctx.strokeStyle = "#ffffff"; ctx.lineWidth = Math.max(1.5, u * 0.02);
       roundRect(ctx, fx + fr * 1.25, fy + fr * 0.1, fr * 0.95, fr * 0.55, fr * 0.14); ctx.stroke();
     },
+    // 縦長の盤に積まれた色の玉（まとめてポンと同じ5色と記号）。左下の3つのかたまりが光って「ポン」とはじける
+    matomete(ctx, w, h) {
+      const cols = ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#CC79A7"];
+      // 下から積む。. は空、数字は色（5 列 × 7 段）
+      const rows = [
+        ".....",
+        "....1",
+        "3..12",
+        "31.24",
+        "00144",
+        "20314",
+        "22331"
+      ];
+      const n = 5, m = 7;
+      const s = Math.floor(Math.min((w - 14) / n, (h - 8) / m));
+      const ox = Math.round((w - s * n) / 2), oy = Math.round((h - s * m) / 2);
+      ctx.fillStyle = "rgba(255,255,255,0.06)";
+      roundRect(ctx, ox - 3, oy - 3, s * n + 6, s * m + 6, 6); ctx.fill();
+      const lit = new Set(["0,4", "1,4", "1,5"]);   // 選ばれて光るかたまり（オレンジ3つ）
+      rows.forEach((row, y) => [...row].forEach((c, x) => {
+        if (c === ".") return;
+        const cx = ox + x * s + s / 2, cy = oy + y * s + s / 2, r = s * 0.42;
+        const on = lit.has(x + "," + y);
+        if (on) { ctx.save(); ctx.shadowColor = "rgba(255,240,180,0.95)"; ctx.shadowBlur = s * 0.6; }
+        ctx.fillStyle = cols[+c];
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+        if (on) ctx.restore();
+        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.beginPath(); ctx.arc(cx - r * 0.35, cy - r * 0.35, r * 0.28, 0, Math.PI * 2); ctx.fill();
+        if (on) { ctx.strokeStyle = "#fff4c2"; ctx.lineWidth = Math.max(1.5, s * 0.1); ctx.beginPath(); ctx.arc(cx, cy, r + 1, 0, Math.PI * 2); ctx.stroke(); }
+      }));
+      // はじけた粒（右上に飛ぶ）
+      const px = ox + s * 1.2, py = oy + s * 3.2;
+      [[-0.9, -1.4, "#E69F00"], [0.2, -1.9, "#ffe08a"], [1.1, -1.3, "#E69F00"], [-1.5, -0.4, "#ffe08a"], [1.6, -0.5, "#E69F00"]].forEach(([dx, dy, c]) => {
+        ctx.fillStyle = c;
+        ctx.beginPath(); ctx.arc(px + dx * s, py + dy * s, Math.max(1.5, s * 0.13), 0, Math.PI * 2); ctx.fill();
+      });
+    },
     // 絵が用意されていないゲーム用：頭文字のタイル
     fallback(ctx, w, h, game) {
       const m = Math.round(w * 0.12);
@@ -542,6 +581,16 @@
       if (raw === null) return "";
       const n = Number(raw);
       return Number.isSafeInteger(n) && n >= 1 ? n + " めん クリア" : "";
+    } catch (e) { return ""; }
+  }
+
+  // まとめてポン：matomete.best（ふつうの一番高い点数）。安全な整数で 1 以上のときだけ「N てん」、それ以外は空
+  function matometeBest() {
+    try {
+      const raw = localStorage.getItem("matomete.best");
+      if (raw === null) return "";
+      const n = Number(raw);
+      return Number.isSafeInteger(n) && n >= 1 ? n.toLocaleString() + " てん" : "";
     } catch (e) { return ""; }
   }
 
