@@ -7,8 +7,13 @@
  *   frame(state, events, dtSec), burst(kind), setCalm(bool), pause(), resume(),
  *   stats() → { particles, shots, frames, slowFrames, rockRedraws, rockFullRedraws, drawMs, calm }
  * }
- * - 世界は 幅 360 × 高さ 560 の単位（§3.1）。canvas は渡された箱（既定は canvas の親 .stage）に縦横比を保って収める。
- *   親の大きさが変わったら ResizeObserver で自分で layout し直す（main.js は layout を呼ばなくてもよい）。
+ * - 世界は 幅 360 × 高さ 560 の単位（§3.1）。canvas は渡された箱（既定は canvas の親 .stage）いっぱいに広げる（§18.1 A）。
+ *   見せる範囲（カメラ）は星ごとに決める：小惑星が場の幅の 7 割前後（ROCK_FILL）になるまで寄せる。ただし
+ *   下（地球の上の端・バリア・戦闘機）は必ず見せ、小惑星の全体と近づく道のりが入る高さは残す。上の空は切る。
+ *   寄せて上を切った分は、小惑星を「見た目だけ」下にずらして描く（ずらす量はバリアに近づくほど 0 に近づき、
+ *   バリアに届く所では 0＝ロジックの位置とぴったり同じ）。弾・どかんの輪も、戦闘機から小惑星までの間で同じ割合でずらす。
+ *   ロジックの数（当たり・はね返し・#distance）は何も変わらない。
+ *   親の大きさが変わったら ResizeObserver（無ければ resize・orientationchange）で自分で layout し直す（T6）。
  * - 背景（星空・地球）はオフスクリーンに1回だけ描く。バリアの弧は毎フレーム（波打つため。線2本だけ）。
  * - 小惑星のマスはオフスクリーンに描いておき、欠けた・ひびが増えたマスだけ描き直す（rockRedraws）。
  *   毎フレームはそのオフスクリーンを1回写すだけ（y がずれるだけ）。星が変わった・形が元に戻った（はね返し）・
@@ -36,6 +41,11 @@
   const NAMES_FALLBACK = { shot: "たま", spread: "ちらし", bomb: "どかん", bolt: "いなずま", beam: "ビーム", fire: "ほのお" };
   const SHOT_COL = { shot: "#ffffff", spread: "#ffd84d", bomb: "#ff9a3c", bolt: "#bfeeff", beam: "#7fd6ff", fire: "#ff5a3c" };
   const FONT = '"Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif';
+  // カメラ（§18.1 A）
+  const ROCK_FILL = 0.7;      // 小惑星（の格子）の幅を場の幅のこの割合まで寄せる
+  const VIEW_BOT = 548;       // 見せる一番下（地球の上の端 525 より少し下まで）
+  const MAX_ZOOM = 2.4;       // 大きな画面（iPad）で寄せすぎない（css px / 単位）
+  const TOP_PAD = 6;          // 星の始めに、小惑星の上に空ける見た目の余白
 
   // マスの色（1 マスごとに 4 段の濃さから選ぶ＝ごつごつ見せる）。模様でも分かる（§6.2）
   const MAT_SHADES = {
@@ -102,9 +112,12 @@
     } catch (e) { /* 下の既定 */ }
     return MAT_HP_FALLBACK[id] || 1;
   }
-  // マス1つの最初の体力（§3.2 の式。ロジックの定数を使う。ひびの段の目安にだけ使う）
+  // マス1つの最初の体力（ひびの段の目安にだけ使う）。正はロジックの cellHp（星 1〜9 の EARLY_HP・大きな星・星 31〜の増え方も入る。R1）
   function maxHpOf(star, m) {
     const L = Lg();
+    if (typeof L.cellHp === "function") {
+      try { const v = L.cellHp(Math.max(1, Math.floor(num(star, 1))), MAT_ID[m]); if (typeof v === "number" && v > 0 && Number.isFinite(v)) return v; } catch (e) { /* 下の目安 */ }
+    }
     const base = num(L.HP_BASE, 2), g = num(L.HP_GROWTH, 1.2), cap = num(L.STAR_CALC_MAX, 400);
     const n = clamp(Math.floor(num(star, 1)), 1, cap);
     return base * Math.pow(g, n - 1) * matHpOf(m);
@@ -122,6 +135,9 @@
     const rnd = mulberry(7349);
 
     let cssW = 100, cssH = 156, scale = cssW / W, dpr = 1, pxScale = scale;
+    // カメラ：見せる世界の範囲（左上 camL・camT、幅 camW・高さ camH）。scale は css px / 単位
+    let camL = 0, camT = 0, camW = W, camH = H, camCols = 10, camRows = 9, camKey = "";
+    let roff = 0, occBottom = -1;   // 小惑星の見た目のずれ（単位）と、いま一番下のマスの下の端（ロジックの y）
     let bg = null;
     let frames = 0, slowFrames = 0, lastFrameAt = null, paused = false;
     const drawTimes = [];
@@ -158,36 +174,92 @@
       const onMq = () => { calm = calmWanted || mq.matches; };
       if (mq.addEventListener) mq.addEventListener("change", onMq); else if (mq.addListener) mq.addListener(onMq);
     }
-    if (root.ResizeObserver && box) {
-      let lw = -1, lh = -1;
-      new root.ResizeObserver(() => {
-        const w = box.clientWidth, h = box.clientHeight;
-        if (w === lw && h === lh) return;
-        lw = w; lh = h;
-        layout(w, h);
-        if (lastState) draw(lastState);
-      }).observe(box);
+    let lw = -1, lh = -1;
+    function relayout() {
+      if (!box) return;
+      const w = box.clientWidth, h = box.clientHeight;
+      if (w === lw && h === lh) return;
+      lw = w; lh = h;
+      layout(w, h);
+      if (lastState) {
+        const rk = lastState.rock;
+        placeRock(rk);
+        if (rk && typeof rk === "object" && !ensureRock(rk, num(lastState.star, 1))) syncRock(rk, num(lastState.star, 1));
+        draw(lastState);
+      }
+    }
+    if (root.ResizeObserver && box) new root.ResizeObserver(relayout).observe(box);
+    else if (box && root.addEventListener) {
+      // ResizeObserver が無い古い端末：画面の大きさ・向きが変わったときに layout し直す（T6）
+      root.addEventListener("resize", relayout);
+      root.addEventListener("orientationchange", () => { relayout(); if (root.setTimeout) root.setTimeout(relayout, 300); });
     }
 
     // ===== 大きさ =====
+    // canvas を箱いっぱいに広げる（縦横比は箱のまま）。見せる範囲は setCam が星の大きさから決める
     function layout(cssWidth, cssHeight) {
       const bw = box ? box.clientWidth : 0, bh = box ? box.clientHeight : 0;
-      const aw = Math.max(40, Math.floor(num(cssWidth, 0) > 0 ? cssWidth : bw || 320));
-      const ah = Math.max(60, Math.floor(num(cssHeight, 0) > 0 ? cssHeight : bh || 480));
-      scale = Math.min(aw / W, ah / H);
-      cssW = Math.max(1, Math.floor(W * scale));
-      cssH = Math.max(1, Math.floor(H * scale));
-      scale = cssW / W;
+      cssW = Math.max(40, Math.floor(num(cssWidth, 0) > 0 ? cssWidth : bw || 320));
+      cssH = Math.max(60, Math.floor(num(cssHeight, 0) > 0 ? cssHeight : bh || 480));
       dpr = Math.min(MAX_DPR, Math.max(1, num(root.devicePixelRatio, 1)));
-      pxScale = scale * dpr;
       canvas.style.width = cssW + "px";
       canvas.style.height = cssH + "px";
       const wpx = Math.round(cssW * dpr), hpx = Math.round(cssH * dpr);
       if (canvas.width !== wpx) canvas.width = wpx;
       if (canvas.height !== hpx) canvas.height = hpx;
+      camKey = "";
+      setCam(camCols, camRows);
+      return { scale, width: cssW, height: cssH };
+    }
+    // 星の格子（cols×rows）に合わせて見せる範囲を決める（星が変わったとき・大きさが変わったときだけ）
+    function setCam(cols, rows) {
+      const key = cols + "|" + rows + "|" + cssW + "|" + cssH + "|" + dpr;
+      if (key === camKey) return false;
+      camKey = key; camCols = cols; camRows = rows;
+      const C = num(Lg().CELL, 14), BY = num(Lg().BARRIER_Y, 470);
+      const rw = Math.max(1, cols) * C, rh = Math.max(1, rows) * C;
+      // 縦に要る高さ：バリアから下（地球の端まで）＋小惑星の高さ＋近づく道のり（小惑星の半分、70 単位以上）
+      const need = (VIEW_BOT - BY) + rh + Math.max(70, rh * 0.5);
+      const sFull = cssH / VIEW_BOT;                     // 世界の上から下まで（0〜VIEW_BOT）が入る大きさ
+      const sH = Math.max(cssH / need, sFull);
+      const sW = (ROCK_FILL * cssW) / rw;
+      scale = Math.max(0.05, Math.min(sH, sW, MAX_ZOOM));
+      camW = cssW / scale; camH = cssH / scale;
+      let bot = VIEW_BOT;
+      const top0 = bot - camH;
+      if (top0 < 0) bot += Math.min(-top0, H - VIEW_BOT);   // 縦に余るときは地球を少し多めに見せる
+      camT = bot - camH;
+      camL = W / 2 - camW / 2;
+      pxScale = scale * dpr;
       drawBg();
       rockKey = "";            // 大きさが変わったのでマスを全部描き直す
-      return { scale, width: cssW, height: cssH };
+      return true;
+    }
+    // 世界の座標 → canvas の座標の変換を入れる
+    function camTransform(g) { g.setTransform(pxScale, 0, 0, pxScale, -camL * pxScale, -camT * pxScale); }
+    // 小惑星の見た目のずれ（単位）。格子の下の端（ロジック）が始めの位置なら最大、バリアに届けば 0
+    function rockOffsetOf(rock) {
+      const C = num(Lg().CELL, 14), BY = num(Lg().BARRIER_Y, 470), B0 = num(Lg().START_BOTTOM, 120);
+      const rows = Math.max(1, num(rock.rows, 1) | 0);
+      const v0 = Math.min(BY - 2 * C, Math.max(B0, camT + TOP_PAD + rows * C));
+      if (!(v0 > B0)) return 0;
+      const gb = num(rock.y, 0) + rows * C;
+      return (v0 - B0) * clamp((BY - gb) / (BY - B0), 0, 1);
+    }
+    function bottomOf(rock) {
+      const C = num(Lg().CELL, 14);
+      const cols = Math.max(1, num(rock.cols, 1) | 0), rows = Math.max(0, num(rock.rows, 0) | 0), mats = rock.mats;
+      if (!mats) return -1;
+      for (let r = rows - 1; r >= 0; r--) for (let c = 0; c < cols; c++) if (mats[r * cols + c]) return num(rock.y, 0) + (r + 1) * C;
+      return -1;
+    }
+    // 弾などの y（ロジック）→ 見た目の y。戦闘機の所は 0、小惑星の一番下より上は小惑星と同じだけずらす
+    function mapY(y) {
+      if (!roff || occBottom < 0) return y;
+      const FY = fighterY;
+      const den = FY - occBottom;
+      const k = den > 1 ? clamp((FY - y) / den, 0, 1) : 1;
+      return y + roff * k;
     }
 
     // ===== 背景（大きさが変わったときだけ）=====
@@ -196,13 +268,18 @@
       if (!bg) bg = doc.createElement("canvas");
       bg.width = canvas.width; bg.height = canvas.height;
       const c = bg.getContext("2d");
-      c.setTransform(pxScale, 0, 0, pxScale, 0, 0);
-      const g = c.createLinearGradient(0, 0, 0, H);
+      camTransform(c);
+      const vb = camT + camH;
+      const g = c.createLinearGradient(0, camT, 0, vb);
       g.addColorStop(0, "#060a1e"); g.addColorStop(0.7, "#0e1538"); g.addColorStop(1, "#18245a");
-      c.fillStyle = g; c.fillRect(0, 0, W, H);
+      c.fillStyle = g; c.fillRect(camL, camT, camW, camH);
       const r = mulberry(1203);
-      for (let k = 0; k < 90; k++) {
-        const x = r() * W, y = r() * 470, s = r() < 0.12 ? 1.6 : r() < 0.5 ? 1.1 : 0.7;
+      // 星の数は見せる広さに合わせる（寄せても空が寂しくならないよう、1 画面に 60〜160 個）
+      const sh = Math.max(10, Math.min(470, vb) - camT);
+      const nStars = Math.round(clamp(90 * (camW * sh) / (W * 470), 60, 160));
+      const sz = 1 / Math.max(0.6, Math.min(2, scale));   // 寄せても点が大きくなりすぎない
+      for (let k = 0; k < nStars; k++) {
+        const x = camL + r() * camW, y = camT + r() * sh, s = (r() < 0.12 ? 1.6 : r() < 0.5 ? 1.1 : 0.7) * sz;
         c.globalAlpha = 0.35 + r() * 0.6;
         c.fillStyle = r() < 0.15 ? "#ffe9a8" : "#ffffff";
         c.fillRect(x, y, s, s);
@@ -368,6 +445,8 @@
       for (let i = 0; i < n; i++) {
         const m = mats[i] | 0;
         const km = known[i];
+        // はね返しなどで体力が戻ったマスは、events で知ったひびを忘れる（ひびが残らない。T8）
+        if (evCrack && prevHp && hp && typeof hp[i] === "number" && typeof prevHp[i] === "number" && hp[i] > prevHp[i]) evCrack[i] = 0;
         if (m !== km) {
           known[i] = m >= 1 && m <= 4 ? m : 0;
           knownCrack[i] = known[i] ? crackOf(i, known[i], hp, star) : 0;
@@ -386,7 +465,7 @@
       const C = num(Lg().CELL, 14);
       const cols = Math.max(1, num(rock.cols, 1) | 0);
       const c = i % cols, r = (i / cols) | 0;
-      return { x: num(rock.x, 0) + (c + 0.5) * C, y: num(rock.y, 0) + (r + 0.5) * C + rockLift };
+      return { x: num(rock.x, 0) + (c + 0.5) * C, y: num(rock.y, 0) + (r + 0.5) * C + rockLift + roff };
     }
 
     // ===== 粒 =====
@@ -514,7 +593,7 @@
             const C = num(Lg().CELL, 14);
             let r = num(ev.r, 1.5);
             if (r < 6) r *= C;                     // マスの数で来たら単位に直す
-            fx.push({ kind: "boom", t: 0, dur: 0.35, x: num(ev.x, W / 2), y: num(ev.y, 200) + rockLift, r });
+            fx.push({ kind: "boom", t: 0, dur: 0.35, x: num(ev.x, W / 2), y: mapY(num(ev.y, 200)) + rockLift, r });
             break;
           }
           case "beam": {
@@ -571,6 +650,7 @@
       spawnLeft = SPAWN_BUDGET; hitFxLeft = HIT_FX_BUDGET;
       const rock = state.rock;
       if (state.fighter) { fighterX = num(state.fighter.x, fighterX); fighterY = num(state.fighter.y, fighterY); }
+      placeRock(rock);
       // 最後に欠けたマスの位置（クリアの星の光に使う）
       if (Array.isArray(events) && rock) {
         for (let k = events.length - 1; k >= 0; k--) {
@@ -595,6 +675,14 @@
       drawTimes.push(t1 - t0);
       if (drawTimes.length > 120) drawTimes.shift();
     }
+    // 星の格子に合わせてカメラを決め、小惑星の見た目のずれを出す（毎フレーム。重い計算はしない）
+    function placeRock(rock) {
+      if (!rock || typeof rock !== "object") { roff = 0; occBottom = -1; return; }
+      const cols = clamp(Math.floor(num(rock.cols, 0)), 1, 64), rows = clamp(Math.floor(num(rock.rows, 0)), 1, 64);
+      setCam(cols, rows);
+      roff = rockOffsetOf(rock);
+      occBottom = bottomOf(rock);
+    }
     function advanceFx(dt, state) {
       recoil = Math.max(0, recoil - dt * 30);
       pulse = Math.max(0, pulse - dt * 3);
@@ -612,7 +700,7 @@
         for (const h of ghosts) {
           h.t += dt;
           if (h.t >= h.delay) {
-            if (rock) { const C = num(Lg().CELL, 14); addParticle(num(rock.x, 0) + (h.c + 0.5) * C, num(rock.y, 0) + (h.r + 0.5) * C + rockLift, PART_COL[h.m] || "#fff", 1.3); }
+            if (rock) { const C = num(Lg().CELL, 14); addParticle(num(rock.x, 0) + (h.c + 0.5) * C, num(rock.y, 0) + (h.r + 0.5) * C + rockLift + roff, PART_COL[h.m] || "#fff", 1.3); }
             continue;
           }
           ghosts[g++] = h;
@@ -641,16 +729,16 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       if (bg) ctx.drawImage(bg, 0, 0);
       else { ctx.fillStyle = "#0e1538"; ctx.fillRect(0, 0, canvas.width, canvas.height); }
-      ctx.setTransform(pxScale, 0, 0, pxScale, 0, 0);
+      camTransform(ctx);
       const rock = state && state.rock;
       // 大きな星の始め：空が少し赤く光る
-      for (const f of fx) if (f.kind === "bossFlash") { ctx.globalAlpha = 0.18 * (1 - f.t / f.dur); ctx.fillStyle = "#ff7a5c"; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+      for (const f of fx) if (f.kind === "bossFlash") { ctx.globalAlpha = 0.18 * (1 - f.t / f.dur); ctx.fillStyle = "#ff7a5c"; ctx.fillRect(camL, camT, camW, camH); ctx.globalAlpha = 1; }
       drawBarrier();
       // ビーム（小惑星の下に）
       for (const f of fx) if (f.kind === "beam") drawBeam(f);
       // 小惑星
       if (rock && rockCv && rockCols > 0) {
-        const x = num(rock.x, 0), y = num(rock.y, 0) + rockLift;
+        const x = num(rock.x, 0), y = num(rock.y, 0) + rockLift + roff;
         if (rockFade > 0) {
           if (rockFade < 1) ctx.globalAlpha = rockFade;
           ctx.drawImage(rockCv, x, y, rockCv.width / pxScale, rockCv.height / pxScale);
@@ -699,34 +787,37 @@
       const by = num(Lg().BARRIER_Y, 470);
       const ex = W / 2, R = 1530, ey = by + R;
       const wv = barrierWave;
+      // 見せる幅いっぱいに弧を引く（寄せたときも、広く見せるときも端まで）
+      const half = Math.asin(clamp((camW / 2 + 16) / R, 0.05, 0.99));
       const a = 0.35 + (calm ? 0 : 0.08 * Math.sin(clk * 2.2)) + wv * 0.5;
       ctx.strokeStyle = "rgba(127,214,255," + clamp(a, 0, 1).toFixed(3) + ")";
       ctx.lineWidth = 2 + wv * 3;
       ctx.beginPath();
       if (wv > 0 && !calm) {
         // 波打つ弧
-        for (let x = 0; x <= W; x += 12) {
+        const x0 = Math.floor((camL - 12) / 12) * 12, x1 = camL + camW + 12;
+        for (let x = x0; x <= x1; x += 12) {
           const base = ey - Math.sqrt(R * R - (x - ex) * (x - ex));
           const y = base + Math.sin(x * 0.06 - clk * 14) * 5 * wv;
-          if (x) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+          if (x !== x0) ctx.lineTo(x, y); else ctx.moveTo(x, y);
         }
       } else {
-        ctx.arc(ex, ey, R, Math.PI * 1.5 - 0.125, Math.PI * 1.5 + 0.125);
+        ctx.arc(ex, ey, R, Math.PI * 1.5 - half, Math.PI * 1.5 + half);
       }
       ctx.stroke();
       ctx.strokeStyle = "rgba(127,214,255,0.12)";
       ctx.lineWidth = 10;
-      ctx.beginPath(); ctx.arc(ex, ey + 6, R, Math.PI * 1.5 - 0.125, Math.PI * 1.5 + 0.125); ctx.stroke();
+      ctx.beginPath(); ctx.arc(ex, ey + 6, R, Math.PI * 1.5 - half, Math.PI * 1.5 + half); ctx.stroke();
     }
     function drawBeam(f) {
       const k = f.t / f.dur;
       const a = k < 0.15 ? k / 0.15 : 1 - (k - 0.15) / 0.85;
       ctx.globalAlpha = clamp(a, 0, 1) * 0.55;
       ctx.fillStyle = "#7fd6ff";
-      ctx.fillRect(f.x - f.w / 2, 0, f.w, fighterY - 10);
+      ctx.fillRect(f.x - f.w / 2, camT, f.w, fighterY - 10 - camT);
       ctx.globalAlpha = clamp(a, 0, 1);
       ctx.fillStyle = "#ffffff";
-      ctx.fillRect(f.x - f.w * 0.15, 0, f.w * 0.3, fighterY - 10);
+      ctx.fillRect(f.x - f.w * 0.15, camT, f.w * 0.3, fighterY - 10 - camT);
       ctx.globalAlpha = 1;
     }
     function drawBolt(f) {
@@ -783,7 +874,7 @@
     function drawGhosts(rock) {
       if (!ghosts.length) return;
       const C = num(Lg().CELL, 14);
-      const ox = num(rock.x, 0), oy = num(rock.y, 0) + rockLift;
+      const ox = num(rock.x, 0), oy = num(rock.y, 0) + rockLift + roff;
       for (const h of ghosts) {
         // はじめは白く光り、崩れる直前に少し揺れる
         const k = h.t / h.delay;
@@ -804,7 +895,7 @@
         for (let k = 0; k < n; k++) {
           const p = shots[k];
           if (!p || p.w !== w) continue;
-          const x = num(p.x, -99), y = num(p.y, -99);
+          const x = num(p.x, -99), y = mapY(num(p.y, -99));
           if (w === "shot") ctx.fillRect(x - 0.7, y, 1.4, 6);   // 尾
           ctx.fillRect(x - s / 2, y - s / 2, s, s);
         }
@@ -814,14 +905,14 @@
       for (let k = 0; k < n; k++) {
         const p = shots[k];
         if (!p || p.w !== "bomb") continue;
-        ctx.beginPath(); ctx.arc(num(p.x, -99), num(p.y, -99), 4.5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(num(p.x, -99), mapY(num(p.y, -99)), 4.5, 0, Math.PI * 2); ctx.fill();
       }
       // そのほか（知らない武器の弾も白い点で出す）
       ctx.fillStyle = "#ffffff";
       for (let k = 0; k < n; k++) {
         const p = shots[k];
         if (!p || p.w === "shot" || p.w === "spread" || p.w === "fire" || p.w === "bomb") continue;
-        ctx.fillRect(num(p.x, -99) - 1.5, num(p.y, -99) - 1.5, 3, 3);
+        ctx.fillRect(num(p.x, -99) - 1.5, mapY(num(p.y, -99)) - 1.5, 3, 3);
       }
     }
     function drawParticles() {
@@ -896,20 +987,23 @@
       const sc = calm ? 1 : 1 + 0.25 * Math.max(0, 1 - t / 0.25);
       // 12px（CSS）より小さくしない。canvas の幅に入る大きさまで
       const minPx = 12 / Math.max(0.01, scale);
-      let s1 = 30, s2 = 18;
+      // 見せている範囲の真ん中に、見せている幅に入る大きさで（寄せたときは字を大きくしすぎない：css で 26px・16px まで）
+      const VW = camW;
+      let s1 = Math.min(30, 26 / Math.max(0.01, scale)), s2 = Math.min(18, 16 / Math.max(0.01, scale));
+      s1 = Math.max(s1, minPx * 1.3); s2 = Math.max(s2, minPx);
       ctx.font = "900 " + s1 + "px " + FONT;
       const w1 = ctx.measureText(evolveText.a).width;
-      if (w1 > W - 24) s1 = Math.max(minPx, (s1 * (W - 24)) / w1);
+      if (w1 > VW - 24) s1 = Math.max(minPx, (s1 * (VW - 24)) / w1);
       ctx.font = "800 " + s2 + "px " + FONT;
       const w2 = ctx.measureText(evolveText.b).width;
-      if (w2 > W - 24) s2 = Math.max(minPx, (s2 * (W - 24)) / w2);
-      const cy = H * 0.42;
+      if (w2 > VW - 24) s2 = Math.max(minPx, (s2 * (VW - 24)) / w2);
+      const cy = camT + camH * 0.42;
       ctx.save();
       ctx.globalAlpha = a;
-      ctx.translate(W / 2, cy);
+      ctx.translate(camL + VW / 2, cy);
       ctx.scale(sc, sc);
       ctx.fillStyle = "rgba(14,20,48,0.78)";
-      ctx.fillRect(-W / 2 + 8, -s1 - 6, W - 16, s1 + s2 + 22);
+      ctx.fillRect(-VW / 2 + 8, -s1 - 6, VW - 16, s1 + s2 + 22);
       ctx.textAlign = "center";
       ctx.textBaseline = "alphabetic";
       ctx.font = "900 " + s1 + "px " + FONT;
@@ -937,7 +1031,10 @@
         shots: lastState && Array.isArray(lastState.shots) ? lastState.shots.length : 0,
         frames, slowFrames, rockRedraws, rockFullRedraws,
         drawMs: s.length ? Math.round(s[(s.length / 2) | 0] * 100) / 100 : 0,
-        calm
+        calm,
+        // 見せている範囲（テスト・確かめ用）：zoom＝css px / 単位、rockPx＝小惑星の格子の幅（css px）、rockOffset＝見た目のずれ（単位）
+        view: { zoom: Math.round(scale * 1000) / 1000, left: Math.round(camL), top: Math.round(camT), width: Math.round(camW), height: Math.round(camH),
+          cssW, cssH, rockPx: Math.round(camCols * num(Lg().CELL, 14) * scale), rockOffset: Math.round(roff) }
       };
     }
 
