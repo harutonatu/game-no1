@@ -10,7 +10,7 @@
  * - 画面の数はロジックの関数（formatKakera・upCostOf・slotCostOf・progressOf・dpsOf）の値そのまま（§13-1）。
  * - タイマーは later / clearLater だけ（setTimeout を直接呼ばない）。
  * - 保存は logic の makeSave の形に、main だけが読む欄を 2 つ足して書く（loadSave は知らない欄を読まない）：
- *     t      … 遊んだ秒（エンディングの「あそんだ じかん」用。星の途中の位置は保存しない）
+ *     t      … 遊んだ秒（エンディングの「あそんだ じかん」用。星の途中の位置と いまの挑戦の秒は logic の mid が持つ）
  *     ending … エンディングのカードを出している途中で閉じたら true（開き直したらカードをもう一度出す）
  */
 (function () {
@@ -201,6 +201,14 @@
       return { t: Number.isFinite(t) && t >= 0 ? Math.min(t, 1e10) : 0, ending: o.ending === true };
     } catch (e) { return { t: 0, ending: false }; }
   }
+  // state の時計を t に合わせる。いまの挑戦の始め（tryAt）も同じだけずらす（loadSave は t=0・tryAt=−いまの挑戦の秒で返すので、
+  // t だけ書き換えるとクリアの時間に遊んだ合計の秒が足されてしまう）
+  function setClock(s, t) {
+    const d = t - (Number(s.t) || 0);
+    s.t = t;
+    s.tryAt = (Number.isFinite(s.tryAt) ? s.tryAt : 0) + d;
+    return s;
+  }
   // logic の state を、保存と同じ検証に通して「その星の最初」にする
   function normalize(obj) {
     if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
@@ -209,7 +217,7 @@
     const s = safeCall(() => L.loadSave(raw), null);
     if (!s) return null;
     const t = Number(obj.t);
-    if (Number.isFinite(t) && t >= 0) s.t = Math.min(t, 1e10);
+    if (Number.isFinite(t) && t >= 0) setClock(s, Math.min(t, 1e10));
     return s;
   }
 
@@ -727,7 +735,7 @@
     // 「このまま あそぶ」：星 31 の最初から（logic の説明どおり loadSave(makeSave(state))）
     const t = state.t;
     const s = safeCall(() => L.loadSave(L.makeSave(state)), null);
-    if (s) { s.t = t; state = s; }
+    if (s) state = setClock(s, t);
     closeCard("end");
     sfx.play("start");
     setHint("ほし " + state.star + " から つづけるよ");
@@ -849,6 +857,7 @@
         const ph = ["fly", "bounce", "clear"].includes(obj.phase) ? obj.phase : base.phase;
         if (base.phase !== "choose") s.phase = ph;
         if (Number.isFinite(obj.wait)) s.wait = Math.max(0, obj.wait);
+        if (Number.isFinite(obj.tryAt) && obj.tryAt <= s.t) s.tryAt = obj.tryAt;
         if (obj.fighter && Number.isFinite(obj.fighter.x)) s.fighter = { x: obj.fighter.x, y: base.fighter.y };
         if (Array.isArray(obj.cd) && obj.cd.every(Number.isFinite)) s.cd = base.slots.map((_, k) => (Number.isFinite(obj.cd[k]) ? obj.cd[k] : s.t));
         if (!safeCall(() => L.step(s, 0), null)) s = base;
@@ -880,14 +889,14 @@
 
   // ===== デバッグ命令（?debug=1 のときだけ。§7.4） =====
   // その星の始めに見合う武器（枠の数と Lv）。自動プレイ（greedy・seed 1）で星 N−1 をクリアしたときの値を表にしたもの（R2：
-  // 毎回 greedy を回すと重いので、表を引くだけにする）。武器の種類は、いま持っている武器を残し、足りない枠は ARMS_ORDER の順で足す。
+  // 毎回 greedy を回すと重いので、表を引くだけにする。2026-10-21 に §18.3 の logic.js（HP_BASE 600・もろい底 SOFT・区切り）で測り直した）。武器の種類は、いま持っている武器を残し、足りない枠は ARMS_ORDER の順で足す。
   // 表より先の星は Lv99。表の値は目安（ロジックの数値が変わっても「星に見合う」程度でよい）
   const ARMS_LV = [
-    [1], [6], [7, 6], [8, 11, 9], [8, 14, 16], [15, 16, 19, 2], [17, 17, 23, 20], [22, 23, 24, 23], [26, 27, 28, 27], [28, 28, 33, 28],
-    [33, 34, 35, 33], [36, 37, 38, 36], [38, 38, 43, 38], [42, 42, 45, 42], [45, 46, 47, 45], [47, 48, 52, 47], [50, 52, 54, 51], [54, 55, 57, 54],
-    [56, 57, 61, 56], [58, 61, 63, 61], [64, 64, 66, 64], [66, 66, 70, 66], [68, 69, 73, 68], [72, 72, 75, 72], [75, 75, 78, 75], [77, 78, 82, 77],
-    [81, 82, 84, 81], [84, 84, 87, 84], [86, 87, 90, 86], [88, 91, 93, 88], [93, 94, 96, 94], [95, 95, 98, 95], [96, 96, 99, 96], [97, 98, 99, 97],
-    [98, 99, 99, 98]
+    [1], [6], [7, 7], [8, 10, 11], [8, 14, 16], [15, 16, 19, 16], [17, 17, 23, 21], [23, 23, 25, 23], [26, 27, 29, 27], [28, 28, 34, 29],
+    [33, 34, 36, 33], [36, 37, 38, 36], [38, 39, 43, 38], [42, 42, 45, 42], [45, 46, 48, 45], [47, 48, 53, 47], [51, 52, 54, 52], [54, 55, 57, 55],
+    [56, 57, 61, 57], [60, 61, 63, 61], [64, 64, 66, 64], [66, 66, 70, 66], [68, 70, 73, 68], [72, 73, 75, 73], [75, 76, 78, 76], [77, 78, 83, 78],
+    [82, 82, 84, 82], [84, 85, 87, 84], [86, 87, 91, 86], [88, 91, 93, 88], [94, 94, 96, 94], [95, 96, 98, 95], [96, 97, 99, 97], [97, 98, 99, 98],
+    [98, 99, 99, 99]
   ];
   const ARMS_ORDER = ["shot", "beam", "bolt", "spread", "bomb", "fire"];
   function armsFor(n) {
@@ -1011,7 +1020,7 @@
     let extra = { t: 0, ending: false };
     if (loaded) {
       extra = extraOf(raw);
-      loaded.t = extra.t;
+      setClock(loaded, extra.t);
       state = loaded;
     } else {
       if (raw !== null) {
