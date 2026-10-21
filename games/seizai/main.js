@@ -76,7 +76,7 @@
   };
   // 部署の「1ぷんに ○」の単位（plank は 角材1本 → 板 PLANKS_PER_BEAM 枚 なので、その倍にして「まい」。数は logic の値）
   const PLANKS_PER_BEAM = Number.isFinite(L.PLANKS_PER_BEAM) ? L.PLANKS_PER_BEAM : 1;
-  const RATE_UNIT = { cut: ["ぽん", 1], plant: ["ほん", 1], carry: ["ぽん", 1], peel: ["ぽん", 1], beam: ["ぽん", 1], dry: ["ぽん", 1], plank: ["まい", PLANKS_PER_BEAM], plane: ["まい", PLANKS_PER_BEAM], shop: ["にん", 1] };
+  const RATE_UNIT = { cut: ["ぽん", 1], plant: ["ほん", 1], carry: ["ぽん", 1], peel: ["ぽん", 1], beam: ["ぽん", 1], dry: ["ぽん", 1], plank: ["まい", PLANKS_PER_BEAM], plane: ["まい", 1], shop: ["にん", 1] };
   // 品の名前と単位（logic の PRODUCT_NAME・PRODUCT_UNIT を先に使う。無いときの控え）
   const PRODUCT_FALLBACK = { peeled: ["むきまるた", "こ"], beams: ["かくざい", "ぽん"], dried: ["かわいた かくざい", "ぽん"], planks: ["いた", "まい"], smooth: ["つるつるいた", "まい"] };
   const PRODUCT = {};
@@ -171,7 +171,8 @@
   let zonesCache = [];
   let layoutInfo = null;       // render.layout の返り値（scale など。みなとへのスクロールに使う）
   let shownStage = 0;
-  let lastTool = null;         // 最後に変わった道具 { dept, tier, name }（§19.3.3）
+  let lastTool = null;
+  let zonesAt = -Infinity;         // 最後に変わった道具 { dept, tier, name }（§19.3.3）
   let lastUi = {};             // DOM に書いた値（同じなら書かない）
   let best = 0;
 
@@ -218,7 +219,18 @@
   const bottleneck = () => (state ? safeCall(() => L.bottleneck(state), null) : null);
   const productOf = (stage) => safeCall(() => L.productOf(stage), null) || (stage >= 4 ? "smooth" : stage === 3 ? "planks" : stage === 2 ? "beams" : "peeled");
   // 道具（logic の toolOf。名前の表は logic だけが持つ §19.2.1）：{ tier, name, next: null | { name, lv } } | null
-  const toolOf = (d) => (state && typeof L.toolOf === "function" ? safeCall(() => L.toolOf(state, d), null) : null);
+  // toolOf は state を写すので、部署の Lv と段が変わったときだけ聞き直す（毎コマ呼ばない。性能 §6.4）
+  const toolMemo = {};
+  function toolOf(d) {
+    if (!state || typeof L.toolOf !== "function") return null;
+    const ds = state.depts && state.depts[d];
+    const key = state.stage + "|" + (ds ? ds.level : "-");
+    const m = toolMemo[d];
+    if (m && m.key === key) return m.v;
+    const v = safeCall(() => L.toolOf(state, d), null);
+    toolMemo[d] = { key, v };
+    return v;
+  }
   // 閉じていた秒（awaySeconds）。上限に着いたときは切る前の秒を返し、catchUp が 7200 に丸めて capped を立てる（§17.1 A1・SZ-01）
   function awayFor(from, to) {
     const sec = safeCall(() => L.awaySeconds(from, to), 0) || 0;
@@ -1023,7 +1035,9 @@
     else if (!stuck) forestHinted = false;
     trackWait();
     const bnNow = bottleneck();
-    updateZones(bnNow);
+    // 場所の読み上げ（aria-label）は 0.25 秒ごとで足りる（costOf などが state を写すので毎コマは重い。性能 §6.4）
+    const tz = now();
+    if (force || tz - zonesAt >= 250) { zonesAt = tz; updateZones(bnNow); }
     if (sheetDept) {
       const key = [sheetDept, stuck, waitAdvice(sheetDept, bnNow), state.money, st, JSON.stringify(state.depts && state.depts[sheetDept]), bnNow, Math.floor((Number(ratesOf()[sheetDept]) || 0) * 600)].join("|");
       if (lastUi.sheetKey !== key) { lastUi.sheetKey = key; renderSheet(); }

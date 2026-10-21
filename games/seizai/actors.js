@@ -196,6 +196,7 @@
     let prevDone = {};
     let clk = 0;
     let info = null;
+    let ratesFor = null, ratesMemo = null;
 
     // ===== 森の木の場所 =====
     function slotPositions(cap) {
@@ -312,8 +313,13 @@
       const t = num(state.t, 0);
       const boosted = {};
       for (const d of DEPT_IDS) boosted[d] = !!(depts[d] && num(depts[d].boostUntil, -1) > t);
+      // rates は state を写すので、同じ state の間は前の値を使う（step は 0.1 秒ごと。性能 §6.4）
       let rates = null;
-      try { rates = typeof Lg().rates === "function" ? Lg().rates(state) : null; } catch (e) { rates = null; }
+      if (state === ratesFor) rates = ratesMemo;
+      else {
+        try { rates = typeof Lg().rates === "function" ? Lg().rates(state) : null; } catch (e) { rates = null; }
+        ratesFor = state; ratesMemo = rates;
+      }
       const why = waitOf(state);
       const stuck = {}, tier = {};
       for (const d of DEPT_IDS) { stuck[d] = !!why[d]; tier[d] = tierOf(state, d); }

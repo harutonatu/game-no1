@@ -560,7 +560,7 @@ export const tests = [
       const b = await gs(page);
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
       const frames = b.frames - a.frames, slow = b.slowFrames - a.slowFrames;
-      check(`人の数 ${b.actors}（40〜60）`, b.actors >= 40 && b.actors <= 60, b.actors);
+      check(`人の数 ${b.actors}（40〜66。§19.3.1）`, b.actors >= 40 && b.actors <= 66, b.actors);
       check(`CPU 4 倍遅くで 6 秒：${frames} コマのうち 34ms を超えたのは ${slow}（${(slow / Math.max(1, frames) * 100).toFixed(1)}%、5% 以下）`, frames >= 100 && slow / frames <= 0.05, { frames, slow });
       await ctx.close();
     },

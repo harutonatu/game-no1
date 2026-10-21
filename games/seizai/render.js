@@ -242,14 +242,7 @@
           }
           rect(c, 0, b.y0, W, 26, "#5b6168");
         }
-        // 帯の名前（右上。場所の名札は左上なので重ならない）
-        if (b.name) {
-          c.font = "700 11px \"Hiragino Sans\", system-ui, sans-serif";
-          c.textBaseline = "middle"; c.textAlign = "right";
-          c.fillStyle = "rgba(255,255,255,0.85)";
-          c.fillText(b.name, W - 26, b.y0 + 13);
-          c.textAlign = "left";
-        }
+        // 帯の名前は描かない（右上は置き場の山、左上は場所の名札で埋まるため。帯の区切りは見出しの帯と色の違いで見せる）
         // 列の床（台が増えると行が増える）
         for (let r = 0; r < f.rows; r++) rect(c, 0, b.rowTop + r * f.rowH + f.rowH - 10, W, 3, "rgba(0,0,0,0.18)");
         for (let i = 1; i < b.cols.length; i++) rect(c, b.cols[i].x0 - 3, b.y0 + 26, 2, h - 26, "rgba(0,0,0,0.22)");
@@ -603,28 +596,71 @@
         }
       }
     }
+    // 名札・吹き出しの札は、文字と丸い地を小さな canvas に一度だけ描いて使い回す（毎コマ fillText しない。性能 §6.4・§19.3.1）
+    let labelCache = new Map(), labelKey = "";
+    function labelSprite(text, op) {
+      const fz = Math.max(12.5, 9 * scale) / scale;
+      const r = scale * dpr;
+      const ck = r.toFixed(3);
+      if (ck !== labelKey) { labelKey = ck; labelCache = new Map(); }
+      const key = text + "|" + (op.bold ? 1 : 0) + "|" + (op.bg || "") + "|" + (op.ink || "");
+      let e = labelCache.get(key);
+      if (e) return e;
+      const font = (op.bold ? "700 " : "600 ") + fz.toFixed(1) + "px " + "\"Hiragino Sans\", system-ui, sans-serif";
+      ctx.font = font;
+      const w = ctx.measureText(text).width + fz * 0.7, h = fz * 1.35;
+      let c = null;
+      if (doc && doc.createElement) {
+        c = doc.createElement("canvas");
+        c.width = Math.max(1, Math.ceil(w * r)); c.height = Math.max(1, Math.ceil(h * r));
+        const x = c.getContext("2d");
+        if (x) {
+          x.setTransform(c.width / w, 0, 0, c.height / h, 0, 0);
+          x.fillStyle = op.bg || "rgba(20,24,30,0.72)";
+          x.beginPath();
+          if (x.roundRect) x.roundRect(0, 0, w, h, h / 2); else x.rect(0, 0, w, h);
+          x.fill();
+          x.font = font;
+          x.fillStyle = op.ink || "#ffffff";
+          x.textBaseline = "middle";
+          x.fillText(text, fz * 0.35, h / 2 + 0.5);
+        } else c = null;
+      }
+      e = { c, w, h, fz, font };
+      if (labelCache.size > 400) labelCache.clear();
+      labelCache.set(key, e);
+      return e;
+    }
     function label(text, x, y, opts) {
       const op = opts || {};
-      const fz = Math.max(12.5, 9 * scale) / scale;
-      ctx.font = (op.bold ? "700 " : "600 ") + fz.toFixed(1) + "px " + "\"Hiragino Sans\", system-ui, sans-serif";
-      const w = ctx.measureText(text).width + fz * 0.7;
-      const h = fz * 1.35;
+      const e = labelSprite(String(text), op);
+      const w = e.w, h = e.h;
       const lx = op.right ? x - w : op.center ? x - w / 2 : x;
-      ctx.fillStyle = op.bg || "rgba(20,24,30,0.72)";
-      ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(lx, y, w, h, h / 2); else ctx.rect(lx, y, w, h);
-      ctx.fill();
-      ctx.fillStyle = op.ink || "#ffffff";
-      ctx.textBaseline = "middle";
-      ctx.fillText(text, lx + fz * 0.35, y + h / 2 + 0.5);
+      if (e.c) ctx.drawImage(e.c, lx, y, w, h);
+      else {
+        ctx.font = e.font;
+        ctx.fillStyle = op.bg || "rgba(20,24,30,0.72)";
+        ctx.fillRect(lx, y, w, h);
+        ctx.fillStyle = op.ink || "#ffffff";
+        ctx.textBaseline = "middle";
+        ctx.fillText(text, lx + e.fz * 0.35, y + h / 2 + 0.5);
+      }
       lastLabelW = w;
       return h;
     }
     let lastLabelW = 0;
+    const widthCache = new Map();
     function labelWidth(text, bold) {
       const fz = Math.max(12.5, 9 * scale) / scale;
-      ctx.font = (bold ? "700 " : "600 ") + fz.toFixed(1) + "px " + "\"Hiragino Sans\", system-ui, sans-serif";
-      return ctx.measureText(text).width + fz * 0.7;
+      const key = text + "|" + (bold ? 1 : 0) + "|" + fz.toFixed(2);
+      let w = widthCache.get(key);
+      if (w === undefined) {
+        ctx.font = (bold ? "700 " : "600 ") + fz.toFixed(1) + "px " + "\"Hiragino Sans\", system-ui, sans-serif";
+        w = ctx.measureText(text).width + fz * 0.7;
+        if (widthCache.size > 300) widthCache.clear();
+        widthCache.set(key, w);
+      }
+      return w;
     }
     // 最初の買い物まで なえぎを光らせる（買ったものが 1 つも無い間。§17.3 B1）
     let initDepts = null;
@@ -639,7 +675,14 @@
       return true;
     }
     // 今のお金で買えるものがある部署か（名札の「＋」。main.js の canBuyAny と同じ見方）
+    let memoState = null, memo = { buy: {} };
     function canBuyAny(s, d) {
+      if (memoState === s && d in memo.buy) return memo.buy[d];
+      const v = canBuyAnyRaw(s, d);
+      if (memoState === s) memo.buy[d] = v;
+      return v;
+    }
+    function canBuyAnyRaw(s, d) {
       const L = Lg();
       if (d === "goods" || typeof L.costOf !== "function") return false;
       for (const what of ["staff", "line", "level", "mgr"]) {
@@ -1210,8 +1253,9 @@
     function drawZonesOverlay(s) {
       const depts = s.depts || {};
       const t = num(s.t, 0);
-      let bn = null;
-      try { bn = typeof Lg().bottleneck === "function" ? Lg().bottleneck(s) : null; } catch (e) { bn = null; }
+      // logic の関数は state を写すので、同じ state（step は 0.1 秒ごと）の間は 1 回だけ求める（性能 §6.4）
+      if (memoState !== s) { memoState = s; memo = { buy: {} }; try { memo.bn = typeof Lg().bottleneck === "function" ? Lg().bottleneck(s) : null; } catch (e) { memo.bn = null; } }
+      const bn = memo.bn;
       const L = Lg();
       const cd = num(L.BOOST_COOLDOWN, 15), bs = num(L.BOOST_SEC, 5), cc = num(L.CALL_COOLDOWN, 10);
       for (const d of geo.order) {
