@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ゆびあそび">
+<meta name="theme-color" content="#0e1430">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<!-- 表示名は main.js が AsteroidLogic.NAME で上書きする（ここに書く文字は控え） -->
+<title>ちきゅうを守れ！ほしくだき</title>
+<!-- デバッグ表示（?debug=1 のときだけ動く。読めなくてもゲームは動く） -->
+<script src="../../common/debug.js"></script>
+<style>
+  /* 配置（契約 docs/asteroid-contract.md §5.1）
+     縦向き：上から #hud（← メニュー｜題名｜？ ♪ ／ かけら・ほし ／ 壊した割合）→ #field（場。押しても何も起きない）→ #weapons（最大4行＋あたらしい ぶき）。
+     場は縦横比 360:560 を保って、残った高さに合わせて小さくなる（武器の行は削らない）。
+     横向きで背が低い（高さ 500px 以下）：左に #field、右の列に #hud・#weapons。 */
+  :root {
+    --bg: #0e1430;
+    --panel: #1a2347;
+    --panel2: #243063;
+    --line: #3a4888;
+    --ink: #f2f4ff;
+    --muted: #aab3d6;
+    --accent: #ff9a3c;
+    --accent-ink: #2a1300;
+    --gold: #ffd84d;
+    --good: #8fe3a0;
+    --font-display: "Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif;
+    --font-text: "Hiragino Sans", system-ui, sans-serif;
+    --head-h: 44px;
+    --row-h: 52px;
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  /* ダブルタップ拡大・ピンチ拡大を止める（iOS Safari は user-scalable=no を無視するため CSS でも防ぐ） */
+  html { overscroll-behavior: none; touch-action: manipulation; }
+  body {
+    margin: 0;
+    font-size: 16px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-display);
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+  button { font-family: inherit; touch-action: manipulation; -webkit-touch-callout: none; cursor: pointer; }
+  button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .app {
+    box-sizing: border-box;
+    height: 100%;
+    padding-top: max(4px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(8px, env(safe-area-inset-left, 0px));
+    padding-right: max(8px, env(safe-area-inset-right, 0px));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "hud" "field" "weapons";
+    gap: 4px;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  /* ===== #hud ===== */
+  .hud { grid-area: hud; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 6px;
+    min-width: 0;
+    min-height: var(--head-h);
+  }
+  .back {
+    position: relative;
+    z-index: 30;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 10px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    font: 700 16px var(--font-text);
+    text-decoration: none;
+    white-space: nowrap;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+  }
+  .back:active { filter: brightness(1.3); }
+  /* 題名「ちきゅうを守れ！ほしくだき」：1行に入らないときだけ「ちきゅうを守れ！」と「ほしくだき」の間で2行に折る（§1.4）。
+     2つの span は中で折れない（white-space: nowrap）。「…」で切らない */
+  h1.title {
+    margin: 0;
+    min-width: 0;
+    text-align: center;
+    font: 800 16px/1.15 var(--font-display);
+    letter-spacing: 0.02em;
+    color: var(--ink);
+    white-space: normal;
+    word-break: keep-all;
+    overflow-wrap: normal;
+    overflow: hidden;
+  }
+  h1.title .tl { display: inline-block; white-space: nowrap; }
+  .head-tools { display: flex; gap: 8px; }
+  .tool {
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink);
+    font: 700 18px var(--font-display);
+    padding: 0 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tool:active { filter: brightness(1.3); background: var(--panel); }
+  #soundBtn[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
+
+  /* かけら・ほし の行 */
+  .info { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 8px; min-width: 0; padding: 0 2px; }
+  .purse { display: flex; align-items: baseline; gap: 4px; min-width: 0; white-space: nowrap; }
+  #kakera { font: 900 22px/1.15 var(--font-display); color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; display: inline-block; transform-origin: left center; }
+  .purse .unit { font: 700 12px/1 var(--font-text); color: var(--muted); }
+  /* render.js が粒の吸い込まれに合わせて .bump を付ける（数は main.js がロジックの値そのままで書く） */
+  #kakera.bump { animation: bump 0.22s ease-out; }
+  @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.12); } 100% { transform: scale(1); } }
+  #starLabel { min-width: 0; display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+  #starLabel .num { font: 800 15px/1.2 var(--font-display); white-space: nowrap; }
+  #starLabel .tag { font: 700 12px/1.2 var(--font-text); color: var(--muted); word-break: keep-all; overflow-wrap: anywhere; }
+  #starLabel .tag:empty { display: none; }
+  /* 大きな星（5 の倍数）は札を明るく。色だけに頼らず ★ も付ける */
+  #starLabel[data-boss="1"] .num { color: var(--accent); }
+  #starLabel[data-boss="1"] .num::before { content: "★"; }
+
+  /* 壊した割合の棒（main.js が aria-valuenow と #starFill の幅、[data-part=pct] の文字を書く） */
+  .barrow { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0 2px; }
+  #starBar { flex: 1 1 auto; min-width: 40px; height: 8px; border-radius: 4px; background: #0a0f24; box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+  #starFill { display: block; height: 100%; width: 0%; border-radius: 4px; background: repeating-linear-gradient(135deg, #ffb35c 0 6px, #ff9a3c 6px 12px); transition: width 0.25s ease-out; }
+  .barrow .pct { flex: 0 0 auto; font: 700 12px/1 var(--font-text); color: var(--muted); font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
+
+  /* ===== #field（場。押しても何も起きない：押す処理を付けない・pointer-events なし） ===== */
+  .field {
+    grid-area: field;
+    position: relative;
+    min-height: 0;
+    min-width: 0;
+    border-radius: 12px;
+    background: #070b1f;
+    overflow: hidden;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /* canvas を置く箱。render.js がこの箱の大きさに 360:560 で合わせて canvas の大きさを決め、真ん中に置く。右に #distance の場所を空ける */
+  .stage { position: absolute; top: 0; bottom: 0; left: 18px; right: 18px; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  #fieldCanvas { display: block; width: 100px; height: 156px; pointer-events: none; touch-action: manipulation; }
+
+  /* 地球までの近さ（縦の棒。下ほど近い）。main.js が aria-valuenow（0〜100。100＝とどく）と #distanceFill の高さを書く */
+  #distance {
+    position: absolute;
+    right: 5px;
+    top: 10%;
+    bottom: 12%;
+    width: 8px;
+    border-radius: 4px;
+    background: #0a0f24;
+    box-shadow: inset 0 0 0 1px var(--line);
+    overflow: hidden;
+    pointer-events: none;
+  }
+  #distanceFill { position: absolute; left: 0; right: 0; top: 0; height: 0%; border-radius: 4px; background: linear-gradient(#7fd6ff, #ff7a5c); transition: height 0.25s linear; }
+  #distance[data-near="1"] #distanceFill { animation: nearBlink 0.8s ease-in-out infinite; }
+  @keyframes nearBlink { 50% { opacity: 0.45; } }
+  .dist-ic { position: absolute; right: 2px; font: 700 12px/1 var(--font-text); color: var(--muted); pointer-events: none; }
+  .dist-ic.top { top: calc(10% - 15px); }
+  .dist-ic.bot { bottom: calc(12% - 15px); }
+
+  /* 場の上の帯（カードではない。押せない） */
+  .banner {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    top: 10%;
+    z-index: 4;
+    margin: 0 auto;
+    box-sizing: border-box;
+    width: fit-content;
+    max-width: calc(100% - 12px);
+    padding: 6px 12px;
+    border-radius: 12px;
+    background: rgba(14, 20, 48, 0.88);
+    box-shadow: 0 0 0 2px #7fd6ff;
+    color: var(--ink);
+    text-align: center;
+    font: 800 16px/1.3 var(--font-display);
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    pointer-events: none;
+    animation: bannerIn 0.25s ease-out;
+  }
+  .banner .sub { display: block; font: 700 13px/1.3 var(--font-text); color: var(--gold); }
+  .banner .sub:empty { display: none; }
+  #clearBanner { box-shadow: 0 0 0 2px var(--gold); color: var(--gold); font-size: 20px; }
+  #clearBanner .sub { color: var(--ink); }
+  #bossBanner { box-shadow: 0 0 0 2px var(--accent); }
+  #bossBanner::before { content: "★ "; color: var(--accent); }
+  @keyframes bannerIn { from { transform: translateY(-8px) scale(0.92); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  /* ヒント：場の下に重ねる小さな札（行を取らない。空のときは出さない。押せない） */
+  .hint {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+    z-index: 5;
+    margin: 0 auto;
+    box-sizing: border-box;
+    width: fit-content;
+    max-width: calc(100% - 12px);
+    padding: 3px 10px;
+    border-radius: 10px;
+    background: rgba(14, 20, 48, 0.85);
+    max-height: 2.9em;
+    overflow: hidden;
+    text-align: center;
+    color: var(--ink);
+    font: 700 13px/1.3 var(--font-text);
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    pointer-events: none;
+  }
+  .hint:empty { padding: 0; background: transparent; }
+
+  /* ===== #weapons（武器の行。最大4行＋あたらしい ぶき） ===== */
+  .weapons { grid-area: weapons; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .wrow {
+    box-sizing: border-box;
+    min-height: var(--row-h);
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 6px;
+    padding: 3px 4px 3px 6px;
+    border-radius: 12px;
+    background: var(--panel);
+    box-shadow: 0 0 0 1px var(--line);
+    min-width: 0;
+  }
+  /* 強くした行が光る（main.js が .flash を付け、animationend で外す） */
+  .wrow.flash { animation: rowFlash 0.5s ease-out; }
+  @keyframes rowFlash { 0% { background: #fff3c4; } 100% { background: var(--panel); } }
+  /* しんか の行（main.js が .evolve を付ける） */
+  .wrow.evolve { animation: rowEvolve 1.0s ease-out; }
+  @keyframes rowEvolve { 0%, 30% { background: #ffe27a; box-shadow: 0 0 0 3px var(--gold); } 100% { background: var(--panel); box-shadow: 0 0 0 1px var(--line); } }
+  /* はね返されたあと「いま一番安く強くできる行」（main.js が data-suggest="1"） */
+  .wrow[data-suggest="1"] { box-shadow: 0 0 0 2px var(--gold); animation: suggest 1.2s ease-in-out infinite; }
+  @keyframes suggest { 50% { box-shadow: 0 0 0 4px rgba(255, 216, 77, 0.55); } }
+  .wicon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background-color: #0a0f24;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 26px 26px;
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .winfo { min-width: 0; display: flex; flex-direction: column; gap: 0; }
+  .wl1 { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; font: 800 14px/1.2 var(--font-display); }
+  .wl1 .lv { font: 800 13px/1.2 var(--font-display); color: var(--gold); font-variant-numeric: tabular-nums; }
+  .wl2 { font: 700 12px/1.2 var(--font-text); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
+  .evo { font: 700 12px/1.2 var(--font-text); color: var(--gold); white-space: nowrap; }
+  .evo:empty { display: none; }
+  .good { display: inline-flex; align-items: center; gap: 2px; font: 700 12px/1 var(--font-text); color: var(--good); }
+  .good:empty { display: none; }
+  .up {
+    box-sizing: border-box;
+    min-height: 44px;
+    width: 112px;
+    padding: 2px 4px;
+    border-radius: 10px;
+    border: 0;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font: 800 13px/1.2 var(--font-text);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+  /* 値段：数（main.js が formatKakera の文字を [data-part=cost] に書く）＋ 単位「かけら」。長い桁のときは単位だけ次の行へ */
+  .up .cost { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; column-gap: 1px; }
+  .up .cost b { font: 800 13px/1.2 var(--font-display); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .up .cost .unit { font: 700 12px/1.2 var(--font-text); white-space: nowrap; }
+  .up .cost:has(b:empty), .up[data-max="1"] .cost { display: none; }
+  .up:active:not([aria-disabled="true"]) { filter: brightness(1.15); transform: scale(0.97); }
+  .up[aria-disabled="true"] { background: #2a3360; color: var(--muted); box-shadow: inset 0 0 0 1px #4a5899; font-size: 12px; letter-spacing: -0.02em; }
+  .up[aria-disabled="true"] .cost { color: var(--muted); }
+  .up[data-max="1"] { background: transparent; color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+  .shake { animation: shake 0.3s ease-in-out; }
+  @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+
+  #unlockBtn {
+    box-sizing: border-box;
+    min-height: 46px;
+    min-width: 44px;
+    width: 100%;
+    padding: 4px 12px;
+    border-radius: 12px;
+    border: 2px dashed var(--gold);
+    background: #2a2a1a;
+    color: var(--gold);
+    font: 800 15px/1.25 var(--font-display);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+  #unlockBtn .cost { white-space: nowrap; }
+  #unlockBtn .cost b { font-variant-numeric: tabular-nums; }
+  #unlockBtn .cost .unit { font-size: 13px; }
+  #unlockBtn:not([aria-disabled="true"]) { border-style: solid; background: var(--gold); color: #2a1f00; animation: glow 1.6s ease-in-out infinite; }
+  #unlockBtn[aria-disabled="true"] { opacity: 0.85; color: var(--muted); border-color: #6b6b4a; }
+  #unlockBtn:active:not([aria-disabled="true"]) { filter: brightness(1.1); }
+  @keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 216, 77, 0); } 50% { box-shadow: 0 0 0 4px rgba(255, 216, 77, 0.45); } }
+
+  /* ===== 武器の絵（data-w）とマスの印（data-mat）。形と模様でも分かる（色覚 §6.2） ===== */
+  [data-w="shot"] > .wicon, .wicon[data-w="shot"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='11' y='10' width='2' height='11' rx='1' fill='%23ffffff' opacity='.45'/%3E%3Ccircle cx='12' cy='7' r='4' fill='%23ffffff'/%3E%3C/svg%3E"); }
+  [data-w="spread"] > .wicon, .wicon[data-w="spread"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='%23ffd84d'%3E%3Ccircle cx='3.5' cy='11' r='2.2'/%3E%3Ccircle cx='7' cy='5.5' r='2.2'/%3E%3Ccircle cx='12' cy='3.5' r='2.2'/%3E%3Ccircle cx='17' cy='5.5' r='2.2'/%3E%3Ccircle cx='20.5' cy='11' r='2.2'/%3E%3C/g%3E%3Ccircle cx='12' cy='19' r='2.6' fill='%23ffffff'/%3E%3C/svg%3E"); }
+  [data-w="bomb"] > .wicon, .wicon[data-w="bomb"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='%23ff9a3c' stroke-width='1.6' stroke-dasharray='3 2'/%3E%3Ccircle cx='12' cy='12' r='5.5' fill='%23ff9a3c'/%3E%3Ccircle cx='10.3' cy='10.3' r='1.6' fill='%23ffe0b8'/%3E%3C/svg%3E"); }
+  [data-w="bolt"] > .wicon, .wicon[data-w="bolt"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M14 1 L5 13 H11 L9 23 L19 9 H13 Z' fill='%23bfeeff' stroke='%23ffffff' stroke-width='1' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+  [data-w="beam"] > .wicon, .wicon[data-w="beam"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='7' y='1' width='10' height='22' rx='3' fill='%237fd6ff' opacity='.45'/%3E%3Crect x='10' y='1' width='4' height='22' rx='2' fill='%23ffffff'/%3E%3C/svg%3E"); }
+  [data-w="fire"] > .wicon, .wicon[data-w="fire"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1 C14 6 19 8 19 14 A7 7 0 0 1 5 14 C5 10 8 8 8 4 C10 6 11 7 12 1 Z' fill='%23ff5a3c'/%3E%3Cpath d='M12 10 C13 13 15 14 15 16.5 A3 3 0 0 1 9 16.5 C9 14.5 11 13.5 12 10 Z' fill='%23ffd84d'/%3E%3C/svg%3E"); }
+
+  .mat { display: inline-block; flex: 0 0 auto; width: 13px; height: 13px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45); vertical-align: middle; position: relative; }
+  .mat[data-mat="rock"] { background: #9a6542; }
+  .mat[data-mat="iron"] { background-color: #8a9099; background-image: linear-gradient(#4b5058 1px, transparent 1px), linear-gradient(90deg, #4b5058 1px, transparent 1px); background-size: 4px 4px; background-position: 1px 1px; }
+  .mat[data-mat="ice"] { background-color: #8fd3ef; background-image: repeating-linear-gradient(45deg, #ffffff 0 1.2px, transparent 1.2px 4px); }
+  .mat[data-mat="gold"] { background: #f2c84b; }
+  .mat[data-mat="gold"]::after { content: "★"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 9px/1 sans-serif; color: #7a4f00; }
+
+  /* ===== カード（遊び方・2択・エンディング） ===== */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    box-sizing: border-box;
+    display: flex;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    padding-top: calc(max(4px, env(safe-area-inset-top, 0px)) + var(--head-h) + 6px);
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
+    padding-right: max(10px, env(safe-area-inset-right, 0px));
+    background: rgba(5, 8, 22, 0.66);
+  }
+  .card {
+    width: min(440px, 100%);
+    box-sizing: border-box;
+    margin: auto;
+    flex: 0 0 auto;
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+    box-shadow: 0 0 0 1px var(--line), 0 20px 50px rgba(0, 0, 0, 0.5);
+  }
+  .card h2 { margin: 0; font-size: 22px; line-height: 1.3; letter-spacing: 0.04em; overflow-wrap: anywhere; word-break: keep-all; }
+  .card p { margin: 0; font: 16px/1.5 var(--font-text); word-break: keep-all; overflow-wrap: anywhere; }
+  .card p.small { color: var(--muted); font-size: 14px; }
+  .card ol.rules { margin: 0; padding-left: 1.4em; text-align: left; font: 15px/1.5 var(--font-text); display: flex; flex-direction: column; gap: 6px; word-break: keep-all; overflow-wrap: anywhere; }
+  .card .btns { display: flex; flex-direction: column; gap: 8px; }
+  .card .btns button {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 44px;
+    min-height: 48px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--panel2);
+    color: #fff;
+    font: 700 16px/1.3 var(--font-text);
+    word-break: keep-all;
+  }
+  .card .btns button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .card .btns button:active:not([aria-disabled="true"]) { filter: brightness(1.2); }
+  .card button[aria-disabled="true"] { opacity: 0.6; }
+
+  /* 2択（#choiceA・#choiceB は本物のボタン。出た直後 400ms は main.js が aria-disabled="true"） */
+  .choices { display: flex; flex-direction: column; gap: 10px; }
+  .choice {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 64px;
+    padding: 8px 10px;
+    border-radius: 14px;
+    border: 2px solid var(--gold);
+    background: var(--panel2);
+    color: var(--ink);
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-areas: "icon name" "icon desc" "icon good";
+    column-gap: 10px;
+    row-gap: 2px;
+    align-items: center;
+    text-align: left;
+  }
+  .choice .wicon { grid-area: icon; width: 44px; height: 44px; background-size: 36px 36px; align-self: center; }
+  .choice .cname { grid-area: name; font: 800 18px/1.25 var(--font-display); }
+  .choice .cdesc { grid-area: desc; font: 600 13px/1.35 var(--font-text); color: var(--ink); word-break: keep-all; overflow-wrap: anywhere; }
+  .choice .good { grid-area: good; font-size: 13px; }
+  .choice:active:not([aria-disabled="true"]) { filter: brightness(1.2); }
+  .choice[aria-disabled="true"] { opacity: 0.6; }
+  .choice-note { color: var(--muted); font-size: 13px; }
+
+  /* エンディングの絵：地球のまわりを戦闘機が一周する */
+  .endpic { display: block; margin: 0 auto; width: 140px; height: 110px; }
+  .endpic .orbit { transform-origin: 70px 62px; animation: orbit 4s linear infinite; }
+  @keyframes orbit { to { transform: rotate(360deg); } }
+
+  /* ===== 幅の狭い画面（SE 縦 320px）：題名は 14px で「ちきゅうを守れ！」／「ほしくだき」の2行 ===== */
+  @media (max-width: 380px) {
+    .head { column-gap: 4px; }
+    .back { padding: 0 6px; font-size: 14px; }
+    .head-tools { gap: 4px; }
+    h1.title { font-size: 14px; letter-spacing: 0; }
+    #kakera { font-size: 20px; }
+  }
+  @media (min-width: 500px) { .up { width: 150px; } }
+  @media (orientation: portrait) and (max-height: 620px) {
+    .card { padding: 12px 14px; gap: 8px; }
+    .card h2 { font-size: 19px; }
+    .card p { font-size: 15px; line-height: 1.45; }
+    .card ol.rules { font-size: 14px; line-height: 1.45; gap: 4px; }
+    .choice { min-height: 60px; padding: 6px 8px; }
+  }
+
+  /* ===== 横向きで背が低い：左に #field、右の列に #hud・#weapons ===== */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .app {
+      max-width: none;
+      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+      grid-template-areas: "field hud" "field weapons";
+      gap: 3px 8px;
+    }
+    /* 場の幅は高さから決まる（canvas 360:560 ＋ 左右の余白 = 400:560） */
+    .field { height: 100%; aspect-ratio: 396 / 560; width: auto; }
+    .stage { left: 4px; right: 18px; }
+    .hud { gap: 1px; }
+    .head { column-gap: 4px; }
+    .back { padding: 0 6px; font-size: 14px; }
+    .head-tools { gap: 4px; }
+    h1.title { font-size: 14px; letter-spacing: 0; }
+    .weapons { align-self: start; gap: 3px; }
+    .up { width: 124px; }
+    #kakera { font-size: 19px; }
+    #starLabel { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; column-gap: 6px; }
+    .card { width: min(560px, 100%); padding: 8px 12px; gap: 6px; }
+    .card h2 { font-size: 17px; }
+    .card p { font-size: 13px; line-height: 1.4; }
+    .card p.small { font-size: 12px; }
+    .card ol.rules { font-size: 13px; line-height: 1.35; gap: 2px; }
+    .card .btns { flex-direction: row; }
+    .card .btns button { min-height: 44px; padding: 4px 6px; font-size: 14px; }
+    .choices { flex-direction: row; gap: 8px; }
+    .choice { grid-template-columns: 36px minmax(0, 1fr); padding: 6px 8px; min-height: 56px; }
+    .choice .wicon { width: 36px; height: 36px; background-size: 30px 30px; }
+    .choice .cname { font-size: 16px; }
+    .choice .cdesc { font-size: 12px; }
+    .choice .good { font-size: 12px; }
+    .choice-note { font-size: 12px; }
+    .endpic { width: 100px; height: 78px; }
+    .overlay { padding-top: calc(max(4px, env(safe-area-inset-top, 0px)) + var(--head-h) + 4px); padding-bottom: max(4px, env(safe-area-inset-bottom, 0px)); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+  /* 動きを減らす設定（main.js が body[data-calm="1"]） */
+  body[data-calm="1"] *, body[data-calm="1"] *::before, body[data-calm="1"] *::after { animation: none !important; transition: none !important; }
+</style>
+</head>
+<body data-phase="fly">
+<div class="app" id="app">
+  <header class="hud" id="hud">
+    <div class="head">
+      <a id="back" class="back" href="../../">← メニュー</a>
+      <h1 class="title" id="gameTitle"><span class="tl">ちきゅうを守れ！</span><wbr><span class="tl">ほしくだき</span></h1>
+      <div class="head-tools">
+        <button class="tool" id="helpBtn" type="button" aria-label="あそびかた">？</button>
+        <button class="tool" id="soundBtn" type="button" aria-label="こうかおん" aria-pressed="true">♪</button>
+      </div>
+    </div>
+    <div class="info">
+      <div class="purse"><b id="kakera" aria-live="off">0</b><span class="unit">かけら</span></div>
+      <div id="starLabel"><span class="num" data-part="num">ほし 1</span><span class="tag" data-part="tag"></span></div>
+    </div>
+    <div class="barrow">
+      <div id="starBar" role="progressbar" aria-label="こわした わりあい" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="starFill"></span></div>
+      <span class="pct" data-part="pct">0%</span>
+    </div>
+  </header>
+
+  <main class="field" id="field" aria-label="うちゅう">
+    <div class="stage" id="stage"><canvas id="fieldCanvas" role="img" aria-label="ほしと せんとうき。みているだけで いいよ"></canvas></div>
+    <span class="dist-ic top" aria-hidden="true">とおい</span>
+    <div id="distance" role="progressbar" aria-label="ちきゅうまでの ちかさ" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="distanceFill"></span></div>
+    <span class="dist-ic bot" aria-hidden="true">ちかい</span>
+    <p class="banner" id="bounceBanner" hidden><span data-part="main">バリアで はねかえした！</span><span class="sub" data-part="sub"></span></p>
+    <p class="banner" id="clearBanner" hidden><span data-part="main">ほし 1 クリア！</span><span class="sub" data-part="sub"></span></p>
+    <p class="banner" id="bossBanner" hidden><span data-part="main">おおきな ほしが きた！</span></p>
+    <p class="hint" id="hint" role="status" aria-live="polite"></p>
+  </main>
+
+  <section class="weapons" id="weapons" aria-label="ぶき">
+    <div class="wrow" data-slot="0" data-w="shot">
+      <span class="wicon" data-part="icon" aria-hidden="true"></span>
+      <div class="winfo">
+        <div class="wl1"><b data-part="name">たま</b><span class="lv" data-part="lv">Lv1</span><span class="good" data-part="good"></span></div>
+        <div class="wl2" data-part="dps">1びょうに 10</div>
+        <div class="evo" data-part="note"></div>
+      </div>
+      <button class="up" type="button" data-up="0"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost">5</b></span></button>
+    </div>
+    <div class="wrow" data-slot="1" hidden>
+      <span class="wicon" data-part="icon" aria-hidden="true"></span>
+      <div class="winfo">
+        <div class="wl1"><b data-part="name"></b><span class="lv" data-part="lv"></span><span class="good" data-part="good"></span></div>
+        <div class="wl2" data-part="dps"></div>
+        <div class="evo" data-part="note"></div>
+      </div>
+      <button class="up" type="button" data-up="1"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost"></b></span></button>
+    </div>
+    <div class="wrow" data-slot="2" hidden>
+      <span class="wicon" data-part="icon" aria-hidden="true"></span>
+      <div class="winfo">
+        <div class="wl1"><b data-part="name"></b><span class="lv" data-part="lv"></span><span class="good" data-part="good"></span></div>
+        <div class="wl2" data-part="dps"></div>
+        <div class="evo" data-part="note"></div>
+      </div>
+      <button class="up" type="button" data-up="2"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost"></b></span></button>
+    </div>
+    <div class="wrow" data-slot="3" hidden>
+      <span class="wicon" data-part="icon" aria-hidden="true"></span>
+      <div class="winfo">
+        <div class="wl1"><b data-part="name"></b><span class="lv" data-part="lv"></span><span class="good" data-part="good"></span></div>
+        <div class="wl2" data-part="dps"></div>
+        <div class="evo" data-part="note"></div>
+      </div>
+      <button class="up" type="button" data-up="3"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost"></b></span></button>
+    </div>
+    <button id="unlockBtn" type="button" aria-disabled="true"><span data-part="label">あたらしい ぶき</span><span class="cost"><b data-part="cost">150</b><span class="unit">かけら</span></span></button>
+  </section>
+</div>
+
+<!-- 2択（閉じる操作は無い。選ぶまで場は止まる。#back でメニューへは戻れる） -->
+<div class="overlay" id="choiceCard" role="dialog" aria-modal="true" aria-labelledby="choiceTitle" hidden>
+  <div class="card">
+    <h2 id="choiceTitle">どっちに する？</h2>
+    <div class="choices">
+      <button class="choice" id="choiceA" type="button" data-w="spread">
+        <span class="wicon" data-part="icon" aria-hidden="true"></span>
+        <span class="cname" data-part="name">ちらし</span>
+        <span class="cdesc" data-part="desc">おうぎに ひろがって たくさん あたる</span>
+        <span class="good" data-part="good"><i class="mat" data-mat="rock"></i>いわに つよい</span>
+      </button>
+      <button class="choice" id="choiceB" type="button" data-w="bolt">
+        <span class="wicon" data-part="icon" aria-hidden="true"></span>
+        <span class="cname" data-part="name">いなずま</span>
+        <span class="cdesc" data-part="desc">おなじ いわを つたって れんさする</span>
+        <span class="good" data-part="good"><i class="mat" data-mat="iron"></i>てつに つよい</span>
+      </button>
+    </div>
+    <p class="choice-note">えらんだ ぶきは いれかえられないよ</p>
+  </div>
+</div>
+
+<!-- 遊び方 -->
+<div class="overlay" id="help" role="dialog" aria-modal="true" aria-labelledby="helpTitle" hidden>
+  <div class="card">
+    <h2 id="helpTitle">あそびかた</h2>
+    <ol class="rules">
+      <li>せんとうきは じぶんで うつよ。ほしを ぜんぶ こわすと クリア。</li>
+      <li>かけらで ぶきを つよく しよう。あたらしい ぶきは 2つから えらべるよ。ぶきには とくいな いわが あるよ。</li>
+      <li>ほしが ちきゅうに とどいても バリアが まもるよ。つよくして もういちど！</li>
+    </ol>
+    <div class="btns"><button type="button" id="helpOk" class="primary">わかった</button></div>
+  </div>
+</div>
+
+<!-- エンディング -->
+<div class="overlay" id="endCard" role="dialog" aria-modal="true" aria-labelledby="endTitle" hidden>
+  <div class="card">
+    <h2 id="endTitle">ちきゅうを まもりきった！</h2>
+    <svg class="endpic" viewBox="0 0 140 110" aria-hidden="true">
+      <circle cx="70" cy="62" r="30" fill="#2f7fd8"/>
+      <path d="M52 50 C58 44 66 46 64 54 C62 60 54 62 50 58 Z M74 66 C80 60 90 64 88 72 C85 80 76 80 74 74 Z M70 40 C74 38 80 40 78 44 C75 46 70 45 70 40 Z" fill="#4cbf6a"/>
+      <circle cx="70" cy="62" r="38" fill="none" stroke="#9fe6ff" stroke-width="2" opacity="0.7"/>
+      <g fill="#ffd84d"><circle cx="16" cy="16" r="1.6"/><circle cx="122" cy="22" r="1.4"/><circle cx="128" cy="96" r="1.6"/><circle cx="12" cy="92" r="1.3"/><circle cx="104" cy="8" r="1.2"/></g>
+      <g class="orbit">
+        <g transform="translate(70 14)">
+          <path d="M-7 0 C-7 -4 -3 -6 4 -6 C9 -6 12 -3 13 0 C12 3 9 6 4 6 C-3 6 -7 4 -7 0 Z" fill="#ffffff"/>
+          <path d="M-2 -6 L-7 -11 L-9 -11 L-6 -5 Z M-2 6 L-7 11 L-9 11 L-6 5 Z" fill="#ff9a3c"/>
+          <path d="M-7 -3 L-14 0 L-7 3 Z" fill="#ffb35c"/>
+          <circle cx="5" cy="0" r="2.2" fill="#7fd6ff"/>
+        </g>
+      </g>
+    </svg>
+    <p id="endText">30この ほしを くだいて、ちきゅうを まもったよ！</p>
+    <p class="small" id="endStats"></p>
+    <div class="btns"><button type="button" id="endOk" class="primary">このまま あそぶ</button></div>
+  </div>
+</div>
+
+<script src="../../common/sfx.js"></script>
+<script src="logic.js"></script>
+<script src="render.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
