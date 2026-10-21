@@ -1030,7 +1030,7 @@ export const tests = [
     },
   },
   {
-    id: 'WW20', tier: 'full', title: 'もくもくこうば 待つ理由（§18・SZ-03）：きこりが遅くて切り株が無い間、なえぎのシート #sheetInfo（data-wait=1）と場所の読み上げに「うえる きりかぶが まだ ないよ。きこりを ふやすと うえられるよ」、はこぶ・かわむき にも待つ理由と「きこりを ふやすと」、きこり は「ここが おそいよ」で待つ文なし。切り株があれば待つ文は出ない。なえぎの人は切られた切り株まで歩いて行ってから植える（着くまで切り株のまま）',
+    id: 'WW20', tier: 'full', title: 'もくもくこうば 待つ理由（§18・SZ-03）：きこりが遅くて切り株が無い間、なえぎのシート #sheetInfo（data-wait=1）と場所の読み上げに「きりかぶが まだ ないよ。きこりを ふやすと うえられるよ」、はこぶ・かわむき にも待つ理由と「きこりを ふやそう」、きこり は「ここが おそいよ」で待つ文なし。切り株があれば待つ文は出ない。なえぎの人は切られた切り株まで歩いて行ってから植える（着くまで切り株のまま）',
     async run({ browser, check, root, errors }) {
       const L = logicOf(root);
       const e0 = errors.length;
@@ -1044,9 +1044,9 @@ export const tests = [
         const open = async (d) => { await page.evaluate((x) => document.querySelector(`.zone[data-dept="${x}"]`).click(), d); await wait(page, 120); return page.evaluate(() => { const e = document.querySelector('#sheetInfo'); return { t: e.textContent.trim(), wait: e.dataset.wait, jam: e.dataset.jam }; }); };
         const pl = await open('plant');
         const za = await page.evaluate(() => document.querySelector('.zone[data-dept="plant"]').getAttribute('aria-label'));
-        check(`つまりは きこり（${g.bottleneck}）。なえぎのシート「${pl.t}」（data-wait ${pl.wait}）と読み上げ「${za}」に、待つ理由と「きこりを ふやすと うえられるよ」`, g.bottleneck === 'cut' && pl.wait === '1' && /うえる きりかぶが まだ ないよ。きこりを ふやすと うえられるよ/.test(pl.t) && /うえる きりかぶが まだ ないよ。きこりを ふやすと うえられるよ/.test(za), { g: g.bottleneck, pl, za });
+        check(`つまりは きこり（${g.bottleneck}）。なえぎのシート「${pl.t}」（data-wait ${pl.wait}）と読み上げ「${za}」に、待つ理由と「きこりを ふやすと うえられるよ」`, g.bottleneck === 'cut' && pl.wait === '1' && /きりかぶが まだ ないよ。きこりを ふやすと うえられるよ/.test(pl.t) && /きりかぶが まだ ないよ。きこりを ふやすと うえられるよ/.test(za), { g: g.bottleneck, pl, za });
         const ca = await open('carry'), pe = await open('peel');
-        check(`横展開：はこぶ「${ca.t}」・かわむき「${pe.t}」にも待つ理由と「きこりを ふやすと」`, ca.wait === '1' && /まるたが まだ/.test(ca.t) && /きこりを ふやすと/.test(ca.t) && pe.wait === '1' && /まるたが まだ こないよ/.test(pe.t) && /きこりを ふやすと/.test(pe.t), { ca, pe });
+        check(`横展開：はこぶ「${ca.t}」・かわむき「${pe.t}」にも待つ理由と「きこりを ふやそう」`, ca.wait === '1' && /まるたが まだ/.test(ca.t) && /きこりを ふやそう/.test(ca.t) && pe.wait === '1' && /まるたが まだ こないよ/.test(pe.t) && /きこりを ふやそう/.test(pe.t), { ca, pe });
         await open('cut');   // 押すと応援で速くなるので、応援が切れるまで進めてから見る
         await adv(page, 8); await wait(page, 150);
         const cu = await page.evaluate(() => { const e = document.querySelector('#sheetInfo'); return { t: e.textContent.trim(), wait: e.dataset.wait, jam: e.dataset.jam }; });

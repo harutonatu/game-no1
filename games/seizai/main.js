@@ -219,7 +219,7 @@
   }
   // 前の工程が遅くて待っている部署の、待つ理由と次にすること（なえぎ「きりかぶ まち」など。§18・SZ-03）
   // actors.js の waitOf（人の「待つ」姿と同じ見方）。ちらつかないよう、待たなくなってから 1.5 秒（ゲームの時間）は出したまま
-  const WAIT_WHY = { cut: "きる きが まだ ないよ", plant: "うえる きりかぶが まだ ないよ", carry: "はこぶ まるたが まだ ないよ", peel: "まるたが まだ こないよ", beam: "むきまるたが まだ こないよ", plank: "かくざいが まだ こないよ", shop: "うりものが まだ ないよ" };
+  const WAIT_WHY = { cut: "きる きが まだ ないよ", plant: "きりかぶが まだ ないよ", carry: "まるたが まだ ないよ", peel: "まるたが まだ こないよ", beam: "むきまるたが まだ こないよ", plank: "かくざいが まだ こないよ", shop: "うりものが まだ ないよ" };
   const WAIT_HOLD = 1.5;
   let waitSeen = {};
   function trackWait() {
@@ -232,13 +232,18 @@
       else if (waitSeen[d] && (t - waitSeen[d].t > WAIT_HOLD || t < waitSeen[d].t)) delete waitSeen[d];
     }
   }
-  function waitAdvice(d) {
-    if (!state || deptUnlock(d) > state.stage || countOf(d) < 1 || !waitSeen[d]) return "";
+  // [待つ理由, 次にすること]（どちらも無ければ null）
+  function waitParts(d) {
+    if (!state || deptUnlock(d) > state.stage || countOf(d) < 1 || !waitSeen[d]) return null;
     const bn = bottleneck();
-    if (bn === d) return "";
-    const why = waitSeen[d].kind === "out" ? "おきばが いっぱいで まっているよ" : WAIT_WHY[d] || "まっているよ";
-    const fix = !bn ? "" : d === "plant" && bn === "cut" ? "きこりを ふやすと うえられるよ" : `${deptName(bn)}を ふやすと はやく なるよ`;
-    return fix ? `${why}。${fix}` : why;
+    if (bn === d) return null;
+    const why = waitSeen[d].kind === "out" ? "おきばが いっぱいだよ" : WAIT_WHY[d] || "まっているよ";
+    const fix = !bn ? "" : d === "plant" && bn === "cut" ? "きこりを ふやすと うえられるよ" : `${deptName(bn)}を ふやそう`;
+    return [why, fix];
+  }
+  function waitAdvice(d) {
+    const w = waitParts(d);
+    return !w ? "" : w[1] ? `${w[0]}。${w[1]}` : w[0];
   }
   // 今のお金で買えるものがある部署（名札の「＋」と読み上げ。render.js の印と同じ見方。§17.3 B8）
   function canBuyAny(d) {
@@ -724,10 +729,17 @@
     const perMinText = perMin < 10 ? (Math.floor(perMin * 10) / 10).toString() : Math.floor(perMin).toLocaleString("ja-JP");
     const jam = bottleneck() === d;
     const stuck = forestStuck() && (d === "cut" || d === "plant");   // なえぎが 0 人で森の木が尽きている
-    const waitTxt = unlocked && !stuck && !jam ? waitAdvice(d) : "";
-    setText($("sheetInfo"), !unlocked ? `${stageName(deptUnlock(d))}に なると つかえるよ`
+    const wp = unlocked && !stuck && !jam ? waitParts(d) : null;
+    const waitTxt = wp ? waitAdvice(d) : "";
+    const infoEl = $("sheetInfo");
+    if (wp && infoEl) {
+      // 待つ理由は span.why（横向きで背が低い画面では隠し、次にすることだけ出す。吹き出しが理由を見せている）
+      infoEl.textContent = `1ぷんに ${perMinText}${unit}。`;
+      const sw = document.createElement("span"); sw.className = "why"; sw.textContent = wp[0] + (wp[1] ? "。" : "");
+      infoEl.append(sw, wp[1]);
+    } else setText(infoEl, !unlocked ? `${stageName(deptUnlock(d))}に なると つかえるよ`
       : stuck ? "もりの きが たりないよ。なえぎを ふやすと きが そだつよ"
-      : `1ぷんに ${perMinText}${unit}${jam ? "。ここが おそいよ" : waitTxt ? "。" + waitTxt : ""}`);
+      : `1ぷんに ${perMinText}${unit}${jam ? "。ここが おそいよ" : ""}`);
     const sheetRate = $("sheetRate"); if (sheetRate) setText(sheetRate, unlocked ? `1ぷんに ${perMinText}${unit}` : "");
     const sheetJam = $("sheetJam"); if (sheetJam) { setText(sheetJam, jam ? "ここが おそいよ" : ""); sheetJam.hidden = !jam; }
     el.sheet.dataset.jam = jam ? "1" : "0";

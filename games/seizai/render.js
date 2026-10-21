@@ -992,7 +992,9 @@
           if (ctx.setLineDash) ctx.setLineDash([]);
           // 子どもに伝わる言葉（入りきらない幅では短い言葉）
           const jamText = labelWidth("ここが おそい！", true) <= z.w - 6 ? "ここが おそい！" : "おそい！";
-          label(jamText, z.x + 3, z.y + z.h - 22, { bg: "#ffd84d", ink: "#2b2200", bold: true });
+          // きこり は下に森の手前の列（人が歩く所）があるので、奥と手前の列の間の草地に出す（人を隠さない。§18）
+          const jy = d === "cut" ? geo.forest.rows[0] + 4 : z.y + z.h - 22;
+          label(jamText, z.x + 3, jy, { bg: "#ffd84d", ink: "#2b2200", bold: true });
         }
         // 最初の一手：なえぎを「おして！」の札つきでゆっくり光らせる（動きを減らす設定では光らせず札だけ）
         if (d === "plant" && stage === 1 && noPurchaseYet(s)) {
