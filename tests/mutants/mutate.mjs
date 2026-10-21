@@ -217,7 +217,7 @@ const M = [
   ['MW18 もくもくこうば：loadSave が v を見ない（新しい版の保存も読む）', '保存', 'games/seizai/logic.js', '      if (o.v !== SAVE_VERSION) return null;\n', ''],
   ['MW19 もくもくこうば：loadSave がお金を丸めない（負・上限超え・小数のまま）', '保存', 'games/seizai/logic.js', 's.money = intIn(o.money, 0, MONEY_MAX, 0);', 's.money = isNum(o.money) ? o.money : 0;'],
   ['MW20 もくもくこうば：壊れた保存を bak に写さず上書き', '保存', 'games/seizai/main.js', 'if (!keepBroken(raw)) saveBlocked = true;', ''],
-  ['MW21 もくもくこうば：bak が既にあっても上書き（最初の壊れた保存が消える）', '保存', 'games/seizai/main.js', '    if (readKey(KEY_BAK) !== null) return true;\n', ''],
+  ['MW21 もくもくこうば：bak が既にあっても上書き（最初の壊れた保存が消える）', '保存', 'games/seizai/main.js', '    if (readKey(KEY_BAK) !== null) return okNewer;\n', ''],
   ['MW22 もくもくこうば：MONEY_MAX で止めない', '桁', 'games/seizai/logic.js', 'const addMoney = (m, y) => Math.min(MONEY_MAX, Math.floor(m + y));', 'const addMoney = (m, y) => Math.floor(m + y);'],
   ['MW23 もくもくこうば：船の大きさが増えない（SHIP_GROWTH を見ない＝いつも 30,000）', 'ルール', 'games/seizai/logic.js', 'Math.pow(SHIP_GROWTH, k)', 'Math.pow(1, k)'],
   ['MW24 もくもくこうば：船の大きさの上限を見ない（n が大きいと Infinity・NaN）', '桁', 'games/seizai/logic.js', /if \(k > 60\) return SHIP_NEED_MAX;([\s\S]*?)return isNum\(v\) \? Math\.min\(SHIP_NEED_MAX, v\) : SHIP_NEED_MAX;/, '$1return v;'],
