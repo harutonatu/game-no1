@@ -198,6 +198,9 @@
   /* まだ受けていない注文の札は押すとカードが開く（あとで閉じても いつでも受けられる §3.7）。押せる大きさ 44px */
   #orderTag[data-accepted="0"] { min-height: 44px; padding: 4px 14px; cursor: pointer; text-decoration: underline; }
   #orderTag[data-accepted="1"] { pointer-events: none; }
+  /* とくべつな ちゅうもん（§17.2 C3）：札のふちを明るく（色だけに頼らず、カードの見出しの文字でも分かる） */
+  #orderTag[data-big="1"] { background: #5a2f12; box-shadow: 0 0 0 2px #f0a43a; color: #ffe08a; }
+  #orderCard[data-big="1"] #orderTitle { color: var(--gold); }
 
   /* ===== #scene（上下スクロール。canvas は見えている所の大きさで sticky） ===== */
   .scene {

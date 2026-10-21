@@ -196,7 +196,7 @@ const M = [
   ['MF29 ミチビキ空港：「さいしょから」が確認なしで始め直す（§19 B2）', '誤タップ', 'games/michibiki/main.js', 'else if (cmd === "restart") showRestartConfirm();', 'else if (cmd === "restart") startGame(newSeed());'],
   ['MB22 いろびん：pageshow でクリアのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/irobin/main.js', 'window.addEventListener("pageshow", () => {\n    if (overlayKind !== "clear") return;', 'window.addEventListener("pageshow-x", () => {\n    if (overlayKind !== "clear") return;'],
   ['MQ41 まとめてポン：pageshow で終わりのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/matomete/main.js', 'window.addEventListener("pageshow", () => {\n    if (overlayKind !== "over") return;', 'window.addEventListener("pageshow-x", () => {\n    if (overlayKind !== "over") return;'],
-  // もくもくこうば（契約 docs/seizai-contract.md §11.4。流すときは ONLY に WL・WW の全項目、M=MW1,…,MW39）
+  // もくもくこうば（契約 docs/seizai-contract.md §11.4。流すときは ONLY に WL・WW の全項目、M=MW1,…,MW50）
   ['MW1 もくもくこうば：閉じた間の上限を外す（awaySeconds も catchUp も 7200 を見ない）', '日付', 'games/seizai/logic.js', /return Math\.min\(Math\.floor\(d \/ 1000\), OFFLINE_CAP_SEC\);([\s\S]*?)clamp\(Math\.floor\(seconds\), 0, OFFLINE_CAP_SEC\)/, 'return Math.floor(d / 1000);$1Math.max(0, Math.floor(seconds))'],
   ['MW2 もくもくこうば：半分の係数を見ない（閉じた秒をそのまま進める）', '日付', 'games/seizai/logic.js', 'const effective = Math.floor(sec * AWAY_RATE);', 'const effective = Math.floor(sec);'],
   ['MW3 もくもくこうば：半分の係数を2回掛ける（main.js でも掛ける＝4分の1）', '日付', 'games/seizai/main.js', 'L.catchUp(state, seconds)', 'L.catchUp(state, seconds * L.AWAY_RATE)'],
@@ -237,6 +237,18 @@ const M = [
   ['MW37 もくもくこうば：#money が 1 えんずれる（表示の1ずれ）', '表示', 'games/seizai/main.js', 'const m = yen(state.money);', 'const m = yen(state.money - 1);'],
   ['MW38 もくもくこうば：広げても seizai.best を書かない', '保存', 'games/seizai/main.js', '    writeBest(state.stage);\n    saveNow();\n    closeSheet();', '    saveNow();\n    closeSheet();'],
   ['MW39 もくもくこうば：お金が足りないとき音 deny もヒントも出さない', '表示', 'games/seizai/main.js', '    sfx.play("deny");\n    setHint(reasonText(reason, what, d) || HINT_MONEY);\n', ''],
+  // レビュー後の直し（契約 §17。2026-10-21）
+  ['MW40 もくもくこうば：上限に着いても切る前の秒を渡さない（SZ-01 の戻り＝capped がいつも false）', '日付', 'games/seizai/main.js', '    if (sec >= OFFLINE_CAP_SEC) {', '    if (false) {'],
+  ['MW41 もくもくこうば：遊び方の間も止めない', 'ルール', 'games/seizai/main.js', '    if (overlay === "help") acc = 0;', '    if (false) acc = 0;'],
+  ['MW42 もくもくこうば：rAF だけが止まった間を足さない（捨てる）', '日付', 'games/seizai/main.js', '    if (w - wallLast > STALL_SEC * 1000 && overlay !== "help") {', '    if (false) {'],
+  ['MW43 もくもくこうば：シートを開いても押した部署を見える所へスクロールしない', '表示', 'games/seizai/main.js', '    revealZone(dept);\n', ''],
+  ['MW44 もくもくこうば：新しい版の保存を seizai.save.v<n> に残さない', '保存', 'games/seizai/main.js', 'if (Number.isInteger(v) && v > (L.SAVE_VERSION || 1) && v < 1e6)', 'if (false)'],
+  ['MW45 もくもくこうば：大口の注文が こうじょう から（こうば で来ない）', 'ルール', 'games/seizai/logic.js', 'const ORDER_FROM_STAGE = 2;', 'const ORDER_FROM_STAGE = 3;'],
+  ['MW46 もくもくこうば：とくべつな注文のお礼が ふつうと同じ', '計算', 'games/seizai/logic.js', 'const mul = ORDER_REWARD_MUL * (big ? ORDER_BIG_REWARD / ORDER_BIG_NEED : 1);', 'const mul = ORDER_REWARD_MUL;'],
+  ['MW47 もくもくこうば：壊れた保存の注文のお礼を計算し直さない（0 のまま）', '保存', 'games/seizai/logic.js', 'isNum(r.reward) && r.reward > 0 ? intIn(r.reward, 1, MONEY_MAX, 1) : orderReward(need, priceOfS(s), big)', 'intIn(r.reward, 0, MONEY_MAX, 0)'],
+  ['MW48 もくもくこうば：fastForward が 2 倍の速さで進む（advance が step と食い違う）', '計算', 'games/seizai/logic.js', '        stepMut(s, STEP, ev);\n        for (const e of ev) {\n          if (e.kind === "sold") sold += e.n;', '        stepMut(s, STEP * 2, ev);\n        for (const e of ev) {\n          if (e.kind === "sold") sold += e.n;'],
+  ['MW49 もくもくこうば：とくべつな注文の旗が保存で消える', '保存', 'games/seizai/logic.js', 'need, got: intIn(r.got, 0, need - 1, 0), reward, accepted: r.accepted === true, big\n', 'need, got: intIn(r.got, 0, need - 1, 0), reward, accepted: r.accepted === true, big: false\n'],
+  ['MW50 もくもくこうば：とくべつな注文が出ない', 'ルール', 'games/seizai/logic.js', 'const big = rand(s) < ORDER_BIG_RATE;', 'const big = rand(s) < 0;'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

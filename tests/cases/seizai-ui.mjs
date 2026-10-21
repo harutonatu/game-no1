@@ -12,7 +12,7 @@
 //   るすの あいだ（§4.3・§7.1）は、ページの時計を clockTime で決まった瞬間に固定して確かめる（日本・ロサンゼルスの2つのタイムゾーン）。
 //   期待値は Node で読んだ logic.js（同じ root）から作る。半分の速さの 45 秒・上限の 7200 秒は決め打ちの値で比べる（logic が変わっても見逃さない）。
 //   無いときに合格にしない（空振りの合格を作らない）：SeizaiGame・YubiDebug が無ければ例外で不合格にする。
-//   smoke：WW1〜WW6。full：WW7〜WW17（WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
+//   smoke：WW1〜WW6。full：WW7〜WW18（WW18 はレビュー後の直し §17.1。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -25,9 +25,7 @@ const STD_V = () => view('i13', 'p', 'app');
 const IDS = ['cut', 'plant', 'carry', 'peel', 'beam', 'plank', 'shop'];
 const LINE = { peel: 1, beam: 1, plank: 1 };
 const T0 = Date.UTC(2026, 9, 20, 3, 0, 0);          // るすの あいだの基準の瞬間（日本 12:00・ロサンゼルス 前日 20:00）
-// 既知の不具合（ゲームの直し待ち。直ったら消す）：main.js は awaySeconds（7200 で切った秒）を catchUp に渡すので、catchUp の capped がいつも false になり、
-//   3 時間閉じても「2じかん いじょう たったので 2じかんぶん だよ」が出ない（契約 §5.3・§11.3）。docs/issues.md に記録
-const KNOWN_CAPPED = 'W-K1 games/seizai/main.js：起動（boot）と visible（wake）で awaySeconds の切った秒を catchUp に渡すため capped が常に false。3 時間閉じても「2じかんぶん」の文が出ない';
+// 既知の不具合 W-K1（3 時間閉じても capped が false。SZ-01）は 2026-10-21 に直した（契約 §17.1 A1）。WW3 の合否に含める
 const CARD_OK = { help: '#helpOk', away: '#awayOk', stage: '#stageOk', order: '#orderLater', end: '#endOk' };
 
 // ---------- logic.js（Node）。期待値を作るのに使う ----------
@@ -252,7 +250,7 @@ export const tests = [
         const s = await gs(page), l = await lg(page);
         const card = await txt(page, '#awayCard');
         check(`3 時間 → 上限の 2 時間ぶん（seconds ${s.lastAway && s.lastAway.seconds}・effective ${s.lastAway && s.lastAway.effective}・t +${(l.t - st.t).toFixed(0)}・稼ぎは catchUp(7200) と同じ）`, s.overlay === 'away' && s.lastAway && s.lastAway.seconds === 7200 && s.lastAway.effective === 3600 && l.t - st.t >= 3600 && l.t - st.t < 3600 + 3 && s.lastAway.earned === L.catchUp(st, 7200).report.earned, s.lastAway);
-        check(`上限で切られたので lastAway.capped が true、カードに「2じかんぶん」の文: ${card}`, s.lastAway && s.lastAway.capped === true && /2じかんぶん/.test(card), { card, capped: s.lastAway && s.lastAway.capped }, KNOWN_CAPPED);
+        check(`上限で切られたので lastAway.capped が true、カードに「2じかんぶん」の文: ${card}`, s.lastAway && s.lastAway.capped === true && /2じかんぶん/.test(card), { card, capped: s.lastAway && s.lastAway.capped });
         await ctx.close();
       }
       // 時計が戻った（保存の時刻が 1 時間 未来）
@@ -342,13 +340,15 @@ export const tests = [
       const e0 = errors.length;
       const v2 = JSON.stringify({ ...JSON.parse(saveOf(L, st, T0)), v: 2 });
       const rows = [];
-      for (const [name, rawSave, bak, wantBak] of [['JSON でない', '{bad', null, '{bad'], ['v:2（新しい版）', v2, null, v2], ['配列', '[1,2]', null, '[1,2]'], ['bak が既にある', '{bad2', 'first', 'first']]) {
+      const v3 = JSON.stringify({ ...JSON.parse(saveOf(L, st, T0)), v: 3 });
+      for (const [name, rawSave, bak, wantBak, newerKey] of [['JSON でない', '{bad', null, '{bad'], ['v:2（新しい版）', v2, null, v2, 'seizai.save.v2'], ['配列', '[1,2]', null, '[1,2]'], ['bak が既にある', '{bad2', 'first', 'first'], ['bak が既にあって v:3（新しい版）', v3, 'first', 'first', 'seizai.save.v3']]) {
         await gotoW(page, { 'seizai.save': rawSave, ...(bak ? { 'seizai.save.bak': bak } : {}) });
         await wait(page, 100);
         const s = await gs(page), l = await lg(page);
-        rows.push({ name, ok: (await stored(page, 'seizai.save.bak')) === wantBak && l.stage === 1 && s.overlay === null && !!(await txt(page, '#hint')), bak: await stored(page, 'seizai.save.bak'), stage: l.stage, hint: await txt(page, '#hint') });
+        const nk = newerKey ? await stored(page, newerKey) : null;
+        rows.push({ name, ok: (await stored(page, 'seizai.save.bak')) === wantBak && (!newerKey || nk === rawSave) && l.stage === 1 && s.overlay === null && !!(await txt(page, '#hint')), bak: await stored(page, 'seizai.save.bak'), newer: newerKey && (nk === rawSave), stage: l.stage, hint: await txt(page, '#hint') });
       }
-      check('壊れた保存（JSON でない・v:2・配列）は 1 から始まり、元の文字を seizai.save.bak に写す、bak が既にあれば上書きしない、ヒントを出す', rows.every((r) => r.ok), rows);
+      check('壊れた保存（JSON でない・v:2・配列）は 1 から始まり、元の文字を seizai.save.bak に写す、bak が既にあれば上書きしない、新しい版（v:2・v:3）は seizai.save.v<n> にも残す（bak があっても消えない。§17.1 A7）、ヒントを出す', rows.every((r) => r.ok), rows);
       check('壊れた保存でもページエラーが無い', errors.length === e0, errors.slice(e0));
       await ctx.close();
       // 保存できない環境
@@ -407,7 +407,7 @@ export const tests = [
 
   // ================= full =================
   {
-    id: 'WW7', tier: 'full', title: 'もくもくこうば 大口の注文：こうじょうで注文が来ると #orderCard（出た直後は押せない・お礼は formatYen）、「あとで」で閉じても #orderTag（button）が残り、押すと開き直す、「うける」で #orderTag に「積んだ数/注文の数」、届くとお礼が入りヒントに出る、注文は1つずつ',
+    id: 'WW7', tier: 'full', title: 'もくもくこうば 大口の注文（こうば から・とくべつな注文の見出しと data-big）：こうじょうで注文が来ると #orderCard（出た直後は押せない・お礼は formatYen）、「あとで」で閉じても #orderTag（button）が残り、押すと開き直す、「うける」で #orderTag に「積んだ数/注文の数」、届くとお礼が入りヒントに出る、注文は1つずつ',
     async run({ browser, check }) {
       const { ctx, page } = await openW(browser, 'WW7', { debug: true });
       await goStage(page, 3);
@@ -440,6 +440,25 @@ export const tests = [
       check(`届くとお礼（${o.reward} えん）が入り（10 秒で ${done && done.gain} えん増えた）、ヒント「${hint}」に formatYen(お礼)`, !!done && done.gain >= o.reward && hint.includes(await yenIn(page, o.reward)), { done, hint, m0 });
       const after = await gs(page);
       check('届いたあと、受けていた注文は消え、出ていても新しい注文は1つだけ（受けていない）', !after.order || (after.order.id !== o.id && after.order.accepted === false), after.order);
+      await closeCards(page);
+      // とくべつな ちゅうもん（§17.2 C3）：見出し「とくべつな ちゅうもん」・#orderTag と #orderCard に data-big="1"
+      await setL(page, 'l.order = { id: 99, who: "まちの やくば", need: 30, got: 0, reward: 12345, accepted: false, big: true };');
+      await wait(page, 50);
+      await page.click('#orderTag'); await wait(page, 60);
+      const bigView = await page.evaluate(() => ({ title: document.querySelector('#orderTitle') && document.querySelector('#orderTitle').textContent.trim(), card: document.querySelector('#orderCard').dataset.big, tag: document.querySelector('#orderTag').dataset.big }));
+      check(`とくべつな注文：カードの見出し「${bigView.title}」、#orderCard・#orderTag に data-big="1"`, (await gs(page)).overlay === 'order' && bigView.title === 'とくべつな ちゅうもん' && bigView.card === '1' && bigView.tag === '1', bigView);
+      await pressCard(page, '#orderLater');
+      await setL(page, 'l.order = { id: 100, who: "まちの やくば", need: 30, got: 0, reward: 12345, accepted: false, big: false };');
+      await wait(page, 50);
+      await page.click('#orderTag'); await wait(page, 60);
+      const norView = await page.evaluate(() => ({ title: document.querySelector('#orderTitle').textContent.trim(), card: document.querySelector('#orderCard').dataset.big, tag: document.querySelector('#orderTag').dataset.big }));
+      check(`ふつうの注文：見出し「${norView.title}」（とくべつ ではない）、data-big="0"`, norView.title !== 'とくべつな ちゅうもん' && norView.card === '0' && norView.tag === '0', norView);
+      await pressCard(page, '#orderLater');
+      // 大口の注文は こうば から（§17.2 C2。ユーザー決定「2段目から」）
+      await goStage(page, 2);
+      const o3 = await dbg(page, 'neworder');
+      const ot3 = await txt(page, '#orderText');
+      check(`こうば でも neworder で注文が出て、品は かくざい（${ot3}）`, (await gs(page)).overlay === 'order' && o3 && o3.need >= 10 && /かくざい/.test(ot3 || ''), { o3, ot3 });
       await ctx.close();
     },
   },
@@ -777,6 +796,81 @@ export const tests = [
       }
       check(`素早い2回タップで 2回目の touchend を止め、拡大しない（${Object.entries(res).map(([k, v]) => `${k}:${v.ev.join(',')}`).join(' / ')}）`, Object.values(res).every((v) => v.ev.length === 2 && v.ev[1] === true && v.scale === 1), res);
       check('場所の2回タップでシートは開いたまま（きこり）', res['.zone[data-dept="cut"]'].sheet === 'cut', res);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'WW18', tier: 'full', title: 'もくもくこうば レビュー後の直し（§17.1）：遊び方の間だけ止まる（ほかのカードの間は動く）、rAF だけが 90 秒止まると閉じた間として足す（effective 45・二重に足さない）、押した部署がシートに隠れずに見え aria-expanded、#sheetInfo の data-jam、advance（fastForward）が logic の step と同じ',
+    async run({ browser, check, root, errors }) {
+      const L = logicOf(root);
+      const st = mkState(L, 2);
+      const e0 = errors.length;
+      const { ctx, page } = await openW(browser, 'WW18', { v: SMOKE_V(), items: { 'seizai.save': saveOf(L, st, T0) }, opts: { clockTime: new Date(T0 + 1000) } });
+      await closeCards(page);
+      // 遊び方の間は止まる
+      await page.click('#helpBtn'); await wait(page, 100);
+      const h0 = await lg(page), f0 = (await gs(page)).frames;
+      await wait(page, 3000);
+      const h1 = await lg(page), g1 = await gs(page);
+      check(`遊び方（overlay ${g1.overlay}）の 3 秒の間は進まない（t ${h0.t.toFixed(1)} → ${h1.t.toFixed(1)}・お金 ${h0.money} → ${h1.money}）が、描画は続く（frames ${f0} → ${g1.frames}）`, g1.overlay === 'help' && h1.t === h0.t && h1.money === h0.money && g1.frames > f0, { t: [h0.t, h1.t], f: [f0, g1.frames] });
+      await pressCard(page, '#helpOk');
+      const a0 = await lg(page);
+      await wait(page, 2000);
+      const a1 = await lg(page);
+      check(`遊び方を閉じると また進む（t ${a0.t.toFixed(1)} → ${a1.t.toFixed(1)}）`, a1.t - a0.t >= 1.5 && ((await gs(page)).overlay === null), { t: [a0.t, a1.t], away: (await gs(page)).lastAway });
+      // ほかのカード（おかえり）の間は動き続ける
+      await page.evaluate(() => window.SeizaiGame.away(120)); await wait(page, 50);
+      const c0 = await lg(page);
+      await wait(page, 2000);
+      const c1 = await lg(page), cg = await gs(page);
+      check(`おかえりカード（overlay ${cg.overlay}）の間は動き続ける（t ${c0.t.toFixed(1)} → ${c1.t.toFixed(1)}）`, cg.overlay === 'away' && c1.t - c0.t >= 1.5, { t: [c0.t, c1.t] });
+      await closeCards(page);
+      // rAF だけが止まる（visibilitychange なし）：時計を止めて 90 秒先へ動かし、動かし直す
+      const p0 = (await page.evaluate(() => Date.now())) + 300;
+      await page.clock.pauseAt(new Date(p0));
+      const r0 = await lg(page);
+      await page.clock.setSystemTime(new Date(p0 + 90 * 1000));
+      await page.clock.resume();
+      await wait(page, 200);
+      const r1 = await lg(page), rs = await gs(page);
+      check(`rAF が 90 秒止まって動き出すと、閉じた間と同じ道で足す（overlay ${rs.overlay}・seconds ${rs.lastAway && rs.lastAway.seconds}・effective ${rs.lastAway && rs.lastAway.effective}・t +${(r1.t - r0.t).toFixed(1)}）`, rs.overlay === 'away' && rs.lastAway && rs.lastAway.seconds >= 90 && rs.lastAway.seconds <= 91 && rs.lastAway.effective === 45 && r1.t - r0.t >= 45 && r1.t - r0.t < 45 + 3, { a: rs.lastAway, t: [r0.t, r1.t] });
+      await wait(page, 1000);
+      const r2 = await lg(page);
+      check(`そのあと二重に足さない（1 秒で t +${(r2.t - r1.t).toFixed(1)}）`, r2.t - r1.t < 1.5 && JSON.stringify((await gs(page)).lastAway) === JSON.stringify(rs.lastAway), { t: [r1.t, r2.t] });
+      await closeCards(page);
+      // 押した部署がシートに隠れない（おみせ＝いちばん下。#scene を上までスクロールしてから押す）
+      const vis = [];
+      for (const d of ['shop', 'cut']) {
+        await page.evaluate(() => { const sc = document.querySelector('#scene'); sc.scrollTop = 0; document.querySelector('#sheetClose') && window.SeizaiGame.getState().sheet && document.querySelector('#sheetClose').click(); });
+        await wait(page, 50);
+        await page.evaluate((d) => { const sc = document.querySelector('#scene'); const z = document.querySelector(`.zone[data-dept="${d}"]`); if (d === 'cut') sc.scrollTop = sc.scrollHeight; z.click(); }, d);
+        await wait(page, 100);
+        vis.push(await page.evaluate((d) => {
+          const sc = document.querySelector('#scene').getBoundingClientRect(), z = document.querySelector(`.zone[data-dept="${d}"]`), zr = z.getBoundingClientRect(), sh = document.querySelector('#sheet').getBoundingClientRect();
+          const h = Math.min(zr.bottom, sc.bottom) - Math.max(zr.top, sc.top);
+          return { d, sheet: window.SeizaiGame.getState().sheet, expanded: z.getAttribute('aria-expanded'), seen: h >= Math.min(44, zr.height) - 1, underSheet: zr.top >= sh.top - 1 && sh.height > 0, others: [...document.querySelectorAll('.zone[aria-expanded="true"]')].length };
+        }, d));
+      }
+      check(`シートを開くと押した部署が #scene の見える所にあり（シートの下に隠れない）、aria-expanded="true" はその1つだけ`, vis.every((v) => v.sheet === v.d && v.expanded === 'true' && v.seen && !v.underSheet && v.others === 1), vis);
+      await page.click('#sheetClose'); await wait(page, 50);
+      check('シートを閉じると aria-expanded が外れる', (await page.evaluate(() => document.querySelectorAll('.zone[aria-expanded]').length)) === 0, null);
+      // #sheetInfo の data-jam
+      // 押すと応援でつまりが動くので、一度押して応援が切れ、使えない間（15 秒）にもう一度押す
+      let ji = null, jam = null;
+      for (let i = 0; i < 4 && !(ji && ji.jam === '1'); i++) {
+        jam = (await gs(page)).bottleneck;
+        await page.evaluate((d) => document.querySelector(`.zone[data-dept="${d}"]`).click(), jam); await wait(page, 100);
+        ji = await page.evaluate(() => { const i = document.querySelector('#sheetInfo'), g = window.SeizaiGame.getState(); return i && { jam: i.dataset.jam, color: getComputedStyle(i).color, sheet: g.sheet, bottleneck: g.bottleneck }; });
+        if (ji.jam !== (ji.sheet === ji.bottleneck ? '1' : '0')) break;
+        if (ji.jam !== '1') { await page.click('#sheetClose'); await wait(page, 6000); }
+      }
+      check(`つまっている部署（${jam}）のシートで #sheetInfo[data-jam="1"] になり、CSS の色が効く（${ji && ji.color}）`, ji && ji.jam === '1' && ji.sheet === ji.bottleneck && ji.color === 'rgb(255, 216, 77)', ji);
+      await page.click('#sheetClose'); await wait(page, 50);
+      // advance（logic の fastForward）は step を繰り返したのと同じ
+      const [b0, b1] = await page.evaluate(() => { const a = window.SeizaiGame.logic(); window.SeizaiGame.advance(120); return [a, window.SeizaiGame.logic()]; });
+      let m = b0; for (let i = 0; i < 1200; i++) m = L.step(m, 0.1).state;
+      check(`advance(120) は logic の step(0.1) を 1200 回まわしたのと同じ（お金 ${b1.money}・t ${b1.t.toFixed(1)}）`, b1.money === m.money && Math.abs(b1.t - m.t) < 1e-6 && JSON.stringify(b1.buf) === JSON.stringify(m.buf), { got: [b1.money, b1.t], want: [m.money, m.t] });
+      check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
       await ctx.close();
     },
   },

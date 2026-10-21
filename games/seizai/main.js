@@ -34,6 +34,8 @@
   const HINT_MS = 3000;
   const SHAKE_MS = 400;
   const FF_MAX_SEC = 36000;           // ff・advance の上限（§7.4）
+  const STALL_SEC = 5;                // rAF がこれより長く止まっていたら（iOS で visibilitychange が来ない）閉じた間として足す（§17.1 A5）
+  const OFFLINE_CAP_SEC = Number.isFinite(L.OFFLINE_CAP_SEC) ? L.OFFLINE_CAP_SEC : 7200;
   const CARD_PRIORITY = ["help", "away", "end", "stage", "order"];
 
   const DEPT_IDS = ["cut", "plant", "carry", "peel", "beam", "plank", "shop"];
@@ -41,8 +43,8 @@
   const STAGE_NAME_FALLBACK = ["こや", "こうば", "こうじょう", "みなと"];
   // 節目のカードに出す「増えたもの」（3 つまで。§3.6）
   const STAGE_NEWS = {
-    2: ["かくざいの だい", "マネージャー", "だいくさん"],
-    3: ["いたの だい", "おおぐちの ちゅうもん", "ひのき"],
+    2: ["かくざいの だい", "マネージャー", "おおぐちの ちゅうもん"],   // 大口の注文は こうば から（§17.2 C2）
+    3: ["いたの だい", "ひのき", "かぐやさん"],
     4: ["けやき", "ふねの しょうにん", "おおきな ふねの ちゅうもん"]
   };
   // 部署の「1ぷんに ○」の単位（plank は 角材1本 → 板 PLANKS_PER_BEAM 枚 なので、その倍にして「まい」。数は logic の値）
@@ -175,6 +177,12 @@
   const ratesOf = () => (state ? safeCall(() => L.rates(state), {}) || {} : {});
   const bottleneck = () => (state ? safeCall(() => L.bottleneck(state), null) : null);
   const productOf = (stage) => safeCall(() => L.productOf(stage), null) || (stage >= 3 ? "planks" : stage === 2 ? "beams" : "peeled");
+  // 閉じていた秒（awaySeconds）。上限に着いたときは切る前の秒を返し、catchUp が 7200 に丸めて capped を立てる（§17.1 A1・SZ-01）
+  function awayFor(from, to) {
+    const sec = safeCall(() => L.awaySeconds(from, to), 0) || 0;
+    if (sec >= OFFLINE_CAP_SEC) { const raw = (to - from) / 1000; if (Number.isFinite(raw) && raw > sec) return raw; }
+    return sec;
+  }
   const goalReached = (g) => !!(g && Number.isFinite(g.done) && Number.isFinite(g.need) && g.need > 0 && g.done >= g.need && g.kind !== "ship");
 
   // ===== 保存（§8） =====
@@ -198,8 +206,13 @@
   // 読めない保存の元を bak へ写す（bak が既にあれば上書きしない＝最初の壊れた保存を残す。§8.3）
   function keepBroken(raw) {
     if (raw === null || raw === undefined) return true;
-    if (readKey(KEY_BAK) !== null) return true;
-    return writeKey(KEY_BAK, String(raw));
+    // 新しい版（v が今より大きい）の保存は seizai.save.v<n> にも残す（bak が既にあっても消えない。§17.1 A7）
+    let okNewer = true;
+    let v = null;
+    try { const o = JSON.parse(String(raw)); v = o && typeof o === "object" && !Array.isArray(o) ? o.v : null; } catch (e) { v = null; }   // 読めない文字は bak だけ
+    if (Number.isInteger(v) && v > (L.SAVE_VERSION || 1) && v < 1e6) okNewer = writeKey(`${KEY_SAVE}.v${v}`, String(raw));
+    if (readKey(KEY_BAK) !== null) return okNewer;
+    return writeKey(KEY_BAK, String(raw)) && okNewer;
   }
   // logic の state の形を、保存と同じ検証に通す（gostage・ships・setState・addmoney）
   function normalize(obj, keepV) {
@@ -248,17 +261,28 @@
     if (sleeping || !state) return;
     const dt = lastT === null ? 0 : Math.min(MAX_FRAME_SEC, Math.max(0, (t - lastT) / 1000));
     lastT = t;
-    acc += dt;
-    const evs = [];
-    let n = 0;
-    while (acc >= STEP && n < MAX_STEPS_PER_FRAME) {
-      stepOnce(STEP, evs);
-      acc -= STEP;
-      n += 1;
-    }
-    if (acc > STEP) acc = 0;              // 足りない分は捨てる（重い端末で早送りしない）
     const w = Date.now();
-    if (w - wallLast >= WALL_EVERY_MS || w < wallLast) wallLast = w;   // 毎秒覚える（時計が戻っても今の時刻にそろえる）
+    // rAF だけが止まっていた（iOS で visibilitychange が来ない）：その間を閉じた間と同じ道で足す（足したあと wallLast は今。二重に足さない。§17.1 A5）
+    if (w - wallLast > STALL_SEC * 1000 && overlay !== "help") {
+      acc = 0;
+      addAway(awayFor(wallLast, w));
+      wallLast = Date.now();
+      ensureLoop();
+      return;
+    }
+    const evs = [];
+    if (overlay === "help") acc = 0;      // 遊び方を読んでいる間は止める（描画だけ。ユーザー決定「遊び方の間だけ止める」§17.1 A10）
+    else {
+      acc += dt;
+      let n = 0;
+      while (acc >= STEP && n < MAX_STEPS_PER_FRAME) {
+        stepOnce(STEP, evs);
+        acc -= STEP;
+        n += 1;
+      }
+      if (acc > STEP) acc = 0;              // 足りない分は捨てる（重い端末で早送りしない）
+    }
+    if (w - wallLast >= WALL_EVERY_MS || w < wallLast || overlay === "help") wallLast = w;   // 毎秒覚える（時計が戻っても今の時刻にそろえる。遊び方の間は閉じた間にしない）
     if (saveSince >= SAVE_EVERY_SEC) saveNow();
     R_call("frame", state, evs, dt);
     updateUi();
@@ -275,8 +299,7 @@
           else if (e.dept === "peel" || e.dept === "beam" || e.dept === "plank") sfx.play("saw");
           break;
         case "sold":
-          sfx.play("sell");   // 間引きは sfx.js の側（担当D）
-          bump(el.money);
+          sfx.play("sell");   // 間引きは sfx.js の側（担当D）。お金の数字の跳ねは render が付ける（付いていれば何もしない。§17.1 A3）
           break;
         case "order":
           sfx.play("order");
@@ -352,7 +375,7 @@
   function wake() {
     if (!sleeping || document.hidden) return;
     sleeping = false;
-    const sec = safeCall(() => L.awaySeconds(wallLast, Date.now()), 0) || 0;
+    const sec = awayFor(wallLast, Date.now());
     wallLast = Date.now();
     restoreTimers();
     addAway(sec);
@@ -460,6 +483,8 @@
       const o = state && state.order;
       if (!o) return;
       const p = PRODUCT[productOf(state.stage)] || PRODUCT.planks;
+      setText($("orderTitle"), o.big ? "とくべつな ちゅうもん" : "おおぐちの ちゅうもん");
+      if (el.orderCard) el.orderCard.dataset.big = o.big ? "1" : "0";
       setText($("orderText"), `${o.who || "おきゃくさん"}：${p[0]} ${num(o.need)}${p[1]} → おれい ${yen(o.reward)}`);
     } else if (kind === "end") {
       const s = state || {};
@@ -506,16 +531,37 @@
   function openSheet(dept) {
     if (!el.sheet || !DEPT_IDS.includes(dept)) return false;
     ensureSheetParts();
+    if (sheetDept && sheetDept !== dept) markZone(sheetDept, false);
     sheetDept = dept;
     el.sheet.dataset.dept = dept;
     el.sheet.hidden = false;
     el.sheet.classList.add("open");
     lastUi.sheetKey = "";
     renderSheet();
+    markZone(dept, true);
+    revealZone(dept);
     return true;
+  }
+  const zoneOf = (dept) => (el.scene ? el.scene.querySelector(`.zone[data-dept="${dept}"]`) : null);
+  function markZone(dept, open) {
+    const z = zoneOf(dept);
+    if (!z) return;
+    if (open) z.setAttribute("aria-expanded", "true"); else z.removeAttribute("aria-expanded");
+  }
+  // 押した部署がシートに隠れないよう、#scene の中でいちばん近い見える位置へスクロールする（§17.1 A6）
+  function revealZone(dept) {
+    const z = zoneOf(dept);
+    if (!z || !el.scene) return;
+    const sr = el.scene.getBoundingClientRect(), zr = z.getBoundingClientRect();
+    if (!(sr.height > 0 && zr.height > 0)) return;
+    let dy = 0;
+    if (zr.top < sr.top) dy = zr.top - sr.top;
+    else if (zr.bottom > sr.bottom) dy = Math.min(zr.bottom - sr.bottom, zr.top - sr.top);
+    if (Math.abs(dy) >= 1) el.scene.scrollTop += Math.round(dy);
   }
   function closeSheet() {
     if (!el.sheet || !sheetDept) return false;
+    markZone(sheetDept, false);
     sheetDept = null;
     delete el.sheet.dataset.dept;
     el.sheet.classList.remove("open");
@@ -567,6 +613,7 @@
     const sheetRate = $("sheetRate"); if (sheetRate) setText(sheetRate, unlocked ? `1ぷんに ${perMinText}${unit}` : "");
     const sheetJam = $("sheetJam"); if (sheetJam) { setText(sheetJam, jam ? "ここが つまっているよ" : ""); sheetJam.hidden = !jam; }
     el.sheet.dataset.jam = jam ? "1" : "0";
+    const info = $("sheetInfo"); if (info) info.dataset.jam = jam ? "1" : "0";   // CSS は #sheetInfo[data-jam="1"]（§17.1 A9）
     const q = (w) => el.sheet.querySelector(`[data-buy="${w}"]`);
     const labels = {
       staff: "＋1にん",
@@ -742,11 +789,13 @@
         const p = PRODUCT[productOf(st)] || PRODUCT.planks;
         t = o.accepted ? `ちゅうもん：${p[0]} ${num(o.got)}/${num(o.need)}` : "ちゅうもんが きたよ（おしてね）";
       }
-      if (lastUi.order !== t) {
-        lastUi.order = t;
+      const okey = t + (o && o.big ? "|big" : "");
+      if (lastUi.order !== okey) {
+        lastUi.order = okey;
         el.orderTag.hidden = !t;
         setText(el.orderTag, t);
         el.orderTag.dataset.accepted = o && o.accepted ? "1" : "0";
+        el.orderTag.dataset.big = o && o.big ? "1" : "0";
         if (o && o.accepted) { el.orderTag.setAttribute("tabindex", "-1"); el.orderTag.setAttribute("aria-disabled", "true"); }   // 受けた後は数を見せるだけ
         else { el.orderTag.removeAttribute("tabindex"); el.orderTag.removeAttribute("aria-disabled"); }
       }
@@ -895,10 +944,18 @@
   function advance(sec) {
     const s = Math.max(0, Math.min(FF_MAX_SEC, Number(sec) || 0));
     if (!state || !s) return snapshot();
-    const n = Math.round(s / STEP);
+    // logic の fastForward（写した state を中で書き換えながら STEP ずつ。step を繰り返したのと同じ結果で軽い。§17.1 A8）
     silent += 1;
     try {
-      for (let i = 0; i < n; i++) stepOnce(STEP, null);
+      const r = typeof L.fastForward === "function" ? safeCall(() => L.fastForward(state, s), null) : null;
+      if (r && r.state) {
+        state = r.state;
+        const evs = Array.isArray(r.events) ? r.events : [];
+        if (evs.length) handleEvents(evs);
+      } else {
+        const n = Math.round(s / STEP);
+        for (let i = 0; i < n; i++) stepOnce(STEP, null);
+      }
     } finally { silent -= 1; }
     saveNow();
     R_call("frame", state, [], 0);
@@ -992,7 +1049,7 @@
       }, { desc: "お金を足す（MONEY_MAX まで）", args: "{ yen }" });
       D.command("gostage", (a) => gostage(a && a.stage), { desc: "その段の始めへ飛ぶ（人・台は上限の半分、きかい Lv10）", args: "{ stage }（1〜4）" });
       D.command("neworder", () => {
-        if (!state || state.stage < 3) throw new Error("こうじょう から");
+        if (!state || state.stage < (L.ORDER_FROM_STAGE || 2)) throw new Error("こうば から");
         if (state.order) throw new Error("もう ちゅうもんが でている");
         const r = safeCall(() => L.forceOrder(state), null);   // logic が注文を作る（数・お礼・お客さんは logic の式）
         if (!r || !r.ok || !r.state) throw new Error("出せなかった");
@@ -1000,7 +1057,7 @@
         handleEvents(Array.isArray(r.events) ? r.events : []);   // 'order' → 音・保存・カード
         updateUi(true);
         return state.order;
-      }, { desc: "大口の注文をすぐ出す（こうじょう から）", args: "なし" });
+      }, { desc: "大口の注文をすぐ出す（こうば から）", args: "なし" });
       D.command("ships", (a) => {
         if (!state || state.stage !== 4) throw new Error("みなと だけ");
         const n = Math.max(0, Math.min(SHIPS_MAX, Math.floor(Number(a && a.n) || 0)));
@@ -1023,7 +1080,7 @@
     let awaySec = 0;
     if (loaded && loaded.state) {
       state = loaded.state;
-      awaySec = safeCall(() => L.awaySeconds(loaded.savedAt, Date.now()), 0) || 0;
+      awaySec = awayFor(loaded.savedAt, Date.now());
     } else {
       if (raw !== null) {
         // 読めない・新しい版の保存：元を bak へ写してから新しく始める（写せなければ上書きしない＝元を消さない）

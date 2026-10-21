@@ -290,8 +290,12 @@
     function frame(state, events, dtSec) {
       if (!state || typeof state !== "object") return;
       const now = (root.performance && performance.now) ? performance.now() : Date.now();
-      if (lastFrameAt !== null && now - lastFrameAt > SLOW_MS) slowFrames++;
-      lastFrameAt = now;
+      // rAF の外から（advance・setState・away などが dt = 0 で）呼ばれたコマは数えず、次のコマの基準にもしない（§17.1 A4）
+      if (!(num(dtSec, 0) > 0)) lastFrameAt = null;
+      else {
+        if (lastFrameAt !== null && now - lastFrameAt > SLOW_MS) slowFrames++;
+        lastFrameAt = now;
+      }
       frames++;
       const dt = clamp(num(dtSec, 1 / 60), 0, 0.1);
       clk += dt;
