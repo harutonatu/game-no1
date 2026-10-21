@@ -84,7 +84,7 @@
   });
 
   const UP_COST = deepFreeze({ shot: 8, spread: 60, bomb: 120, bolt: 120, beam: 160, fire: 100 });
-  const SLOT_COST = deepFreeze([null, 300, 3000, 30000]);
+  const SLOT_COST = deepFreeze([null, 100, 3000, 30000]);
 
   // ---------------------------------------------------------------- 小さな道具
   function deepFreeze(o) {
@@ -168,7 +168,7 @@
       if (n === null) return null;
       const boss = n % APPROACH.bossEvery === 0;
       const k = Math.min(n, 40);
-      const d = Math.min(GRID_MAX, Math.round(9 + (k - 1) * 0.6 + (boss ? 2 : 0)));
+      const d = Math.min(GRID_MAX, Math.round(10 + (k - 1) * 0.7 + (boss ? 3 : 0)));
       const cols = d, rows = Math.max(6, Math.round(d * 0.86));
       let iron = n < 3 ? 0 : n < 10 ? 0.15 : 0.25;
       let ice = n < 6 ? 0 : 0.20;
@@ -771,7 +771,7 @@
     const broken = total > 0 ? clamp(1 - left / total, 0, 1) : 0;
     const by = bottomY(R);
     const b0 = isNum(R.bottom0) ? R.bottom0 : START_BOTTOM;
-    const distance = by === -Infinity ? 1 : clamp((BARRIER_Y - by) / (BARRIER_Y - b0), 0, 1);
+    const distance = by === -Infinity ? 1 : by >= BARRIER_Y - 1e-6 ? 0 : clamp((BARRIER_Y - by) / (BARRIER_Y - b0), 0, 1);
     return { broken, left, total, distance };
   }
   function progressOf(state) {
@@ -862,6 +862,7 @@
   // ---------------------------------------------------------------- かけらの書き方（§1.3）
   function formatKakera(n) {
     try {
+      if (n === Infinity) n = KAKERA_MAX;
       if (!isNum(n) || n < 0) n = 0;
       n = Math.floor(Math.min(n, KAKERA_MAX));
       if (n < 10000) return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
