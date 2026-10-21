@@ -39,7 +39,14 @@
   if (Array.isArray(L.MATS)) for (const m of L.MATS) MAT_NAME[m.id] = m.name;
 
   const HINT_BROKEN = "ほぞんが よめなかったので さいしょから はじめるよ";
+  const HINT_RETRY_END = "を つよくして もういちど！";   // 先頭に武器の名前（U4）
   const HINT_RETRY = "ひかっている ぶきを つよくして もういちど！";
+  const HINT_NEAR = "バリアが ひかってる！";
+  const NEAR_AT = 0.28;                // 地球までの残りがこの割合以下で赤く（U7・Q7）
+  const MS_BANNER_SEC = 1.0;           // 25・50・75% の帯（ロジックの時計で数える）
+  const MS_TEXT = { 25: "4ぶんの1 こわした！", 50: "はんぶん こわした！", 75: "あと 4ぶんの1！" };
+  const PLUS_MS = 800;                 // 「＋12%」を出しておく時間
+  const READY_MS = 800;
   const HINT_BLOCKED = "ほぞんが できないよ（このまま あそべるよ）";
 
   const $ = (id) => document.getElementById(id);
@@ -53,7 +60,7 @@
     field: $("field"), canvas: $("fieldCanvas"), distance: $("distance"), distanceFill: $("distanceFill"),
     weapons: $("weapons"), unlockBtn: $("unlockBtn"),
     choiceCard: $("choiceCard"), choiceA: $("choiceA"), choiceB: $("choiceB"),
-    bounceBanner: $("bounceBanner"), clearBanner: $("clearBanner"), bossBanner: $("bossBanner"),
+    bounceBanner: $("bounceBanner"), clearBanner: $("clearBanner"), bossBanner: $("bossBanner"), msBanner: $("msBanner"), choiceLead: $("choiceLead"),
     endCard: $("endCard"), endText: $("endText"), endStats: $("endStats"), endOk: $("endOk"),
     help: $("help"), helpOk: $("helpOk"), hint: $("hint")
   };
@@ -64,7 +71,8 @@
     return {
       row, btn,
       name: part(row, "name"), lv: part(row, "lv"), good: part(row, "good"), dps: part(row, "dps"), note: part(row, "note"),
-      label: part(btn, "label"), cost: part(btn, "cost")
+      label: part(btn, "label"), cost: part(btn, "cost"), plus: part(row, "plus"), plusTimer: 0,
+      prevCan: undefined, fillShown: ""
     };
   });
   const barPct = document.querySelector(".barrow [data-part=pct]");
@@ -120,6 +128,8 @@
   let bossUntil = -1;          // ロジックの時計（state.t）でこの秒まで #bossBanner
   let suggestSlot = -1;        // はね返しのあとに光らせる行
   let phaseShown = "";
+  let msUntil = -1, msStepT = -1, msBonus = 0;   // 区切りの帯（ロジックの時計）
+  let nearTold = false, nearNow = false;         // 「バリアが ひかってる！」は 1 回の挑戦で 1 回だけ
 
   const reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
   let calm = !!reduceMotion.matches;
@@ -235,12 +245,20 @@
     later(off, ms || 1200);
   }
   const fmt = (n) => safeCall(() => L.formatKakera(n), String(n));
+  // 秒 → 「3ぷん12びょう」「45びょう」「1じかん5ふん」
+  function fmtTime(sec) {
+    const t = Math.max(1, Math.round(Number(sec) || 0));
+    const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), r = t % 60;
+    if (h > 0) return h + "じかん" + m + "ふん";
+    if (m > 0) return m + "ぷん" + r + "びょう";
+    return r + "びょう";
+  }
   const wName = (id) => (WEAPON[id] && WEAPON[id].name) || id;
-  function goodHtml(id, withText) {
+  function goodHtml(id) {
     const g = WEAPON[id] && WEAPON[id].good;
     if (!g) return "";
     const n = MAT_NAME[g] || g;
-    return '<i class="mat" data-mat="' + g + '"></i>' + n + (withText ? "に つよい" : "");
+    return '<i class="mat" data-mat="' + g + '"></i><span class="gt">' + n + "に つよい</span>";
   }
 
   // ===== 進め方（§7.1） =====
@@ -287,6 +305,11 @@
     } else acc = 0;
     R_call("frame", state, events, dt);
     updateUi();
+    // 地球が近い（残り 3 割以下）とき、1 回の挑戦で 1 回だけ、控えめに知らせる（Q7）。ほかのヒントが出ているときは出さない
+    if (nearNow && !nearTold && running()) {
+      nearTold = true;
+      if (el.hint && !el.hint.textContent) setHint(HINT_NEAR, 2200);
+    }
     ensureLoop();
   }
 
@@ -306,7 +329,22 @@
           writeBest(e.star);
           const banner = el.clearBanner;
           setText(part(banner, "main"), "ほし " + (e.star | 0) + " クリア！");
+          // 時間とベスト（初回「はじめて」・更新「ベスト！」・ふつうは前のベスト）、ちきゅうまでの残り（Q4）
+          const hasTime = Number.isFinite(Number(e.time)) && Number(e.time) > 0;
+          let tline = "";
+          if (hasTime) {
+            const prev = Number.isFinite(Number(e.best)) && e.best !== null ? Number(e.best) : null;
+            tline = fmtTime(e.time) + "・" + (prev === null ? "はじめて" : Number(e.time) < prev ? "ベスト！" : "ベスト " + fmtTime(prev));
+          }
+          setText(part(banner, "time"), tline);
+          const dist = Number(e.distance);
+          let dline = "";
+          if (Number.isFinite(dist)) { const n = Math.round(Math.max(0, Math.min(1, dist)) * 100); dline = n >= 1 ? "ちきゅうまで あと " + n + "%" : "ちきゅうの すぐ そばだった！"; }
+          setText(part(banner, "dist"), dline);
           setText(part(banner, "sub"), (e.bonus | 0) > 0 ? "＋" + fmt(e.bonus) + "かけら" : "");
+          const tb = part(banner, "time");
+          if (tb) tb.classList.toggle("best", hasTime && tline.indexOf("ベスト！") >= 0 || tline.indexOf("はじめて") >= 0);
+          msUntil = -1;
           suggestSlot = -1;
           saveAfter = true;
           break;
@@ -316,10 +354,25 @@
           const broken = Number(e.broken) || 0;
           const leftPct = Math.max(1, Math.round((1 - broken) * 100));
           setText(part(el.bounceBanner, "main"), "バリアで はねかえした！");
-          setText(part(el.bounceBanner, "sub"), "あと " + leftPct + "% だった");
+          // 50% を超えて残っていたら、数字より先にすることを言う（U4）
+          setText(part(el.bounceBanner, "sub"), leftPct > 50 ? "もう すこし つよく しよう" : "あと " + leftPct + "% だった");
           suggestSlot = cheapestSlot();
-          if (!silent) setHint(HINT_RETRY, 4000);
+          const sg = suggestSlot >= 0 && state && state.slots[suggestSlot] ? wName(state.slots[suggestSlot].id) : "";
+          if (!silent) setHint(sg ? sg + HINT_RETRY_END : HINT_RETRY, 4000);
+          nearTold = false;
           saveAfter = true;
+          break;
+        }
+        case "milestone": {
+          // 25・50・75% の区切り：短い帯と小さな音（既存の up を流用）。1 step に複数なら、おまけは足して最後の帯を出す
+          const t = Number(state && state.t) || 0;
+          msBonus = (msStepT === t ? msBonus : 0) + (e.bonus | 0);
+          msStepT = t;
+          setText(part(el.msBanner, "main"), MS_TEXT[e.pct] || "こわした！");
+          setText(part(el.msBanner, "sub"), msBonus > 0 ? "＋" + fmt(msBonus) + " かけら" : "");
+          msUntil = t + MS_BANNER_SEC;
+          bossUntil = -1;
+          sfx.play("up");
           break;
         }
         case "boss": sfx.play("boss"); bossUntil = (Number(state && state.t) || 0) + BOSS_BANNER_SEC; break;
@@ -361,16 +414,21 @@
       setText(barPct, pct + "%");
     }
     const near = Math.max(0, Math.min(100, Math.round((1 - pr.distance) * 100)));
-    if (lastUi.near !== near) {
+    nearNow = s.phase === "fly" && pr.distance <= NEAR_AT;
+    if (lastUi.near !== near || lastUi.nearFlag !== nearNow) {
       lastUi.near = near;
+      lastUi.nearFlag = nearNow;
       setAttr(el.distance, "aria-valuenow", String(near));
       if (el.distanceFill) el.distanceFill.style.height = near + "%";
-      setAttr(el.distance, "data-near", near >= 80 && s.phase === "fly" ? "1" : null);
+      setAttr(el.distance, "data-near", nearNow ? "1" : null);
+      R_call("setNear", nearNow);
     }
+    if (!nearNow && (s.phase !== "fly" || pr.distance > NEAR_AT + 0.12)) nearTold = false;
     // 帯（ロジックの phase と時計で出す＝advance でも止まっていても正しい）
     setHidden(el.bounceBanner, s.phase !== "bounce");
     setHidden(el.clearBanner, s.phase !== "clear");
     setHidden(el.bossBanner, !(s.phase === "fly" && s.t < bossUntil));
+    setHidden(el.msBanner, !(s.phase === "fly" && s.t < msUntil));
     // 武器の行
     for (let k = 0; k < rows.length; k++) updateRow(k);
     // あたらしい ぶき
@@ -390,13 +448,17 @@
     if (!r.row) return;
     const x = state.slots[k];
     setHidden(r.row, !x);
-    if (!x) { setAttr(r.row, "data-suggest", null); return; }
+    if (!x) { setAttr(r.row, "data-suggest", null); setAttr(r.row, "data-fit", null); r.prevCan = undefined; return; }
     setAttr(r.row, "data-w", x.id);
+    // いまの星の札（一番多い いわ 以外のマス）が得意な武器に ◎（U6）
+    const main = starMain();
+    const fit = !!main && !!WEAPON[x.id] && WEAPON[x.id].good === main;
+    setAttr(r.row, "data-fit", fit ? "1" : null);
     setText(r.name, wName(x.id));
     setText(r.lv, "Lv" + x.lv);
     const dps = safeCall(() => L.dpsOf(state, k), null);
     setText(r.dps, "1びょうに " + (dps === null ? "-" : dps));
-    const gh = goodHtml(x.id, false);
+    const gh = goodHtml(x.id);
     if (r.good && r.good.innerHTML !== gh) r.good.innerHTML = gh;
     let note = "";
     if (x.lv < EVOLVE_LAST) {
@@ -411,16 +473,68 @@
       setAttr(r.btn, "aria-disabled", "true");
       setText(r.label, "さいだい");
       setText(r.cost, "");
-      setAttr(r.btn, "aria-label", wName(x.id) + "は さいだい");
+      setAttr(r.btn, "aria-label", wName(x.id) + "は さいだい" + (fit ? "（いまの ほしに とくい）" : ""));
+      r.prevCan = undefined;
     } else {
       setAttr(r.btn, "data-max", null);
       const can = state.kakera >= cost;
       setAttr(r.btn, "aria-disabled", can ? null : "true");
-      setText(r.label, can ? "つよくする" : "かけらが たりないよ");
+      // 買えない間は「あと 3,234」と、所持／値段の割合の塗り（U5）。値段は下の段に小さな「かけら」つきで（U8）
+      const lack = Math.max(0, cost - state.kakera);
+      setText(r.label, can ? "つよくする" : "あと " + fmt(lack));
       setText(r.cost, fmt(cost));
-      setAttr(r.btn, "aria-label", wName(x.id) + "を つよくする " + fmt(cost) + "かけら" + (can ? "" : "（かけらが たりないよ）"));
+      const fill = can ? "1" : String(Math.round(Math.max(0, Math.min(1, state.kakera / cost)) * 50) / 50);
+      if (r.fillShown !== fill) { r.fillShown = fill; if (r.btn) r.btn.style.setProperty("--fill", fill); }
+      // 買えないところから買えるようになった瞬間に、短い光（音は無し。動きを減らす設定では出さない）
+      if (r.prevCan === false && can) pulseClass(r.btn, "ready", READY_MS);
+      r.prevCan = can;
+      setAttr(r.btn, "aria-label", wName(x.id) + "を つよくする " + fmt(cost) + "かけら" + (can ? "" : "（あと " + fmt(lack) + " かけら）") + (fit ? "（いまの ほしに とくい）" : ""));
     }
     setAttr(r.row, "data-suggest", k === suggestSlot ? "1" : null);
+  }
+
+  // いまの星の札のマス（'iron'・'ice'・いわ だけなら null）
+  function starMain() {
+    if (!state) return null;
+    const info = safeCall(() => L.starInfo(state.star), null);
+    return info && typeof info.main === "string" ? info.main : null;
+  }
+  // 買った行の「＋12%」（その行の dpsOf の前後差の割合。0.8 秒）
+  function showPlus(k, before, after) {
+    const r = rows[k];
+    if (!r || !r.plus || !(typeof before === "number" && typeof after === "number" && before > 0 && after > before)) return;
+    const pct = Math.max(1, Math.min(999, Math.round(((after - before) / before) * 100)));
+    r.plus.textContent = "＋" + pct + "%";
+    r.plus.classList.remove("show");
+    void r.plus.offsetWidth;
+    r.plus.classList.add("show");
+    cancel(r.plusTimer);
+    r.plusTimer = later(() => { r.plusTimer = 0; r.plus.classList.remove("show"); r.plus.textContent = ""; }, PLUS_MS);
+  }
+  // 買った行の絵から戦闘機へ飛ぶ小さな光（動きを減らす設定では出さない。押せない）
+  function zapToFighter(k) {
+    if (calm || !state || !state.fighter || !window.Element || !Element.prototype.animate) return;
+    const r = rows[k], icon = r && r.row && r.row.querySelector(".wicon");
+    const st = safeCall(() => render.stats(), null);
+    const v = st && st.view;
+    if (!icon || !v || !el.field || !(v.zoom > 0)) return;
+    const a = icon.getBoundingClientRect(), f = el.field.getBoundingClientRect();
+    const x0 = a.left + a.width / 2, y0 = a.top + a.height / 2;
+    const x1 = f.left + (Number(state.fighter.x) - v.left) * v.zoom, y1 = f.top + (Number(state.fighter.y) - v.top) * v.zoom;
+    if (![x0, y0, x1, y1].every(Number.isFinite)) return;
+    const z = document.createElement("div");
+    z.className = "zap";
+    z.setAttribute("aria-hidden", "true");
+    document.body.appendChild(z);
+    const done = () => { if (z.parentNode) z.parentNode.removeChild(z); };
+    try {
+      const an = z.animate([
+        { transform: "translate(" + x0 + "px," + y0 + "px) scale(1)", opacity: 1 },
+        { transform: "translate(" + x1 + "px," + y1 + "px) scale(0.5)", opacity: 0.35 }
+      ], { duration: 320, easing: "ease-in" });
+      an.onfinish = done;
+      later(done, 700);
+    } catch (e) { done(); }
   }
 
   // ===== 操作（§7.2） =====
@@ -428,10 +542,13 @@
     if (!state || overlay) return { ok: false, reason: "card" };
     const k = Math.floor(Number(slot));
     if (!(k >= 0 && k < state.slots.length)) return { ok: false, reason: "slot" };
+    const dpsBefore = safeCall(() => L.dpsOf(state, k), null);
     const r = safeCall(() => L.upgrade(state, k), null);
     if (!r) return { ok: false, reason: "error" };
     if (r.ok) {
       state = r.state;
+      showPlus(k, dpsBefore, safeCall(() => L.dpsOf(state, k), null));
+      zapToFighter(k);
       const evs = Array.isArray(r.events) ? r.events : [];
       const evolved = evs.some((e) => e && e.kind === "evolve");
       for (const e of evs) pendingEvents.push(e);   // しんかの大きな演出は render が events から出す（二重にしない）
@@ -493,7 +610,8 @@
   // ===== カード（§5.3。出た直後 400ms は押せない） =====
   const CARDS = {
     help: { box: () => el.help, primary: () => el.helpOk },
-    choose: { box: () => el.choiceCard, primary: () => el.choiceA },
+    // 2択は見出しにフォーカス（選ぶ前の枠が金の輪で「選び済み」に見えないように U14。Tab で A・B へ進める）
+    choose: { box: () => el.choiceCard, primary: () => $("choiceTitle") },
     end: { box: () => el.endCard, primary: () => el.endOk }
   };
   function fillCard(kind) {
@@ -506,10 +624,24 @@
         setText(part(btn, "name"), wName(id));
         setText(part(btn, "desc"), w.desc || "");
         const g = part(btn, "good");
-        const gh = goodHtml(id, true);
-        if (g) { if (g.innerHTML !== gh) g.innerHTML = gh; g.hidden = !gh; }
-        btn.setAttribute("aria-label", wName(id) + "。" + (w.desc || "") + (w.good ? "。" + (MAT_NAME[w.good] || w.good) + "に つよい" : ""));
+        const fit = !!w.good && w.good === starMain();
+        const gh = (fit ? '<span class="fit" aria-hidden="true">◎</span>' : "") + goodHtml(id);
+        if (g) { if (g.innerHTML !== gh) g.innerHTML = gh; g.hidden = !goodHtml(id); }
+        btn.setAttribute("data-fit", fit ? "1" : "0");
+        btn.setAttribute("aria-label", wName(id) + "。" + (w.desc || "") + (w.good ? "。" + (MAT_NAME[w.good] || w.good) + "に つよい" : "") + (fit ? "。いまの ほしに ぴったり" : ""));
       });
+      // 冒頭の案内：この星に多いマス／まだ出ないなら、いつから出るか（U6）
+      if (el.choiceLead) {
+        let lead = "";
+        const main = starMain();
+        if (main) lead = "この ほしは " + (MAT_NAME[main] || main) + "が おおいよ";
+        else if (Array.isArray(L.MATS)) {
+          const nx = L.MATS.filter((m) => (m.id === "iron" || m.id === "ice") && m.from > state.star).sort((a, b) => a.from - b.from)[0];
+          if (nx) lead = (nx.from === state.star + 1 ? "つぎの ほしから " : "ほし " + nx.from + " から ") + nx.name + "が でてくるよ";
+        }
+        setText(el.choiceLead, lead);
+        el.choiceLead.hidden = !lead;
+      }
     } else if (kind === "end" && state) {
       const sec = Math.max(0, Math.floor(Number(state.t) || 0));
       const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
@@ -656,7 +788,9 @@
       const left = CARD_LOCK_MS - (now() - cardShownAt);
       if (left > 0) cardUnlockTimer = later(unlockCardButtons, left); else unlockCardButtons();
     }
-    document.querySelectorAll(".shake, .wrow.flash, .wrow.evolve").forEach((b) => b.classList.remove("shake", "flash", "evolve"));
+    document.querySelectorAll(".shake, .wrow.flash, .wrow.evolve, .up.ready").forEach((b) => b.classList.remove("shake", "flash", "evolve", "ready"));
+    document.querySelectorAll(".wrow .plus.show").forEach((b) => { b.classList.remove("show"); b.textContent = ""; });
+    document.querySelectorAll(".zap").forEach((b) => b.remove());
   }
   document.addEventListener("visibilitychange", () => { if (document.hidden) sleep(); else wake(); });
   window.addEventListener("pagehide", () => { sleep(); clearLater(); });
@@ -726,6 +860,7 @@
   function applyState(s) {
     state = s;
     suggestSlot = -1;
+    msUntil = -1; nearTold = false;
     if (overlay === "choose" && state.phase !== "choose") closeCard("choose");
     if (state.phase === "choose") openCard("choose");
     saveNow();

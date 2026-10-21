@@ -39,6 +39,12 @@
   const MAT_ID = [null, "rock", "iron", "ice", "gold"];
   const MAT_HP_FALLBACK = { rock: 1, iron: 4, ice: 2, gold: 2 };
   const NAMES_FALLBACK = { shot: "たま", spread: "ちらし", bomb: "どかん", bolt: "いなずま", beam: "ビーム", fire: "ほのお" };
+  // しんかの段（Lv 10 ごとに 1 段。最大 4）で弾の太さ・色を変える（U10）。段が上がるほど太く・明るく・色が変わる
+  const TIER_COL = {
+    shot: ["#ffffff", "#fff4b0", "#ffe27a", "#ffc2d0", "#a8f0ff"],
+    spread: ["#ffd84d", "#ffe27a", "#fff0a0", "#c8ffd0", "#a8f0ff"],
+    fire: ["#ff5a3c", "#ff7a3c", "#ff9a3c", "#ffc23c", "#ffe07a"]
+  };
   const SHOT_COL = { shot: "#ffffff", spread: "#ffd84d", bomb: "#ff9a3c", bolt: "#bfeeff", beam: "#7fd6ff", fire: "#ff5a3c" };
   const FONT = '"Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif';
   // カメラ（§18.1 A）
@@ -159,7 +165,7 @@
     let fx = [];             // 短い光：{ kind, t, dur, ... }
     let absorbPending = 0, absorbAt = -1, bumpAt = -1;
     let recoil = 0, pulse = 0, brighten = 0, ring = 0, ringKind = "";
-    let barrierWave = 0, slowmo = 0;
+    let barrierWave = 0, slowmo = 0, nearOn = false;   // nearOn：地球まで残り 3 割以下（バリアを赤く強く。U7・Q7）
     let rockLift = 0, rockFade = 1, bounceT = -1;
     let evolveText = null;   // { a, b, t }
     let lastPhase = "";
@@ -567,7 +573,8 @@
             if (!rock) break;
             const i = ev.i | 0;
             if (evCrack && i >= 0 && i < evCrack.length && typeof ev.crack === "number") evCrack[i] = Math.max(evCrack[i], clamp(ev.crack | 0, 0, 3));
-            if (hitFxLeft > 0 && !calm) { hitFxLeft--; const p = cellCenter(rock, i); fx.push({ kind: "hit", t: 0, dur: 0.1, x: p.x, y: p.y, crack: ev.crack | 0 }); }
+            // 得意（aff>1）は大きく明るい星形の火花、苦手（aff<1）は小さな灰色の点、ふつうは今までどおり（Q5）。fx だけで粒は増やさない
+            if (hitFxLeft > 0) { hitFxLeft--; const p = cellCenter(rock, i); const af = num(ev.aff, 1); fx.push({ kind: "hit", t: 0, dur: af > 1 ? 0.2 : 0.1, x: p.x, y: p.y, crack: ev.crack | 0, aff: af > 1.0001 ? 1 : af < 0.9999 ? -1 : 0 }); }
             break;
           }
           case "break": {
@@ -602,7 +609,7 @@
             if (!rock || !Array.isArray(ev.path) || !ev.path.length) break;
             const pts = [{ x: fighterX, y: fighterY - 12 }];
             for (const i of ev.path.slice(0, 40)) pts.push(cellCenter(rock, i | 0));
-            fx.push({ kind: "bolt", t: 0, dur: 0.18, pts, seed: (rnd() * 1e6) | 0 });
+            fx.push({ kind: "bolt", t: 0, dur: 0.18, pts, seed: (rnd() * 1e6) | 0, tier: tierOf(state, "bolt") });
             break;
           }
           case "boom": {
@@ -767,9 +774,22 @@
       for (const f of fx) {
         const k = f.t / f.dur;
         if (f.kind === "hit") {
-          ctx.globalAlpha = 0.6 * (1 - k); ctx.fillStyle = "#ffffff";
-          const s = 6 + (f.crack ? 2 : 0);
-          ctx.fillRect(f.x - s / 2, f.y - s / 2, s, s); ctx.globalAlpha = 1;
+          if (f.aff > 0) {
+            // 得意：大きく明るい星形の火花（広がって消える）
+            ctx.globalAlpha = 1 - k; ctx.fillStyle = "#fff6c8";
+            star5(ctx, f.x, f.y, 8 + 7 * k + (f.crack ? 2 : 0), 3.2 + 2 * k);
+            ctx.fillStyle = "#ffffff"; ctx.globalAlpha = (1 - k) * 0.9;
+            ctx.fillRect(f.x - 2, f.y - 2, 4, 4);
+          } else if (f.aff < 0) {
+            // 苦手：小さな灰色の点
+            ctx.globalAlpha = 0.7 * (1 - k); ctx.fillStyle = "#8d93a6";
+            ctx.fillRect(f.x - 1.5, f.y - 1.5, 3, 3);
+          } else {
+            ctx.globalAlpha = 0.6 * (1 - k); ctx.fillStyle = "#ffffff";
+            const s = 6 + (f.crack ? 2 : 0);
+            ctx.fillRect(f.x - s / 2, f.y - s / 2, s, s);
+          }
+          ctx.globalAlpha = 1;
         } else if (f.kind === "boom") {
           ctx.globalAlpha = 0.85 * (1 - k);
           ctx.fillStyle = "rgba(255,154,60,0.35)";
@@ -805,9 +825,9 @@
       const wv = barrierWave;
       // 見せる幅いっぱいに弧を引く（寄せたときも、広く見せるときも端まで）
       const half = Math.asin(clamp((camW / 2 + 16) / R, 0.05, 0.99));
-      const a = 0.35 + (calm ? 0 : 0.08 * Math.sin(clk * 2.2)) + wv * 0.5;
-      ctx.strokeStyle = "rgba(127,214,255," + clamp(a, 0, 1).toFixed(3) + ")";
-      ctx.lineWidth = 2 + wv * 3;
+      const a = 0.35 + (calm ? 0 : 0.08 * Math.sin(clk * 2.2)) + wv * 0.5 + (nearOn ? 0.25 + (calm ? 0 : 0.2 * Math.sin(clk * 7)) : 0);
+      ctx.strokeStyle = (nearOn ? "rgba(255,150,120," : "rgba(127,214,255,") + clamp(a, 0, 1).toFixed(3) + ")";
+      ctx.lineWidth = 2 + wv * 3 + (nearOn ? 1.5 : 0);
       ctx.beginPath();
       if (wv > 0 && !calm) {
         // 波打つ弧
@@ -843,7 +863,7 @@
       ctx.lineJoin = "round";
       for (let pass = 0; pass < 2; pass++) {
         ctx.strokeStyle = pass ? "#ffffff" : "#7fd6ff";
-        ctx.lineWidth = pass ? 1.2 : 3.5;
+        ctx.lineWidth = pass ? 1.2 + 0.3 * (f.tier || 0) : 3.5 + 0.8 * (f.tier || 0);
         ctx.beginPath();
         for (let k2 = 0; k2 < f.pts.length; k2++) {
           const p = f.pts[k2];
@@ -899,6 +919,11 @@
         ctx.fillRect(ox + h.c * C + 1 + j, oy + h.r * C + 1, C - 2, C - 2);
       }
     }
+    function tierOf(state, id) {
+      const sl = state && state.slots;
+      if (Array.isArray(sl)) for (const x of sl) if (x && x.id === id) return clamp(Math.floor(num(x.lv, 1) / 10), 0, 4);
+      return 0;
+    }
     function drawShots(state) {
       const shots = state && state.shots;
       if (!Array.isArray(shots) || !shots.length) return;
@@ -906,13 +931,14 @@
       const glow = brighten > 0;
       // 色ごとにまとめて描く（fillStyle の切り替えを減らす）
       for (const w of ["shot", "spread", "fire"]) {
-        ctx.fillStyle = glow && w === "shot" ? "#fffbe0" : SHOT_COL[w];
-        const s = w === "shot" ? 3.4 + (glow ? 1 : 0) : w === "spread" ? 2.6 : 3;
+        const tr = tierOf(state, w);
+        ctx.fillStyle = glow && w === "shot" ? "#fffbe0" : TIER_COL[w][tr];
+        const s = (w === "shot" ? 3.4 + (glow ? 1 : 0) + 0.7 * tr : w === "spread" ? 2.6 + 0.5 * tr : 3 + 0.6 * tr);
         for (let k = 0; k < n; k++) {
           const p = shots[k];
           if (!p || p.w !== w) continue;
           const x = num(p.x, -99), y = mapY(num(p.y, -99));
-          if (w === "shot") ctx.fillRect(x - 0.7, y, 1.4, 6);   // 尾
+          if (w === "shot") ctx.fillRect(x - (1.4 + 0.4 * tr) / 2, y, 1.4 + 0.4 * tr, 6 + 2 * tr);   // 尾
           ctx.fillRect(x - s / 2, y - s / 2, s, s);
         }
       }
@@ -921,7 +947,7 @@
       for (let k = 0; k < n; k++) {
         const p = shots[k];
         if (!p || p.w !== "bomb") continue;
-        ctx.beginPath(); ctx.arc(num(p.x, -99), mapY(num(p.y, -99)), 4.5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(num(p.x, -99), mapY(num(p.y, -99)), 4.5 + 0.5 * tierOf(state, "bomb"), 0, Math.PI * 2); ctx.fill();
       }
       // そのほか（知らない武器の弾も白い点で出す）
       ctx.fillStyle = "#ffffff";
@@ -999,7 +1025,7 @@
     function drawEvolveText() {
       if (!evolveText) return;
       const t = evolveText.t;
-      const a = t < 0.15 ? t / 0.15 : t > 1.4 ? clamp(1 - (t - 1.4) / 0.4, 0, 1) : 1;
+      const a = t < 0.08 ? t / 0.08 : t > 1.5 ? clamp(1 - (t - 1.5) / 0.3, 0, 1) : 1;
       const sc = calm ? 1 : 1 + 0.25 * Math.max(0, 1 - t / 0.25);
       // 12px（CSS）より小さくしない。canvas の幅に入る大きさまで
       const minPx = 12 / Math.max(0.01, scale);
@@ -1018,8 +1044,10 @@
       ctx.globalAlpha = a;
       ctx.translate(camL + VW / 2, cy);
       ctx.scale(sc, sc);
-      ctx.fillStyle = "rgba(14,20,48,0.78)";
+      ctx.fillStyle = "rgba(14,20,48,0.94)";
       ctx.fillRect(-VW / 2 + 8, -s1 - 6, VW - 16, s1 + s2 + 22);
+      ctx.strokeStyle = "#ffd84d"; ctx.lineWidth = 2;
+      ctx.strokeRect(-VW / 2 + 8, -s1 - 6, VW - 16, s1 + s2 + 22);
       ctx.textAlign = "center";
       ctx.textBaseline = "alphabetic";
       ctx.font = "900 " + s1 + "px " + FONT;
@@ -1033,6 +1061,7 @@
       ctx.restore();
     }
 
+    function setNear(v) { nearOn = !!v; }
     function setCalm(v) {
       calmWanted = !!v;
       calm = calmWanted || !!(mq && mq.matches);
@@ -1055,7 +1084,7 @@
     }
 
     layout();
-    return { layout, frame, burst, setCalm, pause, resume, stats, MAX_PARTICLES };
+    return { layout, frame, burst, setCalm, setNear, pause, resume, stats, MAX_PARTICLES };
   }
 
   root.AsteroidRender = { create, MAX_PARTICLES };
