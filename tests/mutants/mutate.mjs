@@ -86,7 +86,7 @@ const M = [
   ['MH5 ハシわたり：隠れたとき（visibilitychange で hidden）押下を取り消さない', '中断', 'games/hashi/main.js', 'if (phase === "growing") abortHold();', ''],
   ['MH6 ハシわたり：「もう一度」で clearLater() を呼ばない（古い回のタイマーが残る）', 'タイマー', 'games/hashi/main.js', 'clearLater();   // 前の回のタイマーを片付ける（もう一度・起動）', ''],
   ['MH7 ハシわたり：ひとつ飛ばしの点を1つ分にする（2つ分＋おまけ → 1つ分＋おまけ）', '計算', 'games/hashi/logic.js', 'const gain = (onAfter ? 2 : 1) + skipBonus + bonus;', 'const gain = 1 + skipBonus + bonus;'],
-  ['MH8 ハシわたり：2つ先の葉に届いても渡れない（今までどおり落ちる）', 'ルール', 'games/hashi/logic.js', 'const onAfter = !onTarget && !!after && tipX >= after.x && tipX <= after.x + after.w;', 'const onAfter = false;'],
+  ['MH8 ハシわたり：2つ先の葉に届いても渡れない（今までどおり落ちる）', 'ルール', 'games/hashi/logic.js', 'const onAfter = !onTarget && !!after && tipA !== null && tipA >= after.x && tipA <= after.x + after.w;', 'const onAfter = false;'],
   ['MH9 ハシわたり：ひとつ飛ばしで渡った数を1つしか数えない', '計算', 'games/hashi/logic.js', 'const crossed = state.crossed + (onAfter ? 2 : 1);', 'const crossed = state.crossed + 1;'],
   ['MH10 ハシわたり：高さの差を無視する（茎の先＝根もと＋長さ。斜めの距離にしない）', 'ルール', 'games/hashi/logic.js', 'if (dy === 0) return bx + L;', 'return bx + L;'],
   ['MH11 ハシわたり：ステージで落ちても最初に戻らない（その場からやり直し）', 'ルール', 'games/hashi/logic.js', 'platforms: stageWindow(stageCourse(state.stage), 0),\n        score: 0, crossed: 0,', 'platforms: state.platforms,\n        score: 0, crossed: state.crossed,'],
