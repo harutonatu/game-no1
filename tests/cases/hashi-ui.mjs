@@ -126,12 +126,12 @@ const stageDom = (p) => p.evaluate(() => ({
 }));
 // 渡る先の中心へ（高さの差があれば斜めの長さ）
 const crossOnce = async (p) => { const len = await p.evaluate(() => window.HashiGame.lenToCross()); return holdLen(p, len); };
-// 演出を進めて、ready か cleared（クリアのカード）で止める
+// 演出を進めて、ready か cleared（クリアのカード）か retry（旗の後に落ちた「どこから やりなおす？」のカード）で止める
 async function settleStage(p, maxSteps = 60) {
   const hints = new Set();
   for (let i = 0; i < maxSteps; i++) {
     const s = await gs(p), h = await hintText(p); if (h) hints.add(h);
-    if ((s.phase === 'ready' && !s.overlay) || (s.phase === 'cleared' && s.overlay === 'result')) return { s, hints: [...hints] };
+    if ((s.phase === 'ready' && !s.overlay) || (s.phase === 'cleared' && s.overlay === 'result') || (s.phase === 'retry' && s.overlay === 'retry')) return { s, hints: [...hints] };
     await p.evaluate(() => window.HashiGame.skip()); await wait(p, 60);
   }
   return { s: await gs(p), hints: [...hints], timeout: true };
@@ -308,7 +308,8 @@ export const tests = [
       const r = {};
       // 初回は遊び方が自動で出る
       const h = await overlayInfo(page);
-      check(`初回は遊び方が自動で出る（close があり、設定 slow・guide の切り替え：${h.sets.map((x) => x.set).join(',')}）`, h.shown && h.cmds.includes('close') && ['slow', 'guide'].every((k) => h.sets.some((x) => x.set === k)), h);
+      const hp = await page.evaluate(() => ({ kind: document.querySelector('#card')?.dataset.help || null, ps: document.querySelectorAll('#card p').length }));
+      check(`初回は短い遊び方（3 行・close だけ、設定は「？」から）が自動で出る（${hp.kind}・${hp.ps} 行・設定 ${h.sets.length}）`, h.shown && h.cmds.includes('close') && hp.kind === 'short' && hp.ps === 3 && h.sets.length === 0, { h, hp });
       r.help = await reachable(page, 'a#back');
       await page.click('a#back'); await page.waitForURL(BASE, { timeout: 5000 }).catch(() => {});
       r.helpNav = page.url() === BASE;
@@ -368,7 +369,7 @@ export const tests = [
       await crossOnce(page); const r1 = await settleStage(page);
       check(`1 枚渡ると crossed 1・表示「${(await stageDom(page)).score}」`, r1.s.crossed === 1 && (await stageDom(page)).score === '1/5', r1.s);
       const L1 = await lens(page);
-      await holdLen(page, Math.max(1, L1.edgeL - 60)); const r2 = await settleStage(page);
+      await holdLen(page, Math.max(35, L1.edgeL - 60)); const r2 = await settleStage(page);
       check(`落ちるとステージの最初から：crossed 0・platforms は最初と同じ・lives そのまま・「さいしょから」（${r2.hints.join(' / ')}）`,
         r2.s.crossed === 0 && r2.s.lastOutcome?.restart === true && JSON.stringify(r2.s.platforms) === JSON.stringify(s0.platforms) && r2.s.lives === s0.lives && r2.hints.some((h) => h.includes('さいしょから')) && r2.s.phase === 'ready', { s: r2.s, hints: r2.hints });
       const s3 = await toLastLeaf(page);
@@ -389,6 +390,70 @@ export const tests = [
       await pickMode(page, 'endless');
       const e = await gs(page), de = await domNums(page);
       check(`開き直すとフォーカスは前回の stage（${fm}）。どこまでも：mode endless・lives 3・ベスト 7 の表示・平らな葉`, fm === 'stage' && e.mode === 'endless' && e.lives === 3 && de.best === 7 && de.lives === 3 && e.platforms.every((p) => !p.y), { e, de });
+      await ctx.close();
+    },
+  },
+
+  {
+    id: 'HW18', tier: 'smoke', title: 'ハシわたり 旗：ステージで 5 枚渡ると旗（「はた！」の案内・音・checkpoint 5・数字が跳ねる）、落ちると「さいごの はたから」「さいしょから」のカード（400ms 押せない・旗にフォーカス）、旗からは旗の葉に戻り、さいしょからは 0 から、ひとつ飛ばしで旗を越えても取る（「とばし！ 2まい すすんだ」）、旗は保存しない',
+    async run({ browser, check }) {
+      const { ctx, page } = await openH(browser, 'HW18', { v: SMOKE_V(), mode: 'stage', extra: { 'hashi.stage': '16' }, opts: { initScript: SFX_SPY } });
+      const s0 = await gs(page);
+      check(`ステージ 16（goal ${s0.goal}）・checkpoint ${s0.checkpoint}`, s0.stage === 16 && s0.goal === 10 && s0.checkpoint === 0, s0);
+      for (let i = 0; i < 4; i++) { await crossOnce(page); await settleStage(page); }
+      await page.evaluate(() => { window.__plays = []; });
+      await crossOnce(page);
+      const r5 = await settleStage(page);
+      const bumped = await page.evaluate(() => document.querySelector('#score').classList.contains('bump'));
+      const snd = (await plays(page)).map((x) => x.n);
+      check(`5 枚目で旗：checkpoint 5・outcome.flag・案内「${r5.hints.find((h) => h.includes('はた')) || r5.hints.join(' / ')}」・音（${snd.join(',')}）・数字が跳ねる（${bumped}）`,
+        r5.s.checkpoint === 5 && r5.s.crossed === 5 && r5.s.lastOutcome?.flag === true && r5.hints.some((h) => /はた！/.test(h)) && snd.includes('bloom') && bumped, { s: r5.s, hints: r5.hints, snd });
+      await crossOnce(page); await settleStage(page);
+      const L1 = await lens(page);
+      await holdLen(page, Math.max(35, L1.edgeL - 60));
+      const r6 = await settleStage(page);
+      const ov6 = await overlayInfo(page);
+      const f6 = await page.evaluate(() => document.activeElement?.dataset?.cmd || null);
+      check(`旗の後に落ちると「どこから やりなおす？」のカード（${ov6.cmds.join(',')}・フォーカス ${f6}）、state は旗の葉（crossed ${r6.s.crossed}）`,
+        r6.s.phase === 'retry' && r6.s.overlay === 'retry' && ov6.cmds.includes('flag') && ov6.cmds.includes('restart') && /さいごの はたから/.test(ov6.text) && /さいしょから/.test(ov6.text) && f6 === 'flag' && r6.s.crossed === 5, { s: r6.s, ov6 });
+      await page.evaluate(() => document.querySelector('#overlay [data-cmd="flag"]').click()); await wait(page, 50);
+      check('カードを出した直後（400ms 以内）の「さいごの はたから」は効かない', (await gs(page)).overlay === 'retry');
+      await wait(page, 450);
+      await page.click('#overlay [data-cmd="flag"]'); await wait(page, 50);
+      const rf = await settleStage(page);
+      const want = await page.evaluate(() => { const c = window.HashiCourse.stageCourse(16); return { x: c[5].x, w: c[5].w }; });
+      check(`「さいごの はたから」：旗の葉（x ${want.x}）から ready・crossed 5・表示「${(await stageDom(page)).score}」・画面も旗の葉へ`,
+        rf.s.phase === 'ready' && !rf.s.overlay && rf.s.crossed === 5 && rf.s.platforms[0].x === want.x && (await stageDom(page)).score === '5/10' && Math.abs(rf.s.cameraX - (want.x + want.w - 200)) < 1, rf.s);
+      // もう一度落ちて「さいしょから」
+      const L2 = await lens(page);
+      await holdLen(page, Math.max(35, L2.edgeL - 60)); await settleStage(page);
+      await wait(page, 450);
+      await page.click('#overlay [data-cmd="restart"]'); await wait(page, 350);
+      const rs = await gs(page);
+      check(`「さいしょから」：crossed 0・checkpoint 0・ready・表示「${(await stageDom(page)).score}」`, rs.crossed === 0 && rs.checkpoint === 0 && rs.phase === 'ready' && !rs.overlay && (await stageDom(page)).score === '0/10', rs);
+      // ひとつ飛ばしで旗の葉を越える（4 → 6）
+      for (let i = 0; i < 4; i++) { await crossOnce(page); await settleStage(page); }
+      const skl = await page.evaluate(() => window.HashiGame.lenToSkip());
+      await holdLen(page, skl);
+      const rk = await settleStage(page);
+      check(`ひとつ飛ばしで旗の葉を越えても旗を取る（crossed ${rk.s.crossed}・checkpoint ${rk.s.checkpoint}）、案内に「とばし！」と「はた」（${rk.hints.join(' / ')}）`,
+        rk.s.crossed === 6 && rk.s.checkpoint === 5 && rk.s.lastOutcome?.skip === true && rk.hints.some((h) => /とばし！/.test(h) && /はた/.test(h)), { s: rk.s, hints: rk.hints });
+      // 旗の無い所での飛ばし：「とばし！ 2まい すすんだ」
+      const sk2 = await page.evaluate(() => window.HashiGame.lenToSkip());
+      await holdLen(page, sk2);
+      const rk2 = await settleStage(page);
+      check(`旗の無い所で飛ばす：「とばし！ 2まい すすんだ」（${rk2.hints.join(' / ')}）`, rk2.s.crossed === 8 && rk2.hints.some((h) => /とばし！.*2まい すすんだ/.test(h)), rk2.hints);
+      // 旗は保存しない：開き直すとステージの最初から
+      await page.reload(); await wait(page, 300); await pickMode(page, 'stage');
+      const rl = await gs(page);
+      check(`開き直すと旗は消えてステージ 16 の最初から（crossed ${rl.crossed}・checkpoint ${rl.checkpoint}）`, rl.stage === 16 && rl.crossed === 0 && rl.checkpoint === 0, rl);
+      // 5 枚のステージ（旗なし）は今と同じ：カードを出さずに最初から
+      await gotoH(page, { 'hashi.stage': '1' }, { mode: 'stage' });
+      for (let i = 0; i < 4; i++) { await crossOnce(page); await settleStage(page); }
+      const L3 = await lens(page);
+      await holdLen(page, Math.max(35, L3.edgeL - 60));
+      const r1 = await settleStage(page);
+      check(`5 枚のステージでは 4 枚目で落ちてもカードなしで最初から（crossed ${r1.s.crossed}・overlay ${r1.s.overlay}）`, r1.s.crossed === 0 && r1.s.phase === 'ready' && !r1.s.overlay, r1.s);
       await ctx.close();
     },
   },

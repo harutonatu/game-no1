@@ -704,7 +704,7 @@
   function showClearCard(withSound) {
     const n = run.stage;
     showCard(`
-      <h2 id="cardTitle"><span class="line" data-f="h1"></span><span class="line" data-f="h2"></span></h2>
+      <h2 id="cardTitle"><span class="line" data-f="h1"></span> <span class="line" data-f="h2"></span></h2>
       <p class="res" data-f="sub"></p>
       <p data-f="perf"></p>
       <div class="btns">
