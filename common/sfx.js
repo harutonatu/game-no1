@@ -13,6 +13,7 @@
  *   const sfx = YubiSfx.create("matomete"); // まとめてポン（select(n)/pop(n)/fall/allclear/over/deny/undo/blast(r)/streak(n)）
  *   const sfx = YubiSfx.create("michibiki"); // ミチビキ空港（warn/pick/lock/land(n)/near/crash/bounce/open(color)/over）
  *   const sfx = YubiSfx.create("seizai");   // もくもくこうば（chop/saw/sell/buy/hire/tool/cheer/deny/order/deliver(kind)/stage(n)/away）
+ *   const sfx = YubiSfx.create("asteroid"); // ちきゅうを守れ！ほしくだき（shot(w)/crack(n)/break(mat)/chunk(n)/absorb/up/evolve/unlock/clear/bounce/boss/deny）
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -34,6 +35,9 @@
   // もくもくこうばだけの間引き。作業音（chop・saw）は「合わせて」0.4 秒に 1 回まで（同じ組 work で最後に鳴った時刻を共有する）、売れた音は 1 秒に 2 回まで
   const GAP_SEIZAI = { chop: 0.4, saw: 0.4, sell: 0.5, buy: 0.06, deny: 0.2, cheer: 0.15, tool: 0.3 };
   const GROUP_SEIZAI = { chop: "work", saw: "work" };
+  // ちきゅうを守れ！ほしくだきだけの間引き（約束 §9）。shot は全武器を合わせて 0.12 秒に 1 回（名前が1つなので自然に合わさる）、
+  // break は 0.05 秒・absorb は 0.1 秒に 1 回まで。clear・bounce・deny は ほかのゲームにも同じ名前があるので、このゲームだけに効かせる
+  const GAP_ASTEROID = { shot: 0.12, crack: 0.08, break: 0.05, chunk: 0.12, absorb: 0.1, up: 0.05, bounce: 0.3, deny: 0.2, boss: 1, evolve: 0.2, unlock: 0.3, clear: 0.5 };
 
   function create(game, opts) {
     opts = opts || {};
@@ -618,9 +622,90 @@
       away: () => { const t = N(); partial(G5, t, 0.5, { vol: 0.05, a: 0.04 }); partial(C6, t + 0.12, 0.6, { vol: 0.05, a: 0.05 }); mallet(E5, t, { vol: 0.06, decay: 0.3, bright: 0.2 }); }
     };
 
+    // ちきゅうを守れ！ほしくだき：全部自動で撃ち続けるので、ずっと鳴る音（shot・crack・break・absorb）はごく小さく短く、間引く（GAP_ASTEROID）。
+    // 気持ちよさの中心は break（材質で高さが変わる「ぽろっ」）・chunk（はなれたかたまりの「ざらざらっ」）・absorb（五音音階で上がる「ちりっ」）。
+    // 基音はどれも A6（1760Hz）まで。bounce は負けの音にしない（やわらかい「ぼよん」）。deny はやさしく下がる2音
+    const AST_BREAK = { rock: 330, ice: 880, iron: 523.25, gold: 1318.5 };   // 材質 → 「ぽろっ」の高さ（いわ 低・こおり 高・きん 鈴）
+    let astChain = 0, astChainAt = -9;                                        // absorb が続いた数と、最後に鳴った時刻
+    const ASTEROID = {
+      // 撃った「ぷっ」：ごく小さく短い（武器の番号 w で少しだけ高さを変える）
+      shot: (w) => { const t = N(), k = Math.max(0, Math.min(5, Math.floor(Number(w)) || 0)); partial(700 + k * 60, t, 0.035, { vol: 0.018, from: 1100 + k * 60, fromT: 0.02, a: 0.001 }); },
+      // かたいマスに ひび「ちっ」：短い金属音。段（1〜3）が進むほど少し高く
+      crack: (n) => {
+        const t = N(), k = Math.max(1, Math.min(3, Math.floor(Number(n)) || 1));
+        partial(1100 + k * 120, t, 0.04, { vol: 0.022, a: 0.001 });
+        partial((1100 + k * 120) * 1.48, t, 0.025, { vol: 0.01, a: 0.001 });
+        noise(t, 0.012, { freq: 3000, q: 2, vol: 0.012, a: 0.001 });
+      },
+      // マスが欠けた「ぽろっ」：材質 mat（'rock'・'iron'・'ice'・'gold'）で高さを変える。きん は鈴
+      break: (mat) => {
+        const t = N(), f = AST_BREAK[mat] || AST_BREAK.rock;
+        if (mat === "gold") { bell(f, t, { vol: 0.04, decay: 0.3 }); bell(1760, t + 0.05, { vol: 0.025, decay: 0.3 }); return; }
+        if (mat === "iron") { partial(f, t, 0.09, { vol: 0.03, a: 0.001 }); partial(f * 2.7, t, 0.05, { vol: 0.012, a: 0.001 }); }
+        else wood(f, t, { vol: mat === "ice" ? 0.04 : 0.05, dur: 0.05, jit: 25 });
+        noise(t, 0.04, { freq: mat === "ice" ? 3200 : 1400, to: 600, q: 1, vol: 0.02, a: 0.002 });
+      },
+      // はなれたかたまりがくだけた「ざらざらっ」：数 n が多いほど長く明るく（上限 0.6 秒）
+      chunk: (n) => {
+        const t = N(), c = Math.max(1, Math.floor(Number(n)) || 1), dur = Math.min(0.6, 0.15 + c * 0.02);
+        noise(t, dur, { freq: Math.min(3200, 900 + c * 60), to: 500, q: 0.8, vol: 0.05, a: 0.01 });
+        wood(220, t, { vol: 0.08, dur: 0.08, jit: 20 });
+        const k = Math.min(5, 1 + Math.floor(c / 4));
+        for (let i = 0; i < k; i++) wood(380 + i * 90, t + 0.04 + i * (dur / (k + 1)), { vol: 0.035, dur: 0.035, jit: 40 });
+      },
+      // かけらが吸い込まれた「ちりっ」：続くと五音音階で少しずつ上がる（0.8 秒あくと最初に戻る。A6 で頭打ち）
+      absorb: () => {
+        const t = N();
+        astChain = t - astChainAt > 0.8 ? 0 : Math.min(9, astChain + 1);
+        astChainAt = t;
+        const f = Math.min(1760, 880 * Math.pow(2, (12 * Math.floor(astChain / 5) + PENTA[astChain % 5]) / 12));
+        bell(f, t, { vol: 0.022, decay: 0.12 });
+      },
+      // 強くした：明るい上がり2音
+      up: () => { const t = N(); mallet(G5, t, { vol: 0.11, decay: 0.12 }); mallet(C6, t + 0.06, { vol: 0.12, decay: 0.22 }); },
+      // しんか：up より華やか（上がっていく和音＋ベル）
+      evolve: () => {
+        const t = N();
+        [C5, E5, G5, C6].forEach((f, i) => mallet(f, t + i * 0.06, { vol: 0.1 + i * 0.01, decay: i === 3 ? 0.4 : 0.16 }));
+        [C5, E5, G5].forEach((f) => partial(f * 2, t + 0.24, 0.45, { vol: 0.025, a: 0.01 }));
+        bell(G6, t + 0.28, { vol: 0.045, decay: 0.45 });
+      },
+      // 枠が開いた・2択を選んだ：短いファンファーレ（約 0.7 秒）
+      unlock: () => {
+        const t = N();
+        [G5, G5, C6].forEach((f, i) => mallet(f, t + i * 0.09, { vol: 0.1 + i * 0.015, decay: i === 2 ? 0.45 : 0.1 }));
+        [C5, E5, G5].forEach((f) => partial(f, t + 0.18, 0.5, { vol: 0.03, a: 0.01 }));
+        bell(E6, t + 0.24, { vol: 0.04, decay: 0.4 });
+      },
+      // 星をクリア：大きなお祝い（約 1.2 秒）
+      clear: () => {
+        const t = N();
+        [C5, E5, G5, C6, E6].forEach((f, i) => mallet(f, t + i * 0.07, { vol: 0.1 + i * 0.008, decay: 0.18 }));
+        [C5, E5, G5].forEach((f) => mallet(f, t + 0.4, { vol: 0.07, decay: 0.6, bright: 0.3 }));
+        mallet(C6, t + 0.4, { vol: 0.12, decay: 0.6 });
+        [C5, G5].forEach((f) => partial(f, t + 0.4, 0.8, { vol: 0.03, a: 0.02 }));
+        bell(G6, t + 0.5, { vol: 0.045, decay: 0.5 });
+        bell(1760, t + 0.65, { vol: 0.035, decay: 0.6 });
+      },
+      // バリアがはね返した「ぼよん」：やわらかく上がって戻る（負けの音にしない）
+      bounce: () => {
+        const t = N();
+        partial(330, t, 0.22, { vol: 0.08, from: 196, fromT: 0.06, to: 262, toT: 0.22, a: 0.01 });
+        partial(660, t, 0.12, { vol: 0.02, from: 392, fromT: 0.06, a: 0.01 });
+      },
+      // 大きな星が来た：低い予告（ゆっくり2回）
+      boss: () => {
+        const t = N();
+        [0, 0.38].forEach((d) => { partial(110, t + d, 0.32, { vol: 0.1, from: 98, fromT: 0.08, a: 0.03 }); partial(165, t + d, 0.25, { vol: 0.035, a: 0.03 }); });
+        noise(t, 0.6, { type: "lowpass", freq: 400, vol: 0.03, a: 0.1 });
+      },
+      // かけらが足りない：やさしく下がる2音
+      deny: () => { const t = N(); mallet(E5, t, { vol: 0.07, decay: 0.1, bright: 0.2 }); mallet(C5, t + 0.08, { vol: 0.065, decay: 0.16, bright: 0.2 }); }
+    };
+
     const table = Object.assign({}, COMMON,
-      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : game === "hashi" ? HASHI : game === "irobin" ? IROBIN : game === "matomete" ? MATOMETE : game === "michibiki" ? MICHIBIKI : game === "seizai" ? SEIZAI : {});
-    const gap = game === "michibiki" ? Object.assign({}, GAP, GAP_MICHIBIKI) : game === "seizai" ? Object.assign({}, GAP, GAP_SEIZAI) : GAP;
+      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : game === "hashi" ? HASHI : game === "irobin" ? IROBIN : game === "matomete" ? MATOMETE : game === "michibiki" ? MICHIBIKI : game === "seizai" ? SEIZAI : game === "asteroid" ? ASTEROID : {});
+    const gap = game === "michibiki" ? Object.assign({}, GAP, GAP_MICHIBIKI) : game === "seizai" ? Object.assign({}, GAP, GAP_SEIZAI) : game === "asteroid" ? Object.assign({}, GAP, GAP_ASTEROID) : GAP;
     const group = game === "seizai" ? GROUP_SEIZAI : {};
 
     return {
