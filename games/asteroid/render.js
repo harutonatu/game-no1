@@ -346,11 +346,27 @@
       rockRedraws++;
       return true;
     }
+    // マス i の最初の体力。ロジックに cellHpAt(state, i) があればそれ（行ごとの倍率「もろい底」rock.rowHp も入る）、
+    // 無ければ cellHp(star, mat) × rock.rowHp[行]（R1。cellHp だけで割ると底の行が最初からひびだらけに見える）
+    function maxHpAt(i, m, star) {
+      const L = Lg(), st = lastState;
+      if (typeof L.cellHpAt === "function" && st && st.rock) {
+        try { const v = L.cellHpAt(st, i); if (typeof v === "number" && v > 0 && Number.isFinite(v)) return v; } catch (e) { /* 下の式 */ }
+      }
+      let k = 1;
+      const rk = st && st.rock;
+      if (rk && Array.isArray(rk.rowHp)) {
+        const r = Math.floor(i / Math.max(1, num(rk.cols, 1) | 0));
+        const v = rk.rowHp[r];
+        if (typeof v === "number" && v > 0 && Number.isFinite(v)) k = v;
+      }
+      return maxHpOf(star, m) * k;
+    }
     function crackOf(i, m, hp, star) {
       if (matHpOf(m) < 2) return 0;           // かたいマス（てつ・こおり・きん）だけ ひび が入る
       let c = evCrack ? evCrack[i] : 0;
       if (hp && typeof hp[i] === "number") {
-        const f = hp[i] / maxHpOf(star, m);
+        const f = hp[i] / maxHpAt(i, m, star);
         if (Number.isFinite(f)) c = Math.max(c, f <= 0.25 ? 3 : f <= 0.5 ? 2 : f <= 0.75 ? 1 : 0);
       }
       return clamp(c | 0, 0, 3);
