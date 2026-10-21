@@ -505,7 +505,7 @@ export const tests = [
       for (const v of views) {
         const { ctx, page } = await openW(browser, `WW9 ${v.label}`, { v, debug: true });
         await goStage(page, 3);
-        await setL(page, 'l.money = SeizaiLogic.MONEY_MAX; for (const d of Object.values(l.depts)) d.level = 50; l.goal.done = 6000;');
+        await setL(page, 'l.money = SeizaiLogic.MONEY_MAX; for (const d of Object.values(l.depts)) d.level = 50; l.goal.done = SeizaiLogic.STAGES[2].goal;');
         await dbg(page, 'neworder');
         await pressCard(page, '#orderLater');
         await page.click('.zone[data-dept="peel"]'); await wait(page, 200);

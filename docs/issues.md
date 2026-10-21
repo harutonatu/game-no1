@@ -193,7 +193,7 @@
 
 | 番号 | 優先度 | 内容 | 場所 | 状態 | 対応 |
 |---|---|---|---|---|---|
-| SZ-01 | 中 | 3 時間閉じて開いても「2じかん いじょう たったので 2じかんぶん だよ」が出ない（いつも「はんぶんの はやさで、2じかん まで」）。main.js が awaySeconds（7200 で切った秒）を catchUp に渡すので、catchUp の `capped`（seconds > 7200）がいつも false になる。再現：保存の savedAt を 3 時間前にして開く → `SeizaiGame.getState().lastAway.capped === false` | games/seizai/main.js:355（wake）・1026（boot）、logic.js:649 | 未着手 | WW3 に既知の不具合 W-K1 として入れた（合否に含めず毎回表示。直ったら「解消」と出るので tests/cases/seizai-ui.mjs の KNOWN_CAPPED を外す）。以下は私の推測：awaySeconds の切る前の秒を渡すか、`capped` を main.js で「経った秒 > 7200」から決める |
+| SZ-01 | 中 | 3 時間閉じて開いても「2じかん いじょう たったので 2じかんぶん だよ」が出ない（いつも「はんぶんの はやさで、2じかん まで」）。main.js が awaySeconds（7200 で切った秒）を catchUp に渡すので、catchUp の `capped`（seconds > 7200）がいつも false になる。再現：保存の savedAt を 3 時間前にして開く → `SeizaiGame.getState().lastAway.capped === false` | games/seizai/main.js:355（wake）・1026（boot）、logic.js:649 | 解消 | feature/seizai（2026-10-21、契約 §17.1 A1）。main.js の awayFor が、awaySeconds が上限に着いたときは切る前の秒を catchUp に渡す（catchUp が 7200 に丸めて capped: true）。WW3 の既知の不具合 W-K1 を外して合否に含めた。変異 MW40 で戻りを検出 |
 | SZ-02 | 低 | おかえりカードの「おかえり！」が二重（見出し #awayTitle と、#awayText の先頭）。読み上げでも 2 回読む | games/seizai/main.js:441（fillCard）、index.html:540 | 未着手 | |
 
 ## テストの環境
