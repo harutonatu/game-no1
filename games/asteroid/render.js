@@ -73,10 +73,14 @@
   }
   // しんかで何が変わったか（画面の真ん中の2行目）。数値の正はロジックの EVOLVE。ここは見せ方の言葉だけ
   function evolveLine(id, lv) {
+    // Lv 30 より上は形が変わらず、強さの2倍だけ（ロジックの dmg）
+    if (Math.floor(num(lv, 10) / 10) > 3) return "つよさが 2ばいに なった";
     const k = clamp(Math.floor(num(lv, 10) / 10), 1, 3);
+    // 連・発の数はロジックの shapeOf（EVOLVE の表）を先に使う
+    const sh = typeof Lg().shapeOf === "function" ? Lg().shapeOf(id, num(lv, 10)) : null;
     switch (id) {
-      case "shot": return (Math.min(k, 2) + 1) + "れんに なった";
-      case "spread": return (5 + 2 * k) + "はつに なった";
+      case "shot": return (typeof sh === "number" ? sh : k + 1) + "れんに なった";
+      case "spread": return (typeof sh === "number" ? sh : 5 + 2 * k) + "はつに なった";
       case "bomb": return "ばくはつが おおきく なった";
       case "bolt": return "れんさが ふえた";
       case "beam": return "ビームが ふとく なった";
