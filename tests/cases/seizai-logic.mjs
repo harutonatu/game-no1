@@ -17,8 +17,8 @@ function load(root) {
   return L;
 }
 const J = (x) => JSON.stringify(x);
-const IDS = ['cut', 'plant', 'carry', 'peel', 'beam', 'plank', 'shop'];
-const LINE = { peel: 1, beam: 1, plank: 1 };
+const IDS = ['cut', 'plant', 'carry', 'peel', 'beam', 'dry', 'plank', 'plane', 'shop'];
+const LINE = { peel: 1, beam: 1, dry: 1, plank: 1, plane: 1 };
 
 // 段・お金・部署を指定して局面を作る（loadSave を通す＝保存の形のまま）。o.depts は { cut: { staff, level, mgr } ... } の一部
 function mk(L, stage, o = {}) {
@@ -66,11 +66,11 @@ export const tests = [
         SAVE_VERSION: 1, SAVE_KEY: 'seizai.save', SAVE_KEY_BAK: 'seizai.save.bak', SAVE_KEY_BEST: 'seizai.best', SAVE_KEY_HELP: 'seizai.help' };
       const bad = Object.entries(K).filter(([k, v]) => L[k] !== v).map(([k, v]) => ({ k, want: v, got: L[k] }));
       check('定数が契約 §4.2 のとおり', bad.length === 0, bad);
-      check('DEPTS は流れの順 cut→plant→carry→peel→beam→plank→shop、種類（人／台）と使える段', J(L.DEPTS.map((d) => [d.id, d.kind, d.stage])) === J([['cut', 'staff', 1], ['plant', 'staff', 1], ['carry', 'staff', 1], ['peel', 'line', 1], ['beam', 'line', 2], ['plank', 'line', 3], ['shop', 'staff', 1]]), L.DEPTS);
-      check('STAGES は こや・こうば・こうじょう・みなと、売り物は むき丸太・角材・板・板', J(L.STAGES.map((s) => [s.name, s.product])) === J([['こや', 'peeled'], ['こうば', 'beams'], ['こうじょう', 'planks'], ['みなと', 'planks']]) && J([1, 2, 3, 4].map(L.productOf)) === J(['peeled', 'beams', 'planks', 'planks']), L.STAGES);
+      check('DEPTS は流れの順 cut→plant→carry→peel→beam→dry→plank→plane→shop、種類（人／台）と使える段（§19.1）', J(L.DEPTS.map((d) => [d.id, d.kind, d.stage])) === J([['cut', 'staff', 1], ['plant', 'staff', 1], ['carry', 'staff', 1], ['peel', 'line', 1], ['beam', 'line', 2], ['dry', 'line', 3], ['plank', 'line', 3], ['plane', 'line', 4], ['shop', 'staff', 1]]), L.DEPTS);
+      check('STAGES は こや・こうば・こうじょう・みなと、売り物は むき丸太・角材・板・つるつるいた（§19.1.2）', J(L.STAGES.map((s) => [s.name, s.product])) === J([['こや', 'peeled'], ['こうば', 'beams'], ['こうじょう', 'planks'], ['みなと', 'smooth']]) && J([1, 2, 3, 4].map(L.productOf)) === J(['peeled', 'beams', 'planks', 'smooth']), L.STAGES);
       check('人数・台数の上限（§3.2 の表）', J(L.CAPS) === J([
-        { cut: 3, plant: 1, carry: 3, peel: 2, beam: 0, plank: 0, shop: 1 }, { cut: 5, plant: 2, carry: 5, peel: 3, beam: 3, plank: 0, shop: 2 },
-        { cut: 6, plant: 3, carry: 6, peel: 4, beam: 4, plank: 4, shop: 3 }, { cut: 8, plant: 4, carry: 8, peel: 4, beam: 4, plank: 4, shop: 4 }]), L.CAPS);
+        { cut: 3, plant: 1, carry: 3, peel: 2, beam: 0, dry: 0, plank: 0, plane: 0, shop: 1 }, { cut: 5, plant: 2, carry: 5, peel: 3, beam: 3, dry: 0, plank: 0, plane: 0, shop: 2 },
+        { cut: 6, plant: 3, carry: 6, peel: 4, beam: 4, dry: 4, plank: 4, plane: 0, shop: 3 }, { cut: 8, plant: 4, carry: 8, peel: 4, beam: 4, dry: 4, plank: 4, plane: 4, shop: 4 }]), L.CAPS);
       check('置き場・売り物・森の上限（段ごと）', J(L.BUF_CAP) === J([20, 30, 40, 60]) && J(L.GOODS_CAP) === J([50, 100, 200, 400]) && J(L.FOREST_CAP) === J([12, 16, 20, 24]), null);
       check('表・API が凍結されている', Object.isFrozen(L) && Object.isFrozen(L.DEPTS) && Object.isFrozen(L.STAGES) && Object.isFrozen(L.CAPS) && Object.isFrozen(L.PRICE), null);
       check('speedMul(L) = 1 + 0.1×(L−1)（Lv1 で 1、Lv50 で 5.9）', L.speedMul(1) === 1 && Math.abs(L.speedMul(50) - 5.9) < 1e-12 && Math.abs(L.speedMul(11) - 2) < 1e-12, null);
@@ -128,7 +128,7 @@ export const tests = [
       check('なえぎ 1 人・ほか 1 人ずつ：いちばん遅いのは はこぶ（1/8 本/秒）', L.bottleneck(sb) === 'carry', L.bottleneck(sb));
       const sb2 = mk(L, 1, { depts: { plant: { staff: 1 }, carry: { staff: 3 } } });
       check('はこぶを 3 人にすると、次は きこり（1/6）', L.bottleneck(sb2) === 'cut', L.bottleneck(sb2));
-      const sb3 = mk(L, 3, { depts: { plant: { staff: 3 }, cut: { staff: 6 }, carry: { staff: 6 }, peel: { lines: 4 }, beam: { lines: 4 }, shop: { staff: 3, level: 10 } } });
+      const sb3 = mk(L, 3, { depts: { plant: { staff: 3 }, cut: { staff: 6 }, carry: { staff: 6 }, peel: { lines: 4 }, beam: { lines: 4 }, dry: { lines: 4 }, shop: { staff: 3, level: 10 } } });
       check('こうじょう で いた が 1 台なら bottleneck は plank', L.bottleneck(sb3) === 'plank', L.bottleneck(sb3));
       // 速くすると遅い所が速くなる（rates が上がる）
       const up = L.buy({ ...sb, money: 1e6 }, 'carry', 'staff').state;
@@ -222,8 +222,9 @@ export const tests = [
       check('こうば から マネージャーを雇える', L.costOf(e.state, 'cut', 'mgr') === L.MGR_COST.cut, L.costOf(e.state, 'cut', 'mgr'));
       const r3 = L.expand(mk(L, 2, { money: L.STAGES[1].cost, goal: { done: L.STAGES[1].goal } }));
       check('こうば → こうじょう：いた の台が1台、売り物は板', r3.ok && r3.state.stage === 3 && r3.state.depts.plank.lines === 1 && L.productOf(3) === 'planks', r3.state && r3.state.depts.plank);
-      const r4 = L.expand(mk(L, 3, { money: L.STAGES[2].cost, goal: { done: L.STAGES[2].goal }, buf: { goods: 30 } }));
-      check('こうじょう → みなと：板のまま（売り物の山は売らずに残す）、ship.got 0', r4.ok && r4.state.stage === 4 && r4.state.buf.goods === 30 && r4.state.ship.got === 0 && r4.state.money === 0, r4.state && { goods: r4.state.buf.goods, money: r4.state.money });
+      const r4s = mk(L, 3, { money: L.STAGES[2].cost, goal: { done: L.STAGES[2].goal }, buf: { goods: 30 } });
+      const r4 = L.expand(r4s);
+      check('こうじょう → みなと：売り物が つるつるいた に変わり、古い板の山 30 は今の値段で売れる、ship.got 0、かんな が 1台（§19.1）', r4.ok && r4.state.stage === 4 && r4.state.buf.goods === 0 && r4.state.ship.got === 0 && r4.state.money === 30 * L.priceOf(r4s) && r4.state.depts.plane.lines === 1 && r4.state.depts.plane.level === L.START_LEVEL.plane, r4.state && { goods: r4.state.buf.goods, money: r4.state.money, plane: r4.state.depts.plane });
       const m4 = mk(L, 4, { money: 9e15 });
       check("みなと では広げない（canExpand false・reason 'max'）", !L.canExpand(m4) && L.expand(m4).reason === 'max', null);
       // 目標を前の段から数え続けない（こうば で売っても、こや の数は持ち越さない）
@@ -248,7 +249,7 @@ export const tests = [
       let s = withQ({ ...base, buf: { ...base.buf, goods: 20 } }, [merchant(20)]);
       let r = L.step(s, 0.1);
       check('みなとで売れた板の数だけ ship.got が増える（売り物の山は減る＝売れる、お金も入る）', r.state.ship.got === r.state.totals.sold && r.state.totals.sold >= 20 && r.state.money > 0, { got: r.state.ship.got, sold: r.state.totals.sold });
-      check('goalOf は kind ship、「おおきな ふねに いたを つもう（20/30,000）」', L.goalOf(r.state).kind === 'ship' && L.goalOf(r.state).text === `おおきな ふねに いたを つもう（${r.state.ship.got}/30,000）` && L.goalOf(r.state).need === 30000, L.goalOf(r.state));
+      check('goalOf は kind ship、「おおきな ふねに つるつるいたを つもう（20/30,000）」', L.goalOf(r.state).kind === 'ship' && L.goalOf(r.state).text === `おおきな ふねに つるつるいたを つもう（${r.state.ship.got}/30,000）` && L.goalOf(r.state).need === 30000, L.goalOf(r.state));
       // 大口の注文へ入った板は数えない
       const ord = { id: 1, who: 'x', need: 1000, got: 0, reward: 5, accepted: true };
       r = L.step(withQ({ ...base, buf: { ...base.buf, goods: 20 }, order: ord }, [merchant(20)]), 0.1);
@@ -263,7 +264,7 @@ export const tests = [
       check("1せき目：ships 0→1、cleared、{ kind:'ship', n:1, yen:0, ending:true }、あまり 15 を引き継ぐ", r.state.ships === 1 && r.state.cleared === true && sh.length === 1 && sh[0].n === 1 && sh[0].yen === 0 && sh[0].ending === true && r.state.ship.got === r.state.totals.sold - 5, { ships: r.state.ships, got: r.state.ship.got, sh });
       const moneyNoReward = r.state.totals.earned;
       check('1せき目はお礼なし（入ったお金は売ったぶんだけ）', moneyNoReward === r.state.totals.sold * p && r.state.money === moneyNoReward, { earned: moneyNoReward, sold: r.state.totals.sold, p });
-      check('エンディング後の goalOf：「つぎの ふね：いたを つもう（…/36,000）」', L.goalOf(r.state).text === `つぎの ふね：いたを つもう（${r.state.ship.got}/36,000）` && L.goalOf(r.state).need === 36000, L.goalOf(r.state));
+      check('エンディング後の goalOf：「つぎの ふね：つるつるいたを つもう（…/36,000）」', L.goalOf(r.state).text === `つぎの ふね：つるつるいたを つもう（${r.state.ship.got}/36,000）` && L.goalOf(r.state).need === 36000, L.goalOf(r.state));
       // 2せき目：お礼 floor(0.5 × need × price) を1回だけ
       s = withQ({ ...base, buf: { ...base.buf, goods: 20 }, ships: 1, cleared: true, ship: { got: 36000 - 5 } }, [merchant(20)]);
       r = L.step(s, 0.1);
@@ -507,7 +508,7 @@ export const tests = [
         for (let i = 0; i < 250; i++) {
           const prev = s;
           const k = rnd();
-          const d = IDS[Math.floor(rnd() * 7)];
+          const d = IDS[Math.floor(rnd() * IDS.length)];
           if (k < 0.25) s = L.buy({ ...s, money: Math.min(9e15, s.money + Math.floor(rnd() * 1e7)) }, d, ['staff', 'line', 'level', 'mgr'][Math.floor(rnd() * 4)]).state;
           else if (k < 0.35) s = L.boost(s, d).state;
           else if (k < 0.42) s = L.callCustomer(s).state;
@@ -518,10 +519,10 @@ export const tests = [
           else s = L.step(s, [0.1, 0.016, 0.25, 1, 0.5][Math.floor(rnd() * 5)]).state;
           const si = s.stage - 1;
           if (!Number.isInteger(s.money) || s.money < 0 || s.money > L.MONEY_MAX) bad.push(['money', s.money]);
-          for (const b of ['yard', 'logs', 'peeled', 'beams', 'planks']) if (!(s.buf[b] >= 0 && s.buf[b] <= L.BUF_CAP[si])) bad.push([b, s.buf[b]]);
+          for (const b of ['yard', 'logs', 'peeled', 'beams', 'dried', 'planks']) if (!(s.buf[b] >= 0 && s.buf[b] <= L.BUF_CAP[si])) bad.push([b, s.buf[b]]);
           if (!(s.buf.goods >= 0 && s.buf.goods <= L.GOODS_CAP[si])) bad.push(['goods', s.buf.goods]);
           if (!(s.forest.trees >= 0 && s.forest.saplings >= 0 && s.forest.trees + s.forest.saplings <= L.FOREST_CAP[si] + 1e-9)) bad.push(['forest', s.forest]);
-          for (const t of ['logs', 'peeled', 'beams', 'planks', 'sold', 'earned']) if (s.totals[t] < prev.totals[t]) bad.push(['totals', t]);
+          for (const t of ['logs', 'peeled', 'beams', 'dried', 'planks', 'smooth', 'sold', 'earned']) if (s.totals[t] < prev.totals[t]) bad.push(['totals', t]);
           if (s.queue.length > 6) bad.push(['queue', s.queue.length]);
           if (!intIn(s.ships, 0, L.SHIPS_MAX) || (s.ships >= 1) !== s.cleared) bad.push(['ships', s.ships, s.cleared]);
           for (const id of IDS) { const dd = s.depts[id], c = dd.lines ?? dd.staff; if (!intIn(c, 0, L.CAPS[si][id] || 1) || !intIn(dd.level, 1, 50)) bad.push(['dept', id, dd]); }
