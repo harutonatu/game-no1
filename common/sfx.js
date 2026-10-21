@@ -8,7 +8,7 @@
  *   const sfx = YubiSfx.create("irocode");  // いろコード（place/remove/submit/hint(hit)/win/lose。start/best/toggle は共通）
  *   const sfx = YubiSfx.create("zenmai");   // ゼンマイさんぽ
  *   const sfx = YubiSfx.create("pikatto");  // ピカッと早押し
- *   const sfx = YubiSfx.create("hashi");    // ハシわたり（grow(ratio)/tip/land/perfect(n)/walk/splash/peek）
+ *   const sfx = YubiSfx.create("hashi");    // ハシわたり（grow(ratio)/tip/land/perfect(n)/walk/splash/peek/skip/clear/firework(n)/bloom）
  *   const sfx = YubiSfx.create("irobin");   // いろびん（pick/drop/pour(count)/reveal/seal(colorId)/cork/deliver(n)/arrive/clear/deny/undo/stuck/unveil）
  *   const sfx = YubiSfx.create("matomete"); // まとめてポン（select(n)/pop(n)/fall/allclear/over/deny/undo/blast(r)/streak(n)）
  *   const sfx = YubiSfx.create("michibiki"); // ミチビキ空港（warn/pick/lock/land(n)/near/crash/bounce/open(color)/over）
@@ -367,6 +367,19 @@
         noise(t + 0.02, 0.3, { type: "lowpass", freq: 1400, to: 300, vol: 0.06, a: 0.01 });
         partial(700, t + 0.12, 0.1, { vol: 0.03, from: 500, fromT: 0.05 });
       },
+      // ひとつ飛ばし「ぴょーん」：上がる3音（ぴったりのベルより軽く、land の後に重なっても濁らない五音音階）
+      skip: () => { const t = N(); mallet(G5, t, { vol: 0.08, decay: 0.12, bright: 0.5 }); mallet(A5, t + 0.07, { vol: 0.09, decay: 0.14, bright: 0.5 }); mallet(C6 * 1.122, t + 0.14, { vol: 0.1, decay: 0.22, bright: 0.55 }); },
+      // ステージクリア「やったー」：上がる和音（五音音階）
+      clear: () => { const t = N(); [C5, E5, G5, C6].forEach((f, i) => mallet(f, t + i * 0.08, { vol: 0.09, decay: 0.3, bright: 0.5 })); bell(G6, t + 0.34, { vol: 0.04, decay: 0.5 }); },
+      // 花火「ひゅー・ぱん」：n（1・2）で少し高さを変える。耳に痛くないよう小さめ
+      firework: (n) => {
+        const k = Math.max(1, Math.min(3, Math.floor(Number(n)) || 1)), t = N();
+        partial(500 + k * 80, t, 0.22, { vol: 0.025, from: 300, fromT: 0.2 });
+        noise(t + 0.22, 0.35, { type: "lowpass", freq: 1800, to: 400, vol: 0.06, a: 0.004 });
+        bell(G5 * Math.pow(2, PENTA[k] / 12), t + 0.24, { vol: 0.03, decay: 0.4 });
+      },
+      // 蓮の花が咲く「ぽわん」：やわらかいベル
+      bloom: () => { const t = N(); bell(E6, t, { vol: 0.035, decay: 0.6 }); bell(C6, t + 0.12, { vol: 0.03, decay: 0.6 }); },
       // 水から顔を出す「ぴょこ」：軽く上がる2音
       peek: () => { const t = N(); partial(A5, t, 0.08, { vol: 0.06, from: 520, fromT: 0.04 }); mallet(C6, t + 0.06, { vol: 0.07, decay: 0.12, bright: 0.5 }); }
     };

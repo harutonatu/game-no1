@@ -10,7 +10,14 @@
  *   perfectFx, perfectX?,       // ぴったり演出の経過秒。perfectX は光る葉の中心（省略時はケロのいる葉）
  *   ghostTipX, guideTipX,
  *   splash, splashX?,           // ぽちゃんの経過秒。splashX は落ちた所（省略時は hero.x）
+ *   skipFx, skipX?,             // ひとつ飛ばしの「とばし！」の経過秒。skipX は着いた葉の中心
+ *   clearFx,                    // ステージクリアの演出 { sec, calm, x, n }（花火と蓮の花 n 輪。null なら描かない）
+ *   liftMax,                    // ステージのいちばん高い葉の高さ（その上から真上に伸ばした茎も入る縮尺にする。省略は 0）
+ *   flagGotX, flagFx, flagX,    // 取った旗の葉の x（その x 以下の旗は「取った」絵）、旗を取った演出の経過秒と旗の葉の中心
  *   lives, t                    // t は秒
+ * 葉は { x, w, y?, goal?, flag? }。y は水面からの高さ（上が正、省略は 0）。goal の葉にはゴールの旗、flag の葉には黄色い旗。
+ * y を持つ葉（ステージ）は、水の中まで続く茎（根）を描き、高さの差を見やすくする。
+ * 茎（bridge）は { len, angle, x?, y? }。y は根もとの高さ（省略は 0）。
  * }
  * 縮尺は縦横同じ（角度が正しく見える）。ふだんは論理単位 VIEW_W(1000) を canvas の横幅いっぱいに描くが、
  * 背の低い画面では、上向きの茎（最大 MAX_LEN）が canvas の上にはみ出さないよう縮める（横に見える幅が広がるだけ）。
@@ -39,7 +46,26 @@
   var DEFAULT_MAX_LEN = 800;
   var PERFECT_FX_SEC = 1.0;   // ぴったり演出の長さ
   var SPLASH_SEC = 0.9;       // ぽちゃんの長さ
+  var SKIP_FX_SEC = 1.0;      // 「とばし！」の字が浮かぶ長さ
+  var FLAG_FX_SEC = 1.0;      // 旗を取ったときの「はた！」の長さ
 
+  // 花火の表（main.js も音を鳴らすのに使う）：t＝開く時刻（秒）、x・y＝画面の中の位置（割合）、r＝大きさ、c・c2＝粒の2色
+  var FIREWORKS = [
+    { t: 0.30, x: 0.18, y: 0.30, r: 1.0, c: "perfect", c2: "accent" },
+    { t: 0.40, x: 0.52, y: 0.18, r: 1.15, c: "blush", c2: "eye" },
+    { t: 0.50, x: 0.84, y: 0.34, r: 0.95, c: "hero", c2: "perfect" },
+    { t: 0.95, x: 0.34, y: 0.42, r: 0.9, c: "accent", c2: "blush" },
+    { t: 1.05, x: 0.70, y: 0.20, r: 1.1, c: "perfect", c2: "hero" },
+    { t: 1.15, x: 0.10, y: 0.16, r: 0.85, c: "blush", c2: "perfect" },
+    { t: 1.55, x: 0.60, y: 0.40, r: 1.0, c: "hero", c2: "eye" },
+    { t: 1.65, x: 0.88, y: 0.14, r: 0.9, c: "accent", c2: "perfect" },
+    { t: 1.75, x: 0.28, y: 0.22, r: 1.1, c: "perfect", c2: "blush" }
+  ];
+  var FW_LIFE = 1.1;          // 1発が開いてから消えるまで（秒）
+  var FW_RISE = 0.28;         // 打ち上がる時間（秒）
+  var FW_N = 28;              // 1発の粒（2色で 14 本ずつ。iPhone SE でも軽い数）
+  var LOTUS_AT = 1.1;         // 蓮の花が咲き始める時刻（秒）
+  var LOTUS_MIN = 5, LOTUS_MAX = 10;
   function num(v, d) { return typeof v === "number" && isFinite(v) ? v : d; }
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 
@@ -53,15 +79,19 @@
     var m = num(L.MAX_LEN, DEFAULT_MAX_LEN);
     return m > 0 ? m : DEFAULT_MAX_LEN;
   }
-  var TOP_MARGIN = 12;        // 茎の先（小さな葉）の分だけ上を空ける（CSS px）
+  var TIP_PAD = 8;            // 茎の先の小さな葉（最大 8px 上に出る）
+  var TOP_GAP = 8;            // その上に、canvas の上端までの余白
+  var TOP_MARGIN = TIP_PAD + TOP_GAP;
 
-  // 縮尺と葉の高さ。横長の画面（W > H）は葉を下げて、縮みすぎないようにする
-  function layout(W, H, vw, ml) {
+  // 縮尺と葉の高さ。横長の画面（W > H）は葉を下げて、縮みすぎないようにする。
+  // lift（ステージのいちばん高い葉）があれば、その上から真上に伸ばした茎（MAX_LEN）も上端に触れない縮尺にする
+  function layout(W, H, vw, ml, lift) {
     var w = num(W, 320), h = num(H, 240);
-    var VW = num(vw, viewW()), M = num(ml, maxLen());
-    var deckY = Math.round(h * (w > h ? 0.8 : 0.66));
-    var s = Math.min(w / VW, Math.max(0.01, deckY - TOP_MARGIN) / M);
-    return { s: s, deckY: deckY };
+    var VW = num(vw, viewW()), M = num(ml, maxLen()), up = Math.max(0, num(lift, 0));
+    // 縦長でステージ（高い葉がある）なら、葉を少し下げて上に茎の伸びる場所を取る（縮みすぎないように）
+    var deckY = Math.round(h * (w > h ? 0.8 : up > 0 ? 0.76 : 0.66));
+    var s = Math.min(w / VW, Math.max(0.01, deckY - TOP_MARGIN) / (M + up));
+    return { s: s, deckY: deckY, top: TOP_MARGIN };
   }
   function perfectHalf() {
     var L = (typeof HashiLogic !== "undefined" && HashiLogic) || (typeof globalThis !== "undefined" && globalThis.HashiLogic) || {};
@@ -194,7 +224,28 @@
       return { cx: X(p.x + p.w / 2), cy: deckY + ry * 0.45, rx: rx, ry: ry };
     }
 
-    function drawPad(p, X, deckY, s, glow) {
+    function padY(p) { return typeof p.y === "number" && isFinite(p.y) && p.y > 0 ? p.y : 0; }
+    function drawPad(p, X, deckY0, s, glow, waterY, flagGot) {
+      var lift = padY(p) * s;
+      var deckY = deckY0 - lift;
+      if (typeof p.y === "number" && isFinite(p.y)) {
+        // ステージの葉：水の中まで続く茎（根）で支える。水面に輪を描いて、葉の高さを水面から測れるようにする
+        var sx = X(p.x + p.w / 2);
+        var sw = clamp(8 * s, 3, 6);
+        var wy = num(waterY, deckY0 + 3);
+        var root = clamp(40 * s, 10, 22);
+        ctx.fillStyle = C.leafDark;
+        if (lift > 0.5) ctx.fillRect(sx - sw / 2, deckY, sw, wy - deckY);
+        ctx.globalAlpha = 0.55;
+        ctx.fillRect(sx - sw / 2, wy, sw, root * 0.6);
+        ctx.globalAlpha = 0.28;
+        ctx.fillRect(sx - sw / 2, wy + root * 0.6, sw, root * 0.4);
+        ctx.globalAlpha = 0.5;
+        ctx.strokeStyle = C.leafEdge;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.ellipse(sx, wy + 1, sw * 1.8, sw * 0.5, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
       var g = padGeom(p, X, deckY, s);
       // 水に落ちる影
       ctx.fillStyle = "rgba(0,0,0,0.28)";
@@ -248,7 +299,38 @@
       ctx.strokeStyle = C.perfectEdge;
       ctx.lineWidth = 1.5;
       ctx.stroke();
+
+      if (p.goal) {
+        // ゴールの旗（葉の右寄り。色だけでなく形でも分かる）
+        var fx = g.cx + g.rx * 0.55, ph = clamp(70 * s, 22, 44);
+        ctx.fillStyle = C.ink;
+        ctx.fillRect(fx - 1, deckY - ph, 2, ph);
+        ctx.fillStyle = C.blush;
+        ctx.beginPath();
+        ctx.moveTo(fx + 1, deckY - ph);
+        ctx.lineTo(fx + 1 + ph * 0.6, deckY - ph * 0.78);
+        ctx.lineTo(fx + 1, deckY - ph * 0.56);
+        ctx.closePath();
+        ctx.fill();
+      } else if (p.flag) {
+        // 5枚ごとの旗（黄色・暗いふち。取った旗ははためき、まだの旗は少し暗い）
+        var gx = g.cx + g.rx * 0.5, gh = clamp(60 * s, 20, 38), wave = flagGot && !calm ? Math.sin(tNow * 6) * 0.08 : 0;
+        ctx.globalAlpha = flagGot ? 1 : 0.75;
+        ctx.fillStyle = C.ink;
+        ctx.fillRect(gx - 1, deckY - gh, 2, gh);
+        ctx.fillStyle = C.perfect;
+        ctx.strokeStyle = C.perfectEdge;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(gx + 1, deckY - gh);
+        ctx.lineTo(gx + 1 + gh * 0.62, deckY - gh * (0.8 + wave));
+        ctx.lineTo(gx + 1, deckY - gh * 0.58);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
     }
+    var tNow = 0;
 
     /* ---------- 茎 ---------- */
     function drawBridge(baseX, deckY, lenPx, angle, s) {
@@ -274,13 +356,14 @@
     }
 
     /* ---------- 影と点線 ---------- */
-    function drawGhost(baseX, tipX, deckY, s) {
+    function drawGhost(baseX, tipX, deckY, s, baseY) {
       var th = clamp(9 * s, 3, 7);
+      var by = num(baseY, deckY);
       ctx.save();
       ctx.globalAlpha = 0.32;
-      ctx.fillStyle = C.ink;
-      var x0 = Math.min(baseX, tipX), x1 = Math.max(baseX, tipX);
-      ctx.fillRect(x0, deckY - th / 2, x1 - x0, th);
+      ctx.strokeStyle = C.ink;
+      ctx.lineWidth = th;
+      ctx.beginPath(); ctx.moveTo(baseX, by); ctx.lineTo(tipX, deckY); ctx.stroke();
       ctx.globalAlpha = 0.6;
       ctx.strokeStyle = C.ink;
       ctx.lineWidth = 1.5;
@@ -468,11 +551,130 @@
       ctx.restore();
     }
 
+    /* ---------- ひとつ飛ばしの「とばし！」 ---------- */
+    function drawSkipFx(cx, deckY, sec, s, heroR, text, color, dur) {
+      var p = clamp(sec / (dur || SKIP_FX_SEC), 0, 1);
+      var rise = calm ? 0 : p * 24;
+      var size = Math.round(clamp(heroR * 0.9, 14, 26));
+      var y = deckY - heroR * 3.2 - rise;
+      ctx.save();
+      ctx.globalAlpha = p < 0.7 ? 1 : Math.max(0, 1 - (p - 0.7) / 0.3);
+      ctx.font = "700 " + size + "px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.lineWidth = Math.max(3, size * 0.22);
+      ctx.strokeStyle = C.well;
+      ctx.strokeText(text || "とばし！", cx, y);
+      ctx.fillStyle = color || C.accent;
+      ctx.fillText(text || "とばし！", cx, y);
+      ctx.restore();
+    }
+
+    /* ---------- ステージクリア：花火と蓮の花 ---------- */
+    // 花火：中心に光る塊、太い粒が尾を引いて広がり、少し落ちる。3発ずつ3回（画面全体に）。動きを減らす設定では出さない
+    function drawShell(f, i, sec, deckY) {
+      var q = (sec - f.t) / FW_LIFE;
+      var bx = W * f.x, byy = Math.max(18, deckY * f.y);
+      var rise = sec - (f.t - FW_RISE);
+      if (rise > 0 && sec < f.t) {
+        // 上がっていく光（尾つき）
+        var k = rise / FW_RISE, ry = deckY - (deckY - byy) * (1 - (1 - k) * (1 - k));
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = C.moon;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(bx, ry); ctx.lineTo(bx, Math.min(deckY, ry + 22)); ctx.stroke();
+      }
+      if (q < 0 || q >= 1) return;
+      var Rmax = clamp(Math.min(W, deckY) * 0.3, 40, 150) * f.r;
+      var ease = function (u) { return 1 - (1 - u) * (1 - u) * (1 - u); };
+      var R = Rmax * ease(q), R0 = Rmax * ease(Math.max(0, q - 0.12));
+      var fall = q * q * 26, fall0 = Math.max(0, q - 0.12) * Math.max(0, q - 0.12) * 26;
+      var fade = q < 0.55 ? 1 : 1 - (q - 0.55) / 0.45;
+      // 中心の光る塊（はじめの半分。加算で明るく、白い芯と粒の色のにじみ）
+      if (q < 0.5) {
+        var u = 1 - q / 0.5;
+        var cr = Rmax * (0.2 + q * 0.4);
+        var gr = ctx.createRadialGradient(bx, byy, 0, bx, byy, cr);
+        gr.addColorStop(0, "rgba(255,255,255," + u.toFixed(3) + ")");
+        gr.addColorStop(0.25, "rgba(255,244,190," + (0.9 * u).toFixed(3) + ")");
+        gr.addColorStop(0.6, "rgba(255,190,90," + (0.35 * u).toFixed(3) + ")");
+        gr.addColorStop(1, "rgba(255,160,60,0)");
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = gr;
+        ctx.beginPath(); ctx.arc(bx, byy, cr, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+      // 粒（2色を交互に）：尾は太く、先は明るい
+      ctx.lineCap = "round";
+      for (var c = 0; c < 2; c++) {
+        ctx.globalAlpha = fade;
+        ctx.strokeStyle = C[c === 0 ? f.c : f.c2] || C.perfect;
+        ctx.lineWidth = Math.max(2.5, 4.2 - q * 2);
+        ctx.beginPath();
+        for (var m = c; m < FW_N; m += 2) {
+          var a = (m / FW_N) * Math.PI * 2 + i * 0.7;
+          var ca = Math.cos(a), sa = Math.sin(a);
+          ctx.moveTo(bx + ca * R0, byy + sa * R0 + fall0);
+          ctx.lineTo(bx + ca * R, byy + sa * R + fall);
+        }
+        ctx.stroke();
+      }
+      // 粒の先のきらめき
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = C.eye;
+      var dot = Math.max(1.5, 3 - q * 1.5);
+      for (var n = 0; n < FW_N; n += 2) {
+        var a2 = (n / FW_N) * Math.PI * 2 + i * 0.7;
+        ctx.fillRect(bx + Math.cos(a2) * R - dot / 2, byy + Math.sin(a2) * R + fall - dot / 2, dot, dot);
+      }
+      ctx.lineCap = "butt";
+    }
+    function drawClear(fx, deckY, waterY) {
+      var sec = Math.max(0, num(fx.sec, 0));
+      var still = !!fx.calm || calm;
+      if (!still) {
+        for (var i = 0; i < FIREWORKS.length; i++) drawShell(FIREWORKS[i], i, sec, deckY);
+        ctx.globalAlpha = 1;
+      }
+      // 蓮の花：池いっぱいに、少しずつ咲く（ステージの枚数だけ。5〜10）
+      var count = clamp(Math.round(num(fx.n, LOTUS_MIN)), LOTUS_MIN, LOTUS_MAX);
+      var r0 = clamp(W * 0.035, 8, 20) * (count > 7 ? 0.85 : 1);
+      for (var j = 0; j < count; j++) {
+        var start = still ? 0.1 + j * 0.05 : LOTUS_AT + j * 0.09;
+        var g = clamp((sec - start) / 0.5, 0, 1);
+        if (g <= 0) continue;
+        var e = still ? 1 : 1 - (1 - g) * (1 - g) * (1 - g);
+        var lx = W * (j + 0.5) / count + (hash(j + 30) - 0.5) * W * 0.4 / count;
+        var ly = waterY + (H - waterY) * (0.3 + 0.45 * hash(j + 60));
+        var r = r0 * (0.8 + 0.4 * hash(j + 90)) * e;
+        ctx.globalAlpha = still ? g : 1;
+        // 浮き葉
+        ctx.fillStyle = C.leafDark;
+        ctx.beginPath(); ctx.ellipse(lx, ly + r * 0.35, r * 1.5, r * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+        // 花びら（6枚）
+        ctx.fillStyle = C.blush;
+        ctx.strokeStyle = C.eye;
+        ctx.lineWidth = 1;
+        for (var m = 0; m < 6; m++) {
+          var pa = -Math.PI / 2 + (m - 2.5) * 0.42;
+          ctx.beginPath();
+          ctx.ellipse(lx + Math.cos(pa) * r * 0.5, ly + Math.sin(pa) * r * 0.55, r * 0.32, r * 0.62, pa + Math.PI / 2, 0, Math.PI * 2);
+          ctx.fill(); ctx.stroke();
+        }
+        ctx.fillStyle = C.perfect;
+        ctx.beginPath(); ctx.arc(lx, ly - r * 0.15, r * 0.22, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
     /* ---------- 全体 ---------- */
     function draw(view) {
       if (!view || typeof view !== "object") return;
       var t = num(view.t, 0);
-      var lay = layout(W, H);
+      tNow = t;
+      var lay = layout(W, H, undefined, undefined, num(view.liftMax, 0));
       var s = lay.s;                           // 論理単位 → CSS px
       var cam = num(view.cameraX, 0);
       function X(x) { return (x - cam) * s; }
@@ -506,33 +708,36 @@
       var br = view.bridge && typeof view.bridge === "object" ? view.bridge : null;
       var baseWX = br && isFinite(num(br.x, NaN)) ? br.x : (pads.length ? pads[0].x + pads[0].w : 0);
       var baseX = X(baseWX);
+      var baseY = deckY - Math.max(0, br ? num(br.y, 0) : 0) * s;   // 茎の根もとの高さ（高い葉の上）
 
       var guideX = view.guideTipX === null || view.guideTipX === undefined ? NaN : num(view.guideTipX, NaN);
-      if (isFinite(guideX)) drawGuide(baseX, X(guideX), deckY, waterY);
+      if (isFinite(guideX)) drawGuide(baseX, X(guideX), baseY, waterY);
 
+      var gotX = view.flagGotX === null || view.flagGotX === undefined ? NaN : num(view.flagGotX, NaN);
       for (var j = 0; j < pads.length; j++) {
         var p = pads[j];
         var x0 = X(p.x), x1 = X(p.x + p.w);
         if (x1 < -20 || x0 > W + 20) continue;
         var glow = 0;
         if (p === fxPad) glow = calm ? 0.5 * (1 - fxSec / PERFECT_FX_SEC) : Math.max(0, 1 - fxSec / (PERFECT_FX_SEC * 0.6));
-        drawPad(p, X, deckY, s, glow);
+        drawPad(p, X, deckY, s, glow, waterY, p.flag && isFinite(gotX) && p.x <= gotX);
       }
 
       if (fxPad) {
-        var g = padGeom(fxPad, X, deckY, s);
-        drawPerfectFx(g.cx, deckY, fxSec, g.rx);
+        var fxDeck = deckY - padY(fxPad) * s;
+        var g = padGeom(fxPad, X, fxDeck, s);
+        drawPerfectFx(g.cx, fxDeck, fxSec, g.rx);
       }
 
       var ghostX = view.ghostTipX === null || view.ghostTipX === undefined ? NaN : num(view.ghostTipX, NaN);
-      if (isFinite(ghostX)) drawGhost(baseX, X(ghostX), deckY, s);
+      if (isFinite(ghostX)) drawGhost(baseX, X(ghostX), deckY - Math.max(0, num(view.ghostTipY, 0)) * s, s, baseY);
 
       var heroR = clamp(30 * s, 11, 28);
 
       if (br) {
         var lenPx = clamp(num(br.len, 0), 0, 100000) * s;
         var ang = clamp(num(br.angle, 0), 0, Math.PI);
-        drawBridge(baseX, deckY, lenPx, ang, s);
+        drawBridge(baseX, baseY, lenPx, ang, s);
       }
 
       if (hero && isFinite(heroX)) {
@@ -542,6 +747,18 @@
         var footY = deckY - hy * s;
         if (pose === "peek") footY = Math.max(footY, waterY + heroR * 0.3);
         drawHero(X(heroX), footY, heroR, pose, t, waterY);
+      }
+
+      if (view.clearFx && typeof view.clearFx === "object") drawClear(view.clearFx, deckY, waterY);
+
+      var skSec = view.skipFx === null || view.skipFx === undefined ? null : num(view.skipFx, null);
+      var skX = num(view.skipX, NaN);
+      if (skSec !== null && skSec >= 0 && skSec < SKIP_FX_SEC && isFinite(skX)) drawSkipFx(X(skX), deckY, skSec, s, heroR);
+      var flSec = view.flagFx === null || view.flagFx === undefined ? null : num(view.flagFx, null);
+      var flX = num(view.flagX, NaN);
+      if (flSec !== null && flSec >= 0 && flSec < FLAG_FX_SEC && isFinite(flX)) {
+        // 旗を取った：「はた！」の字（とばし！ より少し上）
+        drawSkipFx(X(flX), deckY - heroR * (skSec !== null && skSec < SKIP_FX_SEC ? 1.4 : 0), flSec, s, heroR, "はた！", C.perfect, FLAG_FX_SEC);
       }
 
       var spSec = view.splash === null || view.splash === undefined ? null : num(view.splash, null);
@@ -555,5 +772,8 @@
     return { resize: resize, draw: draw };
   }
 
-  return { create: create, layout: layout, COLORS: C, PERFECT_FX_SEC: PERFECT_FX_SEC, SPLASH_SEC: SPLASH_SEC };
+  return {
+    create: create, layout: layout, COLORS: C, PERFECT_FX_SEC: PERFECT_FX_SEC, SPLASH_SEC: SPLASH_SEC, SKIP_FX_SEC: SKIP_FX_SEC,
+    FLAG_FX_SEC: FLAG_FX_SEC, FIREWORKS: FIREWORKS, LOTUS_AT: LOTUS_AT, TOP_GAP: TOP_GAP
+  };
 });

@@ -182,6 +182,14 @@
     #score[data-size="m"], #best[data-size="m"] { font-size: clamp(12px, calc(100cqi / 6.2), 28px); }
   }
   #score { color: var(--accent); }
+  /* ステージで飛ばした・旗を取ったとき、「わたった」の数字を大きく跳ねさせる（main.js が .bump を付け直す） */
+  #score.bump { animation: hs-bump 0.6s ease-out; transform-origin: left center; }
+  @keyframes hs-bump {
+    0% { transform: scale(1); }
+    25% { transform: scale(1.6) translateY(-4px); color: var(--perfect); }
+    55% { transform: scale(0.92); }
+    100% { transform: scale(1); }
+  }
   .stat.lives, .stat.streak { align-items: flex-start; }
   #lives, #streak { font-size: 22px; }
   #hearts { font-size: 18px; letter-spacing: 1px; color: var(--accent); }
@@ -225,6 +233,8 @@
     text-align: center;
     color: var(--hint);
     font: 16px/1.5 var(--font-text);
+    /* 語（空白で区切った かたまり）の途中では折らない。1語が幅より長いときだけ折る */
+    word-break: keep-all;
     overflow-wrap: anywhere;
   }
 
@@ -312,7 +322,10 @@
     -webkit-user-select: none;
     user-select: none;
   }
+  /* カードの文は、語（空白で区切った かたまり）の途中では折らない（SE 縦で「ぴった/り」にならない）。1語が幅より長いときだけ折る */
+  .card { word-break: keep-all; }
   .card h2 { margin: 0; font-size: 26px; line-height: 1.3; letter-spacing: 0.04em; text-wrap: balance; overflow-wrap: anywhere; }
+  .card h2 .line { display: block; }
   .card p { margin: 0; color: var(--ink); font: 16px/1.6 var(--font-text); overflow-wrap: anywhere; }
   .card p.sub, .card p.note { color: var(--muted); }
   .card ul, .card ol { margin: 0; padding-left: 1.4em; text-align: left; font: 16px/1.6 var(--font-text); }
@@ -348,11 +361,17 @@
   .card button[data-set][aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
   .card button[data-set][aria-pressed="true"]::before { content: "●"; color: var(--accent); }
   .card .sets { display: flex; flex-direction: column; gap: 8px; }
+  /* 「どっちで あそぶ？」：大きな2つのボタン（名前と、小さな説明） */
+  .card .btns.modes button[data-cmd="stage"], .card .btns.modes button[data-cmd="endless"] { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 60px; }
+  .card .btns.modes button[data-cmd="stage"] > span, .card .btns.modes button[data-cmd="endless"] > span { font: 700 18px/1.3 var(--font-text); }
+  .card .btns.modes small { font: 500 14px/1.3 var(--font-text); opacity: 0.85; }
+  .card .btns.modes button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
   @media (orientation: landscape) and (max-height: 500px) {
     .overlay { padding-top: calc(max(6px, env(safe-area-inset-top, 0px)) + var(--head-h) + 6px); padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)); }
     .card { padding: 12px 16px; gap: 8px; }
     .card h2 { font-size: 20px; }
     .card .btns button, .card button[data-set] { min-height: 44px; }
+    .card .btns.modes button[data-cmd="stage"], .card .btns.modes button[data-cmd="endless"] { min-height: 50px; flex-direction: row; justify-content: center; column-gap: 8px; flex-wrap: wrap; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -374,8 +393,8 @@
 
   <section class="play" id="playView" aria-label="プレイ" data-phase="ready">
     <div class="hud" id="hud">
-      <span class="stat"><span class="label">いま</span><b id="score">0</b></span>
-      <span class="stat"><span class="label">ベスト</span><b id="best">0</b></span>
+      <span class="stat"><span class="label" id="scoreLabel">いま</span><b id="score">0</b></span>
+      <span class="stat"><span class="label" id="bestLabel">ベスト</span><b id="best">0</b></span>
       <span class="stat lives" id="livesBox"><span class="label">いのち</span><span id="hearts" aria-hidden="true">♥♥♥</span><b id="lives">3</b></span>
       <span class="stat streak" id="streakBox" hidden><span class="label">ぴったり</span><b id="streak">0</b><span>れんぞく</span></span>
     </div>

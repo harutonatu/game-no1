@@ -83,7 +83,7 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 | いろコード（games/irocode/）の変更 | smoke ＋ `ONLY=I10,I11,I12,I13,I14,I15,I16,I17,I18 node tests/run.mjs full`（ロジックだけなら `ONLY=I1,I2,I3 node tests/run.mjs smoke`、0 秒） |
 | ゼンマイさんぽ（games/zenmai/）の変更 | smoke ＋ `ONLY=ZL1,ZL2,ZL3,ZL4,ZL5,ZL6,ZL7,ZU6,ZU7,ZU8,ZU9,ZU10,ZU11,ZU12,ZU13,ZU14 node tests/run.mjs full`（ステージの数値は ZL、画面は ZU） |
 | ピカッと早押し（games/pikatto/）の変更 | smoke ＋ `ONLY=PK5,PK6,PK7,PK8,PK9,PK12,PK14,PK16,PK17,PK18 node tests/run.mjs full`（ルール・保存を変えたら `ONLY=PK1,PK3,PK9,PK15,PK16 M=MP1,MP2,MP3,MP4,MP5,MP6,MP7 node tests/mutants/mutate.mjs both`） |
-| ハシわたり（games/hashi/）の変更 | smoke ＋ `ONLY=HW5,HW6,HW7,HW8,HW9,HW10,HW11,HW12,HW13 node tests/run.mjs full`（ロジックだけなら `ONLY=HL1,HL2,HL3,HL4,HL5,HL6,HL7,HL8 node tests/run.mjs smoke`、0 秒） |
+| ハシわたり（games/hashi/）の変更 | smoke ＋ `ONLY=HW5,HW6,HW7,HW8,HW9,HW10,HW11,HW12,HW13,HW14,HW15,HW17,HW19 node tests/run.mjs full`（ロジックだけなら `ONLY=HL1,HL2,HL3,HL4,HL5,HL6,HL7,HL8,HL9,HL10,HL11,HL12 node tests/run.mjs smoke`、0 秒。ルール・保存を変えたら `PORT=9900 ONLY=HL1,…,HL12,HW1,…,HW19 M=MH1,…,MH20 node tests/mutants/mutate.mjs both`（10 個ずつに分けて流す）） |
 | いろびん（games/irobin/）の変更 | smoke ＋ `ONLY=BW5,BW6,BW7,BW8,BW9,BW10,BW11,BW12,BW13,BW14,BW15,BW16 node tests/run.mjs full`（ロジックだけなら `ONLY=BL1,BL2,BL3,BL4,BL5,BL6,BL7,BL8,BL9,BL10,BL11,BL12,BL13,BL14 node tests/run.mjs smoke`、約 9 秒。ルール・保存・生成を変えたら `ONLY=BL1,…,BL14,BW1,…,BW18 M=MB1,…,MB17,MB19,MB20,MB21 node tests/mutants/mutate.mjs both`。MB18 は欠番） |
 | まとめてポン（games/matomete/）の変更 | smoke ＋ `ONLY=QW4,QW5,QW6,QW7,QW8,QW9,QW10,QW11,QW12,QW13,QW14,QW15,QW18,QW19 node tests/run.mjs full`（ロジックだけなら `ONLY=QL1,QL2,QL3,QL4,QL5,QL6,QL7,QL8,QL9,QL10,QL11 node tests/run.mjs full`、数秒。ルール・保存・2回タップを変えたら `ONLY=QL1,…,QL11,QW1,…,QW19 M=MQ1,MQ2,…,MQ40 node tests/mutants/mutate.mjs both`） |
 | ミチビキ空港（games/michibiki/）の変更 | smoke ＋ `ONLY=FW6,FW7,FW8,FW9,FW10,FW11,FW12,FW13,FW14,FW15,FW16,FW17,FW18,FW19,FW22,FW23 node tests/run.mjs full`（ロジックだけなら `ONLY=FL1,FL2,FL3,FL4,FL5,FL6,FL7,FL8,FL9,FL10,FL11,FL12 node tests/run.mjs full`、約 20 秒。ルール・保存・出現を変えたら `ONLY=FL1,…,FL12,FW1,…,FW23 M=MF1,…,MF29 node tests/mutants/mutate.mjs both`） |
@@ -111,8 +111,8 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 | ZL | ゼンマイさんぽ 計算ロジック（Node） | `games/zenmai/logic.js`・`stages.js` を直接呼ぶ：15 ステージの形と★3 が取れること、simulate・starsFor・bestTurns・validateProgress の境界値、ZL7 はネジの入力 input.js（持ち替え・cancel・速い回転・中心付近）（zenmai-logic.mjs） |
 | Z | ゼンマイさんぽ 画面 | ZU0 静的（DOM・読み込み順・sw.js・音名）／ZU1 データが消えない・壊れた保存／ZU2 メニューへ戻れる・遊び方／ZU3・ZU11 ボタンが画面内・44px／ZU4 オフライン／ZU5 1 ステージクリア／ZU6 境界値／ZU7 ＋/－/歩かせる だけで遊べる／ZU8・ZU13 円ドラッグ（CDP）／ZU9 効果音／ZU10 ダブルタップ抑止（CDP）／ZU12 最後のステージ・全 15 ステージ・動きを減らす設定／ZU14 警告の基準（ネジと舞台・限界の1回転手前）・止まった後のゲージ・「つぎ」の目印・初回の遊び方（zenmai-ui.mjs） |
 | PK | ピカッと早押し | logic.js（Node：勝ち・フライング・負の時刻・3点先取・5回・引き分け・redoRound・validateBestSolo）、input.js（Node：受付の窓・pointerId・キー・timeStamp）、静的（APP_FILES・読み込み順・音名）、画面（よーい・一時停止・回数表示・ベスト更新・終わり方）、保存（bestSolo）、戻れる、配置（隅が重ならない・2人は対角）、最大桁、効果音、ダブルタップ抑止、オフライン、実イベント（pointercancel・Enter／Space）（PK1〜PK18）。勝ち負けは pressFor(idx, ts) で確かめ、早送り中の実タップでは見ない（event.timeStamp は早送りされないため） |
-| HL | ハシわたり 計算ロジック（Node） | `games/hashi/logic.js`・`course.js` を直接呼ぶ：押した時間⇔茎の長さの境界と逆関数、resolve の端ちょうど・ぴったり・missBy・おしい、ボーナス 1→2→4→8→16→16、いのちと over、イミュータブル、コースの公平さ、validateBest・recordBest・validateFlag、読み込み順の誤り（HL1〜HL8、hashi-logic.mjs） |
-| HW | ハシわたり 画面 | DOM と `window.HashiGame`（getState・holdFor・lenToCross・setRandom・skip）で：渡る・表示の一致、落ちる・いのち・もう一度、ベストの保存、戻れる、画面内・横向きの重なり、中断（hidden・遊び方）、キーボード、タイマーの片付け、時計、効果音、ダブルタップ抑止、設定、オフライン（HW1〜HW13、hashi-ui.mjs） |
+| HL | ハシわたり 計算ロジック（Node） | `games/hashi/logic.js`・`course.js` を直接呼ぶ：押した時間⇔茎の長さの境界と逆関数、resolve の端ちょうど・ぴったり・missBy・おしい、ボーナス 1→2→4→8→16→16、いのちと over、イミュータブル、コースの公平さ、validateBest・recordBest・validateFlag、読み込み順の誤り（HL1〜HL8）、ひとつ飛ばし（2つ先の端ちょうど・2つ分＋おまけ・ぴったりと重なる・間と行き過ぎは落ちる・届く所は画面の中。HL9）、高さの差（斜めの長さで届く・届かない・高い葉に短すぎ・どこまでもは平ら。HL10）、ステージ（K・難しさの上がり方・上限 50・同じ並び・公平さ・クリア・落ちたら最初から・ゴールの先へは飛ばせない・validateStage・recordStage。HL11）、旗（5 枚ごと・ゴールは旗にしない・落ちたら最後の旗から同じ並び・ひとつ飛ばしで旗を越えても取る・5 枚のステージは旗なし・どこまでもは旗なし）と落ちた所の言葉 zone（short・long・between・aim・over。HL12）（hashi-logic.mjs） |
+| HW | ハシわたり 画面 | DOM と `window.HashiGame`（getState・holdFor・lenToCross・setRandom・skip）で：渡る・表示の一致、落ちる・いのち・もう一度、ベストの保存、戻れる、画面内・横向きの重なり、中断（hidden・遊び方）、キーボード、タイマーの片付け、時計、効果音、ダブルタップ抑止、設定、オフライン（HW1〜HW13）、タップ式（HW14）、ひとつ飛ばし（lenToSkip・とばしの案内と音・SE 縦横で届く所が canvas の中。HW15）、ステージ（はじめの「どっちで あそぶ？」・わたった n/K・最初から・クリアのカードと hashi.stage・つぎへ・どこまでもは今どおり。HW16 smoke）、クリアの演出（clearFx・タップで早送り・400ms・隠すと止まる・動きを減らす・キーボード・壊れた hashi.stage・SE 縦横の高い葉とカード。HW17）、旗（5 枚目で「はた！」と音・数字が跳ねる、旗の後に落ちると「どこから やりなおす？」のカード（さいごの はたから・さいしょから・400ms）、ひとつ飛ばしで旗を越える、「とばし！ 2まい すすんだ」、旗は保存しない、5 枚のステージはカードなし。HW18 smoke）、レビュー後の直し（SE 縦横でカード・案内の文が語の途中で折れない・クリアカードの2行・ボタンの文・短い遊び方がスクロールなしで見える・落ちた所の言葉・花火（同時3発・1発ごとに音・蓮は枚数ぶん・CPU 4倍遅くで描画 34ms 以内）・ステージ 1 から高さの差・茎の上の余白 8px。HW19）（hashi-ui.mjs）。初回だけ自動で出る遊び方は短い3行（#card[data-help=short]）、設定のある詳しい版は「？」（data-help=full）。開くと出る「どっちで あそぶ？」は、テストの gotoH が mode（既定 endless）のボタンで選ぶ |
 | BL | いろびん 計算ロジック（Node） | `games/irobin/logic.js` を直接呼ぶ：定数・COLORS（9色で色と記号がすべて違う）・paramsFor が面の表どおり（境界と壊れた値）、pourCheck・applyMove の決まりと reason の順・注ぐ量（見えている同じ色の続きと空きの小さい方）、そろう・届ける・届けた瓶は消える（瓶が1本減り空き瓶は増えない・残りは詰めて id は変わらない）・待ち瓶・連鎖の順・全部届けて won、イミュータブルとおかしな引数、生成（1〜60 面と 1000 面が決定的・各色4段・最初からそろった瓶なし・隠れの形・solutionIds を再生すると won・合計3秒以内・1 面は最初の手で詰まない）、ソルバー（解けない盤・待ち瓶がある盤で手の位置がずれない・布の無い面では注文の順で解けるかどうかは変わらない・上限で exhausted）、保存の検証（validateBest・validateSave の v:3 と古い v:2・v:1・makeSave・recordBest・validateFlag・replay は瓶の id）、詰み、隠れた色、静的（音名 unveil を含む・読み込み順・APP_FILES・メニューの名前が NAME と同じ）、BL11 は生成した面の解を通して瓶の本数・空き瓶・id・途中保存の再生。布の瓶（契約 §17）：BL12 は pourCheck の covered の順・布の瓶へ／から注げない・届けた数が cover に届いた手で unveiled（1人早くは取れない）・空き瓶の布で空き瓶が増える・隠れの面は一番上だけ・ソルバーも布を考える、BL13 は 1〜2000 面の生成（布の表・中身は空き瓶か4段で同じ色4段なし・cover とその幅（§17.9）・25〜600 面の布の面の半分以上で布が効いている・solution を再生すると won で布は全部取れる・fallback 2 なし・1面 300ms 以内）、BL14 は保存 v:3 の途中保存（布が取れる前・後）の再生と v:2・v:1 の手を捨てる（BL1〜BL14、irobin-logic.mjs） |
 | BW | いろびん 画面 | DOM と `window.IrobinGame`（getState・pick・pour・solution・skip・setLevel・setState）で：注ぐ・表示の一致（隠れの段は data-color が空）、solution() で1面クリア・ベスト保存・next、途中の再読み込みと壊れた保存・ほかのゲームのキー、メニューへ戻れる、画面内（SE 縦横・iPad・11本の面・16桁・ヒントの高さ・カード）、お助け（1手もどす・やりなおし）、詰み、キーボード、中断（hidden・遊び方）、効果音の順、色覚（記号）、動きを減らす、オフライン、ダブルタップ抑止（CDP）、メニューのカード、詰み予備軍・届けの連鎖の長さ（6本以上の連鎖を 20 面から探す。布が同じ手で取れる手は除く）・めやすと★・遊び方の閉じるボタン（BW16）、届けた瓶の跡は空いたまま（画面の瓶が1本減る・残りは動かず位置が同じ・跡は押しても何もしない・data-index は state の位置／data-id と aria-label・数字キーの番号は置き場所＝id+1 で固定・空いた場所の数字キーは何もしない・矢印は跡を飛ばす・演出中に押した瓶が正しい瓶を選ぶ・再読み込み v:3）（BW17、smoke）、布の瓶（data-covered・data-cover-left・aria-label・押しても選べずヒントと deny・はじめての布のヒントと irobin.cloth・届けて布が取れる・音 unveil・「あきびんが でてきた！」・動きを減らす設定で 0.5 秒以内・再読み込み）（BW18、smoke）（BW1〜BW18、irobin-ui.mjs） |
 | QL | まとめてポン 計算ロジック（Node） | `games/matomete/logic.js` を直接呼ぶ：定数・COLORS、かたまり（上下左右・斜めは別）・1個は消せない、(n−2)² と全部消し +1000、落下と左詰め、終わりの判定、同じ種で同じ盤・最初から消せない盤を出さない、replay・保存の検証、イミュータブル・例外を出さない、1000 回の乱数プレイで不変条件（3 モード）、モードの記憶・のこりの記録・「おしい」の線（QL10）、§10 の まわりも消える・れんぞく・preview（QL11）（QL1〜QL11、matomete-logic.mjs） |
@@ -322,12 +322,26 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | MP5 ピカッと：合図より前の時刻の押下でも勝ちになる | （未計測） | 検出（PK1。Node の項目だけで確認） |
 | MP6 ピカッと：5回で終わらない（round >= maxRounds → round > maxRounds） | （未計測） | 検出（PK1。Node の項目だけで確認） |
 | MP7 ピカッと：ひとりで れんしゅうのベストを保存しない | （未計測） | （未計測。画面の修正後に PK3・PK15 で確認） |
-| MH1 ハシわたり：判定の端を開区間にする（端ちょうどで落ちる） | 検出（HL2, HL3。HL だけを直接流して確認） | （未計測） |
-| MH2 ハシわたり：recordBest で同点もベスト更新にする | 検出（HL7。HL だけを直接流して確認） | （未計測） |
-| MH3 ハシわたり：ぴったりボーナスの上限 16 を外す | 検出（HL3。HL だけを直接流して確認） | （未計測） |
-| MH4 ハシわたり：落ちてもいのちを減らさない | 検出（HL4。HL だけを直接流して確認。HW2 は未計測） | （未計測） |
-| MH5 ハシわたり：隠れたとき押下を取り消さない | （未計測。smoke では見逃す設計） | （未計測。HW6 で検出する設計） |
-| MH6 ハシわたり：「もう一度」で clearLater() を呼ばない | （未計測。smoke では見逃す設計） | （未計測。HW8 で検出する設計） |
+| MH1 ハシわたり：判定の端を開区間にする（端ちょうどで落ちる） | 検出（HL2, HL3, HL10） | 検出（HL2, HL3, HL10, HW6） |
+| MH2 ハシわたり：recordBest で同点もベスト更新にする | 検出（HL7） | 検出（HL7） |
+| MH3 ハシわたり：ぴったりボーナスの上限 16 を外す | 検出（HL3） | 検出（HL3, HW10） |
+| MH4 ハシわたり：落ちてもいのちを減らさない | 検出（HL4, HL9, HW2, HW4） | 検出（HL4, HL9, HW2, HW4, HW5, HW8, HW10, HW11, HW15, HW19） |
+| MH5 ハシわたり：隠れたとき押下を取り消さない | 見逃し（smoke では見逃す設計） | 検出（HW6） |
+| MH6 ハシわたり：「もう一度」で clearLater() を呼ばない | 見逃し（smoke では見逃す設計） | 検出（HW7, HW8） |
+| MH7 ハシわたり：ひとつ飛ばしの点を1つ分にする | 検出（HL9） | 検出（HL9, HW15） |
+| MH8 ハシわたり：2つ先の葉に届いても渡れない | 検出（HL9, HL10, HL11, HL12, HW18） | 検出（HL9, HL10, HL11, HL12, HW18, HW9, HW15） |
+| MH9 ハシわたり：ひとつ飛ばしで渡った数を1つしか数えない | 検出（HL9, HL11, HL12, HW18） | 検出（HL9, HL11, HL12, HW18, HW9, HW15） |
+| MH10 ハシわたり：高さの差を無視する（斜めの距離にしない） | 検出（HL10） | 検出（HL10） |
+| MH11 ハシわたり：ステージで落ちても最初（旗）に戻らない | 検出（HL11, HL12, HW16, HW18） | 検出（HL11, HL12, HW16, HW18, HW7, HW9, HW10） |
+| MH12 ハシわたり：ゴールの1枚手前でクリアにする | 検出（HL11, HL12, HW16, HW18） | 検出（HL11, HL12, HW16, HW18, HW17, HW19） |
+| MH13 ハシわたり：hashi.stage の 0 を通す | 検出（HL11） | 検出（HL11, HW17） |
+| MH14 ハシわたり：ステージをクリアしても到達を保存しない | 検出（HW16） | 検出（HW16, HW17） |
+| MH15 ハシわたり：クリアの演出中に隠れても止めない | 検出（HW16） | 検出（HW16, HW17, HW19） |
+| MH16 ハシわたり：クリアの演出をタップで早送りできない | 見逃し（smoke では見逃す設計） | 検出（HW17） |
+| MH17 ハシわたり：旗を無視する（落ちたら いつも最初から） | 検出（HL11, HL12, HW18） | 検出（HL11, HL12, HW18, HW19） |
+| MH18 ハシわたり：ひとつ飛ばしで旗の葉を飛び越えたら旗を取らない | 検出（HL12, HW18） | 検出（HL12, HW18） |
+| MH19 ハシわたり：「さいしょから」を押しても旗から再開する | 検出（HW18） | 検出（HW18） |
+| MH20 ハシわたり：落ちた所の言葉を分けない | 検出（HL12） | 検出（HL12, HW19） |
 | MB1 いろびん：色違いの瓶にも注げる | 検出（BL2, BL8, BL13, BW18） | 検出（BL2, BL8, BL13, BW5, BW7, BW16, BW18） |
 | MB2 いろびん：注ぐ量が相手の空きを超える | 検出（BL2, BL5, BL6, BL13, BW1） | 検出（BL2, BL5, BL6, BL13, BW1） |
 | MB3 いろびん：そろった瓶を注文の色と違うお客さんにも届ける | 検出（BL2, BL3, BL6, BL9, BL12） | 検出（BL2, BL3, BL6, BL9, BL12, BW16） |
