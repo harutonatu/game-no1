@@ -81,7 +81,8 @@ export const tests = [
         SAVE_VERSION: 1, SAVE_KEY: 'asteroid.save', SAVE_KEY_BAK: 'asteroid.save.bak', SAVE_KEY_BEST: 'asteroid.best', SAVE_KEY_HELP: 'asteroid.help' };
       const bad = Object.entries(K).filter(([k, v]) => L[k] !== v).map(([k, v]) => ({ k, want: v, got: L[k] }));
       check('定数が契約 §4.2 のとおり（NAME はユーザーの書いたとおり）', bad.length === 0, bad);
-      check('増え方の定数が有限の正の数（§3.10 で直した値）', [L.HP_BASE, L.HP_GROWTH, L.VALUE_GROWTH, L.UP_GROWTH].every((x) => Number.isFinite(x) && x > 0) && L.HP_GROWTH > 1 && L.VALUE_GROWTH > 1 && L.UP_GROWTH > 1, [L.HP_BASE, L.HP_GROWTH, L.VALUE_GROWTH, L.UP_GROWTH]);
+      check('増え方の定数が §3.10 で直した値（HP_BASE 8・HP_GROWTH 1.15・VALUE_GROWTH 1.30・UP_GROWTH 1.35）', L.HP_BASE === 8 && L.HP_GROWTH === 1.15 && L.VALUE_GROWTH === 1.30 && L.UP_GROWTH === 1.35, [L.HP_BASE, L.HP_GROWTH, L.VALUE_GROWTH, L.UP_GROWTH]);
+      check('UP_COST・SLOT_COST が §3.10 で直した値（たま 8・ちらし 60・どかん 120・いなずま 120・ビーム 160・ほのお 100、枠 100・3000・30000）', J(L.UP_COST) === J({ shot: 8, spread: 60, bomb: 120, bolt: 120, beam: 160, fire: 100 }) && J(L.SLOT_COST) === J([null, 100, 3000, 30000]), [L.UP_COST, L.SLOT_COST]);
       check('マスは いわ・てつ・こおり・きん（コード 1〜4）、硬さ 1・4・2・2、かけら 1・3・2・10', J(L.MATS.map((m) => [m.id, m.code, m.name])) === J([['rock', 1, 'いわ'], ['iron', 2, 'てつ'], ['ice', 3, 'こおり'], ['gold', 4, 'きん']]) && J(L.MAT_HP) === J({ rock: 1, iron: 4, ice: 2, gold: 2 }) && J(L.MAT_VALUE) === J({ rock: 1, iron: 3, ice: 2, gold: 10 }), [L.MATS, L.MAT_HP, L.MAT_VALUE]);
       check('武器は たま・ちらし・どかん・いなずま・ビーム・ほのお（強さと間隔は §3.3）', J(L.WEAPONS.map((w) => [w.id, w.name, w.dmg, w.rate])) === J([['shot', 'たま', 1, 0.2], ['spread', 'ちらし', 0.6, 0.6], ['bomb', 'どかん', 3, 1.6], ['bolt', 'いなずま', 2, 1.2], ['beam', 'ビーム', 1.5, 2], ['fire', 'ほのお', 1, 1]]), L.WEAPONS);
       const aff = { spread: { rock: 1.5, iron: 0.5, ice: 1, gold: 1 }, bomb: { rock: 1, iron: 1, ice: 1.5, gold: 1 }, bolt: { rock: 1, iron: 2, ice: 0.5, gold: 1 }, beam: { rock: 1, iron: 1.5, ice: 1, gold: 1 }, fire: { rock: 1, iron: 0.5, ice: 3, gold: 1 }, shot: { rock: 1, iron: 1, ice: 1, gold: 1 } };
@@ -92,12 +93,12 @@ export const tests = [
       check('相性はどれも 0.5〜3 倍（まったく効かない、は無い）', all.every((a) => a >= 0.5 && a <= 3), all);
       check('得意なマス：ちらし＝いわ、どかん・ほのお＝こおり、いなずま・ビーム＝てつ、たま＝なし', J(L.WEAPONS.map((w) => w.good)) === J([null, 'rock', 'ice', 'iron', 'iron', 'ice']), null);
       // 式
-      check('hpMul(n) = HP_GROWTH^(n−1)、valMul も同じ形', near(L.hpMul(1), 1) && near(L.hpMul(5), L.HP_GROWTH ** 4, 1e-9) && near(L.valMul(7), L.VALUE_GROWTH ** 6, 1e-9), [L.hpMul(5), L.valMul(7)]);
+      check('hpMul(n) = 1.15^(n−1)、valMul(n) = 1.30^(n−1)', near(L.hpMul(1), 1) && near(L.hpMul(5), 1.15 ** 4, 1e-9) && near(L.valMul(7), 1.3 ** 6, 1e-9), [L.hpMul(5), L.valMul(7)]);
       check('マスの体力 = HP_BASE × hpMul × MAT_HP、かけら = floor(MAT_VALUE × valMul)（最低 1）', near(L.cellHp(3, 'iron'), L.HP_BASE * L.HP_GROWTH ** 2 * 4, 1e-9) && L.cellValue(1, 'rock') === 1 && L.cellValue(9, 'gold') === Math.floor(10 * L.VALUE_GROWTH ** 8), [L.cellHp(3, 'iron'), L.cellValue(9, 'gold')]);
       const dw = (w, Lv, base) => base * (1 + 0.25 * (Lv - 1)) * 2 ** Math.floor(Lv / 10);
       check('dmg(w, L) = DMG × (1 + 0.25(L−1)) × 2^floor(L/10)', [[1], [5], [9], [10], [11], [20], [30], [99]].every(([Lv]) => L.WEAPONS.every((w) => near(L.dmg(w.id, Lv), dw(w.id, Lv, w.dmg), 1e-9 * dw(w.id, Lv, w.dmg)))), [L.dmg('shot', 9), L.dmg('shot', 10)]);
       check('しんか（Lv10）で強さがちょうど 2 倍に跳ねる（Lv9→10 は 2×(1+2.25)/(1+2) 倍）', near(L.dmg('bolt', 10) / L.dmg('bolt', 9), 2 * 3.25 / 3, 1e-9), L.dmg('bolt', 10) / L.dmg('bolt', 9));
-      check('upCost(w, L) = round(UP_COST × UP_GROWTH^(L−1))、Lv 上限で null', L.WEAPONS.every((w) => L.upCost(w.id, 1) === L.UP_COST[w.id] && L.upCost(w.id, 7) === Math.round(L.UP_COST[w.id] * L.UP_GROWTH ** 6)) && L.upCost('shot', 99) === null, [L.upCost('shot', 7)]);
+      check('upCost(w, L) = round(UP_COST × 1.35^(L−1))、Lv 上限で null', L.WEAPONS.every((w) => L.upCost(w.id, 1) === L.UP_COST[w.id] && L.upCost(w.id, 7) === Math.round(L.UP_COST[w.id] * 1.35 ** 6)) && L.upCost('shot', 20) === Math.round(8 * 1.35 ** 19) && L.upCost('shot', 99) === null, [L.upCost('shot', 7), L.upCost('shot', 20)]);
       check('upCost はレベルとともに増え続ける（減らない）', Array.from({ length: 97 }, (_, k) => k + 1).every((Lv) => L.upCost('beam', Lv + 1) >= L.upCost('beam', Lv)), null);
       check('しんかの形（§3.3）：たま 1→2→3 連、ちらし 5→7 発、どかん 1.5→2 マス、いなずま 4→6、ビーム 1→2、ほのお 3→4 秒、Lv30 で打ち止め',
         L.shapeOf('shot', 9) === 1 && L.shapeOf('shot', 10) === 2 && L.shapeOf('shot', 20) === 3 && L.shapeOf('spread', 10) === 7 && L.shapeOf('bomb', 10) === 2 && L.shapeOf('bolt', 10) === 6 && L.shapeOf('beam', 10) === 2 && L.shapeOf('fire', 10) === 4 &&
