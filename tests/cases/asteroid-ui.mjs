@@ -60,6 +60,13 @@ async function setL(p, code) {
   const ok = await p.evaluate((code) => { const l = window.AsteroidGame.logic(); new Function('l', 'L', code)(l, window.AsteroidLogic); return window.AsteroidGame.setState(l); }, code);
   if (!ok) throw new Error('setState が受け付けない: ' + code);
 }
+// はね返しにする（時間を止めた中で使う）：デバッグの lose で下げて advance。もろい底が欠けて押し返されることがあるので 3 回まで下げ直し、
+// それでもとどかなければ バリアにちょうど とどく位置へ置く（AT_BARRIER）
+async function bounceNow(p) {
+  for (let i = 0; i < 3; i++) { await dbg(p, 'lose'); if (await advUntil(p, 'bounce', { step: 1 / 30, maxSec: 3 })) return true; }
+  await setL(p, AT_BARRIER);
+  return advUntil(p, 'bounce', { step: 1 / 30, maxSec: 1 });
+}
 async function dbg(p, name, args) {
   const r = await p.evaluate(([n, a]) => window.YubiDebug.run(n, a), [name, args]);
   if (!r || !r.ok) throw new Error(`デバッグ命令 ${name} が失敗: ${JSON.stringify(r && r.error)}`);
@@ -140,6 +147,9 @@ const predict = (p, until, maxSec = 120) => p.evaluate(([until, maxSec]) => {
 }, [until, maxSec]);
 // 星の上から、こわした割合が frac をこえない一番近い所までマスを消す文（setL 用。区切りの直前にする）
 const BREAK_BELOW = (frac) => `const T = l.rock.total; let k = l.rock.total - l.rock.left; for (let i = 0; i < l.rock.mats.length && (k + 1) / T < ${frac}; i++) if (l.rock.mats[i]) { l.rock.mats[i] = 0; l.rock.hp[i] = 0; k++; }`;
+// 小惑星の一番下のマスをバリアにちょうど とどく位置へ下げる文（setL 用。次の step で はね返す。デバッグの lose は 1 単位手前なので、
+// もろい底が欠けて押し返され、とどくまでに区切りをこえてしまうことがある）
+const AT_BARRIER = `const R = l.rock; let br = -1; for (let r = R.rows - 1; r >= 0 && br < 0; r--) for (let c = 0; c < R.cols; c++) if (R.mats[r * R.cols + c]) { br = r; break; } R.y = L.BARRIER_Y - (br + 1) * L.CELL + 0.01;`;
 // 秒 →「3ぷん20びょう」「45びょう」「1じかん5ふん」（クリアの帯の書き方。契約 §18.1 C の例「3ぷん12びょう」）
 const fmtT = (sec) => { const t = Math.max(1, Math.round(sec)); const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), r = t % 60; return h > 0 ? `${h}じかん${m}ふん` : m > 0 ? `${m}ぷん${r}びょう` : `${r}びょう`; };
 
@@ -274,11 +284,11 @@ export const tests = [
       const cheapest = (l) => { let k = -1, c = Infinity; l.slots.forEach((_, j) => { const x = L.upCostOf(l, j); if (typeof x === 'number' && x < c) { c = x; k = j; } }); return k; };
       // 星を 6 割こわした状態にする（最初からに戻ったこと・「あと N%」がこわした割合でないことが分かるように）・かけらと Lv を持たせる。
       // 2 つ目の武器は Lv1（値段が たまの Lv3 と違う）＝おすすめの行が決まる
-      await setL(page, `const n = l.rock.mats.length; let k = 0; for (let i = 0; i < n && k < l.rock.left * 0.6; i++) if (l.rock.mats[i]) { l.rock.mats[i] = 0; l.rock.hp[i] = 0; k++; } l.kakera = 777; l.slots = [{ id: L.WEAPONS[0].id, lv: 3 }, { id: L.WEAPONS[1].id, lv: 1 }];`);
+      // lose で下げても、もろい底が欠けて押し返されることがあるので、とどくまで何回か下げる（時間を止めた中で）
       const r = await frozen(page, async () => {
-        await dbg(page, 'lose');
-        const a = await lg(page);
-        const ok = await advUntil(page, 'bounce', { step: 1 / 30, maxSec: 20 });
+        await setL(page, `const n = l.rock.mats.length; let k = 0; for (let i = 0; i < n && k < l.rock.left * 0.6; i++) if (l.rock.mats[i]) { l.rock.mats[i] = 0; l.rock.hp[i] = 0; k++; } l.kakera = 777; l.slots = [{ id: L.WEAPONS[0].id, lv: 3 }, { id: L.WEAPONS[1].id, lv: 1 }];`);
+        let a = null, ok = false;
+        for (let i = 0; i < 10 && !ok; i++) { await dbg(page, 'lose'); if (!a) a = await lg(page); ok = await advUntil(page, 'bounce', { step: 1 / 30, maxSec: 3 }); }
         const b = await lg(page);
         return { a, ok, b };
       });
@@ -299,9 +309,11 @@ export const tests = [
       check(`同じ星を最初から（ほし ${c.star}・こわした割合 ${pb.broken.toFixed(2)} → ${pc.broken.toFixed(2)}・地球までの近さ distance ${pc.distance.toFixed(2)}）、Lv${c.slots[0].lv} とかけら ${c.kakera} は残る`, c.star === r.a.star && pc.broken < 0.1 && pc.distance > 0.8 && c.slots[0].lv === 3 && c.kakera >= r.a.kakera, { pc, c: { star: c.star, k: c.kakera } });
       // 残りが 50% を超えるはね返し（実時間）：数字より先に「もう すこし つよく しよう」、ヒントに おすすめの武器の名前
       await setL(page, 'l.slots = [{ id: L.WEAPONS[0].id, lv: 1 }, { id: L.WEAPONS[1].id, lv: 4 }];');
-      await dbg(page, 'lose');
       let d = null;
-      for (let i = 0; i < 100; i++) { await wait(page, 100); d = await lg(page); if (d.phase === 'bounce') break; }
+      for (let j = 0; j < 10 && !(d && d.phase === 'bounce'); j++) {
+        if ((await lg(page)).phase === 'fly') await dbg(page, 'lose');
+        for (let i = 0; i < 30; i++) { await wait(page, 100); d = await lg(page); if (d.phase === 'bounce') break; }
+      }
       const pd = L.progressOf(d);
       const sub2 = await txt(page, '#bounceBanner [data-part="sub"]'), hint2 = await txt(page, '#hint');
       const k2 = cheapest(d);
@@ -357,7 +369,7 @@ export const tests = [
       };
       const rows = [];
       rows.push(await runCase('fly', async () => {}, 1));
-      rows.push(await runCase('bounce', async () => { await frozen(page, async () => { await dbg(page, 'lose'); await advUntil(page, 'bounce', { step: 1 / 30, maxSec: 20 }); await adv(page, 0.2); }); }, 0.5));
+      rows.push(await runCase('bounce', async () => { await frozen(page, async () => { await bounceNow(page); await adv(page, 0.2); }); }, 0.5));
       rows.push(await runCase('clear', async () => { await frozen(page, async () => { await advUntil(page, 'fly', { step: 0.1, maxSec: 10 }); await dbg(page, 'win'); await advUntil(page, 'clear', { step: 1 / 30, maxSec: 60 }); }); }, 0.3));
       for (const r of rows) {
         if (r.skip) { check(`${r.name}：場を押す検査の準備ができない（${r.skip}）`, false, r); continue; }
@@ -505,7 +517,7 @@ export const tests = [
       await page.evaluate(() => window.AsteroidGame.unlock()); await wait(page, 50);
       r.chooseOpen = (await gs(page)).overlay === 'choose';
       await go('choose');
-      r.bounceOpen = await frozen(page, async () => { await dbg(page, 'lose'); return advUntil(page, 'bounce', { step: 1 / 30, maxSec: 20 }); });
+      r.bounceOpen = await frozen(page, () => bounceNow(page));
       await go('bounce');
       r.clearOpen = await frozen(page, async () => { await dbg(page, 'win'); return advUntil(page, 'clear', { step: 1 / 30, maxSec: 60 }); });
       await go('clear');
@@ -525,47 +537,59 @@ export const tests = [
       const p25 = L.MILESTONES[0], p50 = L.MILESTONES[1];
       const banner = () => page.evaluate(() => { const b = document.querySelector('#msBanner'); return { shown: !!b && !b.hidden && b.getBoundingClientRect().width > 0, main: b && b.querySelector('[data-part="main"]').textContent.trim(), sub: b && b.querySelector('[data-part="sub"]').textContent.trim() }; });
       // 25% の直前まで こわし、区切りをこえる step まで先を読んで advance で同じ所へ
-      await setL(page, `${BREAK_BELOW(p25 / 100)} l.ms = [];`);
-      const r = await frozen(page, async () => {
-        const a = await lg(page);
-        const pr = await predict(page, `p.broken >= ${p25 / 100}`, 60);
-        if (!pr) return { a, pr };
-        await adv(page, pr.n * L.STEP);
-        return { a, pr, b: await lg(page), bn: await banner() };
+      // 実時間で進まないよう（並列で重いと、こわす間に 50% までこえてしまう）、25%・はね返し・50% までを まとめて時間を止めた中で行う
+      const F = (_p, fn) => fn();
+      const { r, h, bo, r2, r3 } = await frozen(page, async () => {
+        const r = await F(page, async () => {
+          await setL(page, `${BREAK_BELOW(p25 / 100)} l.ms = [];`);
+          const a = await lg(page);
+          const pr = await predict(page, `p.broken >= ${p25 / 100}`, 60);
+          if (!pr) return { a, pr };
+          await adv(page, pr.n * L.STEP);
+          return { a, pr, b: await lg(page), bn: await banner() };
+        });
+        if (!r.pr) throw new Error('60 秒で 25% をこえない');
+        const ms1 = r.pr.evs.filter((e) => e.kind === 'milestone');
+        const bonus = Math.floor(r.a.rock.value * L.MILESTONE_BONUS);
+        check(`25% をこえた step の出来事 milestone ${JSON.stringify(ms1)}：pct ${p25}・bonus = floor(星の value ${r.a.rock.value} × ${L.MILESTONE_BONUS}) = ${bonus}`, ms1.length === 1 && ms1[0].pct === p25 && ms1[0].bonus === bonus && bonus > 0, ms1);
+        check(`#msBanner が出る（「${r.bn && r.bn.main}」「${r.bn && r.bn.sub}」＝「＋${L.formatKakera(bonus)} かけら」）、ms ${JSON.stringify(r.b && r.b.ms)}、かけら ${r.a.kakera} → ${r.b && r.b.kakera}（おまけ ${bonus} 以上ふえる）`,
+          !!r.b && r.bn.shown && /こわした！$/.test(r.bn.main) && r.bn.sub === `＋${L.formatKakera(bonus)} かけら` && JSON.stringify(r.b.ms) === JSON.stringify([p25]) && r.b.kakera - r.a.kakera >= bonus, { bn: r.bn, ms: r.b && r.b.ms });
+        // 1 秒（ロジックの時計）で消える
+        const h = await F(page, async () => { await adv(page, 1.1); return { bn: await banner(), l: await lg(page) }; });
+        check(`区切りの帯は 1 秒で消える（ロジックの時計で 1.1 秒後 ${h.bn.shown ? '出ている' : '消えた'}・ms ${JSON.stringify(h.l.ms)}）`, h.l.ms.length > 1 || !h.bn.shown, h);
+        // はね返し → 同じ星の次の挑戦：25% はもらい直せない、50% はもらえる
+        // バリアにとどく位置へ下げて、次の step で はね返す（lose だと、押し返される間に 50% をこえることがある）
+        const bo = await F(page, async () => {
+          const t0 = (await lg(page)).tries;
+          await setL(page, AT_BARRIER);
+          const ok = await advUntil(page, 'bounce', { step: 1 / 30, maxSec: 1 });
+          await adv(page, L.BOUNCE_SEC + 0.1);
+          return { ok, t0, l: await lg(page) };
+        });
+        const r2 = await F(page, async () => {
+          await setL(page, BREAK_BELOW(p25 / 100));
+          const a = await lg(page);
+          const pr = await predict(page, `p.broken >= ${p25 / 100}`, 60);
+          if (!pr) return { a, pr };
+          await adv(page, pr.n * L.STEP);
+          return { a, pr, b: await lg(page), bn: await banner() };
+        });
+        if (!r2.pr) throw new Error('やり直しのあと 60 秒で 25% をこえない');
+        check(`はね返し（tries ${bo.l.tries}・ms ${JSON.stringify(bo.l.ms)}）のあと、もう一度 25% をこえても区切りは出ない（出来事 ${JSON.stringify(r2.pr.evs)}・帯 ${r2.bn.shown}・ms ${JSON.stringify(r2.b.ms)}）`,
+          bo.ok && bo.l.phase === 'fly' && bo.l.tries === bo.t0 + 1 && JSON.stringify(bo.l.ms) === JSON.stringify([p25]) && r2.pr.evs.every((e) => e.kind !== 'milestone') && !r2.bn.shown && JSON.stringify(r2.b.ms) === JSON.stringify([p25]), { bo: { ok: bo.ok, tries: bo.l.tries, ms: bo.l.ms }, evs: r2.pr.evs, bn: r2.bn });
+        const r3 = await F(page, async () => {
+          await setL(page, BREAK_BELOW(p50 / 100));
+          const a = await lg(page);
+          const pr = await predict(page, `p.broken >= ${p50 / 100}`, 60);
+          if (!pr) return { a, pr };
+          await adv(page, pr.n * L.STEP);
+          return { a, pr, b: await lg(page), bn: await banner(), raw: await stored(page, 'asteroid.save') };
+        });
+        if (!r3.pr) throw new Error('60 秒で 50% をこえない');
+        const ms3 = r3.pr.evs.filter((e) => e.kind === 'milestone');
+        check(`まだもらっていない ${p50}% はもらえる（出来事 ${JSON.stringify(ms3)}・帯「${r3.bn.main}」「${r3.bn.sub}」・ms ${JSON.stringify(r3.b.ms)}）`, ms3.length === 1 && ms3[0].pct === p50 && r3.bn.shown && r3.bn.sub === `＋${L.formatKakera(ms3[0].bonus)} かけら` && JSON.stringify(r3.b.ms) === JSON.stringify([p25, p50]), { ms3, bn: r3.bn, ms: r3.b.ms });
+        return { r, h, bo, r2, r3 };
       });
-      if (!r.pr) throw new Error('60 秒で 25% をこえない');
-      const ms1 = r.pr.evs.filter((e) => e.kind === 'milestone');
-      const bonus = Math.floor(r.a.rock.value * L.MILESTONE_BONUS);
-      check(`25% をこえた step の出来事 milestone ${JSON.stringify(ms1)}：pct ${p25}・bonus = floor(星の value ${r.a.rock.value} × ${L.MILESTONE_BONUS}) = ${bonus}`, ms1.length === 1 && ms1[0].pct === p25 && ms1[0].bonus === bonus && bonus > 0, ms1);
-      check(`#msBanner が出る（「${r.bn && r.bn.main}」「${r.bn && r.bn.sub}」＝「＋${L.formatKakera(bonus)} かけら」）、ms ${JSON.stringify(r.b && r.b.ms)}、かけら ${r.a.kakera} → ${r.b && r.b.kakera}（おまけ ${bonus} 以上ふえる）`,
-        !!r.b && r.bn.shown && /こわした！$/.test(r.bn.main) && r.bn.sub === `＋${L.formatKakera(bonus)} かけら` && JSON.stringify(r.b.ms) === JSON.stringify([p25]) && r.b.kakera - r.a.kakera >= bonus, { bn: r.bn, ms: r.b && r.b.ms });
-      // 1 秒（ロジックの時計）で消える
-      const h = await frozen(page, async () => { await adv(page, 1.1); return { bn: await banner(), l: await lg(page) }; });
-      check(`区切りの帯は 1 秒で消える（ロジックの時計で 1.1 秒後 ${h.bn.shown ? '出ている' : '消えた'}・ms ${JSON.stringify(h.l.ms)}）`, h.l.ms.length > 1 || !h.bn.shown, h);
-      // はね返し → 同じ星の次の挑戦：25% はもらい直せない、50% はもらえる
-      const bo = await frozen(page, async () => { await dbg(page, 'lose'); const ok = await advUntil(page, 'bounce', { step: 1 / 30, maxSec: 20 }); await adv(page, L.BOUNCE_SEC + 0.1); return { ok, l: await lg(page) }; });
-      await setL(page, BREAK_BELOW(p25 / 100));
-      const r2 = await frozen(page, async () => {
-        const a = await lg(page);
-        const pr = await predict(page, `p.broken >= ${p25 / 100}`, 60);
-        if (!pr) return { a, pr };
-        await adv(page, pr.n * L.STEP);
-        return { a, pr, b: await lg(page), bn: await banner() };
-      });
-      if (!r2.pr) throw new Error('やり直しのあと 60 秒で 25% をこえない');
-      check(`はね返し（tries ${bo.l.tries}・ms ${JSON.stringify(bo.l.ms)}）のあと、もう一度 25% をこえても区切りは出ない（出来事 ${JSON.stringify(r2.pr.evs)}・帯 ${r2.bn.shown}・ms ${JSON.stringify(r2.b.ms)}）`,
-        bo.ok && bo.l.phase === 'fly' && bo.l.tries === r.a.tries + 1 && JSON.stringify(bo.l.ms) === JSON.stringify([p25]) && r2.pr.evs.every((e) => e.kind !== 'milestone') && !r2.bn.shown && JSON.stringify(r2.b.ms) === JSON.stringify([p25]), { bo: { ok: bo.ok, tries: bo.l.tries, ms: bo.l.ms }, evs: r2.pr.evs, bn: r2.bn });
-      await setL(page, BREAK_BELOW(p50 / 100));
-      const r3 = await frozen(page, async () => {
-        const a = await lg(page);
-        const pr = await predict(page, `p.broken >= ${p50 / 100}`, 60);
-        if (!pr) return { a, pr };
-        await adv(page, pr.n * L.STEP);
-        return { a, pr, b: await lg(page), bn: await banner(), raw: await stored(page, 'asteroid.save') };
-      });
-      if (!r3.pr) throw new Error('60 秒で 50% をこえない');
-      const ms3 = r3.pr.evs.filter((e) => e.kind === 'milestone');
-      check(`まだもらっていない ${p50}% はもらえる（出来事 ${JSON.stringify(ms3)}・帯「${r3.bn.main}」「${r3.bn.sub}」・ms ${JSON.stringify(r3.b.ms)}）`, ms3.length === 1 && ms3[0].pct === p50 && r3.bn.shown && r3.bn.sub === `＋${L.formatKakera(ms3[0].bonus)} かけら` && JSON.stringify(r3.b.ms) === JSON.stringify([p25, p50]), { ms3, bn: r3.bn, ms: r3.b.ms });
       const sv = JSON.parse(r3.raw);
       check(`ms は保存に入る（asteroid.save の ms ${JSON.stringify(sv.ms)}）`, JSON.stringify(sv.ms) === JSON.stringify([p25, p50]), sv.ms);
       // 壊れた ms：重複・知らない値・文字・配列でない → 捨てて直す（mid は消して星の最初から）
@@ -889,8 +913,7 @@ export const tests = [
       await dbg(page, 'win');
       for (let i = 0; i < 60 && (await gs(page)).logicPhase !== 'clear'; i++) await wait(page, 200);   // clear（実時間で）
       await wait(page, Math.round(L.CLEAR_SEC * 1000) + 300);
-      await dbg(page, 'lose');
-      for (let i = 0; i < 60 && (await gs(page)).logicPhase !== 'bounce'; i++) await wait(page, 200); // bounce
+      for (let i = 0; i < 60 && (await gs(page)).logicPhase !== 'bounce'; i++) { if (i % 15 === 0 && (await gs(page)).logicPhase === 'fly') await dbg(page, 'lose'); await wait(page, 200); } // bounce（押し返されたら 3 秒ごとに下げ直す）
       const ps = await plays(page);
       const names = [...new Set(ps.map((p) => p.n))];
       const need = ['start', 'shot', 'break', 'up', 'unlock', 'deny', 'clear', 'bounce'];
