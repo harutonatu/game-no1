@@ -18,6 +18,10 @@
  *       rock.bottom0 … 星の始めの「一番下のマス」の y（地球までの近さの分母）
  *       shots[] の弾には、どかん用の着地点（tc・tr：格子の座標）・強さ（dmg）などを足している
  *       burns[] には spread（となりの こおり へ広げたか）を足している
+ *       ms    … その星でもらった区切り（25・50・75。§18.1 B。保存する）
+ *       bestT … 星ごとのベスト時間 { 星: 秒 }（§18.1 C。保存する）
+ *       tryAt … いまの挑戦が始まった t（clear の time の元。保存は mid.tt）
+ *       rock.rowHp … 行ごとの体力の倍率（もろい底 SOFT。満タンの体力は cellHpAt）
  *   - 契約に無い便利な関数（足しただけ。契約の関数は変えていない）：
  *       hpMul・valMul・dmg・upCost・affOf・shapeOf・cellHp・cellValue・matOf（テストと画面の説明用）
  *   - upgrade の返り値に events（Lv10・20… に届いたら [{ kind:'evolve', slot, lv }]）を足している。
