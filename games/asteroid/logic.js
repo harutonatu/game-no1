@@ -35,7 +35,16 @@
   // ---------------------------------------------------------------- 定数（契約 §3・§4.2）
   const NAME = "ちきゅうを守れ！ほしくだき";
   const FIELD_W = 360, FIELD_H = 560, BARRIER_Y = 470, FIGHTER_Y = 500, CELL = 14, GRID_MAX = 24;
-  const HP_BASE = 8, HP_GROWTH = 1.15, VALUE_GROWTH = 1.30, UP_GROWTH = 1.35, LEVEL_MAX = 99, SLOTS_MAX = 4;
+  const HP_BASE = 560, HP_GROWTH = 1.252, VALUE_GROWTH = 2.35, UP_GROWTH = 1.35, LEVEL_MAX = 99, SLOTS_MAX = 4;
+  // エンディング（星 ENDING_STAR）より先の増え方（§17.1「星 100 まで詰まらない」。Lv の上限 99 に早く届かないよう、ゆるめる）
+  const HP_GROWTH2 = 1.0, VALUE_GROWTH2 = 1.03;
+  // 最初の星だけ、マスの体力をこの倍にする（星 1〜6。はじめての人がすぐ1つクリアできる。§17.1「最初の 3 星は 1.5〜3 分」。
+  // 星 4 から少しずつ 1 倍へ。武器が 1〜2 つの間は強くなる速さが遅いので、ゆるやかにつなぐ）
+  const EARLY_HP = deepFreeze([0.024, 0.06, 0.07, 0.27, 0.35, 0.39, 0.58, 0.82, 0.9]);
+  // マスの混ざり方（§3.2）：てつ（星 3〜9・10〜）、こおり（星 6〜）、星ごとの傾き（てつ多め／こおり多め）
+  const MIX = { iron: [0.25, 0.35], ice: 0.15, tilt: 0.08 };
+  const SIZE_STEP = 0.48;   // 星ごとに直径が増えるマスの数（星 30 ごろに 24 マス）
+  const BOSS_GROW = 2, BOSS_HARD = 1.3;   // 大きな星：格子を 2 マス大きく、重さ（マスの数×体力）はふつうの星の 1.3 倍くらい
   const CLEAR_BONUS = 0.2, ENDING_STAR = 30, STAR_MAX = 9999, STAR_CALC_MAX = 400, KAKERA_MAX = 9e15;
   const SHOTS_MAX = 120, STEP = 1 / 30;
   const SAVE_VERSION = 1, SAVE_KEY = "asteroid.save", SAVE_KEY_BAK = "asteroid.save.bak", SAVE_KEY_BEST = "asteroid.best", SAVE_KEY_HELP = "asteroid.help";
@@ -46,11 +55,15 @@
   const BULLET_SPEED = 600;      // たま・ちらし・ほのお の弾
   const BOMB_FLIGHT = 0.6;       // どかん の山なりの秒
   const BEAM_SEC = 0.4;          // ビームの見た目の秒（当たりは撃った瞬間）
+  const BEAM_DEPTH = 10;         // ビームが 1 列で貫くマスの数（下から。大きな星で強くなりすぎないよう）
   const BOUNCE_SEC = 2, CLEAR_SEC = 1.5;
-  const SLOW_FROM = 3, SLOW_STEP = 0.05, SLOW_MAX = 0.25;   // やさしくなる仕掛け
+  const SLOW_FROM = 2, SLOW_STEP = 0.1, SLOW_MAX = 0.25;    // やさしくなる仕掛け（2 回目から 10% ずつ、最大 25%。1 つの星が長いので早めにやさしく）
   const BURN_SPREAD_SEC = 0.5;   // 燃えはじめて 0.5 秒で となりの こおり へ広がる
   const EVOLVE_EVERY = 10, EVOLVE_TIERS = 3;               // Lv10・20・30 で形が変わる（30 で打ち止め）
-  const APPROACH = { first: 120, normal: 90, boss: 140, firstStars: 3, bossEvery: 5 };
+  // 近づく速さ（§3.7・§17.1）：その星を「ふつうに買う人」がクリアする目安の秒（first・normal・boss）から、
+  // クリアのときに道のりが keep だけ残るように決める。小惑星は下から削れて押し返されるので、背の高い星ほど速く降りる：
+  //   approachSec(n) = 目安の秒 ÷ (keep + 星の高さ ÷ 道のり)   （10 秒単位に丸める）
+  const APPROACH = { first: 135, normal: 240, boss: 300, keep: 0.33, firstStars: 3, bossEvery: 5 };
   const TRIES_MAX = 9999;
 
   // ---------------------------------------------------------------- 表（§3.2・§3.3・§3.4・§3.6）
@@ -62,15 +75,15 @@
     { id: "gold", code: 4, name: "きん", from: 8 }
   ]);
   const MAT_HP = deepFreeze({ rock: 1, iron: 4, ice: 2, gold: 2 });
-  const MAT_VALUE = deepFreeze({ rock: 1, iron: 3, ice: 2, gold: 10 });
+  const MAT_VALUE = deepFreeze({ rock: 1, iron: 4, ice: 2, gold: 10 });
 
   const WEAPONS = deepFreeze([
     { id: "shot", name: "たま", dmg: 1, rate: 0.20, good: null, aff: {}, desc: "いちばん ちかい マスへ まっすぐ うつ" },
-    { id: "spread", name: "ちらし", dmg: 0.6, rate: 0.6, good: "rock", aff: { rock: 1.5, iron: 0.5 }, desc: "おうぎの かたちに 5はつ ちらす" },
-    { id: "bomb", name: "どかん", dmg: 3, rate: 1.6, good: "ice", aff: { ice: 1.5 }, desc: "おちた ところの まわりを まとめて こわす" },
-    { id: "bolt", name: "いなずま", dmg: 2, rate: 1.2, good: "iron", aff: { iron: 2, ice: 0.5 }, desc: "つながった おなじ マスへ つたわる" },
-    { id: "beam", name: "ビーム", dmg: 1.5, rate: 2.0, good: "iron", aff: { iron: 1.5 }, desc: "たての 1れつを まとめて つらぬく" },
-    { id: "fire", name: "ほのお", dmg: 1, rate: 1.0, good: "ice", aff: { ice: 3, iron: 0.5 }, desc: "もやして となりの こおりへ ひろがる" }
+    { id: "spread", name: "ちらし", dmg: 1, rate: 0.6, good: "rock", aff: { rock: 2, iron: 0.9 }, desc: "おうぎの かたちに 5はつ ちらす" },
+    { id: "bomb", name: "どかん", dmg: 3, rate: 1.6, good: "ice", aff: { ice: 2 }, desc: "おちた ところの まわりを まとめて こわす" },
+    { id: "bolt", name: "いなずま", dmg: 3, rate: 1.2, good: "iron", aff: { iron: 2.2, ice: 0.5 }, desc: "つながった おなじ マスへ つたわる" },
+    { id: "beam", name: "ビーム", dmg: 1.5, rate: 2.0, good: "iron", aff: { iron: 1.8 }, desc: "たての 1れつを まとめて つらぬく" },
+    { id: "fire", name: "ほのお", dmg: 3, rate: 1.0, good: "ice", aff: { ice: 3, iron: 0.75 }, desc: "もやして となりの こおりへ ひろがる" }
   ]);
   const W = {};
   for (const w of WEAPONS) W[w.id] = w;
@@ -86,8 +99,8 @@
     fire: { key: "sec", base: 3, add: 1, unit: "びょう" }       // 燃える秒
   });
 
-  const UP_COST = deepFreeze({ shot: 8, spread: 60, bomb: 120, bolt: 120, beam: 160, fire: 100 });
-  const SLOT_COST = deepFreeze([null, 100, 3000, 30000]);
+  const UP_COST = deepFreeze({ shot: 5, spread: 5, bomb: 34, bolt: 5, beam: 8, fire: 4 });
+  const SLOT_COST = deepFreeze([null, 40, 300, 2000]);
 
   // ---------------------------------------------------------------- 小さな道具
   function deepFreeze(o) {
@@ -124,8 +137,21 @@
 
   // ---------------------------------------------------------------- 式（§3.2・§3.3・§3.4）
   function calcN(n) { return clamp(Math.floor(isNum(n) ? n : 1), 1, STAR_CALC_MAX); }
-  function hpMul(n) { return Math.pow(HP_GROWTH, calcN(n) - 1); }
-  function valMul(n) { return Math.pow(VALUE_GROWTH, calcN(n) - 1); }
+  // 星 ENDING_STAR までは HP_GROWTH・VALUE_GROWTH、そこから先は HP_GROWTH2・VALUE_GROWTH2 で増える
+  function growMul(n, g1, g2) {
+    const k = calcN(n);
+    return k <= ENDING_STAR ? Math.pow(g1, k - 1) : Math.pow(g1, ENDING_STAR - 1) * Math.pow(g2, k - ENDING_STAR);
+  }
+  // 体力の倍率：増え方 × 最初の星のやさしさ × 大きさのならし・大きな星の重さ（dimsOf の adj）
+  function hpMul(n) {
+    const k = calcN(n);
+    const star = isNum(n) && n >= 1 ? Math.min(Math.floor(n), STAR_MAX) : 1;
+    return growMul(n, HP_GROWTH, HP_GROWTH2) * (k <= EARLY_HP.length ? EARLY_HP[k - 1] : 1) * dimsOf(star).adj;
+  }
+  function valMul(n) {
+    const star = isNum(n) && n >= 1 ? Math.min(Math.floor(n), STAR_MAX) : 1;
+    return growMul(n, VALUE_GROWTH, VALUE_GROWTH2) * dimsOf(star).adj;
+  }
   function matOf(code) { return MAT_IDS[code - 1] || null; }
   function cellHp(n, mat) { return MAT_HP[mat] ? HP_BASE * hpMul(n) * MAT_HP[mat] : null; }
   function cellValue(n, mat) { return MAT_VALUE[mat] ? Math.max(1, Math.floor(MAT_VALUE[mat] * valMul(n))) : null; }
@@ -160,27 +186,52 @@
     if (k < 1) return null;
     return Math.min(k, STAR_MAX);
   }
+  function dimsOf(n) {
+    const boss = n % APPROACH.bossEvery === 0;
+    const k = Math.min(n, 40);
+    const smooth = Math.min(GRID_MAX, 10 + (k - 1) * SIZE_STEP);   // 丸める前の直径（星ごとになめらか）
+    const base = Math.min(GRID_MAX, Math.round(smooth));
+    const d = Math.min(GRID_MAX, base + (boss ? BOSS_GROW : 0));
+    const rows = Math.max(6, Math.round(d * 0.86));
+    // 格子の大きさは整数で段になるので、マス1つの体力とかけらを「なめらかな大きさ ÷ 実際の大きさ」倍して、星ごとの重さ・かけらの合計をなめらかにする。
+    // 大きな星は、ふつうの星（同じ番号）の BOSS_HARD 倍の重さ（とかけら）にする
+    // 星ごとの傾き（てつ多め・こおり多め）でも、星の重さ（体力の合計）とかけらの合計は変えない（得意な武器で速くなるだけ）
+    const mx = mixRaw(n);
+    const adj = (smooth * smooth * 0.86) / (d * rows) * (boss ? BOSS_HARD : 1) * (weightOf(mx.iron0, mx.ice0) / weightOf(mx.iron, mx.ice));
+    return { boss, cols: d, rows, adj, mix: mx };
+  }
+  // マスの混ざり方（傾きの前 iron0・ice0 と、傾けたあと iron・ice）
+  function mixRaw(n) {
+    const iron0 = n < 3 ? 0 : n < 10 ? MIX.iron[0] : MIX.iron[1];
+    const ice0 = n < 6 ? 0 : MIX.ice;
+    let iron = iron0, ice = ice0;
+    if (n >= 6) {
+      // 星ごとに少し傾ける（平均は MIX のまま）。0=そのまま・1=てつ多め・2=こおり多め
+      const tilt = hash2(n, 0x5eed) % 3;
+      if (tilt === 1) { iron += MIX.tilt; ice -= MIX.tilt; } else if (tilt === 2) { iron -= MIX.tilt; ice += MIX.tilt; }
+      iron = Math.round(iron * 100) / 100; ice = Math.round(ice * 100) / 100;
+    }
+    return { iron0, ice0, iron, ice };
+  }
+  // 1 マスあたりの体力の重み（いわ 1・てつ 4・こおり 2。かけらも同じ重み）
+  function weightOf(iron, ice) { return (1 - iron - ice) * MAT_HP.rock + iron * MAT_HP.iron + ice * MAT_HP.ice; }
+  const approachMemo = new Map();
   function approachSecOf(n) {
-    if (n % APPROACH.bossEvery === 0) return APPROACH.boss;
-    if (n <= APPROACH.firstStars) return APPROACH.first;
-    return APPROACH.normal;
+    let a = approachMemo.get(n);
+    if (a !== undefined) return a;
+    const dm = dimsOf(n);
+    const want = dm.boss ? APPROACH.boss : n <= APPROACH.firstStars ? APPROACH.first : APPROACH.normal;
+    a = Math.max(30, Math.round(want / (APPROACH.keep + dm.rows * CELL / (BARRIER_Y - START_BOTTOM)) / 10) * 10);
+    if (approachMemo.size < 1000) approachMemo.set(n, a);
+    return a;
   }
   function starInfo(n) {
     try {
       n = normStar(n);
       if (n === null) return null;
-      const boss = n % APPROACH.bossEvery === 0;
-      const k = Math.min(n, 40);
-      const d = Math.min(GRID_MAX, Math.round(10 + (k - 1) * 0.7 + (boss ? 3 : 0)));
-      const cols = d, rows = Math.max(6, Math.round(d * 0.86));
-      let iron = n < 3 ? 0 : n < 10 ? 0.15 : 0.25;
-      let ice = n < 6 ? 0 : 0.20;
-      if (n >= 6) {
-        // 星ごとに少し傾ける（平均は契約の値のまま）。0=そのまま・1=てつ多め・2=こおり多め
-        const tilt = hash2(n, 0x5eed) % 3;
-        if (tilt === 1) { iron += 0.08; ice -= 0.08; } else if (tilt === 2) { iron -= 0.08; ice += 0.08; }
-        iron = Math.round(iron * 100) / 100; ice = Math.round(ice * 100) / 100;
-      }
+      const dm = dimsOf(n);
+      const boss = dm.boss, cols = dm.cols, rows = dm.rows;
+      const iron = dm.mix.iron, ice = dm.mix.ice;
       const gold = n >= 8 ? 2 + (hash2(n, 0x901d) % 5) : 0;   // きん の数（2〜6 マス）
       const tag = iron === 0 && ice === 0 ? "" : iron >= ice ? "てつが おおい" : "こおりが おおい";
       return { cols, rows, approachSec: approachSecOf(n), boss, mix: { iron, ice, gold }, tag };
@@ -230,7 +281,7 @@
       let i = pick();
       let c = i % cols, r = (i - c) / cols;
       const dc = rnd() < 0.5 ? -1 : 1;
-      const len = 3 + Math.floor(rnd() * 5);
+      const len = 4 + Math.floor(rnd() * 7);   // すじの長さ 4〜10（いなずま の連鎖が とどく長さ）
       for (let k = 0; k < len && placed < ironWant; k++) {
         if (c < 0 || c >= cols || r < 0 || r >= rows) break;
         const j = r * cols + c;
@@ -351,7 +402,37 @@
       seed: o.seed, rng: o.rng, wait: 0, back: "fly"
     };
     s.rock = genRock(s.seed, s.star, s.tries);
+    if (o.mid !== undefined && o.mid !== null) applyMid(s, o.mid);
     return s;
+  }
+  // 星の途中（mid）を、その星の最初の形にあてはめる。おかしければ何もしない（星の最初から）。
+  // 決まり：長さが格子と同じ・各文字が '0'〜'4'・残っているマスは最初の形と同じ種類（足す・変えるは不可、欠けるだけ）・1 マス以上。
+  //         はなれたかたまりがあれば、本体だけ残す（かけらは足さない）。y は最初の y から「一番下がバリアの 1 マス手前」までに丸める。
+  //         体力（hp）は、長さが同じで残っているマスが '1'〜'9' のときだけ使う（おかしければ満タン）。
+  function applyMid(s, mid) {
+    if (!isObj(mid) || typeof mid.mats !== "string" || !isNum(mid.y)) return false;
+    const R = s.rock, N = R.cols * R.rows;
+    if (mid.mats.length !== N) return false;
+    const mats = new Array(N);
+    let left = 0;
+    for (let i = 0; i < N; i++) {
+      const c = mid.mats.charCodeAt(i) - 48;
+      if (!(c >= 0 && c <= 4)) return false;
+      if (c !== 0 && c !== R.mats[i]) return false;
+      mats[i] = c;
+    }
+    keepMain(mats, R.cols, R.rows);
+    for (let i = 0; i < N; i++) if (mats[i]) left++;
+    if (left < 1) return false;
+    let hpOk = typeof mid.hp === "string" && mid.hp.length === N;
+    if (hpOk) for (let i = 0; i < N; i++) { const c = mid.hp.charCodeAt(i) - 48; if (mats[i] && !(c >= 1 && c <= 9)) { hpOk = false; break; } }
+    const hp = R.hp.map((h, i) => (mats[i] ? (hpOk ? h * (mid.hp.charCodeAt(i) - 48) / 9 : h) : 0));
+    let maxRow = 0;
+    for (let i = 0; i < N; i++) if (mats[i]) { const r = Math.floor(i / R.cols); if (r > maxRow) maxRow = r; }
+    const yMax = BARRIER_Y - CELL - (maxRow + 1) * CELL;
+    const y = clamp(mid.y, R.y, Math.max(R.y, yMax));
+    s.rock = Object.assign({}, R, { mats, hp, left, y });
+    return true;
   }
   function isState(s) {
     return isObj(s) && isNum(s.star) && isNum(s.kakera) && isNum(s.t) && Array.isArray(s.slots) && s.slots.length >= 1 &&
@@ -405,6 +486,23 @@
       if (d < bd || (d === bd && x < bx)) { bd = d; best = i; bx = x; }
     }
     return best;
+  }
+  function nearestCold(s, fx, fy) {
+    const rock = s.rock;
+    if (!s.burns.length && !s.shots.some((b) => b.w === "fire")) return nearest(rock, fx, fy, 0);
+    const hot = new Set();
+    for (const b of s.burns) hot.add(b.i);
+    // 飛んでいる ほのお の弾がねらっているマスも、燃えるものとして数える
+    for (const b of s.shots) if (b.w === "fire" && b.aim >= 0) hot.add(b.aim);
+    const { cols, mats } = rock;
+    let best = -1, bd = Infinity, bx = Infinity;
+    for (let i = 0; i < mats.length; i++) {
+      if (!mats[i] || hot.has(i)) continue;
+      const x = rock.x + ((i % cols) + 0.5) * CELL, y = rock.y + (Math.floor(i / cols) + 0.5) * CELL;
+      const d = (x - fx) * (x - fx) + (y - fy) * (y - fy);
+      if (d < bd || (d === bd && x < bx)) { bd = d; best = i; bx = x; }
+    }
+    return best >= 0 ? best : nearest(rock, fx, fy, 0);
   }
   // マスが一番多い 3×3 の真ん中（同じなら戦闘機に近いほう）
   function densest(rock, fx, fy) {
@@ -466,11 +564,12 @@
     }
     return false;
   }
-  function ignite(s, i, ctx) {
+  // fromSpread：となりから燃えうつったマスは、そこからさらに広げない（こおりのかたまり全部が一度に燃えて強くなりすぎないよう。1 だんだけ広がる）
+  function ignite(s, i, ctx, fromSpread) {
     const lv = slotLv(s, "fire");
     const until = s.t + shapeOf("fire", lv);
     for (const b of s.burns) if (b.i === i) { if (b.until < until) b.until = until; return; }
-    s.burns.push({ i, until, at: s.t, spread: false });
+    s.burns.push({ i, until, at: s.t, spread: !!fromSpread });
     ctx.evs.push({ kind: "burn", i });
   }
   function slotLv(s, id) { for (const x of s.slots) if (x.id === id) return x.lv; return 1; }
@@ -490,7 +589,8 @@
     const d = dmg(w, L);
     const room = () => s.shots.length < SHOTS_MAX;
     if (w === "shot" || w === "spread" || w === "fire") {
-      const tgt = nearest(rock, fx, fy, 0);
+      // ほのお は、まだ燃えていないマスをねらう（同じマスに重ねても強くならないので）。全部燃えていれば一番近いマス
+      const tgt = w === "fire" ? nearestCold(s, fx, fy) : nearest(rock, fx, fy, 0);
       if (tgt < 0) return;
       const tx = cellX(rock, tgt), ty = cellY(rock, tgt);
       const ang = Math.atan2(ty - fy, tx - fx);
@@ -510,7 +610,7 @@
           s.shots.push({ w, x: fx + off, y: fy, vx: Math.cos(ang) * BULLET_SPEED, vy: Math.sin(ang) * BULLET_SPEED, t: 0, dmg: d });
         }
       } else if (room()) {
-        s.shots.push({ w, x: fx, y: fy, vx: Math.cos(ang) * BULLET_SPEED, vy: Math.sin(ang) * BULLET_SPEED, t: 0, dmg: d });
+        s.shots.push({ w, x: fx, y: fy, vx: Math.cos(ang) * BULLET_SPEED, vy: Math.sin(ang) * BULLET_SPEED, t: 0, dmg: d, aim: tgt });
       }
     } else if (w === "bomb") {
       const tgt = densest(rock, fx, fy);
@@ -536,9 +636,12 @@
       const x = rock.x + (c0 + wcols / 2) * CELL;
       ctx.evs.push({ kind: "fire", w, x: fx, y: fy, tx: x, ty: rock.y });
       ctx.evs.push({ kind: "beam", x, w: wcols * CELL });
-      for (let r = rock.rows - 1; r >= 0; r--) for (let c = c0; c < c0 + wcols; c++) {
-        const i = r * rock.cols + c;
-        if (s.rock.mats[i]) hurt(s, i, d, w, ctx);
+      for (let c = c0; c < c0 + wcols; c++) {
+        let n = 0;
+        for (let r = rock.rows - 1; r >= 0 && n < BEAM_DEPTH; r--) {
+          const i = r * rock.cols + c;
+          if (s.rock.mats[i]) { hurt(s, i, d, w, ctx); n++; }
+        }
       }
     }
   }
@@ -661,7 +764,7 @@
         if (!broke && s.t < b.until) keep.push(b);
       }
       s.burns = keep;
-      for (const q of add) if (s.rock.mats[q]) ignite(s, q, ctx);
+      for (const q of add) if (s.rock.mats[q]) ignite(s, q, ctx, true);
     }
     // 6. かけらは hurt の中で足し済み。7. はなれたかたまり
     if (ctx.broke && s.rock.left > 0) breakLoose(s, ctx);
@@ -737,10 +840,10 @@
   function nominalHits(w, L) {
     const v = shapeOf(w, L);
     if (w === "shot") return v;
-    if (w === "spread") return v * 0.7;
-    if (w === "bomb") { let n = 0; const r = Math.ceil(v); for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) if (a * a + b * b <= v * v + 1e-9) n++; return n * 0.7; }
+    if (w === "spread") return v * 1.0;
+    if (w === "bomb") { let n = 0; const r = Math.ceil(v); for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) if (a * a + b * b <= v * v + 1e-9) n++; return n * 0.9; }
     if (w === "bolt") return 1 + v;
-    if (w === "beam") return v * 8;
+    if (w === "beam") return v * BEAM_DEPTH * 0.9;
     if (w === "fire") return v;   // 1 回つけると v 秒燃える
     return 1;
   }
@@ -884,15 +987,43 @@
   }
 
   // ---------------------------------------------------------------- 保存（§8）
+  // 保存の中身（オブジェクト）。withMid が true なら、星の途中（mid）も入れる
+  function saveObj(state, withMid) {
+    let star = state.star, tries = state.tries;
+    // クリアの演出中（phase 'clear'）は、星はまだ進んでいない。開き直しで同じ星をもう一度にしないよう、次の星を保存する。
+    // ただし はじめての星 ENDING_STAR のクリアは、エンディングを見せるため、その星のまま（1.5 秒の間だけ）
+    if (state.phase === "clear" && !(state.star === ENDING_STAR && !state.cleared)) { star = Math.min(STAR_MAX, state.star + 1); tries = 1; }
+    const o = {
+      v: SAVE_VERSION, star, kakera: state.kakera, slots: state.slots.map((x) => ({ id: x.id, lv: x.lv })),
+      offer: state.offer ? state.offer.slice() : null, cleared: !!state.cleared, tries,
+      totals: { cells: state.totals.cells, stars: state.totals.stars, kakera: state.totals.kakera, chunks: state.totals.chunks },
+      seed: state.seed, rng: state.rng
+    };
+    if (withMid) { const m = midOf(state); if (m) o.mid = m; }
+    return o;
+  }
+  // 星の途中（§8.2 mid）：小惑星の y・残っているマス（1 マス 1 文字 '0'〜'4'）・マスの体力（1 マス 1 文字 '1'〜'9'。9 が満タン、
+  // 残りの割合を 9 段に切り上げ＝開き直しで弱くはならない。空のマスは '0'）。飛んでいるとき（2択で止まっているときも）だけ。
+  // 弾・燃えているマス・戦闘機の位置・撃つ間隔は入れない
+  function midOf(state) {
+    if (state.phase !== "fly" && !(state.phase === "choose" && (state.back === "fly" || state.back === undefined))) return null;
+    const R = state.rock;
+    if (!R || !(R.left > 0)) return null;
+    let mats = "", hp = "";
+    for (let i = 0; i < R.mats.length; i++) {
+      const m = R.mats[i] | 0;
+      mats += String(m);
+      if (!m) { hp += "0"; continue; }
+      const full = cellHp(state.star, matOf(m));
+      const f = full > 0 && isNum(R.hp[i]) ? R.hp[i] / full : 1;
+      hp += String(clamp(Math.ceil(f * 9 - 1e-9), 1, 9));
+    }
+    return { y: Math.round(R.y * 100) / 100, mats, hp };
+  }
   function makeSave(state) {
     try {
       if (!isState(state)) return null;
-      return JSON.stringify({
-        v: SAVE_VERSION, star: state.star, kakera: state.kakera, slots: state.slots.map((x) => ({ id: x.id, lv: x.lv })),
-        offer: state.offer ? state.offer.slice() : null, cleared: !!state.cleared, tries: state.tries,
-        totals: { cells: state.totals.cells, stars: state.totals.stars, kakera: state.totals.kakera, chunks: state.totals.chunks },
-        seed: state.seed, rng: state.rng
-      });
+      return JSON.stringify(saveObj(state, true));
     } catch (e) { return null; }
   }
   const intIn = (x, lo, hi, def) => (isNum(x) ? clamp(Math.floor(x), lo, hi) : def);
@@ -924,7 +1055,7 @@
       const totals = { cells: intIn(tt.cells, 0, KAKERA_MAX, 0), stars: intIn(tt.stars, 0, KAKERA_MAX, 0), kakera: intIn(tt.kakera, 0, KAKERA_MAX, 0), chunks: intIn(tt.chunks, 0, KAKERA_MAX, 0) };
       let cleared = o.cleared === true;
       if (star > ENDING_STAR) cleared = true;
-      const base = { star, kakera, slots, offer: null, cleared, tries, totals, seed, rng };
+      const base = { star, kakera, slots, offer: null, cleared, tries, totals, seed, rng, mid: o.mid };
       // 2択：持っていない知っている武器 2 つ（違うもの）なら残す。壊れていれば（払い済みなので）同じ値段のまま作り直す
       if (o.offer !== null && o.offer !== undefined && slots.length < SLOTS_MAX) {
         const f = o.offer;
@@ -945,13 +1076,16 @@
 
   // ---------------------------------------------------------------- 自動プレイ（§3.9）
   // ある武器・Lv の、その星での「効く強さ」（相性を星の混ざり方で平均）
+  // マスの数ではなく「体力の割合」で混ざり方を見る（てつ は 4 倍かたいので、てつ に効く武器の得が大きい）
   function mixOf(n) {
     const m = starInfo(n).mix;
-    return { rock: Math.max(0, 1 - m.iron - m.ice), iron: m.iron, ice: m.ice };
+    const w = { rock: Math.max(0, 1 - m.iron - m.ice) * MAT_HP.rock, iron: m.iron * MAT_HP.iron, ice: m.ice * MAT_HP.ice };
+    const sum = w.rock + w.iron + w.ice;
+    return { rock: w.rock / sum, iron: w.iron / sum, ice: w.ice / sum };
   }
   function fitOf(w, mix) { let a = 0; for (const k in mix) a += mix[k] * affOf(w, k); return a; }
   function effDps(w, L, mix) { return dpsRaw(w, L) * fitOf(w, mix); }
-  function aheadMix(n) {   // これから先の 10 星の平均の混ざり方
+  function aheadMix(n) {   // これから先の 10 星の平均の混ざり方（体力の割合）
     const m = { rock: 0, iron: 0, ice: 0 };
     for (let k = 1; k <= 10; k++) { const x = mixOf(Math.min(STAR_MAX, n + k)); m.rock += x.rock / 10; m.iron += x.iron / 10; m.ice += x.ice / 10; }
     return m;
@@ -976,14 +1110,16 @@
     if (upgradeMut(s, best) === null) return "up";
     return null;
   }
-  function pickChoice(s, policy, simRnd) {
+  function pickChoice(s, policy, simRnd, order) {
     const [a, b] = s.offer;
+    if (order) { const ia = order.indexOf(a), ib = order.indexOf(b); if (ia !== ib) return (ia < 0 ? 99 : ia) <= (ib < 0 ? 99 : ib) ? 0 : 1; }
     if (policy === "random") return simRnd() < 0.5 ? 0 : 1;
     if (policy === "worst") {
       const m = aheadMix(s.star);
       return fitOf(a, m) <= fitOf(b, m) ? 0 : 1;
     }
-    const m = mixOf(s.star);
+    // 札（てつ／こおりが おおい）があれば、その星に合うほう。札が無い星（いわ だけ）では、これから先に合うほう
+    const m = starInfo(s.star).tag ? mixOf(s.star) : aheadMix(s.star);
     const fa = fitOf(a, m), fb = fitOf(b, m);
     if (fa !== fb) return fa > fb ? 0 : 1;
     const am = aheadMix(s.star);
@@ -996,15 +1132,21 @@
     const maxSec = isNum(opts.maxSec) ? opts.maxSec : 6 * 3600;
     const seed = isNum(opts.seed) ? opts.seed : 1;
     const buyEvery = isNum(opts.buyEvery) && opts.buyEvery >= 1 ? Math.floor(opts.buyEvery) : 1;   // 何秒ごとに買い物を考えるか（人らしさ）
+    // 何秒ごとにアプリを閉じて開き直すか（保存→読み込み。reopenMid が false なら星の途中を保存しない＝星の最初から）
+    const reopenEvery = isNum(opts.reopenEvery) && opts.reopenEvery >= 10 ? opts.reopenEvery : 0;
+    const reopenMid = opts.reopenMid !== false;
+    // 測る用：2択で先に選ぶ武器の順（この順に無い武器はあと）。無ければ policy のとおり
+    const pickOrder = Array.isArray(opts.pickOrder) ? opts.pickOrder.filter((id) => typeof id === "string") : null;
     const rep = {
       policy: pol, seed, buyEvery: 1, stars: [], firstBuySec: null, buys: 0, buyGaps: { avg: null, max: 0 }, endSec: null,
-      kakeraMax: 0, shotsMax: 0, particlesMax: 0, bounces: [], picks: [], kakeraAtBounce: [], t: 0, error: null, final: null
+      kakeraMax: 0, shotsMax: 0, particlesMax: 0, bounces: [], picks: [], kakeraAtBounce: [], reopens: 0, t: 0, error: null, final: null
     };
     rep.buyEvery = buyEvery;
     const wasSim = SIM;
     SIM = true;
     try {
-      const s = newGame(seed);
+      let s = newGame(seed);
+      let nextReopen = reopenEvery || Infinity;
       const simRnd = makeRng(hash2(seed >>> 0, 0x51a1));
       const evs = [];
       let starStart = 0, tryStart = 0, starBuys = 0, lastBuy = 0, nextBuy = 1;
@@ -1013,11 +1155,16 @@
       let partNow = 0;
       while (s.t < maxSec) {
         if (s.phase === "choose") {
-          const k = pickChoice(s, pol, simRnd);
+          const k = pickChoice(s, pol, simRnd, pickOrder);
           rep.picks.push({ star: s.star, offer: s.offer.slice(), pick: s.offer[k] });
           chooseMut(s, k);
         }
         if (s.phase === "end") s.phase = "fly";   // 「このまま あそぶ」
+        if (s.t >= nextReopen && s.phase === "fly") {
+          nextReopen = s.t + reopenEvery;
+          const t = s.t, o = loadSave(saveObj(s, reopenMid));
+          if (o) { o.t = t; o.cd = o.slots.map(() => t); s = o; rep.reopens++; if (!reopenMid) tryStart = t; }
+        }
         if (pol !== "idle" && s.t + 1e-9 >= nextBuy) {
           nextBuy = Math.floor(s.t + 1e-9) + buyEvery;
           const r = greedyBuy(s);
@@ -1073,7 +1220,7 @@
   const api = {
     NAME, MATS, WEAPONS, EVOLVE, MAT_HP, MAT_VALUE, UP_COST, SLOT_COST,
     FIELD_W, FIELD_H, BARRIER_Y, FIGHTER_Y, CELL, GRID_MAX,
-    HP_BASE, HP_GROWTH, VALUE_GROWTH, UP_GROWTH, LEVEL_MAX, SLOTS_MAX,
+    HP_BASE, HP_GROWTH, VALUE_GROWTH, HP_GROWTH2, VALUE_GROWTH2, EARLY_HP, UP_GROWTH, LEVEL_MAX, SLOTS_MAX,
     CLEAR_BONUS, ENDING_STAR, STAR_MAX, STAR_CALC_MAX, KAKERA_MAX, SHOTS_MAX, STEP,
     SAVE_VERSION, SAVE_KEY, SAVE_KEY_BAK, SAVE_KEY_BEST, SAVE_KEY_HELP,
     START_BOTTOM, BOUNCE_SEC, CLEAR_SEC, BEAM_SEC, BOMB_FLIGHT, BULLET_SPEED, FIGHTER_SPEED, SLOW_MAX,
