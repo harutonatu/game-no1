@@ -15,7 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { BASE, view, custom, newPage, seed, wait, sleep, frozen, layoutProbe, swInfo, touch, SFX_SPY, plays, known } from '../lib.mjs';
+import { BASE, view, custom, newPage, seed, wait, sleep, frozen, layoutProbe, swInfo, touch, SFX_SPY, plays } from '../lib.mjs';
 
 const AST = BASE + 'games/asteroid/';
 const ASTD = AST + '?debug=1';
@@ -127,7 +127,7 @@ const ARMS = (n, lv) => `l.slots = L.WEAPONS.slice(0, ${n}).map((w) => ({ id: w.
 export const tests = [
   // ================= smoke =================
   {
-    id: 'KW1', tier: 'smoke', title: 'ほしくだき 遊べる・表示の一致：開くと撃ち始め（frames・phase fly）、advance でマスが欠けて #kakera が増える。#kakera が formatKakera、行の値段が upCostOf、つよさが dpsOf、#starBar が progressOf().broken、題名が NAME。[data-up] で Lv とつよさが上がり値段ぶん減る。足りないと aria-disabled・「かけらが たりないよ」・ヒント・音 deny で Lv は変わらない',
+    id: 'KW1', tier: 'smoke', title: 'ほしくだき 遊べる・表示の一致：開くと撃ち始め（frames・phase fly）、advance でマスが欠けて #kakera が増える。#kakera が formatKakera、行の値段が upCostOf、つよさが dpsOf、#starBar が progressOf().broken、題名が NAME。[data-up] で Lv とつよさが上がり値段ぶん減り、その行に「＋N%」（dpsOf の前後差の割合）。足りないと aria-disabled・「あと N」（不足分）・所持／値段の塗り（--fill）・ヒント「かけらが たりないよ（あと N）」・音 deny で Lv は変わらない、買えるようになった瞬間に .up.ready',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await openK(browser, 'KW1', { v: SMOKE_V(), opts: { initScript: SFX_SPY } });
@@ -161,10 +161,16 @@ export const tests = [
         const b = await lg(page);
         const shownCost = await txt(page, '.wrow[data-slot="0"] [data-part="cost"]');
         const shownDps = await txt(page, '.wrow[data-slot="0"] [data-part="dps"]');
-        return { a, b, shownCost, shownDps };
+        const plus = await page.evaluate(() => { const e = document.querySelector('.wrow[data-slot="0"] [data-part="plus"]'); return { text: e ? e.textContent.trim() : null, show: !!e && e.classList.contains('show') }; });
+        return { a, b, shownCost, shownDps, plus };
       });
       check(`[data-up] を押すと Lv${up.a.slots[0].lv} → Lv${up.b.slots[0].lv}、つよさ ${L.dpsOf(up.a, 0)} → ${L.dpsOf(up.b, 0)}、かけらが値段 ${L.upCostOf(up.a, 0)} ぶん減る（${up.a.kakera} → ${up.b.kakera}）、新しい値段「${up.shownCost}」=upCostOf・つよさ「${up.shownDps}」=dpsOf`,
         up.b.slots[0].lv === up.a.slots[0].lv + 1 && L.dpsOf(up.b, 0) > L.dpsOf(up.a, 0) && up.a.kakera - up.b.kakera === L.upCostOf(up.a, 0) && up.shownCost === L.formatKakera(L.upCostOf(up.b, 0)) && up.shownDps.includes(String(L.dpsOf(up.b, 0))), up);
+      const d0 = L.dpsOf(up.a, 0), d1 = L.dpsOf(up.b, 0);
+      const plusWant = `＋${Math.max(1, Math.round((d1 - d0) / d0 * 100))}%`;
+      check(`買った行に「${up.plus.text}」（dpsOf ${d0} → ${d1} の前後差の割合 ${plusWant}）が出る（.show ${up.plus.show}）`, up.plus.show && up.plus.text === plusWant, { plus: up.plus, plusWant });
+      await wait(page, 1000);
+      check(`「＋N%」は 0.8 秒で消える（「${await txt(page, '.wrow[data-slot="0"] [data-part="plus"]')}」）`, (await txt(page, '.wrow[data-slot="0"] [data-part="plus"]')) === '' && !(await page.evaluate(() => document.querySelector('.wrow[data-slot="0"] [data-part="plus"]').classList.contains('show'))), null);
       // 足りない
       await setL(page, 'l.kakera = 0;');
       await wait(page, 100);
@@ -176,7 +182,20 @@ export const tests = [
       const ps = (await plays(page)).slice(n0).map((x) => x.n);
       const hint = await txt(page, '#hint');
       const lv1 = (await lg(page)).slots[0].lv;
-      check(`かけら 0 では [data-up] に aria-disabled="${dis}"・「${label}」、押しても Lv が変わらず（${lv0} → ${lv1}）、ヒント「${hint}」と音 deny（${ps.join(',')}）`, dis === 'true' && label === 'かけらが たりないよ' && lv1 === lv0 && !!hint && ps.includes('deny'), { dis, label, hint, ps });
+      const c0 = L.upCostOf(await lg(page), 0);
+      const lackWant = `あと ${L.formatKakera(c0)}`;
+      check(`かけら 0 では [data-up] に aria-disabled="${dis}"・「${label}」（不足分 ${lackWant}）、押しても Lv が変わらず（${lv0} → ${lv1}）、ヒント「${hint}」と音 deny（${ps.join(',')}）`, dis === 'true' && label === lackWant && lv1 === lv0 && hint === `かけらが たりないよ（${lackWant}）` && ps.includes('deny'), { dis, label, hint, ps, lackWant });
+      // 半分たまったとき：「あと N」は不足分、ボタンは所持／値段の割合で塗る（--fill。1/50 刻み）
+      const half = Math.floor(c0 / 2);
+      const fl = await frozen(page, async () => {
+        await setL(page, `l.kakera = ${half};`);
+        const a = await page.evaluate(() => { const b = document.querySelector('[data-up="0"]'); return { label: b.querySelector('[data-part="label"]').textContent.trim(), fill: parseFloat(b.style.getPropertyValue('--fill')), dis: b.getAttribute('aria-disabled') }; });
+        await setL(page, `l.kakera = ${c0};`);
+        const b = await page.evaluate(() => { const b = document.querySelector('[data-up="0"]'); return { label: b.querySelector('[data-part="label"]').textContent.trim(), ready: b.classList.contains('ready'), dis: b.getAttribute('aria-disabled') }; });
+        return { a, b };
+      });
+      check(`かけら ${half}／値段 ${c0}：「${fl.a.label}」（あと ${L.formatKakera(c0 - half)}）・塗り --fill ${fl.a.fill}（${(half / c0).toFixed(3)}）。ちょうど買えるようになると「${fl.b.label}」・押せる・.up.ready ${fl.b.ready}`,
+        fl.a.dis === 'true' && fl.a.label === `あと ${L.formatKakera(c0 - half)}` && Math.abs(fl.a.fill - half / c0) <= 0.021 && fl.a.fill > 0 && fl.b.dis === null && fl.b.label === 'つよくする' && fl.b.ready === true, { fl, half, c0 });
       await ctx.close();
     },
   },
@@ -227,12 +246,16 @@ export const tests = [
     },
   },
   {
-    id: 'KW3', tier: 'smoke', title: 'ほしくだき はね返し：6 割こわした星を lose でバリアまで下げると phase bounce・#bounceBanner「あと N%」（N = max(1, round((1-broken)×100))）・おすすめの行、かけらと Lv は残る、BOUNCE_SEC 後に実時間で自動で次の挑戦（同じ星・最初から・tries+1・帯が消える）',
+    id: 'KW3', tier: 'smoke', title: 'ほしくだき はね返し：6 割こわした星を lose でバリアまで下げると phase bounce・#bounceBanner「あと N% だった」（N = max(1, round((1-broken)×100))、broken は とどいた瞬間の progressOf）・おすすめの行（いちばん安く強くできる行に data-suggest）、かけらと Lv は残る、BOUNCE_SEC 後に実時間で自動で次の挑戦（同じ星・最初から・tries+1・帯が消える）。残りが 50% を超えるときは「もう すこし つよく しよう」、実時間ではヒント「（武器名）を つよくして もういちど！」',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await openK(browser, 'KW3', { v: SMOKE_V(), debug: true });
-      // 星を 6 割こわした状態にする（最初からに戻ったこと・「あと N%」がこわした割合でないことが分かるように）・かけらと Lv を持たせる
-      await setL(page, 'const n = l.rock.mats.length; let k = 0; for (let i = 0; i < n && k < l.rock.left * 0.6; i++) if (l.rock.mats[i]) { l.rock.mats[i] = 0; l.rock.hp[i] = 0; k++; } l.kakera = 777; l.slots[0].lv = 3;');
+      const wName = (id) => L.WEAPONS.find((w) => w.id === id)?.name;
+      // いちばん安く強くできる行（upCostOf が最小。同じなら前の行）
+      const cheapest = (l) => { let k = -1, c = Infinity; l.slots.forEach((_, j) => { const x = L.upCostOf(l, j); if (typeof x === 'number' && x < c) { c = x; k = j; } }); return k; };
+      // 星を 6 割こわした状態にする（最初からに戻ったこと・「あと N%」がこわした割合でないことが分かるように）・かけらと Lv を持たせる。
+      // 2 つ目の武器は Lv1（値段が たまの Lv3 と違う）＝おすすめの行が決まる
+      await setL(page, `const n = l.rock.mats.length; let k = 0; for (let i = 0; i < n && k < l.rock.left * 0.6; i++) if (l.rock.mats[i]) { l.rock.mats[i] = 0; l.rock.hp[i] = 0; k++; } l.kakera = 777; l.slots = [{ id: L.WEAPONS[0].id, lv: 3 }, { id: L.WEAPONS[1].id, lv: 1 }];`);
       const r = await frozen(page, async () => {
         await dbg(page, 'lose');
         const a = await lg(page);
@@ -240,20 +263,31 @@ export const tests = [
         const b = await lg(page);
         return { a, ok, b };
       });
-      const pa = L.progressOf(r.a);
+      const pa = L.progressOf(r.a), pb = L.progressOf(r.b);   // b は とどいた step の state（星を最初からにするのは BOUNCE_SEC の後）
       const banner = await txt(page, '#bounceBanner');
-      const m = /あと\s*(\d+)\s*%/.exec(banner || '');
-      const nWant = Math.max(1, Math.round((1 - pa.broken) * 100));
+      const sub = await txt(page, '#bounceBanner [data-part="sub"]');
+      const nWant = Math.max(1, Math.round((1 - pb.broken) * 100));
       check(`lose のあと phase bounce になる（${r.b.phase}）・#bounceBanner が出る「${banner}」`, r.ok && r.b.phase === 'bounce' && (await shown(page, '#bounceBanner')) && /はねかえした/.test(banner || ''), { banner, phase: r.b.phase });
-      check(`「あと ${m && m[1]}%」が、とどく直前の broken ${pa.broken.toFixed(3)} から max(1, round((1-broken)×100)) = ${nWant}（届くまでに欠けた分 3 まで小さくてよい）`, !!m && Number(m[1]) <= nWant && Number(m[1]) >= nWant - 3 && pa.broken > 0.3, { banner, nWant, broken: pa.broken });
+      check(`「${sub}」が、とどいた瞬間の broken ${pb.broken.toFixed(3)}（lose の直後は ${pa.broken.toFixed(3)}。届くまでに もろい底が欠ける）から「あと ${nWant}% だった」`, nWant <= 50 && sub === `あと ${nWant}% だった` && pa.broken > 0.3, { banner, sub, nWant, broken: pb.broken });
       check(`かけらと Lv が残る（かけら ${r.a.kakera} → ${r.b.kakera}・Lv${r.b.slots[0].lv}）、同じ星（${r.b.star}）`, r.b.kakera >= r.a.kakera && r.b.slots[0].lv === 3 && r.b.star === r.a.star, { a: r.a.kakera, b: r.b.kakera });
-      const sug = await page.evaluate(() => document.querySelectorAll('.wrow[data-suggest="1"]').length);
-      check(`はね返しのあと、強くする行を1つ光らせる（.wrow[data-suggest=1] ${sug} 個）`, sug === 1, sug);
+      const sug = await page.evaluate(() => [...document.querySelectorAll('.wrow[data-suggest="1"]')].map((e) => Number(e.dataset.slot)));
+      const kWant = cheapest(r.b);
+      check(`はね返しのあと、いちばん安く強くできる行（data-slot ${kWant}・${wName(r.b.slots[kWant].id)}・${L.upCostOf(r.b, kWant)}）を1つ光らせる（.wrow[data-suggest=1] ${JSON.stringify(sug)}）`, sug.length === 1 && sug[0] === kWant, { sug, kWant, costs: r.b.slots.map((_, j) => L.upCostOf(r.b, j)) });
       await wait(page, Math.round(L.BOUNCE_SEC * 1000) + 300);
       const c = await lg(page), s = await gs(page);
       const pc = L.progressOf(c);
       check(`BOUNCE_SEC（${L.BOUNCE_SEC} 秒）後、押さなくても次の挑戦（phase ${c.phase}・帯が消える・tries ${r.a.tries} → ${c.tries}）`, c.phase === 'fly' && !(await shown(page, '#bounceBanner')) && c.tries === r.a.tries + 1 && s.overlay === null, { phase: c.phase, tries: c.tries });
-      check(`同じ星を最初から（ほし ${c.star}・こわした割合 ${pa.broken.toFixed(2)} → ${pc.broken.toFixed(2)}・地球までの近さ distance ${pc.distance.toFixed(2)}）、Lv${c.slots[0].lv} とかけら ${c.kakera} は残る`, c.star === r.a.star && pc.broken < 0.1 && pc.distance > 0.8 && c.slots[0].lv === 3 && c.kakera >= r.a.kakera, { pc, c: { star: c.star, k: c.kakera } });
+      check(`同じ星を最初から（ほし ${c.star}・こわした割合 ${pb.broken.toFixed(2)} → ${pc.broken.toFixed(2)}・地球までの近さ distance ${pc.distance.toFixed(2)}）、Lv${c.slots[0].lv} とかけら ${c.kakera} は残る`, c.star === r.a.star && pc.broken < 0.1 && pc.distance > 0.8 && c.slots[0].lv === 3 && c.kakera >= r.a.kakera, { pc, c: { star: c.star, k: c.kakera } });
+      // 残りが 50% を超えるはね返し（実時間）：数字より先に「もう すこし つよく しよう」、ヒントに おすすめの武器の名前
+      await setL(page, 'l.slots = [{ id: L.WEAPONS[0].id, lv: 1 }, { id: L.WEAPONS[1].id, lv: 4 }];');
+      await dbg(page, 'lose');
+      let d = null;
+      for (let i = 0; i < 100; i++) { await wait(page, 100); d = await lg(page); if (d.phase === 'bounce') break; }
+      const pd = L.progressOf(d);
+      const sub2 = await txt(page, '#bounceBanner [data-part="sub"]'), hint2 = await txt(page, '#hint');
+      const k2 = cheapest(d);
+      const left2 = Math.max(1, Math.round((1 - pd.broken) * 100));
+      check(`残り ${left2}%（50% 超）のはね返しは「${sub2}」、ヒント「${hint2}」（${wName(d.slots[k2].id)}を つよくして もういちど！）`, d.phase === 'bounce' && left2 > 50 && sub2 === 'もう すこし つよく しよう' && hint2 === `${wName(d.slots[k2].id)}を つよくして もういちど！`, { phase: d.phase, left2, sub2, hint2, k2 });
       await ctx.close();
     },
   },
@@ -333,7 +367,8 @@ export const tests = [
       check(`CLEAR_SEC（${L.CLEAR_SEC} 秒）後、押さなくても次の星（ほし ${c.star}・phase ${c.phase}・帯が消える・「${await txt(page, '#starLabel [data-part="num"]')}」）`, c.star === r.a.star + 1 && c.phase === 'fly' && !(await shown(page, '#clearBanner')) && (await txt(page, '#starLabel [data-part="num"]')) === `ほし ${c.star}`, { star: c.star, phase: c.phase });
       // エンディング
       const E = L.ENDING_STAR;
-      await setL(page, `l.star = ${E}; ${ARMS(4, 60)}`);   // 星 ENDING_STAR に見合う強さ（Lv1 では最後の1マスが壊れない）
+      await setL(page, 'l.t = 5000;');          // 遊んだ合計の秒を大きく（クリアの時間がこれを含まないことを見る）
+      await dbg(page, 'gostar', { star: E });   // 星 ENDING_STAR に見合う強さ（自動プレイの表。Lv1 では最後の1マスが壊れない。星 31 も同じ強さで壊せる）
       const e = await frozen(page, async () => {
         await dbg(page, 'win');
         const ok = await advUntil(page, 'end', { step: 1 / 30, maxSec: 60, key: 'overlay' });
@@ -353,33 +388,47 @@ export const tests = [
       const g = await frozen(page, async () => {
         await dbg(page, 'win');
         const ok = await advUntil(page, 'clear', { step: 1 / 30, maxSec: 60 });
+        const lc = await lg(page);
         await adv(page, L.CLEAR_SEC + 0.5);
-        return { ok, s: await gs(page), l: await lg(page) };
+        return { ok, lc, s: await gs(page), l: await lg(page) };
       });
+      const bt = g.lc.bestT && g.lc.bestT[E + 1];
+      check(`ほし ${E + 1} のクリアの時間 ${bt} 秒は「このまま あそぶ」から数える（遊んだ合計 ${g.lc.t.toFixed(1)} 秒ではない。その間 ${(g.lc.t - f.t).toFixed(1)} 秒）`, typeof bt === 'number' && bt <= g.lc.t - f.t + 1 && bt > 0 && g.lc.t > 5000, { bt, t: g.lc.t, f: f.t });
       check(`その後の星（ほし ${E + 1}）をクリアしてもエンディングは出ない（overlay ${g.s.overlay}・ほし ${g.l.star}）`, g.ok && g.s.overlay === null && g.l.star === E + 2 && !(await shown(page, '#endCard')), g.s);
       await ctx.close();
     },
   },
   {
-    id: 'KW6', tier: 'smoke', title: 'ほしくだき 保存：強くするとすぐ asteroid.save を書く（saveCount）、再読み込みで同じ星（最初から）・かけら・武器、壊れた保存（JSON でない・v:2・配列・数・bak が既にある）は落ちずに ほし 1 から・元の文字を asteroid.save.bak に写す（あれば上書きしない）・ヒント、欄だけ壊れた保存は欄ごとに直す、保存できなくても遊べる、ほかのゲームのキーを変えない',
+    id: 'KW6', tier: 'smoke', title: 'ほしくだき 保存：強くするとすぐ asteroid.save を書く（saveCount）、再読み込みで同じ星の途中から（mid：マスの残り・いまの挑戦の秒・超えた区切りはもらった扱い）・かけら・武器、クリアの演出中の保存は次の星の最初から、壊れた保存（JSON でない・v:2・配列・数・bak が既にある）は落ちずに ほし 1 から・元の文字を asteroid.save.bak に写す（あれば上書きしない）・ヒント、欄だけ壊れた保存は欄ごとに直す、保存できなくても遊べる、ほかのゲームのキーを変えない',
     async run({ browser, check, root, errors }) {
       const L = logicOf(root);
       const others = { 'matomete.best': '123', 'seizai.best': '3', 'blockpuzzle.sound': 'on', 'tile2048.best': '2048' };
-      const { ctx, page } = await openK(browser, 'KW6', { v: SMOKE_V(), items: others });
+      const { ctx, page } = await openK(browser, 'KW6', { v: SMOKE_V(), items: others, debug: true });
       await setL(page, `l.star = 4; l.kakera = 1e6; ${ARMS(2, 5)}`);
       const c0 = (await gs(page)).saveCount;
       const u = await page.evaluate(() => window.AsteroidGame.upgrade(1));
       const c1 = (await gs(page)).saveCount;
       const saved = JSON.parse(await stored(page, 'asteroid.save'));
       check(`強くするとすぐ保存（saveCount ${c0} → ${c1}、保存の v ${saved.v}・ほし ${saved.star}・2つ目の Lv ${saved.slots && saved.slots[1] && saved.slots[1].lv}）`, u.ok && c1 === c0 + 1 && saved.v === 1 && saved.star === 4 && saved.slots[1].lv === 6, { c0, c1, saved });
-      // 星を半分こわしてから再読み込み → 星の最初から（星の途中は保存しない。§8.2）
-      await setL(page, 'const n = l.rock.mats.length; let k = 0; for (let i = 0; i < n && k < l.rock.left / 2; i++) if (l.rock.mats[i]) { l.rock.mats[i] = 0; l.rock.hp[i] = 0; k++; }');
+      // 星を半分こわしてから再読み込み → 星の途中から続く（logic の mid。§17.3・§18.3）。いまの挑戦の秒（t − tryAt）も続きから、
+      // もう超えている区切り（25・50%）は「もらった」ことになる（開き直しで 2 回もらえない）
+      await setL(page, 'const n = l.rock.mats.length; let k = 0; for (let i = 0; i < n && k < l.rock.left / 2; i++) if (l.rock.mats[i]) { l.rock.mats[i] = 0; l.rock.hp[i] = 0; k++; } l.t = 3000; l.tryAt = 2990; l.ms = [];');
       const before = await lg(page);
       const pb = L.progressOf(before);
       await page.reload(); await wait(page, 200);
       const after = await lg(page);
       const pa = L.progressOf(after);
-      check(`再読み込みで同じ ほし ${after.star}・武器 ${JSON.stringify(after.slots)}・かけら ${before.kakera} → ${after.kakera}（以上）、星は最初から（こわした割合 ${pb.broken.toFixed(2)} → ${pa.broken.toFixed(2)}）`, after.star === before.star && JSON.stringify(after.slots) === JSON.stringify(before.slots) && after.kakera >= before.kakera && pb.broken > 0.3 && pa.broken < 0.1 && (await gs(page)).overlay === null, { before: { star: before.star, slots: before.slots, k: before.kakera }, after: { star: after.star, slots: after.slots, k: after.kakera } });
+      const tt0 = before.t - before.tryAt, tt1 = after.t - after.tryAt;
+      check(`再読み込みで同じ ほし ${after.star}・武器 ${JSON.stringify(after.slots)}・かけら ${before.kakera} → ${after.kakera}（以上）`, after.star === before.star && JSON.stringify(after.slots) === JSON.stringify(before.slots) && after.kakera >= before.kakera && (await gs(page)).overlay === null, { before: { star: before.star, slots: before.slots, k: before.kakera }, after: { star: after.star, slots: after.slots, k: after.kakera } });
+      check(`星の途中から続く（こわした割合 ${pb.broken.toFixed(3)} → ${pa.broken.toFixed(3)}・残り ${pb.left} → ${pa.left}）、超えている区切りはもらった扱い（ms ${JSON.stringify(after.ms)}）、いまの挑戦の秒も続き（${tt0.toFixed(1)} → ${tt1.toFixed(1)} 秒。遊んだ合計 ${after.t.toFixed(0)} 秒ではない）`,
+        pb.broken > 0.45 && pa.broken >= pb.broken - 1e-9 && pa.broken - pb.broken < 0.1 && JSON.stringify(after.ms) === JSON.stringify(L.MILESTONES.filter((p) => p / 100 <= pa.broken + 1e-12)) && after.ms.length >= 2 && tt1 >= tt0 - 0.2 && tt1 < tt0 + 5, { pb, pa, ms: after.ms, tt0, tt1 });
+      // クリアの演出中（phase clear）に閉じたら、開き直しは次の星の最初から（同じ星をもう一度にしない）
+      const cl = await frozen(page, async () => { await dbg(page, 'win'); const ok = await advUntil(page, 'clear', { step: 1 / 30, maxSec: 60 }); return { ok, l: await lg(page), raw: await stored(page, 'asteroid.save') }; });
+      await page.reload(); await wait(page, 200);
+      const nx = await lg(page);
+      const sv = JSON.parse(cl.raw || '{}');
+      check(`クリアの演出中の保存は次の星（保存の ほし ${sv.star}・mid ${sv.mid ? 'あり' : 'なし'}）、開き直すと ほし ${cl.l.star} → ${nx.star} の最初から（こわした割合 ${L.progressOf(nx).broken.toFixed(2)}・ms ${JSON.stringify(nx.ms)}）`,
+        cl.ok && cl.l.phase === 'clear' && sv.star === cl.l.star + 1 && !sv.mid && nx.star === cl.l.star + 1 && L.progressOf(nx).broken < 0.1 && Array.isArray(nx.ms) && nx.ms.length === 0, { sv: { star: sv.star, mid: !!sv.mid, ms: sv.ms }, nx: { star: nx.star, ms: nx.ms } });
       await page.goto(BASE + 'manifest.webmanifest');
       const keys = await page.evaluate((ks) => ({ others: Object.fromEntries(ks.map((k) => [k, localStorage.getItem(k)])), mine: Object.keys(localStorage).filter((k) => /^asteroid\./.test(k)).sort() }), Object.keys(others));
       check(`ほかのゲームの保存キーが変わらない・書くのは asteroid.* の決まったキーだけ（${keys.mine.join(',')}）`, JSON.stringify(keys.others) === JSON.stringify(others) && keys.mine.every((k) => MY_KEYS.includes(k)), keys);
@@ -441,7 +490,7 @@ export const tests = [
       await go('bounce');
       r.clearOpen = await frozen(page, async () => { await dbg(page, 'win'); return advUntil(page, 'clear', { step: 1 / 30, maxSec: 60 }); });
       await go('clear');
-      await setL(page, `l.star = ${L.ENDING_STAR}; ${ARMS(4, 60)}`);
+      await dbg(page, 'gostar', { star: L.ENDING_STAR });
       r.endOpen = await frozen(page, async () => { await dbg(page, 'win'); return advUntil(page, 'end', { step: 1 / 30, maxSec: 60, key: 'overlay' }); });
       await go('end');
       check('遊んでいる途中・遊び方・2択・はね返し・クリア・エンディングのどれからも a#back が見えて押せ、メニューが開く', Object.values(r).length === 11 && Object.values(r).every(Boolean), r);
@@ -451,9 +500,10 @@ export const tests = [
 
   // ================= full =================
   {
-    id: 'KW8', tier: 'full', title: 'ほしくだき 画面内：SE 縦（ホーム画面・Safari）・SE 横（568×320・568×270）・iPhone 13 縦横・iPad 縦横で、最大の桁（KAKERA_MAX・Lv99・ほし STAR_MAX）の 3 枠（あたらしい ぶき あり）と 4 枠で、#hud・行・ボタンが画面内・44px 以上・重ならない、行は 52px 以上、数の文字が欠けない（はみ出し・省略なし）、文字 12px 以上、場が 360:560 で見える',
-    async run({ browser, check }) {
-      const views = [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari'), view('i13', 'p', 'app'), view('i13', 'l', 'app'), view('iPad', 'p', 'app'), view('iPad', 'l', 'app')];
+    id: 'KW8', tier: 'full', title: 'ほしくだき 画面内（§18.1 A）：SE 縦（ホーム画面・Safari 320×454）・SE 横（568×320・568×270）・375×667・iPhone 13 縦横・iPad 縦横で、最大の桁（KAKERA_MAX・Lv99・ほし STAR_MAX）の 3 枠（あたらしい ぶき あり）と 4 枠で、#hud・行・ボタンが画面内・44px 以上・重ならない、行は 52px 以上（低い画面＝縦で高さ 620 以下・横で 300 以下は 44px 以上）、数の文字が欠けない（はみ出し・省略なし）、文字 12px 以上。場は 320×568・375×667 で画面の高さ（safe-area を除く）の 5 割以上・Safari 縦 320×454 で 4 割以上、小惑星が横に欠けず・バリアと戦闘機が見える（getState().view）',
+    async run({ browser, check, root }) {
+      const L = logicOf(root);
+      const views = [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari'), custom(375, 667, null, '375×667'), view('i13', 'p', 'app'), view('i13', 'l', 'app'), view('iPad', 'p', 'app'), view('iPad', 'l', 'app')];
       for (const v of views) {
         const { ctx, page } = await openK(browser, `KW8 ${v.label}`, { v });
         for (const n of [3, 4]) {
@@ -483,11 +533,21 @@ export const tests = [
               if (fs < 12 - 0.01) small.push(`${e.textContent.trim().slice(0, 12)}:${fs}px`);
             }
             const c = document.querySelector('#fieldCanvas').getBoundingClientRect();
-            return { rows, cut, small, field: [Math.round(c.width), Math.round(c.height)], ratio: c.height / Math.max(1, c.width), unlock: vis(document.querySelector('#unlockBtn')) };
+            return { rows, cut, small, field: [Math.round(c.width), Math.round(c.height)], unlock: vis(document.querySelector('#unlockBtn')), w: innerWidth, h: innerHeight };
           });
-          // 場の大きさは「見える」こと（64px 以上）だけを見る。契約 §5.1 は高さが足りないときに場を小さくする決まり（SE 縦・Safari で 84px ほど。docs/issues.md AS-T2）
-          const ok = lp.n > 0 && lp.outside.length === 0 && lp.overlaps.length === 0 && lp.small.length === 0 && !lp.hscroll && m.rows.length === n && m.rows.every((h) => h >= 52 - 0.5) && m.cut.length === 0 && m.small.length === 0 && m.field[0] >= 64 && Math.abs(m.ratio - 560 / 360) < 0.05 && m.unlock === (n === 3);
-          check(`${v.label}・${n} 枠：画面外 ${lp.outside.length}・重なり ${lp.overlaps.length}・44px 未満 ${lp.small.length}・横スクロール ${lp.hscroll}、行の高さ ${m.rows.join('/')}、欠ける文字 ${m.cut.length}・12px 未満 ${m.small.length}、場 ${m.field.join('×')}、あたらしい ぶき ${m.unlock ? 'あり' : 'なし'}`, ok, { lp, m }, v.w === 568 && v.h === 270 ? known('K-AST1') : undefined);
+          const st = await gs(page), lv = await lg(page);
+          const vw = st.view;
+          // 低い画面（契約 §18.1 A。index.html の @media と同じ境目）は行 44px 以上、ほかは 52px 以上
+          const low = (m.h > m.w && m.h <= 620) || (m.w > m.h && m.h <= 300);
+          const rowMin = low ? 44 : 52;
+          // 場の高さの割合（safe-area の上下を除いた高さに対して）。320×568・375×667 は 5 割、Safari 縦 320×454 は 4 割
+          const usable = m.h - (v.safe ? v.safe[0] + v.safe[2] : 0);
+          const fieldRatio = m.field[1] / usable;
+          const ratioMin = m.w === 320 && m.h === 568 ? 0.5 : m.w === 375 && m.h === 667 ? 0.5 : m.w === 320 && m.h === 454 ? 0.4 : 0;
+          const rx0 = lv.rock.x, rx1 = lv.rock.x + lv.rock.cols * L.CELL;
+          const viewOk = !!vw && vw.zoom > 0 && vw.left <= rx0 + 0.5 && vw.left + vw.width >= rx1 - 0.5 && vw.rockPx <= m.field[0] + 1 && vw.top <= L.BARRIER_Y && vw.top + vw.height >= L.FIGHTER_Y + 10;
+          const ok = lp.n > 0 && lp.outside.length === 0 && lp.overlaps.length === 0 && lp.small.length === 0 && !lp.hscroll && m.rows.length === n && m.rows.every((h) => h >= rowMin - 0.5) && m.cut.length === 0 && m.small.length === 0 && m.field[0] >= 64 && m.field[1] >= 64 && fieldRatio >= ratioMin && viewOk && m.unlock === (n === 3);
+          check(`${v.label}・${n} 枠：画面外 ${lp.outside.length}・重なり ${lp.overlaps.length}・44px 未満 ${lp.small.length}・横スクロール ${lp.hscroll}、行の高さ ${m.rows.join('/')}（${rowMin}px 以上${low ? '・低い画面' : ''}）、欠ける文字 ${m.cut.length}・12px 未満 ${m.small.length}、場 ${m.field.join('×')}（高さの ${(fieldRatio * 100).toFixed(0)}%${ratioMin ? `・${ratioMin * 100}% 以上` : ''}）、小惑星 ${vw && vw.rockPx}px・見える範囲 ${vw ? `${vw.left}〜${vw.left + vw.width}×${vw.top}〜${vw.top + vw.height}` : 'なし'}、あたらしい ぶき ${m.unlock ? 'あり' : 'なし'}`, ok, { lp, m, vw, rock: [rx0, rx1], fieldRatio });
         }
         await ctx.close();
       }
@@ -611,7 +671,7 @@ export const tests = [
     },
   },
   {
-    id: 'KW12', tier: 'full', title: 'ほしくだき キーボード：1〜4 でその行を強くする、U であたらしい ぶき、2択は出た直後の矢印を受け付けず 400ms 後に → で B・A で A・Enter でフォーカスのある #choiceA、4 枠で #unlockBtn が隠れる、Tab で [data-up] へ移り Enter で強くする、? で遊び方・Esc で閉じる、M で音のオン・オフ',
+    id: 'KW12', tier: 'full', title: 'ほしくだき キーボード：1〜4 でその行を強くする、U であたらしい ぶき、2択は開くと見出し #choiceTitle にフォーカス・出た直後の矢印を受け付けず 400ms 後に → で B・A で A・Tab で #choiceA へ移って Enter、4 枠で #unlockBtn が隠れる、Tab で [data-up] へ移り Enter で強くする、? で遊び方・Esc で閉じる、M で音のオン・オフ',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await openK(browser, 'KW12', { opts: { touch: false } });
@@ -629,12 +689,16 @@ export const tests = [
           return { s, s2: await gs(page) };
         });
         await wait(page, 450);
+        // 開いたときのフォーカスは見出し #choiceTitle（枠が「選び済み」に見えないように U14）。Enter は Tab で #choiceA へ移ってから
+        const f0 = await page.evaluate(() => document.activeElement && document.activeElement.id);
+        let fA = null;
+        if (how === 'Enter') { await page.keyboard.press('Tab'); fA = await page.evaluate(() => document.activeElement && document.activeElement.id); }
         await page.keyboard.press(how);
         await wait(page, 50);
         const s3 = await gs(page);
-        picks.push({ how, open: u.s.overlay === 'choose', locked: u.s2.overlay === 'choose' && u.s2.slots.length === u.s.slots.length, chosen: s3.overlay === null && s3.slots.length === u.s.slots.length + 1 && s3.slots[s3.slots.length - 1].id === (u.s.offer && u.s.offer[k]), offer: u.s.offer, last: s3.slots[s3.slots.length - 1] });
+        picks.push({ how, f0, fA, focusOk: f0 === 'choiceTitle' && (how !== 'Enter' || fA === 'choiceA'), open: u.s.overlay === 'choose', locked: u.s2.overlay === 'choose' && u.s2.slots.length === u.s.slots.length, chosen: s3.overlay === null && s3.slots.length === u.s.slots.length + 1 && s3.slots[s3.slots.length - 1].id === (u.s.offer && u.s.offer[k]), offer: u.s.offer, last: s3.slots[s3.slots.length - 1] });
       }
-      check(`U で2択が開き、出た直後の矢印は受け付けず、400ms 後に → は B・A は A・Enter はフォーカスのある A を選ぶ（${picks.map((p) => `${p.how}:${p.last && p.last.id}`).join(' ')}）`, picks.every((p) => p.open && p.locked && p.chosen), picks);
+      check(`U で2択が開き（フォーカスは見出し #choiceTitle）、出た直後の矢印は受け付けず、400ms 後に → は B・A は A・Tab で #choiceA へ移って Enter で A を選ぶ（${picks.map((p) => `${p.how}:${p.last && p.last.id}`).join(' ')}）`, picks.every((p) => p.open && p.locked && p.chosen && p.focusOk), picks);
       check('4 枠になると #unlockBtn が隠れる', (await lg(page)).slots.length === L.SLOTS_MAX && !(await shown(page, '#unlockBtn')), null);
       const lv3 = (await lg(page)).slots[3].lv;
       await page.keyboard.press('4'); await wait(page, 50);
