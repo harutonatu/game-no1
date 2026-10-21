@@ -42,7 +42,7 @@
   // 星 4 から少しずつ 1 倍へ。武器が 1〜2 つの間は強くなる速さが遅いので、ゆるやかにつなぐ）
   const EARLY_HP = deepFreeze([0.024, 0.06, 0.07, 0.27, 0.35, 0.39, 0.58, 0.82, 0.9]);
   // マスの混ざり方（§3.2）：てつ（星 3〜9・10〜）、こおり（星 6〜）、星ごとの傾き（てつ多め／こおり多め）
-  const MIX = { iron: [0.25, 0.35], ice: 0.15, tilt: 0.08 };
+  const MIX = deepFreeze({ iron: [0.25, 0.35], ice: 0.15, tilt: 0.08 });
   const SIZE_STEP = 0.48;   // 星ごとに直径が増えるマスの数（星 30 ごろに 24 マス）
   const BOSS_GROW = 2, BOSS_HARD = 1.3;   // 大きな星：格子を 2 マス大きく、重さ（マスの数×体力）はふつうの星の 1.3 倍くらい
   const CLEAR_BONUS = 0.2, ENDING_STAR = 30, STAR_MAX = 9999, STAR_CALC_MAX = 400, KAKERA_MAX = 9e15;
@@ -63,7 +63,7 @@
   // 近づく速さ（§3.7・§17.1）：その星を「ふつうに買う人」がクリアする目安の秒（first・normal・boss）から、
   // クリアのときに道のりが keep だけ残るように決める。小惑星は下から削れて押し返されるので、背の高い星ほど速く降りる：
   //   approachSec(n) = 目安の秒 ÷ (keep + 星の高さ ÷ 道のり)   （10 秒単位に丸める）
-  const APPROACH = { first: 135, normal: 240, boss: 300, keep: 0.33, firstStars: 3, bossEvery: 5 };
+  const APPROACH = deepFreeze({ first: 135, normal: 240, boss: 300, keep: 0.33, firstStars: 3, bossEvery: 5 });
   const TRIES_MAX = 9999;
 
   // ---------------------------------------------------------------- 表（§3.2・§3.3・§3.4・§3.6）
@@ -1223,7 +1223,8 @@
     HP_BASE, HP_GROWTH, VALUE_GROWTH, HP_GROWTH2, VALUE_GROWTH2, EARLY_HP, UP_GROWTH, LEVEL_MAX, SLOTS_MAX,
     CLEAR_BONUS, ENDING_STAR, STAR_MAX, STAR_CALC_MAX, KAKERA_MAX, SHOTS_MAX, STEP,
     SAVE_VERSION, SAVE_KEY, SAVE_KEY_BAK, SAVE_KEY_BEST, SAVE_KEY_HELP,
-    START_BOTTOM, BOUNCE_SEC, CLEAR_SEC, BEAM_SEC, BOMB_FLIGHT, BULLET_SPEED, FIGHTER_SPEED, SLOW_MAX,
+    START_BOTTOM, BOUNCE_SEC, CLEAR_SEC, BEAM_SEC, BOMB_FLIGHT, BULLET_SPEED, FIGHTER_SPEED, SLOW_MAX, SLOW_FROM, SLOW_STEP,
+    APPROACH, MIX, SIZE_STEP, BOSS_GROW, BOSS_HARD, BEAM_DEPTH,
     newGame, starInfo, step, dpsOf, upCostOf, upgrade, slotCostOf, unlock, choose, progressOf, formatKakera,
     makeSave, loadSave, validateBest, simulate,
     hpMul, valMul, dmg, upCost, affOf, shapeOf, cellHp, cellValue, matOf
