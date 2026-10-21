@@ -89,12 +89,16 @@ const M = [
   ['MH8 ハシわたり：2つ先の葉に届いても渡れない（今までどおり落ちる）', 'ルール', 'games/hashi/logic.js', 'const onAfter = !onTarget && !!after && tipA !== null && tipA >= after.x && tipA <= after.x + after.w;', 'const onAfter = false;'],
   ['MH9 ハシわたり：ひとつ飛ばしで渡った数を1つしか数えない', '計算', 'games/hashi/logic.js', 'const crossed = state.crossed + (onAfter ? 2 : 1);', 'const crossed = state.crossed + 1;'],
   ['MH10 ハシわたり：高さの差を無視する（茎の先＝根もと＋長さ。斜めの距離にしない）', 'ルール', 'games/hashi/logic.js', 'if (dy === 0) return bx + L;', 'return bx + L;'],
-  ['MH11 ハシわたり：ステージで落ちても最初に戻らない（その場からやり直し）', 'ルール', 'games/hashi/logic.js', 'platforms: stageWindow(stageCourse(state.stage), 0),\n        score: 0, crossed: 0,', 'platforms: state.platforms,\n        score: 0, crossed: state.crossed,'],
+  ['MH11 ハシわたり：ステージで落ちても最初（旗）に戻らない（その場からやり直し）', 'ルール', 'games/hashi/logic.js', 'platforms: stageWindow(stageCourse(state.stage), from),\n        score: from ? state.score : 0, crossed: from,', 'platforms: state.platforms,\n        score: from ? state.score : 0, crossed: state.crossed,'],
   ['MH12 ハシわたり：ゴールの1枚手前でクリアにする', 'ルール', 'games/hashi/logic.js', 'const cleared = stageMode && crossed >= state.goal;', 'const cleared = stageMode && crossed >= state.goal - 1;'],
   ['MH13 ハシわたり：hashi.stage の 0 を通す（壊れた値を 1 に戻さない）', '保存データ', 'games/hashi/logic.js', 'return Number.isSafeInteger(n) && n >= 1 && n <= STAGE_MAX ? n : 1;', 'return Number.isSafeInteger(n) && n >= 0 && n <= STAGE_MAX ? n : 1;'],
   ['MH14 ハシわたり：ステージをクリアしても到達を保存しない', '保存データ', 'games/hashi/main.js', 'if (r.improved) { stageReach = r.stage; writeKey(KEY_STAGE, String(stageReach)); }', 'if (r.improved) { stageReach = r.stage; }'],
   ['MH15 ハシわたり：クリアの演出中に隠れても止めない', '中断', 'games/hashi/main.js', 'const ANIM_PHASES = ["falling", "walking", "scrolling", "dropping", "respawn", "clear"];', 'const ANIM_PHASES = ["falling", "walking", "scrolling", "dropping", "respawn"];'],
   ['MH16 ハシわたり：クリアの演出をタップで早送りできない', '操作', 'games/hashi/main.js', 'if (phase === "clear" && !paused && !overlayKind) { finishClear(); return false; }', ''],
+  ['MH17 ハシわたり：旗を無視する（落ちたら いつも ステージの最初から）', 'ルール', 'games/hashi/logic.js', 'const from = state.checkpoint > 0 ? state.checkpoint : 0;', 'const from = 0;'],
+  ['MH18 ハシわたり：ひとつ飛ばしで旗の葉を飛び越えたら旗を取らない', 'ルール', 'games/hashi/logic.js', 'const checkpoint = stageMode ? Math.max(state.checkpoint, lastFlag(crossed, state.goal)) : 0;', 'const checkpoint = stageMode ? Math.max(state.checkpoint, crossed % 5 === 0 ? lastFlag(crossed, state.goal) : 0) : 0;'],
+  ['MH19 ハシわたり：「さいしょから」を押しても旗から再開する', '操作', 'games/hashi/main.js', 'else if (cmd === "restart") again();', 'else if (cmd === "restart") retryFromFlag();'],
+  ['MH20 ハシわたり：落ちた所の言葉を分けない（次と2つ先の間でも ただの「ながすぎ」）', '表示', 'games/hashi/logic.js', 'if (reason === "long" && after && missBy > NEAR) {', 'if (false) {'],
   // ---- 版の表示（メニュー）。版を上げる手順が崩れたときの検出 ----
   // MV1・MV3 は正規表現で今の版・日付を読み、1つずらす（版を上げるたびに直さなくてよい）
   ['MV1 版の数字だけ上げ忘れる（version.js が1つ前の版のまま。sw.js は今の版）', '更新', 'common/version.js', /version: "v(\d+)"/, (_, n) => `version: "v${Number(n) - 1}"`],
