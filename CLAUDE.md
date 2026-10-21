@@ -13,7 +13,7 @@
 | 場所 | 役割 |
 |---|---|
 | `index.html` | メニュー画面。ゲーム一覧は中の `GAMES` 配列、最下部に版と更新日を表示 |
-| `games/<名前>/` | 1ゲーム1フォルダ（`blocks` `2048` `kiritori` `irocode` `zenmai` `pikatto` `hashi` `irobin` `matomete` `michibiki` の10本） |
+| `games/<名前>/` | 1ゲーム1フォルダ（`blocks` `2048` `kiritori` `irocode` `zenmai` `pikatto` `hashi` `irobin` `matomete` `michibiki` `seizai` の11本） |
 | `common/sfx.js` | 共通の効果音（`YubiSfx.create("<ゲーム名>")`、音の表はゲームごと） |
 | `common/version.js` | 版の表示（`version` と `date`） |
 | `common/debug.js` | デバッグ表示（`?debug=1`。ふだんは何もしない）。仕組みと命令は [docs/debug.md](docs/debug.md) |
