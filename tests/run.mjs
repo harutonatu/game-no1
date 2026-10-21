@@ -42,6 +42,8 @@ export const GROUPS = [
   { key: 'FW', title: 'FW ミチビキ空港 画面（なぞる・着陸・ぶつかる・保存・戻る・中断・画面内・横向き・キーボード・音・色覚・オフライン）', file: 'michibiki-ui.mjs', weight: { smoke: 8, full: 45 } },
   { key: 'WL', title: 'WL もくもくこうば 計算ロジック(Node)', file: 'seizai-logic.mjs', weight: { smoke: 0, full: 0 } },
   { key: 'WW', title: 'WW もくもくこうば 画面（育てる・買う・節目・注文・るすの あいだ・時計・保存・戻る・画面内・横向き・性能・キーボード・音・オフライン・メニュー）', file: 'seizai-ui.mjs', weight: { smoke: 8, full: 45 } },
+  { key: 'KL', title: 'KL ほしくだき 計算ロジック(Node)', file: 'asteroid-logic.mjs', weight: { smoke: 0, full: 0 } },
+  { key: 'KW', title: 'KW ほしくだき 画面（壊れる・強くする・2択・はね返し・クリア・保存・戻る・中断・画面内・横向き・性能・キーボード・音・オフライン・メニュー）', file: 'asteroid-ui.mjs', weight: { smoke: 8, full: 45 } },
 ];
 
 const args = process.argv.slice(2);
@@ -165,7 +167,7 @@ async function main() {
     errors.push(...r.errors);
   }
   // 全ページ共通の確認は最後に1回だけ（各グループで集めたコンソールエラーをまとめる）
-  if (plan.some((g) => !['L', 'ZL', 'HL', 'BL', 'QL', 'FL', 'WL'].includes(g.key))) {
+  if (plan.some((g) => !['L', 'ZL', 'HL', 'BL', 'QL', 'FL', 'WL', 'KL'].includes(g.key))) {
     const ok = errors.length === 0;
     items.push({ id: 'X1', title: '全ページでコンソールエラー・ページエラー 0', ok, ms: 0, checks: [{ name: `コンソールエラー・ページエラー ${errors.length} 件`, ok, detail: ok ? undefined : errors.slice(0, 20) }] });
     console.log(`■ 共通\n  ${ok ? 'PASS' : 'FAIL'}  X1  全ページでコンソールエラー・ページエラー 0${ok ? '' : '\n        ' + JSON.stringify(errors.slice(0, 10))}`);

@@ -410,6 +410,7 @@ export async function cardReach(page) {
 // 既知の不具合の一覧（ここに載せたものだけが「既知」扱い。直ったら行を消す）
 // K1（SE 横・Safari でブロックの DROP・HOLD が重なる）は feature/kiritori で直し、通常の合否に入れた（V2・V3・V8）
 export const KNOWN_ISSUES = {
+  'K-AST1': 'K-AST1 ほしくだき：SE 横・Safari（568×270）で武器の行の4行目・#unlockBtn が画面の下にはみ出して見えない・押せない（#weapons が縮まずスクロールもしない）。docs/issues.md の AS-T1',
 };
 // 既知の不具合のキー → 説明（なければ undefined）。check(名前, ok, 詳細, known(キー)) のように使う
 export const known = (key) => KNOWN_ISSUES[key];
