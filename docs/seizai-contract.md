@@ -243,7 +243,7 @@ state = {
   queue: [{ kind, want }],       // 並んでいるお客さん（6人まで）
   callUntil: number,             // よびこみの次に使える t
   goal: { done },                // この段で売った数
-  order: null | { id, who, need, got, reward, accepted },
+  order: null | { id, who, need, got, reward, accepted, big },   // big: とくべつな注文（§17.2 C3）
   orderSeq: number, soldSinceOrder: number,
   ships: number,                 // 届けた大きな船の数（0〜SHIPS_MAX の整数。1 以上なら cleared）
   ship: { got },                 // いまの船に積んだ板の数（みなとだけ。それ以外は 0）
@@ -282,6 +282,8 @@ SeizaiLogic = {
   shipNeed(n) → number                                  // §3.10。どんな n でも有限の整数
   awaySeconds(savedAt, now) → number                    // §4.3
   catchUp(state, seconds) → { state, report: { seconds, effective, capped, earned, sold, made: {…}, delivered: [...] } }   // effective = 半分の速さで実際に進めた秒
+  fastForward(state, seconds) → { state, events, report: { seconds, steps, sold, earned } }   // 開いたまま STEP ずつ（step の繰り返しと同じ結果。0〜FF_MAX_SEC=86400 秒。events は order・delivered・goal・ship だけ。§17.1 A8）
+  forceOrder(state) → { state, ok, events }             // デバッグ neworder 用（こうば から。§3.7）
   formatYen(n) → string     // 1,234 えん → 1.2まん えん → 3.4おく えん → 5.6ちょう えん。最大でも 10 文字以内
   makeSave(state, savedAt) → string                     // JSON。§8.2
   loadSave(raw) → { state, savedAt } | null             // 壊れていれば null。フィールドごとの直しは §8.3
@@ -435,7 +437,7 @@ window.SeizaiGame = Object.freeze({
   forest: { trees, saplings },
   buf: { yard, logs, peeled, beams, planks, goods },
   depts: { cut: { staff, level, mgr }, plant: {…}, carry: {…}, peel: { lines, level, mgr }, beam: {…}, plank: {…}, shop: { staff, level, mgr } },
-  goal: { done }, order: null | { id, who, need, got, reward, accepted }, orderSeq, soldSinceOrder,
+  goal: { done }, order: null | { id, who, need, got, reward, accepted, big }, orderSeq, soldSinceOrder,
   ships, ship: { got },
   totals: { logs, peeled, beams, planks, sold, earned },
   seed, rng }
