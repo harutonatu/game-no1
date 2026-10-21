@@ -35,6 +35,7 @@
   // 演出の長さは render.js と同じ値を使う（食い違うと、描き終わった後も rAF が回る）
   const PERFECT_FX_SEC = (window.HashiRender && Number(window.HashiRender.PERFECT_FX_SEC)) || 1.0;
   const SPLASH_SEC = (window.HashiRender && Number(window.HashiRender.SPLASH_SEC)) || 0.9;
+  const SKIP_FX_SEC = (window.HashiRender && Number(window.HashiRender.SKIP_FX_SEC)) || 1.0;
   const CARD_LOCK_MS = 400;     // 結果カードを出してから押せない時間
   const STAGE_BLOCK_MS = 300;   // カードを閉じた後、#stageWrap の押下を受けない時間
   const ANIM_PHASES = ["falling", "walking", "scrolling", "dropping", "respawn"];
@@ -125,8 +126,8 @@
   let heroX = 0, heroY = 0, heroPose = "stand";
   let cameraX = 0, camFrom = 0, camTo = 0;
   let walkFrom = 0, walkTo = 0, nextStep = 0;
-  let prevLeaf = null;          // 渡った直後、画面を送る間だけ描く「元の葉」
-  let ghostTipX = null, perfectAt = null, splashAt = null;
+  let prevLeaves = [];          // 渡った直後、画面を送る間だけ描く「元の葉」（ひとつ飛ばしなら、飛び越えた葉も）
+  let ghostTipX = null, perfectAt = null, splashAt = null, skipAt = null, skipX = null;
   let perfectX = null, splashX = null;
   let peeked = false;
 
@@ -175,8 +176,7 @@
     ? window.HashiRender.create(el.canvas) : { resize() {}, draw() {} };
   if (!window.HashiRender) console.error("ハシわたり: HashiRender が読み込まれていません（render.js）。絵は出ません");
   function viewPlatforms() {
-    const ps = run.platforms.slice();
-    return prevLeaf ? [prevLeaf].concat(ps) : ps;
+    return prevLeaves.concat(run.platforms);
   }
   function draw() {
     const fxAge = (at, sec) => (at === null ? null : (clock - at <= sec ? clock - at : null));
@@ -185,9 +185,11 @@
         platforms: viewPlatforms(),
         cameraX,
         hero: { x: heroX, y: heroY, pose: heroPose },
-        bridge: prevLeaf ? { len: bridgeLen, angle: bridgeAngle, x: prevLeaf.x + prevLeaf.w } : { len: bridgeLen, angle: bridgeAngle },
+        bridge: prevLeaves.length ? { len: bridgeLen, angle: bridgeAngle, x: prevLeaves[0].x + prevLeaves[0].w } : { len: bridgeLen, angle: bridgeAngle },
         perfectFx: fxAge(perfectAt, PERFECT_FX_SEC),
         perfectX,
+        skipFx: fxAge(skipAt, SKIP_FX_SEC),
+        skipX,
         ghostTipX,
         guideTipX: guide && phase === "growing" ? curRight() + bridgeLen : null,
         splash: fxAge(splashAt, SPLASH_SEC),
@@ -208,6 +210,7 @@
   // ===== ゲームループ（rAF 1本） =====
   let raf = 0, lastFrame = 0, dirty = true;
   const fxActive = () => (perfectAt !== null && clock - perfectAt <= PERFECT_FX_SEC)
+    || (skipAt !== null && clock - skipAt <= SKIP_FX_SEC)
     || (splashAt !== null && clock - splashAt <= SPLASH_SEC);
   const isAnimating = () => !paused && !overlayKind
     && (phase === "growing" || ANIM_PHASES.includes(phase) || (fxActive() && !reduceMotion.matches));
@@ -291,7 +294,7 @@
   function toReady() {
     bridgeLen = 0; bridgeAngle = 0;
     heroX = curRight(); heroY = 0; heroPose = "stand";
-    prevLeaf = null;
+    prevLeaves = [];
     pending = null;
     setHolding(false);
     setPhase("ready", 0);
@@ -306,17 +309,26 @@
   function arrive() {
     const o = pending.outcome;
     if (o.kind === "cross") {
-      prevLeaf = run.platforms[0];
+      prevLeaves = o.skip ? run.platforms.slice(0, 2) : [run.platforms[0]];
       run = pending.state;
       lastOutcome = o;
       heroX = o.landX;
       sfx.play("land");
+      if (o.skip) {
+        sfx.play("skip");
+        skipAt = clock;
+        skipX = run.platforms[0].x + run.platforms[0].w / 2;
+      }
+      const skipWord = o.skip ? "とばし！ " : "";
       if (o.perfect) {
         sfx.play("perfect", Math.min(Math.max(o.streak, 1), 5));
         perfectAt = clock;
         perfectX = run.platforms[0].x + run.platforms[0].w / 2;
-        setHint(`ぴったり！ +${o.gain}`);
-        announce(`ぴったり。${o.gain}てん。ごうけい ${run.score}てん。のこり ${run.lives}`);
+        setHint(`${skipWord}ぴったり！ +${o.gain}`);
+        announce(`${o.skip ? "とばし。" : ""}ぴったり。${o.gain}てん。ごうけい ${run.score}てん。のこり ${run.lives}`);
+      } else if (o.skip) {
+        setHint(`とばし！ +${o.gain}`);
+        announce(`とばし。${o.gain}てん。ごうけい ${run.score}てん。のこり ${run.lives}`);
       } else {
         setHint("わたれた！");
         announce(`わたれた。${o.gain}てん。ごうけい ${run.score}てん。のこり ${run.lives}`);
@@ -386,7 +398,7 @@
     lastOutcome = null;
     improvedThisRun = false;
     paused = false;
-    ghostTipX = null; perfectAt = null; splashAt = null;
+    ghostTipX = null; perfectAt = null; splashAt = null; skipAt = null;
     cameraX = curRight() - L.CAMERA_LEFT;
     setHint(hintReady());
     announce("");
@@ -558,6 +570,7 @@
       <h2 id="cardTitle">あそびかた</h2>
       <p>がめんを ながく おすと、くきが のびるよ。はなすと たおれる。</p>
       <p>くきの さきが つぎの はっぱに のれば わたれる。まんなかの ◆ に のると「ぴったり」で ボーナス！</p>
+      <p>うんと のばして 2つ さきの はっぱに とどいたら「とばし」。2つぶん＋おまけの てん！（むりに ねらわなくて だいじょうぶ）</p>
       <p>みずに おちると いのち ♥ が 1つ へるよ。0に なったら おしまい。おちても、おなじ ところから もう一度。</p>
       <p>キーボードの スペース・エンターでも あそべます。M で おと。</p>
       <p>おしつづけるのが むずかしいときは「タップしき」：1かい タップで のびはじめ、もう1かいで たおれる。</p>
@@ -667,7 +680,7 @@
         platforms: run.platforms.map((p) => ({ x: p.x, w: p.w })),
         overlay: overlayKind, paused, runId,
         lastOutcome: lastOutcome ? Object.assign({}, lastOutcome) : null,
-        timers: timers.size, slow, guide, tap
+        timers: timers.size, slow, guide, tap, cameraX
       };
     },
     holdFor(ms) {
@@ -697,6 +710,11 @@
     lenToCross() {
       const target = run.platforms[1];
       return target.x + target.w / 2 - curRight();
+    },
+    // ひとつ飛ばし：2つ先の葉の中心までの長さ（2つ先が無いときは null）
+    lenToSkip() {
+      const after = run.platforms[2];
+      return after ? after.x + after.w / 2 - curRight() : null;
     },
     setRandom(seq) {
       if (seq === null) { randomSeq = null; return true; }

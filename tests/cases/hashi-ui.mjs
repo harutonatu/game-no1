@@ -826,6 +826,59 @@ export const tests = [
     },
   },
   {
+    id: 'HW15', tier: 'full', title: 'ハシわたり ひとつ飛ばし：2つ先の葉の中心まで伸ばすと次の葉を飛び越えて渡れ（crossed +2・2つ分＋おまけ＋ぴったり）、「とばし」の案内と skip の音、2つ先の行き過ぎは落ちる。SE 縦横で茎の届く所と2つ先の葉が canvas の中',
+    async run({ browser, check }) {
+      const { ctx, page } = await openH(browser, 'HW15', { v: SMOKE_V(), opts: { initScript: SFX_SPY } });
+      const api = await page.evaluate(() => typeof window.HashiGame.lenToSkip);
+      check('HashiGame.lenToSkip がある', api === 'function', api);
+      const s0 = await gs(page);
+      const len = await page.evaluate(() => window.HashiGame.lenToSkip());
+      const maxLen = await page.evaluate(() => window.HashiLogic.MAX_LEN);
+      check(`はじめの2つ先の中心まで ${len} ≦ MAX_LEN ${maxLen}（最初の段階では届く）`, typeof len === 'number' && len > 0 && len <= maxLen, { len, platforms: s0.platforms });
+      const want = await page.evaluate(() => 2 + window.HashiLogic.SKIP_BONUS + window.HashiLogic.perfectBonus(1));
+      const ok = await holdLen(page, len);
+      const r1 = await settle(page);
+      const d1 = await domNums(page);
+      check(`ひとつ飛ばし：holdFor ${ok}・crossed ${r1.s.crossed}（2）・score ${r1.s.score}（${want}）・skip ${r1.s.lastOutcome?.skip}・perfect ${r1.s.lastOutcome?.perfect}、表示も同じ`,
+        ok === true && r1.s.phase === 'ready' && r1.s.crossed === 2 && r1.s.score === want && r1.s.lastOutcome?.kind === 'cross' && r1.s.lastOutcome?.skip === true && r1.s.lastOutcome?.perfect === true && sameNums(r1.s, d1), { s: r1.s, d1 });
+      check(`飛ばした先が今の葉（platforms[0] が 2つ先だった葉）`, r1.s.platforms[0].x === s0.platforms[2].x && r1.s.platforms[0].w === s0.platforms[2].w, { before: s0.platforms, after: r1.s.platforms });
+      check(`#hint に「とばし」が出る（${r1.hints.join(' / ')}）`, r1.hints.some((h) => h.includes('とばし')), r1.hints);
+      const pl = (await plays(page)).map((p) => p.n);
+      check(`skip の音が land の後に鳴る（${[...new Set(pl)].join(',')}）`, pl.includes('skip') && pl.indexOf('land') < pl.lastIndexOf('skip'), pl);
+      // 2つ先の行き過ぎ
+      const over = await page.evaluate(() => { const s = window.HashiGame.getState(); const [a, , c] = s.platforms; return c.x + c.w - (a.x + a.w) + 15; });
+      const fair = await page.evaluate(() => { const s = window.HashiGame.getState(); const [a, b] = s.platforms; return { mid: (b.x + b.w + s.platforms[2].x) / 2 - (a.x + a.w) }; });
+      await holdLen(page, Math.min(over, maxLen));
+      const r2 = await settle(page);
+      check(`2つ先の行き過ぎ（${Math.min(over, maxLen).toFixed(0)}）は落ちる（fall/long・lives −1・crossed 2 のまま）`, r2.s.lastOutcome?.kind === 'fall' && r2.s.lastOutcome?.reason === 'long' && r2.s.lives === s0.lives - 1 && r2.s.crossed === 2, r2.s);
+      await holdLen(page, fair.mid);
+      const r3 = await settle(page);
+      check(`次の葉と2つ先の間（${fair.mid.toFixed(0)}）も落ちる`, r3.s.lastOutcome?.kind === 'fall' && r3.s.lives === s0.lives - 2, r3.s);
+      await ctx.close();
+      // SE 縦・横：茎の届く一番先と、2つ先の葉（届く所まで）が canvas の中に描かれる
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app')]) {
+        const { ctx: c2, page: p2 } = await openH(browser, 'HW15 ' + v.label, { v });
+        const bad = [];
+        for (let i = 0; i < 12; i++) {
+          const g = await p2.evaluate(() => {
+            const s = window.HashiGame.getState();
+            const r = document.querySelector('#stage').getBoundingClientRect();
+            const o = window.HashiRender.layout(Math.round(r.width), Math.round(r.height));
+            const [a, , c] = s.platforms;
+            const base = a.x + a.w, reach = base + window.HashiLogic.MAX_LEN;
+            const px = (x) => (x - s.cameraX) * o.s;
+            return { w: Math.round(r.width), reachPx: px(reach), afterL: c ? px(c.x) : null, reachable: !!c && c.x <= reach, phase: s.phase };
+          });
+          if (!(g.reachPx <= g.w + 0.5 && (!g.reachable || (g.afterL >= 0 && g.afterL <= g.w + 0.5)))) bad.push({ i, ...g });
+          const L = await lens(p2);
+          await holdLen(p2, L.perfect); await settle(p2);
+        }
+        check(`${v.label}：12 回渡る間、茎の届く一番先（MAX_LEN）が canvas の幅の中、届く2つ先の葉の左端も canvas の中`, bad.length === 0, bad.slice(0, 3));
+        await c2.close();
+      }
+    },
+  },
+  {
     id: 'HW13', tier: 'full', title: 'ハシわたり オフライン：sw.js の APP_FILES に games/hashi/* がすべて入り（無ければ不合格）、接続を切っても開いて遊べ、部品は Service Worker から読まれ、メニューに戻れる',
     async run({ browser, check, srv, root }) {
       const info = swInfo(root);

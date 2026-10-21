@@ -76,6 +76,7 @@
 | HS-09 | 低 | 中毒性：いのちを回復する機会がない。連続ぴったりの倍々が画面の言葉で伝わりにくい | games/hashi/logic.js:134-159, main.js:288-295 | 未着手 | |
 | HS-10 | 低 | 性能（実害なし）：毎フレームの grow 呼び出し、resize の重複、グラデーションの毎フレーム生成 | games/hashi/main.js:233,696, render.js:103 | 未着手 | |
 | HS-11 | 中 | 文書の追記漏れ：修正で HW14・hashi.tap・#sr・HashiRender.layout・createCore の取り消しの決まりを足したが、tests/README.md・tests/design.md・docs/hashi-contract.md に未反映 | tests/, docs/hashi-contract.md | 未着手 | |
+| HS-12 | 中 | 改善要望（ユーザー 2026-10-21「ひとつ飛ばしできるようにして」）：茎が次の葉を越えて2つ先の葉に届いたら渡れる（2つ分＋おまけ1、ぴったりと重なる）。「とばし！」の字と skip の音 | games/hashi/logic.js, main.js, render.js, common/sfx.js | 済 | feature/hashi-skip。HL9・HW15、変異 MH7〜MH9 |
 
 ## いろびん（games/irobin/、ブランチ feature/irobin）
 

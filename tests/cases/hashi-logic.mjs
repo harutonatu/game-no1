@@ -305,4 +305,57 @@ export const tests = [
       check('HashiCourse が無いとき：自分で読み込んで作れる、または「HashiCourse／course」を含む例外', worked || (msg !== null && /HashiCourse|course/i.test(msg)), { worked, msg });
     },
   },
+  {
+    id: 'HL9', tier: 'smoke', node: true, title: 'ハシわたり：ひとつ飛ばし（2つ先の葉の端ちょうどで渡れる・2つ分＋おまけ・ぴったりと重なる・行き過ぎ／間に落ちる・届く所は画面の中）',
+    run({ check, root }) {
+      const { L, C } = load(root);
+      check('SKIP_BONUS は 1', L.SKIP_BONUS === 1, L.SKIP_BONUS);
+      const s = rigged(L, { score: 10, crossed: 4 });   // 今の葉の右端 100、次 300〜400、2つ先 500〜600（中心 550）
+      const r = (len, st = s) => L.resolve(st, len);
+      const e1 = r(400), e2 = r(500);
+      const okSkip = (x, tip) => x.outcome.kind === 'cross' && x.outcome.skip === true && x.outcome.tipX === tip && x.outcome.landX === 600 && x.outcome.perfect === false
+        && x.outcome.gain === 3 && x.outcome.skipBonus === 1 && x.outcome.bonus === 0 && x.state.score === 13 && x.state.crossed === 6 && x.state.streak === 0;
+      check('2つ先の左端ちょうど（tipX=500）でひとつ飛ばし：+3（2つ分＋おまけ1）・crossed +2・landX 600', okSkip(e1, 500), e1.outcome);
+      check('2つ先の右端ちょうど（tipX=600）でもひとつ飛ばし', okSkip(e2, 600), e2.outcome);
+      const np = e1.state.platforms;
+      const g1 = np[1].x - right(np[0]), g2 = np[2].x - right(np[1]);
+      const inTier = (g, w) => C.TIERS.some((t) => g >= t.gap[0] && g <= t.gap[1] && w >= t.w[0] && w <= t.w[1]);
+      check('飛ばした後の並び：先頭が 2つ先だった葉、その先に新しい葉が2枚（段階表の範囲）', np.length === 3 && np[0].x === 500 && np[0].w === 100 && inTier(g1, np[1].w) && inTier(g2, np[2].w), np);
+      const nor = r(250);
+      check('次の葉に乗るときは今までどおり（skip false・+1＋ぴったり）', nor.outcome.kind === 'cross' && nor.outcome.skip === false && nor.outcome.skipBonus === 0 && nor.outcome.landX === 400 && nor.state.crossed === 5, nor.outcome);
+      const gapFall = r(399), over = r(501), over2 = r(1e9);
+      check('次の葉と2つ先の間（tipX=499）は落ちる（long）', gapFall.outcome.kind === 'fall' && gapFall.outcome.reason === 'long' && gapFall.state.lives === 2, gapFall.outcome);
+      check('2つ先の行き過ぎ（tipX=601、MAX_LEN）も落ちる（long）', over.outcome.kind === 'fall' && over.outcome.reason === 'long' && over2.outcome.kind === 'fall', { over: over.outcome, over2: over2.outcome });
+      const p1 = r(450), p2 = r(460), p3 = r(461);
+      check('2つ先の中心 ±PERFECT_HALF でぴったり：+2 +1 +ボーナス1 = 4・streak 1', p1.outcome.skip && p1.outcome.perfect && p1.outcome.gain === 4 && p1.outcome.bonus === 1 && p1.state.streak === 1 && p1.state.perfects === 1
+        && p2.outcome.perfect === true && p3.outcome.perfect === false && p3.outcome.skip === true, { p1: p1.outcome, p3: p3.outcome });
+      const sk = rigged(L, { streak: 2, bestStreak: 2, score: 0 });
+      const p4 = r(450, sk);
+      check('ぴったりの連続中のひとつ飛ばし：ボーナスも続く（streak 3 → +2 +1 +4 = 7）', p4.outcome.gain === 7 && p4.state.streak === 3 && p4.state.bestStreak === 3 && p4.state.score === 7, p4.outcome);
+      const p5 = r(420, sk);
+      check('ぴったりでないひとつ飛ばしは streak が切れる（+3、streak 0）', p5.outcome.gain === 3 && p5.state.streak === 0 && p5.state.bestStreak === 2, p5.outcome);
+      // 公平さ：2つ先の葉は、いつも次の葉の右端より段階表の gap の下限以上先にある。届く所は画面の中
+      const LIM = L.VIEW_W - L.CAMERA_LEFT;   // 今の葉の右端から右へ見える幅（少なくとも）
+      const bad = [];
+      const minGap = Math.min(...C.TIERS.map((t) => t.gap[0]));
+      let reach = 0;
+      for (const seed of [1, 2, 3, 4, 5]) {
+        let st = L.createRun({ random: seeded(seed) });
+        for (let i = 0; i < 60; i++) {
+          const [c0, c1, c2] = st.platforms;
+          const need2 = c2.x - right(c0), need1 = right(c1) - right(c0);
+          if (!(need2 >= need1 + minGap)) bad.push({ seed, i, why: '2つ先が近すぎる', c0, c1, c2 });
+          if (need2 <= L.MAX_LEN) {
+            reach++;
+            if (!(need2 <= LIM && Math.min(right(c2) - right(c0), L.MAX_LEN) <= LIM)) bad.push({ seed, i, why: '届くのに画面の外', c0, c2 });
+          }
+          const o = L.resolve(st, center(c1) - right(c0));
+          st = o.state;
+        }
+      }
+      check(`2つ先は次の葉より ${minGap} 以上遠く、茎が届く所はいつも画面（右へ ${LIM}）の中（300 回中 届く ${reach} 回）`, bad.length === 0 && reach > 0, bad.slice(0, 3));
+      const e3 = L.resolve(rigged(L, { platforms: [PL[0], PL[1]] }), 400);
+      check('2つ先が無い並び（platforms 2 枚）でも例外にならず、行き過ぎは落ちる', e3.outcome.kind === 'fall' && e3.outcome.reason === 'long', e3.outcome);
+    },
+  },
 ];

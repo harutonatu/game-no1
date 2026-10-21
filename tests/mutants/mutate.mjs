@@ -85,6 +85,9 @@ const M = [
   ['MH4 ハシわたり：落ちてもいのちを減らさない（終わらない）', '遊べること', 'games/hashi/logic.js', 'const lives = Math.max(state.lives - 1, 0);', 'const lives = state.lives;'],
   ['MH5 ハシわたり：隠れたとき（visibilitychange で hidden）押下を取り消さない', '中断', 'games/hashi/main.js', 'if (phase === "growing") abortHold();', ''],
   ['MH6 ハシわたり：「もう一度」で clearLater() を呼ばない（古い回のタイマーが残る）', 'タイマー', 'games/hashi/main.js', 'clearLater();   // 前の回のタイマーを片付ける（もう一度・起動）', ''],
+  ['MH7 ハシわたり：ひとつ飛ばしの点を1つ分にする（2つ分＋おまけ → 1つ分＋おまけ）', '計算', 'games/hashi/logic.js', 'const gain = (onAfter ? 2 : 1) + skipBonus + bonus;', 'const gain = 1 + skipBonus + bonus;'],
+  ['MH8 ハシわたり：2つ先の葉に届いても渡れない（今までどおり落ちる）', 'ルール', 'games/hashi/logic.js', 'const onAfter = !onTarget && !!after && tipX >= after.x && tipX <= after.x + after.w;', 'const onAfter = false;'],
+  ['MH9 ハシわたり：ひとつ飛ばしで渡った数を1つしか数えない', '計算', 'games/hashi/logic.js', 'const crossed = state.crossed + (onAfter ? 2 : 1);', 'const crossed = state.crossed + 1;'],
   // ---- 版の表示（メニュー）。版を上げる手順が崩れたときの検出 ----
   // MV1・MV3 は正規表現で今の版・日付を読み、1つずらす（版を上げるたびに直さなくてよい）
   ['MV1 版の数字だけ上げ忘れる（version.js が1つ前の版のまま。sw.js は今の版）', '更新', 'common/version.js', /version: "v(\d+)"/, (_, n) => `version: "v${Number(n) - 1}"`],

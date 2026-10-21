@@ -8,7 +8,7 @@
  *   const sfx = YubiSfx.create("irocode");  // いろコード（place/remove/submit/hint(hit)/win/lose。start/best/toggle は共通）
  *   const sfx = YubiSfx.create("zenmai");   // ゼンマイさんぽ
  *   const sfx = YubiSfx.create("pikatto");  // ピカッと早押し
- *   const sfx = YubiSfx.create("hashi");    // ハシわたり（grow(ratio)/tip/land/perfect(n)/walk/splash/peek）
+ *   const sfx = YubiSfx.create("hashi");    // ハシわたり（grow(ratio)/tip/land/perfect(n)/walk/splash/peek/skip）
  *   const sfx = YubiSfx.create("irobin");   // いろびん（pick/drop/pour(count)/reveal/seal(colorId)/cork/deliver(n)/arrive/clear/deny/undo/stuck/unveil）
  *   const sfx = YubiSfx.create("matomete"); // まとめてポン（select(n)/pop(n)/fall/allclear/over/deny/undo/blast(r)/streak(n)）
  *   const sfx = YubiSfx.create("michibiki"); // ミチビキ空港（warn/pick/lock/land(n)/near/crash/bounce/open(color)/over）
@@ -363,6 +363,8 @@
         noise(t + 0.02, 0.3, { type: "lowpass", freq: 1400, to: 300, vol: 0.06, a: 0.01 });
         partial(700, t + 0.12, 0.1, { vol: 0.03, from: 500, fromT: 0.05 });
       },
+      // ひとつ飛ばし「ぴょーん」：上がる3音（ぴったりのベルより軽く、land の後に重なっても濁らない五音音階）
+      skip: () => { const t = N(); mallet(G5, t, { vol: 0.08, decay: 0.12, bright: 0.5 }); mallet(A5, t + 0.07, { vol: 0.09, decay: 0.14, bright: 0.5 }); mallet(C6 * 1.122, t + 0.14, { vol: 0.1, decay: 0.22, bright: 0.55 }); },
       // 水から顔を出す「ぴょこ」：軽く上がる2音
       peek: () => { const t = N(); partial(A5, t, 0.08, { vol: 0.06, from: 520, fromT: 0.04 }); mallet(C6, t + 0.06, { vol: 0.07, decay: 0.12, bright: 0.5 }); }
     };

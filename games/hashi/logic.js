@@ -6,6 +6,10 @@
  *   渡る先の葉 target について target.x <= tipX <= target.x + target.w なら渡れる（閉区間）。
  *   |tipX - 葉の中心| <= PERFECT_HALF なら「ぴったり」。連続回数 streak でボーナス min(2^(streak-1), 16)。
  *   落ちたら いのち -1・streak 0。葉の並びは変えない（同じ間にもう一度）。いのち 0 で回が終わる。
+ *   ひとつ飛ばし：渡る先の葉に乗らず、2つ先の葉 after に after.x <= tipX <= after.x + after.w なら、
+ *   2つ先へ渡れる（crossed +2、点は 2 + SKIP_BONUS、ぴったりなら perfectBonus も足す）。
+ *   茎は最大 MAX_LEN（800）で、画面は今の葉の右端から右へ少なくとも VIEW_W - CAMERA_LEFT（800）見えるので、
+ *   茎の先が届く所はいつも画面の中（見えない葉には乗れない）。
  *
  * state はイミュータブル（凍結した新しいオブジェクトと新しい配列を毎回返す）。
  * 乱数は createRun({ random }) で注入し、state に「列挙されない」プロパティとして持ち回る。
@@ -26,6 +30,7 @@
   const CAMERA_LEFT = 200;    // 渡り終えたとき、今の葉の右端を画面左から何単位に置くか
   const LIVES = 3;            // いのちの数
   const BONUS_CAP = 16;       // ぴったりボーナスの上限
+  const SKIP_BONUS = 1;       // ひとつ飛ばし（2つ先の葉へ渡る）のおまけ。2つ分の +2 に足す
   const FIRST_W = 160;        // 最初の葉の幅（x=0 から）
   const SAVE_KEY_BEST = "hashi.best";
 
@@ -129,7 +134,7 @@
   }
 
   function checkState(state) {
-    if (!state || !Array.isArray(state.platforms) || state.platforms.length < 3) {
+    if (!state || !Array.isArray(state.platforms) || state.platforms.length < 2) {
       throw new TypeError("HashiLogic.resolve: state が不正です（createRun で作った state を渡してください）");
     }
   }
@@ -146,16 +151,28 @@
     const left = target.x, right = target.x + target.w;
     const goalX = target.x + target.w / 2;
 
-    if (tipX >= left && tipX <= right) {
-      const perfect = Math.abs(tipX - goalX) <= PERFECT_HALF;
+    const onTarget = tipX >= left && tipX <= right;
+    const onAfter = !onTarget && !!after && tipX >= after.x && tipX <= after.x + after.w;
+    if (onTarget || onAfter) {
+      const land = onTarget ? target : after;
+      const perfect = Math.abs(tipX - (land.x + land.w / 2)) <= PERFECT_HALF;
       const streak = perfect ? state.streak + 1 : 0;
       const bonus = perfect ? perfectBonus(streak) : 0;
-      const gain = 1 + bonus;
+      const skipBonus = onAfter ? SKIP_BONUS : 0;
+      const gain = (onAfter ? 2 : 1) + skipBonus + bonus;
       const score = addScore(state.score, gain);
-      const crossed = state.crossed + 1;
-      const outcome = Object.freeze({ kind: "cross", tipX, perfect, gain, bonus, landX: right, score, streak });
+      const crossed = state.crossed + (onAfter ? 2 : 1);
+      const outcome = Object.freeze({ kind: "cross", tipX, perfect, gain, bonus, skip: onAfter, skipBonus, landX: land.x + land.w, score, streak });
+      let platforms;
+      if (onAfter) {
+        // platforms[i] は crossed + i - 1 回渡った時点で渡る先（createRun と同じ決まり）
+        const n1 = makeNext(after, crossed, random);
+        platforms = [after, n1, makeNext(n1, crossed + 1, random)];
+      } else {
+        platforms = [target, after, makeNext(after, crossed + 1, random)];
+      }
       const next = makeState({
-        platforms: [target, after, makeNext(after, crossed + 1, random)],
+        platforms,
         score, crossed,
         perfects: state.perfects + (perfect ? 1 : 0),
         streak,
@@ -208,7 +225,7 @@
 
   const api = Object.freeze({
     VIEW_W, GROW_PER_MS, SLOW_FACTOR, MAX_LEN, MIN_HOLD_MS, PERFECT_HALF, NEAR, CAMERA_LEFT, LIVES, BONUS_CAP,
-    FIRST_W, SAVE_KEY_BEST,
+    SKIP_BONUS, FIRST_W, SAVE_KEY_BEST,
     lengthFromHold, holdForLength, perfectBonus, createRun, resolve, hud,
     validateBest, recordBest, validateFlag
   });

@@ -10,6 +10,7 @@
  *   perfectFx, perfectX?,       // ぴったり演出の経過秒。perfectX は光る葉の中心（省略時はケロのいる葉）
  *   ghostTipX, guideTipX,
  *   splash, splashX?,           // ぽちゃんの経過秒。splashX は落ちた所（省略時は hero.x）
+ *   skipFx, skipX?,             // ひとつ飛ばしの「とばし！」の経過秒。skipX は着いた葉の中心
  *   lives, t                    // t は秒
  * }
  * 縮尺は縦横同じ（角度が正しく見える）。ふだんは論理単位 VIEW_W(1000) を canvas の横幅いっぱいに描くが、
@@ -39,6 +40,7 @@
   var DEFAULT_MAX_LEN = 800;
   var PERFECT_FX_SEC = 1.0;   // ぴったり演出の長さ
   var SPLASH_SEC = 0.9;       // ぽちゃんの長さ
+  var SKIP_FX_SEC = 1.0;      // 「とばし！」の字が浮かぶ長さ
 
   function num(v, d) { return typeof v === "number" && isFinite(v) ? v : d; }
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
@@ -468,6 +470,25 @@
       ctx.restore();
     }
 
+    /* ---------- ひとつ飛ばしの「とばし！」 ---------- */
+    function drawSkipFx(cx, deckY, sec, s, heroR) {
+      var p = clamp(sec / SKIP_FX_SEC, 0, 1);
+      var rise = calm ? 0 : p * 24;
+      var size = Math.round(clamp(heroR * 0.9, 14, 26));
+      var y = deckY - heroR * 3.2 - rise;
+      ctx.save();
+      ctx.globalAlpha = p < 0.7 ? 1 : Math.max(0, 1 - (p - 0.7) / 0.3);
+      ctx.font = "700 " + size + "px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.lineWidth = Math.max(3, size * 0.22);
+      ctx.strokeStyle = C.well;
+      ctx.strokeText("とばし！", cx, y);
+      ctx.fillStyle = C.accent;
+      ctx.fillText("とばし！", cx, y);
+      ctx.restore();
+    }
+
     /* ---------- 全体 ---------- */
     function draw(view) {
       if (!view || typeof view !== "object") return;
@@ -544,6 +565,10 @@
         drawHero(X(heroX), footY, heroR, pose, t, waterY);
       }
 
+      var skSec = view.skipFx === null || view.skipFx === undefined ? null : num(view.skipFx, null);
+      var skX = num(view.skipX, NaN);
+      if (skSec !== null && skSec >= 0 && skSec < SKIP_FX_SEC && isFinite(skX)) drawSkipFx(X(skX), deckY, skSec, s, heroR);
+
       var spSec = view.splash === null || view.splash === undefined ? null : num(view.splash, null);
       if (spSec !== null && spSec >= 0) {
         var spX = num(view.splashX, isFinite(heroX) ? heroX : NaN);
@@ -555,5 +580,5 @@
     return { resize: resize, draw: draw };
   }
 
-  return { create: create, layout: layout, COLORS: C, PERFECT_FX_SEC: PERFECT_FX_SEC, SPLASH_SEC: SPLASH_SEC };
+  return { create: create, layout: layout, COLORS: C, PERFECT_FX_SEC: PERFECT_FX_SEC, SPLASH_SEC: SPLASH_SEC, SKIP_FX_SEC: SKIP_FX_SEC };
 });
