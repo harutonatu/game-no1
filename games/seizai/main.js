@@ -961,6 +961,35 @@
     return { ok: true };
   }
 
+  // ===== お金の文字を 1 行の枠に入れる（上の帯が 1 行なので、桁が多いときだけ小さく。測らずに文字の数から見積もる） =====
+  let purseW = 0, moneyBase = 0, moneyFit = "";
+  const purseEl = el.money ? el.money.parentElement : null;
+  function readPurse() {
+    if (!purseEl || !el.money) return;
+    purseW = purseEl.clientWidth;
+    const prev = el.money.style.fontSize;
+    el.money.style.fontSize = "";
+    moneyBase = parseFloat(getComputedStyle(el.money).fontSize) || 22;
+    el.money.style.fontSize = prev;
+    moneyFit = "";
+    if (lastUi.money) fitMoney(lastUi.money);
+  }
+  function fitMoney(text) {
+    if (!el.money || !purseW || !moneyBase) return;
+    let em = 0;
+    for (const ch of text) em += /[0-9.,]/.test(ch) ? 0.62 : ch === " " ? 0.3 : 1;
+    const room = purseW - 2;
+    let size = Math.min(moneyBase, Math.floor(room / Math.max(1, em)));
+    size = Math.max(12, size);
+    const long = size < moneyBase || em * moneyBase * 1.12 > room;   // 跳ねると となりに重なるときは跳ねない
+    const key = size + "|" + long;
+    if (key === moneyFit) return;
+    moneyFit = key;
+    el.money.style.fontSize = size < moneyBase ? size + "px" : "";
+    el.money.dataset.long = long ? "1" : "0";
+  }
+  if (window.ResizeObserver && purseEl) new ResizeObserver(readPurse).observe(purseEl);
+
   // ===== 画面の表示（logic の関数の値をそのまま。同じなら書かない） =====
   function updateUi(force) {
     if (!state) return;
@@ -970,7 +999,7 @@
     const m = yen(state.money);
     if (lastUi.money !== m) {
       lastUi.money = m; setText(el.money, m);
-      if (el.money) { el.money.dataset.value = String(state.money); const lg = m.length >= 9 ? "1" : "0"; if (el.money.dataset.long !== lg) el.money.dataset.long = lg; }
+      if (el.money) { el.money.dataset.value = String(state.money); fitMoney(m); }
     }
     const g = goalOf();
     if (g) {

@@ -125,8 +125,7 @@
   #soundBtn[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
   .purse { grid-area: money; min-width: 0; display: flex; justify-content: center; align-items: center; overflow: hidden; }
   #money { font: 900 22px/1.2 var(--font-display); color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; display: inline-block; transform-origin: center center; }
-  /* いちばん長い桁（9000ちょう えん）でも SE 縦の 1 行に入るよう、長いときだけ小さく（main.js が data-long を付ける） */
-  #money[data-long="1"] { font-size: 17px; letter-spacing: -0.02em; }
+  /* 桁が多くて 1 行の枠に入らないときは、main.js が文字を小さくして data-long="1"（跳ねない） */
   #money.bump { animation: bump 0.28s ease-out; }
   /* いちばん長い桁のときは跳ねない（となりのボタンに重ならない） */
   #money[data-long="1"].bump { animation: none; }
@@ -397,7 +396,6 @@
     .back { padding: 0 6px; font-size: 14px; }
     .head-tools { gap: 4px; }
     #money { font-size: 20px; }
-    #money[data-long="1"] { font-size: 15px; }
     #expandBtn { font-size: 14px; padding: 4px 8px; }
     .buy { font-size: 13px; padding: 4px 4px; }
     .buys > .buy[data-buy="mgr"] { flex-grow: 1.15; }
@@ -424,22 +422,23 @@
     .purse { justify-content: flex-start; padding: 0 2px; }
     .back { padding: 0 8px; font-size: 15px; justify-self: start; }
     #money { font-size: 19px; transform-origin: left center; }
-    #money[data-long="1"] { font-size: 17px; }
     .goal { padding: 4px 6px; gap: 3px; }
     #goalText { font-size: 13px; line-height: 1.3; }
     #expandBtn { font-size: 13px; padding: 2px 8px; }
     /* シートは #goal の上に重ねて出す（右の列の高さが足りないため。閉じると #goal がまた見える） */
-    .sheet { grid-area: auto; grid-row: 2 / 4; grid-column: 2; width: auto; justify-self: stretch; max-height: none; min-height: 0; align-self: stretch; box-shadow: 0 0 0 1px var(--line); padding: 4px 6px 6px; gap: 4px; }
-    #sheetTitle { font-size: 15px; }
-    #sheetInfo { font-size: 13px; }
+    .sheet { grid-area: auto; grid-row: 2 / 4; grid-column: 2; width: auto; justify-self: stretch; max-height: none; min-height: 0; align-self: stretch; box-shadow: 0 0 0 1px var(--line); padding: 3px 6px 4px; gap: 3px; }
+    #sheetTitle { font-size: 14px; }
+    #sheetInfo { font-size: 12px; }
+    .buys > .buy[data-buy="mgr"] .what { font-size: 12px; }
     #sheetInfo .why { display: none; }
     .buys { gap: 4px; }
     .buys > .buy { flex: 1 1 calc(50% - 4px); }
     /* 横向きの右の列：人／台 と マネージャー を 1 行目、どうぐ（文が長い）を 2 行目に広く */
-    .buys > .buy[data-buy="level"] { order: 2; flex-basis: 100%; }
+    .buys > .buy[data-buy="level"] { order: 2; flex-basis: 100%; flex-direction: row; flex-wrap: wrap; column-gap: 8px; }
+    .buys > .buy[data-buy="level"] .what { flex-basis: 100%; }
     .buys > .buy.wide { order: 1; }
     .buys > .mgr-switch, .buys > #mgrHelp { order: 3; }
-    .buy { min-height: 46px; font-size: 13px; padding: 2px 4px; }
+    .buy { min-height: 44px; font-size: 13px; padding: 2px 4px; }
     .buy .cost { font-size: 13px; }
     .mgr-switch button { min-height: 44px; font-size: 13px; }
     .hint { grid-area: hint; align-self: stretch; justify-self: stretch; max-width: none; margin: 0; padding: 0 2px; background: transparent; min-height: 1.3em; max-height: 2.6em; font-size: 12px; font-weight: 400; color: #dbe5dc; }
