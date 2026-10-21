@@ -40,6 +40,7 @@
 
   const HINT_BROKEN = "ほぞんが よめなかったので さいしょから はじめるよ";
   const HINT_RETRY = "ひかっている ぶきを つよくして もういちど！";
+  const HINT_BLOCKED = "ほぞんが できないよ（このまま あそべるよ）";
 
   const $ = (id) => document.getElementById(id);
   const body = document.body;
@@ -48,7 +49,7 @@
 
   const el = {
     back: $("back"), title: $("gameTitle"), helpBtn: $("helpBtn"), soundBtn: $("soundBtn"),
-    kakera: $("kakera"), starLabel: $("starLabel"), starBar: $("starBar"), starFill: $("starFill"),
+    kakera: $("kakera"), starLabel: $("starLabel"), starTag: $("starTag"), starBar: $("starBar"), starFill: $("starFill"),
     field: $("field"), canvas: $("fieldCanvas"), distance: $("distance"), distanceFill: $("distanceFill"),
     weapons: $("weapons"), unlockBtn: $("unlockBtn"),
     choiceCard: $("choiceCard"), choiceA: $("choiceA"), choiceB: $("choiceB"),
@@ -113,7 +114,7 @@
   let sleeping = false;
   let rafId = 0, lastT = null, acc = 0;
   let pendingEvents = [];      // ボタンで起きた出来事（upgrade の evolve）。次のフレームで render に渡す
-  let saveCount = 0, saveBlocked = false, saveSince = 0;
+  let saveCount = 0, saveBlocked = false, saveSince = 0, saveFailTold = false;
   let best = 0;
   let hintTimer = 0, cardUnlockTimer = 0, cardShownAt = -Infinity, focusBack = null;
   let bossUntil = -1;          // ロジックの時計（state.t）でこの秒まで #bossBanner
@@ -161,7 +162,14 @@
     } catch (e) { text = raw; }
     const ok = writeKey(KEY_SAVE, text);
     if (ok) saveCount += 1;
+    else tellSaveFail();
     return ok;
+  }
+  // 保存できないことを 1 回だけ知らせる（遊ぶのは止めない。T5）
+  function tellSaveFail(delay) {
+    if (saveFailTold) return;
+    saveFailTold = true;
+    later(() => setHint(HINT_BLOCKED, 5000), delay || 0);
   }
   function writeBest(n) {
     const cur = safeCall(() => L.validateBest(readKey(KEY_BEST)), 0) || 0;
@@ -207,6 +215,8 @@
 
   // ===== 小さな道具 =====
   function setText(node, text) { if (node && node.textContent !== text) node.textContent = text; }
+  // 値が違うときだけ hidden を書く（毎フレーム書き直さない。T4）
+  function setHidden(node, v) { if (node && node.hidden !== !!v) node.hidden = !!v; }
   function setAttr(node, name, val) {
     if (!node) return;
     if (val === null) { if (node.hasAttribute(name)) node.removeAttribute(name); }
@@ -340,7 +350,7 @@
     // 星
     const info = safeCall(() => L.starInfo(s.star), null) || { tag: "", boss: false };
     setText(part(el.starLabel, "num"), "ほし " + s.star);
-    setText(part(el.starLabel, "tag"), info.tag || "");
+    setText(el.starTag, info.tag || "");
     setAttr(el.starLabel, "data-boss", info.boss ? "1" : null);
     const pr = safeCall(() => L.progressOf(s), null) || { broken: 0, distance: 1 };
     const pct = Math.max(0, Math.min(100, Math.floor(pr.broken * 100)));
@@ -358,15 +368,15 @@
       setAttr(el.distance, "data-near", near >= 80 && s.phase === "fly" ? "1" : null);
     }
     // 帯（ロジックの phase と時計で出す＝advance でも止まっていても正しい）
-    if (el.bounceBanner) el.bounceBanner.hidden = s.phase !== "bounce";
-    if (el.clearBanner) el.clearBanner.hidden = s.phase !== "clear";
-    if (el.bossBanner) el.bossBanner.hidden = !(s.phase === "fly" && s.t < bossUntil);
+    setHidden(el.bounceBanner, s.phase !== "bounce");
+    setHidden(el.clearBanner, s.phase !== "clear");
+    setHidden(el.bossBanner, !(s.phase === "fly" && s.t < bossUntil));
     // 武器の行
     for (let k = 0; k < rows.length; k++) updateRow(k);
     // あたらしい ぶき
     const sc = safeCall(() => L.slotCostOf(s), null);
     if (el.unlockBtn) {
-      el.unlockBtn.hidden = sc === null;
+      setHidden(el.unlockBtn, sc === null);
       if (sc !== null) {
         setText(part(el.unlockBtn, "cost"), fmt(sc));
         const can = s.kakera >= sc && s.phase !== "choose";
@@ -379,7 +389,7 @@
     const r = rows[k];
     if (!r.row) return;
     const x = state.slots[k];
-    r.row.hidden = !x;
+    setHidden(r.row, !x);
     if (!x) { setAttr(r.row, "data-suggest", null); return; }
     setAttr(r.row, "data-w", x.id);
     setText(r.name, wName(x.id));
@@ -394,7 +404,7 @@
       if (next - x.lv <= EVOLVE_NOTE) note = "しんか まで あと " + (next - x.lv);
     }
     setText(r.note, note);
-    if (r.note) r.note.hidden = !note;
+    setHidden(r.note, !note);
     const cost = safeCall(() => L.upCostOf(state, k), null);
     if (cost === null) {
       setAttr(r.btn, "data-max", "1");
@@ -524,6 +534,7 @@
     focusBack = document.activeElement;
     box.hidden = false;
     overlay = kind;
+    setBackInert(true);
     cardShownAt = now();
     lockCardButtons(box);
     const p = c.primary();
@@ -536,6 +547,7 @@
     const box = CARDS[kind].box();
     if (box) box.hidden = true;
     overlay = null;
+    setBackInert(false);
     unlockCardButtons();
     lastT = null; acc = 0;
     if (focusBack && document.contains(focusBack) && focusBack !== document.body) { try { focusBack.focus({ preventScroll: true }); } catch (e) { /* 無視 */ } }
@@ -546,6 +558,15 @@
     else if (state && state.phase === "choose") openCard("choose");
     else if (state && state.phase === "end") openCard("end");
     syncPhase();
+  }
+  // カードの間は裏（？・♪・場・武器の行）に Tab で移れないようにする。a#back だけは例外でいつでも押せる（T7）
+  const BACK_PARTS = [el.helpBtn, el.soundBtn, el.field, el.weapons, document.querySelector(".info"), document.querySelector(".barrow")];
+  function setBackInert(on) {
+    for (const n of BACK_PARTS) {
+      if (!n) continue;
+      if (on) { if (!n.hasAttribute("inert")) n.setAttribute("inert", ""); }
+      else if (n.hasAttribute("inert")) n.removeAttribute("inert");
+    }
   }
   function lockCardButtons(box) {
     box.querySelectorAll("button").forEach((b) => { b.setAttribute("aria-disabled", "true"); b.dataset.cardLock = "1"; });
@@ -655,7 +676,8 @@
       saveCount, calm, timers: timers.size,
       // ここから下は契約に足したもの（テスト・デバッグ用）
       logicPhase: s.phase || null, t: Number(s.t) || 0, tries: s.tries | 0, cleared: !!s.cleared, best, sleeping,
-      hint: el.hint ? el.hint.textContent : "", suggest: suggestSlot, totals: s.totals ? Object.assign({}, s.totals) : null
+      hint: el.hint ? el.hint.textContent : "", suggest: suggestSlot, totals: s.totals ? Object.assign({}, s.totals) : null,
+      view: st.view || null   // render の見せている範囲（zoom・rockPx など。§18.1 A の確かめ用）
     };
   }
   function advance(sec) {
@@ -722,17 +744,23 @@
   });
 
   // ===== デバッグ命令（?debug=1 のときだけ。§7.4） =====
-  // その星までに greedy で遊んだときの武器（自動プレイで決める。40 より先は Lv を足す）
+  // その星の始めに見合う武器（枠の数と Lv）。自動プレイ（greedy・seed 1）で星 N−1 をクリアしたときの値を表にしたもの（R2：
+  // 毎回 greedy を回すと重いので、表を引くだけにする）。武器の種類は、いま持っている武器を残し、足りない枠は ARMS_ORDER の順で足す。
+  // 表より先の星は Lv99。表の値は目安（ロジックの数値が変わっても「星に見合う」程度でよい）
+  const ARMS_LV = [
+    [1], [6], [7, 6], [8, 11, 9], [8, 14, 16], [15, 16, 19, 2], [17, 17, 23, 20], [22, 23, 24, 23], [26, 27, 28, 27], [28, 28, 33, 28],
+    [33, 34, 35, 33], [36, 37, 38, 36], [38, 38, 43, 38], [42, 42, 45, 42], [45, 46, 47, 45], [47, 48, 52, 47], [50, 52, 54, 51], [54, 55, 57, 54],
+    [56, 57, 61, 56], [58, 61, 63, 61], [64, 64, 66, 64], [66, 66, 70, 66], [68, 69, 73, 68], [72, 72, 75, 72], [75, 75, 78, 75], [77, 78, 82, 77],
+    [81, 82, 84, 81], [84, 84, 87, 84], [86, 87, 90, 86], [88, 91, 93, 88], [93, 94, 96, 94], [95, 95, 98, 95], [96, 96, 99, 96], [97, 98, 99, 97],
+    [98, 99, 99, 98]
+  ];
+  const ARMS_ORDER = ["shot", "beam", "bolt", "spread", "bomb", "fire"];
   function armsFor(n) {
-    if (n <= 1) return [{ id: "shot", lv: 1 }];
-    const upTo = Math.min(n - 1, 40);
-    const rep = safeCall(() => L.simulate("greedy", { maxStar: upTo, seed: state ? state.seed : 1, maxSec: 4 * 3600 }), null);
-    let slots = rep && rep.final && Array.isArray(rep.final.slots) ? rep.final.slots : [{ id: "shot", lv: 1 }];
-    if (n - 1 > upTo) {
-      const add = n - 1 - upTo;
-      slots = slots.map((x) => ({ id: x.id, lv: Math.min(L.LEVEL_MAX || 99, x.lv + add) }));
-    }
-    return slots;
+    const lvMax = L.LEVEL_MAX || 99;
+    const lvs = n - 1 < ARMS_LV.length ? ARMS_LV[Math.max(0, n - 1)] : [lvMax, lvMax, lvMax, lvMax];
+    const ids = state && Array.isArray(state.slots) ? state.slots.map((x) => x.id) : ["shot"];
+    for (const id of ARMS_ORDER) { if (ids.length >= lvs.length) break; if (ids.indexOf(id) < 0 && W_IDS.indexOf(id) >= 0) ids.push(id); }
+    return lvs.map((lv, k) => ({ id: ids[k] || "shot", lv: Math.min(lvMax, lv) }));
   }
   function gostar(a) {
     const n = Math.floor(Number(a && a.star));
@@ -755,6 +783,7 @@
     if (box) box.hidden = true;
     overlay = null;
     queued = null;
+    setBackInert(false);
     unlockCardButtons();
   }
   // マスを書き換えた写し（logic の state はイミュータブルなので新しいオブジェクトを作る）
@@ -854,6 +883,7 @@
         // 読めない・新しい版の保存：元を bak へ写してから新しく始める（写せなければ上書きしない＝元を消さない）
         if (!keepBroken(raw)) saveBlocked = true;
         later(() => setHint(HINT_BROKEN, 5000), 0);
+        if (saveBlocked) tellSaveFail(5000);   // 元を bak へ写せないので上書きしない＝このあと保存しない（T5）
       }
       state = safeCall(() => L.newGame((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0), null) || safeCall(() => L.newGame(1), null);
       if (!state) { console.error("ほしくだき: newGame が動きません"); return; }

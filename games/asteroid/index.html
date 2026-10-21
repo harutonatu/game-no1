@@ -16,7 +16,9 @@
 <style>
   /* 配置（契約 docs/asteroid-contract.md §5.1）
      縦向き：上から #hud（← メニュー｜題名｜？ ♪ ／ かけら・ほし ／ 壊した割合）→ #field（場。押しても何も起きない）→ #weapons（最大4行＋あたらしい ぶき）。
-     場は縦横比 360:560 を保って、残った高さに合わせて小さくなる（武器の行は削らない）。
+     場（canvas）は #field の箱いっぱいに広がり、render.js が小惑星を場の幅の 7 割前後まで寄せて描く（上の空は切る。地球・バリア・戦闘機は必ず見える。§18.1 A）。
+     低い画面（縦で高さ 620px 以下・横で高さ 300px 以下）は武器の行を 1 行構成 44px にする（§18.1 A）。
+     #hud は 3 段（← メニュー｜題名｜？ ♪ ／ かけら・ほし N ／ 壊した割合・星の札）で、札が出ても高さが変わらない（U9）。
      横向きで背が低い（高さ 500px 以下）：左に #field、右の列に #hud・#weapons。 */
   :root {
     --bg: #0e1430;
@@ -33,6 +35,9 @@
     --font-text: "Hiragino Sans", system-ui, sans-serif;
     --head-h: 44px;
     --row-h: 52px;
+    --up-w: 112px;
+    --app-gap: 4px;
+    --app-pad-y: 4px;
     color-scheme: dark;
   }
   [hidden] { display: none !important; }
@@ -59,21 +64,21 @@
   .app {
     box-sizing: border-box;
     height: 100%;
-    padding-top: max(4px, env(safe-area-inset-top, 0px));
-    padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
+    padding-top: max(var(--app-pad-y), env(safe-area-inset-top, 0px));
+    padding-bottom: max(var(--app-pad-y), env(safe-area-inset-bottom, 0px));
     padding-left: max(8px, env(safe-area-inset-left, 0px));
     padding-right: max(8px, env(safe-area-inset-right, 0px));
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr) auto;
     grid-template-areas: "hud" "field" "weapons";
-    gap: 4px;
+    gap: var(--app-gap);
     max-width: 600px;
     margin: 0 auto;
   }
 
   /* ===== #hud ===== */
-  .hud { grid-area: hud; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .hud { grid-area: hud; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .head {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -136,7 +141,7 @@
   .tool:active { filter: brightness(1.3); background: var(--panel); }
   #soundBtn[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
 
-  /* かけら・ほし の行 */
+  /* かけら・ほし の行（1 行。高さは変わらない） */
   .info { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 8px; min-width: 0; padding: 0 2px; }
   .purse { display: flex; align-items: baseline; gap: 4px; min-width: 0; white-space: nowrap; }
   #kakera { font: 900 22px/1.15 var(--font-display); color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; display: inline-block; transform-origin: left center; }
@@ -144,19 +149,19 @@
   /* render.js が粒の吸い込まれに合わせて .bump を付ける（数は main.js がロジックの値そのままで書く） */
   #kakera.bump { animation: bump 0.22s ease-out; }
   @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.12); } 100% { transform: scale(1); } }
-  #starLabel { min-width: 0; display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+  #starLabel { min-width: 0; display: flex; justify-content: flex-end; align-items: baseline; text-align: right; }
   #starLabel .num { font: 800 15px/1.2 var(--font-display); white-space: nowrap; }
-  #starLabel .tag { font: 700 12px/1.2 var(--font-text); color: var(--muted); word-break: keep-all; overflow-wrap: anywhere; }
-  #starLabel .tag:empty { display: none; }
   /* 大きな星（5 の倍数）は札を明るく。色だけに頼らず ★ も付ける */
   #starLabel[data-boss="1"] .num { color: var(--accent); }
   #starLabel[data-boss="1"] .num::before { content: "★"; }
 
-  /* 壊した割合の棒（main.js が aria-valuenow と #starFill の幅、[data-part=pct] の文字を書く） */
-  .barrow { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0 2px; }
+  /* 壊した割合の棒（main.js が aria-valuenow と #starFill の幅、[data-part=pct] の文字を書く）。
+     右に星の札 #starTag（「てつが おおい」など。空でも行の高さは同じ＝場がずれない U9） */
+  .barrow { display: flex; align-items: center; gap: 6px; min-width: 0; height: 13px; padding: 0 2px; }
+  #starTag { flex: 0 0 auto; font: 700 12px/1 var(--font-text); color: var(--muted); white-space: nowrap; }
   #starBar { flex: 1 1 auto; min-width: 40px; height: 8px; border-radius: 4px; background: #0a0f24; box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
   #starFill { display: block; height: 100%; width: 0%; border-radius: 4px; background: repeating-linear-gradient(135deg, #ffb35c 0 6px, #ff9a3c 6px 12px); transition: width 0.25s ease-out; }
-  .barrow .pct { flex: 0 0 auto; font: 700 12px/1 var(--font-text); color: var(--muted); font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
+  .barrow .pct { flex: 0 0 auto; font: 700 12px/1 var(--font-text); color: var(--muted); font-variant-numeric: tabular-nums; min-width: 2.6em; text-align: right; }
 
   /* ===== #field（場。押しても何も起きない：押す処理を付けない・pointer-events なし） ===== */
   .field {
@@ -171,16 +176,16 @@
     -webkit-user-select: none;
     user-select: none;
   }
-  /* canvas を置く箱。render.js がこの箱の大きさに 360:560 で合わせて canvas の大きさを決め、真ん中に置く。右に #distance の場所を空ける */
-  .stage { position: absolute; top: 0; bottom: 0; left: 18px; right: 18px; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  /* canvas を置く箱。render.js が canvas をこの箱いっぱいに広げ、小惑星に寄せて描く（#distance は場の右端に重ねる。小惑星は真ん中 7 割までなので重ならない） */
+  .stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
   #fieldCanvas { display: block; width: 100px; height: 156px; pointer-events: none; touch-action: manipulation; }
 
   /* 地球までの近さ（縦の棒。下ほど近い）。main.js が aria-valuenow（0〜100。100＝とどく）と #distanceFill の高さを書く */
   #distance {
     position: absolute;
-    right: 5px;
+    right: 6px;
     top: 10%;
-    bottom: 12%;
+    bottom: 14%;
     width: 8px;
     border-radius: 4px;
     background: #0a0f24;
@@ -191,9 +196,9 @@
   #distanceFill { position: absolute; left: 0; right: 0; top: 0; height: 0%; border-radius: 4px; background: linear-gradient(#7fd6ff, #ff7a5c); transition: height 0.25s linear; }
   #distance[data-near="1"] #distanceFill { animation: nearBlink 0.8s ease-in-out infinite; }
   @keyframes nearBlink { 50% { opacity: 0.45; } }
-  .dist-ic { position: absolute; right: 2px; font: 700 12px/1 var(--font-text); color: var(--muted); pointer-events: none; }
+  .dist-ic { position: absolute; right: 2px; font: 700 12px/1 var(--font-text); color: var(--muted); pointer-events: none; text-shadow: 0 0 3px #070b1f, 0 0 3px #070b1f; }
   .dist-ic.top { top: calc(10% - 15px); }
-  .dist-ic.bot { bottom: calc(12% - 15px); }
+  .dist-ic.bot { bottom: calc(14% - 15px); }
 
   /* 場の上の帯（カードではない。押せない） */
   .banner {
@@ -252,15 +257,20 @@
   .hint:empty { padding: 0; background: transparent; }
 
   /* ===== #weapons（武器の行。最大4行＋あたらしい ぶき） ===== */
-  .weapons { grid-area: weapons; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  /* 入りきらない画面だけ縦にスクロール（ふつうは全部見える。§18.1 A・U2） */
+  /* 上の 6px は 1 行目の「しんか まで あと N」の札の分（縦向きは場の下の端に重ねて、場の高さを減らさない） */
+  .weapons { grid-area: weapons; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 4px; padding-top: 6px; margin-top: -6px; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
+  .weapons > * { flex: 0 0 auto; }
   .wrow {
+    position: relative;
     box-sizing: border-box;
     min-height: var(--row-h);
+    height: var(--row-h);       /* 買える・買えないで行の高さが変わらない（場がずれない） */
     display: grid;
     grid-template-columns: 32px minmax(0, 1fr) auto;
     align-items: center;
     column-gap: 6px;
-    padding: 3px 4px 3px 6px;
+    padding: 2px 4px 2px 6px;
     border-radius: 12px;
     background: var(--panel);
     box-shadow: 0 0 0 1px var(--line);
@@ -285,18 +295,56 @@
     background-size: 26px 26px;
     box-shadow: inset 0 0 0 1px var(--line);
   }
+  /* 行の中身は 2 段（なまえ・Lv・◎・得意 ／ 1びょうに N）。どの画面でも同じ構成で、低い画面は行の高さだけ 44px に詰める */
   .winfo { min-width: 0; display: flex; flex-direction: column; gap: 0; }
   .wl1 { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; font: 800 14px/1.2 var(--font-display); }
   .wl1 .lv { font: 800 13px/1.2 var(--font-display); color: var(--gold); font-variant-numeric: tabular-nums; }
-  .wl2 { font: 700 12px/1.2 var(--font-text); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
-  .evo { font: 700 12px/1.2 var(--font-text); color: var(--gold); white-space: nowrap; }
-  .evo:empty { display: none; }
+  .wl2 { display: flex; align-items: center; gap: 4px; min-width: 0; font: 700 12px/1.2 var(--font-text); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
+  /* いまの星に合う武器の印「◎」（main.js が .wrow[data-fit="1"] を付けたときだけ見える。§18.1 C） */
+  .wrow .fit { display: none; font: 900 14px/1 var(--font-display); color: var(--good); }
+  .wrow[data-fit="1"] .fit { display: inline; }
+  /* 「しんか まで あと N」：行の右肩（ボタンの上の角）に重ねる小さな札。行の高さを変えない（U1）。押す邪魔をしない */
+  .evo {
+    position: absolute;
+    z-index: 2;
+    top: -6px;
+    right: 4px;
+    max-width: calc(var(--up-w) + 8px);
+    padding: 0 6px;
+    border-radius: 6px;
+    background: var(--gold);
+    color: #2a1f00;
+    font: 800 12px/1 var(--font-text);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .evo:empty, .evo[hidden] { display: none; }
+  /* 強くしたときの「＋12%」（main.js が [data-part=plus] に文字を書いて .show を付ける。0.8 秒。§18.1 C） */
+  .wrow .plus {
+    position: absolute;
+    z-index: 2;
+    right: calc(var(--up-w) + 10px);
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: rgba(14, 20, 48, 0.9);
+    color: var(--good);
+    font: 900 14px/1.2 var(--font-display);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .wrow .plus:empty { display: none; }
+  /* 動きを減らす設定では animation が止まるので、.show の間はそのまま見せる（main.js が 0.8 秒で .show を外す） */
+  .wrow .plus.show { opacity: 1; animation: plusUp 0.8s ease-out forwards; }
+  @keyframes plusUp { 0% { opacity: 0; transform: translateY(-30%); } 15% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-110%); } }
   .good { display: inline-flex; align-items: center; gap: 2px; font: 700 12px/1 var(--font-text); color: var(--good); }
   .good:empty { display: none; }
   .up {
     box-sizing: border-box;
     min-height: 44px;
-    width: 112px;
+    width: var(--up-w);
     padding: 2px 4px;
     border-radius: 10px;
     border: 0;
@@ -317,7 +365,8 @@
   .up .cost .unit { font: 700 12px/1.2 var(--font-text); white-space: nowrap; }
   .up .cost:has(b:empty), .up[data-max="1"] .cost { display: none; }
   .up:active:not([aria-disabled="true"]) { filter: brightness(1.15); transform: scale(0.97); }
-  .up[aria-disabled="true"] { background: #2a3360; color: var(--muted); box-shadow: inset 0 0 0 1px #4a5899; font-size: 12px; letter-spacing: -0.02em; }
+  /* 買えない間：所持／値段 の割合で左から塗る（main.js がボタンに --fill（0〜1）を書く。U5） */
+  .up[aria-disabled="true"] { background: linear-gradient(90deg, #3b4a8e calc(var(--fill, 0) * 100%), #2a3360 0); color: var(--muted); box-shadow: inset 0 0 0 1px #4a5899; font-size: 12px; letter-spacing: -0.02em; }
   .up[aria-disabled="true"] .cost { color: var(--muted); }
   .up[data-max="1"] { background: transparent; color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
   .shake { animation: shake 0.3s ease-in-out; }
@@ -458,7 +507,22 @@
     h1.title { font-size: 14px; letter-spacing: 0; }
     #kakera { font-size: 20px; }
   }
-  @media (min-width: 500px) { .up { width: 150px; } }
+  @media (min-width: 500px) { :root { --up-w: 150px; } }
+  @media (max-width: 380px) { :root { --up-w: 104px; } }
+
+  /* ===== 低い画面（SE 縦・Safari 縦／横の低い画面）：武器の行を 1 行構成 44px に詰め、場を広く（§18.1 A・U1・U2） ===== */
+  @media (orientation: portrait) and (max-height: 620px), (orientation: landscape) and (max-height: 300px) {
+    :root { --row-h: 44px; --app-gap: 2px; --app-pad-y: 2px; }
+    .weapons { gap: 2px; }
+    .wrow { padding: 0 4px 0 6px; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: 5px; border-radius: 10px; }
+    .wicon { width: 28px; height: 28px; background-size: 22px 22px; }
+    .wl1 { font-size: 14px; line-height: 1.15; }
+    .wl1 .lv { line-height: 1.15; }
+    .wl2 { line-height: 1.15; }
+    .up { min-height: 44px; height: 44px; padding: 1px 4px; line-height: 1.12; }
+    #unlockBtn { min-height: 44px; height: 44px; padding: 2px 10px; }
+    #kakera { font-size: 18px; line-height: 1.15; }
+  }
   @media (orientation: portrait) and (max-height: 620px) {
     .card { padding: 12px 14px; gap: 8px; }
     .card h2 { font-size: 19px; }
@@ -471,23 +535,21 @@
   @media (orientation: landscape) and (max-height: 500px) {
     .app {
       max-width: none;
-      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr) minmax(0, 312px);
       grid-template-rows: auto minmax(0, 1fr);
       grid-template-areas: "field hud" "field weapons";
-      gap: 3px 8px;
+      gap: var(--app-gap) 8px;
     }
-    /* 場の幅は高さから決まる（canvas 360:560 ＋ 左右の余白 = 400:560） */
-    .field { height: 100%; aspect-ratio: 396 / 560; width: auto; }
-    .stage { left: 4px; right: 18px; }
-    .hud { gap: 1px; }
+    /* 場は左の列いっぱい（render.js が小惑星に寄せて描く） */
+    .field { height: 100%; }
+    .weapons { margin-top: 0; }
+    .hud { gap: 0; }
     .head { column-gap: 4px; }
     .back { padding: 0 6px; font-size: 14px; }
     .head-tools { gap: 4px; }
     h1.title { font-size: 14px; letter-spacing: 0; }
-    .weapons { align-self: start; gap: 3px; }
-    .up { width: 124px; }
-    #kakera { font-size: 19px; }
-    #starLabel { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; column-gap: 6px; }
+    :root { --up-w: 108px; }
+    #kakera { font-size: 18px; line-height: 1.15; }
     .card { width: min(560px, 100%); padding: 8px 12px; gap: 6px; }
     .card h2 { font-size: 17px; }
     .card p { font-size: 13px; line-height: 1.4; }
@@ -504,6 +566,11 @@
     .choice-note { font-size: 12px; }
     .endpic { width: 100px; height: 78px; }
     .overlay { padding-top: calc(max(4px, env(safe-area-inset-top, 0px)) + var(--head-h) + 4px); padding-bottom: max(4px, env(safe-area-inset-bottom, 0px)); }
+  }
+
+  /* 横の低い画面（Safari 横 568×270）：行の間を詰めて、1 行目の札の 6px を空ける（行どうしは 1px の枠で区切る） */
+  @media (orientation: landscape) and (max-height: 300px) {
+    .weapons { gap: 0; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -526,11 +593,12 @@
     </div>
     <div class="info">
       <div class="purse"><b id="kakera" aria-live="off">0</b><span class="unit">かけら</span></div>
-      <div id="starLabel"><span class="num" data-part="num">ほし 1</span><span class="tag" data-part="tag"></span></div>
+      <div id="starLabel"><span class="num" data-part="num">ほし 1</span></div>
     </div>
     <div class="barrow">
       <div id="starBar" role="progressbar" aria-label="こわした わりあい" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="starFill"></span></div>
       <span class="pct" data-part="pct">0%</span>
+      <span id="starTag" class="tag" data-part="tag"></span>
     </div>
   </header>
 
@@ -549,38 +617,42 @@
     <div class="wrow" data-slot="0" data-w="shot">
       <span class="wicon" data-part="icon" aria-hidden="true"></span>
       <div class="winfo">
-        <div class="wl1"><b data-part="name">たま</b><span class="lv" data-part="lv">Lv1</span><span class="good" data-part="good"></span></div>
-        <div class="wl2" data-part="dps">1びょうに 10</div>
-        <div class="evo" data-part="note"></div>
+        <div class="wl1"><b data-part="name">たま</b><span class="lv" data-part="lv">Lv1</span><span class="fit" data-part="fit" aria-hidden="true">◎</span><span class="good" data-part="good"></span></div>
+        <div class="wl2"><span data-part="dps">1びょうに 10</span></div>
       </div>
       <button class="up" type="button" data-up="0"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost">5</b></span></button>
+      <span class="evo" data-part="note"></span>
+      <span class="plus" data-part="plus" aria-hidden="true"></span>
     </div>
     <div class="wrow" data-slot="1" hidden>
       <span class="wicon" data-part="icon" aria-hidden="true"></span>
       <div class="winfo">
-        <div class="wl1"><b data-part="name"></b><span class="lv" data-part="lv"></span><span class="good" data-part="good"></span></div>
-        <div class="wl2" data-part="dps"></div>
-        <div class="evo" data-part="note"></div>
+        <div class="wl1"><b data-part="name"></b><span class="lv" data-part="lv"></span><span class="fit" data-part="fit" aria-hidden="true">◎</span><span class="good" data-part="good"></span></div>
+        <div class="wl2"><span data-part="dps"></span></div>
       </div>
       <button class="up" type="button" data-up="1"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost"></b></span></button>
+      <span class="evo" data-part="note"></span>
+      <span class="plus" data-part="plus" aria-hidden="true"></span>
     </div>
     <div class="wrow" data-slot="2" hidden>
       <span class="wicon" data-part="icon" aria-hidden="true"></span>
       <div class="winfo">
-        <div class="wl1"><b data-part="name"></b><span class="lv" data-part="lv"></span><span class="good" data-part="good"></span></div>
-        <div class="wl2" data-part="dps"></div>
-        <div class="evo" data-part="note"></div>
+        <div class="wl1"><b data-part="name"></b><span class="lv" data-part="lv"></span><span class="fit" data-part="fit" aria-hidden="true">◎</span><span class="good" data-part="good"></span></div>
+        <div class="wl2"><span data-part="dps"></span></div>
       </div>
       <button class="up" type="button" data-up="2"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost"></b></span></button>
+      <span class="evo" data-part="note"></span>
+      <span class="plus" data-part="plus" aria-hidden="true"></span>
     </div>
     <div class="wrow" data-slot="3" hidden>
       <span class="wicon" data-part="icon" aria-hidden="true"></span>
       <div class="winfo">
-        <div class="wl1"><b data-part="name"></b><span class="lv" data-part="lv"></span><span class="good" data-part="good"></span></div>
-        <div class="wl2" data-part="dps"></div>
-        <div class="evo" data-part="note"></div>
+        <div class="wl1"><b data-part="name"></b><span class="lv" data-part="lv"></span><span class="fit" data-part="fit" aria-hidden="true">◎</span><span class="good" data-part="good"></span></div>
+        <div class="wl2"><span data-part="dps"></span></div>
       </div>
       <button class="up" type="button" data-up="3"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost"></b></span></button>
+      <span class="evo" data-part="note"></span>
+      <span class="plus" data-part="plus" aria-hidden="true"></span>
     </div>
     <button id="unlockBtn" type="button" aria-disabled="true"><span data-part="label">あたらしい ぶき</span><span class="cost"><b data-part="cost">150</b><span class="unit">かけら</span></span></button>
   </section>
