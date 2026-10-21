@@ -109,6 +109,17 @@
 
 （未着手なし。終わったものは issues-done.md）
 
+## ちきゅうを守れ！ほしくだき（games/asteroid/、ブランチ feature/asteroid-test）
+
+2026-10-21 にテスト担当（KW・MK）が見つけたもの。
+
+| 番号 | 優先度 | 内容 | 場所 | 状態 | 対応 |
+|---|---|---|---|---|---|
+| AS-T1 | 中 | iPhone SE を Safari で横持ち（568×270）にすると、武器の行の4行目と「あたらしい ぶき」が画面の下にはみ出し、見えない・押せない（3枠なら あたらしい ぶき、4枠なら4行目）。横向きは `body` が `overflow: hidden` で `#weapons` も縮まずスクロールしない。再現：SE 横・Safari の大きさで開き、`?debug=1` で 4 枠にする（`AsteroidGame.setState` で slots を 4 つ）。ホーム画面の横（568×320）は入る | games/asteroid/index.html（横向きの @media） | 未着手 | テストは KW8 の既知の不具合 K-AST1（tests/lib.mjs）。直したら KNOWN_ISSUES から外す |
+| AS-T2 | 中 | iPhone SE の Safari 縦（320×454）では、場（#fieldCanvas）が 84×132px まで小さくなる（武器の行を削らない決まり §5.1 のため）。遊びの核の「壊れていく様子を見る」が見えにくい。案：Safari 縦の低い画面だけ武器の行を 44px にする、#hud を1行にまとめる | games/asteroid/index.html | 未着手 | |
+| AS-T3 | 低 | 星 `ENDING_STAR` を Lv1 の たま で最後の1マスまで削っても、その1マスが何十秒も壊れない（硬いマスに 1 しか入らない）。ふつうに遊べば起きないが、デバッグ命令 `win` は今の武器のままなので、遅い星で `win` を使うと止まって見える。案：`win` で残すマスを いわ にする | games/asteroid/main.js（win） | 未着手 | テストは 4 枠 Lv60 にしてから win を使う |
+| AS-T4 | 低 | はね返し・クリアを `advance`（テスト用 API・`ff` 命令）で起こすと、ヒント「ひかっている ぶきを…」は出ない（advance の間は音とヒントを止める決まり）。実際に遊ぶときは出る。テストでヒントを確かめるときは実時間で待つ | games/asteroid/main.js | 未着手（仕様） | |
+
 ## テストの環境
 
 | 番号 | 優先度 | 内容 | 状態 | 対応 |
