@@ -484,6 +484,8 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | MW49 もくもくこうば：とくべつな注文の旗が保存で消える | 検出（WL8） | 検出（WL8, WW7） |
 | MW50 もくもくこうば：とくべつな注文が出ない | 検出（WL6） | 検出（WL6, WL11） |
 
+もくもくこうば v26（2026-10-21、画面とロジックの仕上げ 0ebc6ec を組み合わせた後。Chromium・`PORT=9640 WORKERS=2`、`ONLY=WL1〜WL13,WW1〜WW23`）：画面を変える既存の変異 MW3・MW9・MW20・MW21・MW28・MW30〜MW44 と MW56 の 21 個を smoke 14/21・full 21/21 で検出（見逃しなし）。smoke の見逃しは MW28・MW30・MW31・MW34・MW41〜MW43 で、前回と同じく full の WW8・WW16・WW11・WW18 で見つける設計。新しく MW3 は WW10・WW18、MW36 は WW21、MW43 は WW23、MW56 は WW22（Lv5→6 で tool を鳴らさない）でも見つかる。
+
 もくもくこうば（2026-10-21、レビュー後の直し §17 のあと。Chromium・`PORT=9640 WORKERS=2`、`ONLY=WL1〜WL11,WW1〜WW18`、10 個ずつ 5 回）：MW1〜MW50 を smoke 43/50・full 50/50 で検出。smoke の見逃しは MW28・MW30・MW31・MW34（前回と同じ）と MW41〜MW43（full の WW18 で見つける設計）。MW21 は keepBroken の書き換えで置換前の文字が変わったので直した。
 
 もくもくこうば（2026-10-21、feature/seizai の組み合わせ後・レビューの直しの前。Chromium・`PORT=9640 WORKERS=2`、`ONLY=WL1〜WL11,WW1〜WW17`、10 個ずつ 4 回）：MW1〜MW39 を smoke 35/39・full 39/39 で検出。smoke の見逃し MW28（2せき目のエンディングのカード）・MW34（pagehide のタイマー）は full の WW8・WW11、MW30・MW31（APP_FILES から外す）は full の WW16 で見つける設計（ONLY に L5 を入れれば smoke の L5 でも見つかる）。WW3 の既知の不具合 W-K1（SZ-01、capped がいつも false）は合否に含めないので、どの変異も「検出」に見えることはない。
