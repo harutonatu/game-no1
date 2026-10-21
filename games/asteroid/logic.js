@@ -21,6 +21,10 @@
  *   - 契約に無い便利な関数（足しただけ。契約の関数は変えていない）：
  *       hpMul・valMul・dmg・upCost・affOf・shapeOf・cellHp・cellValue・matOf（テストと画面の説明用）
  *   - upgrade の返り値に events（Lv10・20… に届いたら [{ kind:'evolve', slot, lv }]）を足している。
+ *   - 保存（§8.2）に「星の途中」mid { y, mats, hp } を足している（§17.1 で測って決めた。1 つの星が 3〜5 分あるため）。
+ *     makeSave が自動で入れ、loadSave が検証して戻す（main は欄を足す必要なし）。クリアの演出中（phase 'clear'）の保存は次の星。
+ *   - 数値の定数（APPROACH・MIX・EARLY_HP・HP_GROWTH2 など）も公開している（テストが式を確かめる用。画面は使わなくてよい）。
+ *   - simulate の opts に reopenEvery・reopenMid（閉じて開き直す人）と pickOrder（2択の選び方を決める）を足している（測る用）。
  *   - エンディング（phase 'end'）では星はもう 31 に進み、cleared は true。step は進まない。
  *     「このまま あそぶ」は loadSave(makeSave(state)) で星 31 の最初から fly になる（契約に専用の関数が無いため）。
  */
@@ -35,12 +39,12 @@
   // ---------------------------------------------------------------- 定数（契約 §3・§4.2）
   const NAME = "ちきゅうを守れ！ほしくだき";
   const FIELD_W = 360, FIELD_H = 560, BARRIER_Y = 470, FIGHTER_Y = 500, CELL = 14, GRID_MAX = 24;
-  const HP_BASE = 560, HP_GROWTH = 1.252, VALUE_GROWTH = 2.35, UP_GROWTH = 1.35, LEVEL_MAX = 99, SLOTS_MAX = 4;
+  const HP_BASE = 570, HP_GROWTH = 1.252, VALUE_GROWTH = 2.35, UP_GROWTH = 1.35, LEVEL_MAX = 99, SLOTS_MAX = 4;
   // エンディング（星 ENDING_STAR）より先の増え方（§17.1「星 100 まで詰まらない」。Lv の上限 99 に早く届かないよう、ゆるめる）
   const HP_GROWTH2 = 1.0, VALUE_GROWTH2 = 1.03;
   // 最初の星だけ、マスの体力をこの倍にする（星 1〜6。はじめての人がすぐ1つクリアできる。§17.1「最初の 3 星は 1.5〜3 分」。
   // 星 4 から少しずつ 1 倍へ。武器が 1〜2 つの間は強くなる速さが遅いので、ゆるやかにつなぐ）
-  const EARLY_HP = deepFreeze([0.024, 0.06, 0.07, 0.27, 0.35, 0.39, 0.58, 0.82, 0.9]);
+  const EARLY_HP = deepFreeze([0.022, 0.056, 0.063, 0.27, 0.35, 0.39, 0.58, 0.82, 0.9]);
   // マスの混ざり方（§3.2）：てつ（星 3〜9・10〜）、こおり（星 6〜）、星ごとの傾き（てつ多め／こおり多め）
   const MIX = deepFreeze({ iron: [0.25, 0.35], ice: 0.15, tilt: 0.08 });
   const SIZE_STEP = 0.48;   // 星ごとに直径が増えるマスの数（星 30 ごろに 24 マス）
