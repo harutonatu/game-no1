@@ -1,6 +1,6 @@
 /*
  * もくもくこうば — ロジック（DOM・Date・performance・Math.random・localStorage に触れない純粋な計算だけ）
- * 契約：docs/seizai-contract.md §3（経済と節目）・§4（API）・§8（保存の形と検証）
+ * 契約：docs/seizai-contract.md §3（経済と節目）・§4（API）・§8（保存の形と検証）・§19（かんそう・かんな の工程と道具の段階。§19 が §3 より優先）
  * 担当A（ロジック）だけが編集する。
  *
  * UMD: ブラウザでは window.SeizaiLogic、Node では module.exports。
@@ -59,15 +59,16 @@
     Object.freeze({ id: "carry", name: "はこぶ", kind: "staff", stage: 1, from: 1, baseTime: 8 }),
     Object.freeze({ id: "peel", name: "かわむき", kind: "line", stage: 1, from: 1, baseTime: 5 }),
     Object.freeze({ id: "beam", name: "かくざい", kind: "line", stage: 2, from: 2, baseTime: 8 }),
-    Object.freeze({ id: "dry", name: "かんそう", kind: "line", stage: 3, from: 3, baseTime: 10 }),     // §19.1：角材 → かわいた かくざい
-    Object.freeze({ id: "plank", name: "いた", kind: "line", stage: 3, from: 3, baseTime: 10 }),
+    Object.freeze({ id: "dry", name: "かんそう", kind: "line", stage: 3, from: 3, baseTime: 2 }),     // §19.1：角材 → かわいた かくざい
+    Object.freeze({ id: "plank", name: "いた", kind: "line", stage: 3, from: 3, baseTime: 2.5 }),
     Object.freeze({ id: "plane", name: "かんな", kind: "line", stage: 4, from: 4, baseTime: 5 }),     // §19.1：板 → つるつるいた
     Object.freeze({ id: "shop", name: "おみせ", kind: "staff", stage: 1, from: 1, baseTime: 3 })
   ]);
   const IDS = DEPTS.map((d) => d.id);
   const DEPT = {};
   for (const d of DEPTS) DEPT[d.id] = d;
-  const BASE_TIME = Object.freeze({ cut: 6, plant: 5, carry: 8, peel: 5, beam: 8, dry: 10, plank: 10, plane: 5, shop: 3 });
+  // 2026-10-21（§19.1.4）：dry 10→2・plank 10→2.5。こうじょう に広げた直後に 1台・Lv1 でも稼ぎが落ちないように（測った値は契約 §19.7）
+  const BASE_TIME = Object.freeze({ cut: 6, plant: 5, carry: 8, peel: 5, beam: 8, dry: 2, plank: 2.5, plane: 5, shop: 3 });
   // 段に広げて新しい台が来たときの きかい の Lv（§19.1.2。古い保存の補いにも使う）
   const START_LEVEL = Object.freeze({ dry: 1, plane: 1 });
   const PLANKS_PER_BEAM = 2;
@@ -79,16 +80,16 @@
   const CUST_EVERY = Object.freeze([4, 3, 2.5, 2]);
   const STAGE_MUL = Object.freeze([1, 1.5, 3, 6]);
   const WOOD = Object.freeze(["すぎ", "すぎ", "ひのき", "けやき"]);
-  const PRICE = Object.freeze({ peeled: 5, beams: 30, planks: 20, smooth: 30 });
+  const PRICE = Object.freeze({ peeled: 5, beams: 30, planks: 20, smooth: 60 });   // smooth 30→60（§19.1.4）
   const PRODUCT_NAME = Object.freeze({ peeled: "むきまるた", beams: "かくざい", dried: "かわいた かくざい", planks: "いた", smooth: "つるつるいた" });
   const PRODUCT_UNIT = Object.freeze({ peeled: "こ", beams: "ぽん", dried: "ぽん", planks: "まい", smooth: "まい" });
 
   const STAFF_COST = Object.freeze({ cut: 15, plant: 10, carry: 25, shop: 40 });
   const STAFF_START = Object.freeze({ cut: 1, plant: 0, carry: 1, shop: 1 });
   const STAFF_GROWTH = 1.55;
-  const LEVEL_COST = Object.freeze({ cut: 10, plant: 10, carry: 12, peel: 15, beam: 700, dry: 1500, plank: 3000, plane: 20000, shop: 20 });
+  const LEVEL_COST = Object.freeze({ cut: 10, plant: 10, carry: 12, peel: 15, beam: 700, dry: 1500, plank: 3000, plane: 1000, shop: 20 });   // plane 20000→1000（§19.1.4）
   const LEVEL_GROWTH = 1.18;
-  const LINE_COST = Object.freeze({ peel: 100, beam: 3000, dry: 10000, plank: 20000, plane: 150000 });
+  const LINE_COST = Object.freeze({ peel: 100, beam: 3000, dry: 10000, plank: 20000, plane: 10000 });   // plane 150000→10000（§19.1.4）
   const LINE_GROWTH = 5;
   const MGR_COST = Object.freeze({ cut: 300, plant: 300, carry: 400, peel: 500, beam: 8000, dry: 30000, plank: 50000, plane: 300000, shop: 1000 });
   const MGR_FAST = 1.5;
@@ -106,7 +107,7 @@
   const STAGES = Object.freeze([
     Object.freeze({ id: 1, key: "koya", name: "こや", product: "peeled", goal: 100, cost: 250, expandCost: 250 }),
     Object.freeze({ id: 2, key: "kouba", name: "こうば", product: "beams", goal: 1000, cost: 20000, expandCost: 20000 }),
-    Object.freeze({ id: 3, key: "koujou", name: "こうじょう", product: "planks", goal: 25000, cost: 500000, expandCost: 500000 }),
+    Object.freeze({ id: 3, key: "koujou", name: "こうじょう", product: "planks", goal: 48000, cost: 960000, expandCost: 960000 }),
     Object.freeze({ id: 4, key: "minato", name: "みなと", product: "smooth", goal: SHIP_BASE, cost: null, expandCost: null })
   ]);
 

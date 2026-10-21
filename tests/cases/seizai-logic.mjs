@@ -570,6 +570,17 @@ export const tests = [
       const jam3 = mk(L, 3, { depts: { ...fast3, dry: { lines: 1, level: 1 } } });
       const jam4 = { ...m4, depts: { ...m4.depts, plane: { lines: 1, level: 1, mgr: null, boostUntil: 0, cooldownUntil: 0 } } };
       check('bottleneck が dry（こうじょう・かんそう 1台 Lv1）・plane（みなと・かんな 1台 Lv1）になりうる', L.bottleneck(jam3) === 'dry' && L.bottleneck(jam4) === 'plane', [L.bottleneck(jam3), L.bottleneck(jam4)]);
+      // かんな の速さは 板 2まい ＝ 丸太 1本 に直して比べる：板の数では ほかより速いが、丸太に直すと いちばん遅い局面を探す
+      {
+        let found = null;
+        for (let lines = 1; lines <= 4 && !found; lines++) for (let lv = 1; lv <= 50 && !found; lv++) {
+          const st = { ...m4, depts: { ...m4.depts, plane: { ...m4.depts.plane, lines, level: lv, mgr: 'gain' } } };
+          const r = L.rates(st);
+          const others = Math.min(r.cut, r.carry, r.peel, r.beam, r.dry, r.plank);
+          if (r.plane / 2 < others * 0.95 && r.plane > others * 1.05) found = { st, lines, lv, plane: r.plane, others };
+        }
+        check('かんな の流れは板 2まいを丸太 1本に直して比べる（板の数では速くても、丸太に直して いちばん遅ければ bottleneck は plane）', found && L.bottleneck(found.st) === 'plane', found && { lines: found.lines, lv: found.lv, plane: found.plane, others: found.others, bn: L.bottleneck(found.st) });
+      }
       // もうかる 最大 9
       const all = {}; for (const id of IDS) all[id] = { mgr: 'gain' };
       const p4 = L.priceOf(mk(L, 4, { depts: all }));
@@ -629,7 +640,7 @@ export const tests = [
     },
   },
   {
-    id: 'WL11', tier: 'full', node: true, title: 'もくもくこうば：自動プレイ（§3.8・§3.9 の目安）greedy の節目とエンディングの時間・最初の買い物・買い物の間隔・2時間の るす・tapper との差・エンディング後の船 10 せき・idle 10 時間・daily3',
+    id: 'WL11', tier: 'full', node: true, title: 'もくもくこうば：自動プレイ（§3.8・§3.9・§19.1.4 の目安）greedy の節目とエンディングの時間・最初の買い物・買い物の間隔・節目の直後の稼ぎ・2時間の るす・tapper との差・エンディング後の船 10 せき・idle 10 時間・daily3',
     run({ check, root }) {
       const L = load(root);
       const h = (x) => (x == null ? null : +(x / 3600).toFixed(2));
@@ -646,14 +657,17 @@ export const tests = [
       // 買い物の最大の間隔（§17.2 C1。広げる費用をためる間も含む）：こや 1 分・こうば 5 分・こうじょう 15 分・みなと 25 分 以内。seed 1〜5 のどれでも
       {
         const MAXGAP = { 1: 60, 2: 5 * 60, 3: 15 * 60, 4: 25 * 60 };
-        const over = [], ends = [];
+        const over = [], ends = [], dips = [];
         for (const seed of [1, 2, 3, 4, 5]) {
           const r = seed === 1 ? g : L.simulate('greedy', { seed, away: 'none', ships: 0, maxSec: 14 * 3600 });
           ends.push(h(r.reached.end));
+          // 節目の直後（§19.1.4）：こうじょう・みなと に広げた直後 10 分の稼ぎ（えん/分）が、広げる直前の 10 分を下回らない
+          for (const k of [3, 4]) { const e = r.expandEarn && r.expandEarn[k]; if (!e || !(e.after >= e.before)) dips.push({ seed, stage: k, before: e && Math.round(e.before), after: e && Math.round(e.after) }); }
           for (const k of [1, 2, 3, 4]) if (!(r.maxGapByStage[k] <= MAXGAP[k])) over.push({ seed, stage: k, gap: Math.round(r.maxGapByStage[k]), at: Math.round(r.maxGapAtByStage[k]) });
         }
         check('買い物の最大の間隔：こや 1 分・こうば 5 分・こうじょう 15 分・みなと 25 分 以内（seed 1〜5。§17.2 C1）', over.length === 0, over);
         check(`seed 1〜5 のエンディングがどれも 6〜10 時間（${ends.join('・')} 時間）`, ends.every((x) => x >= 6 && x <= 10), ends);
+        check('こうじょう・みなと に広げた直後 10 分の稼ぎが、直前の 10 分を下回らない（seed 1〜5。§19.1.4）', dips.length === 0, dips);
       }
       const aw = [1, 2, 3, 4].map((k) => g.awayCheck[k]);
       check('2時間の るす のあと、どの段でも るすの稼ぎで 1 つ以上・起動後 5 分と合わせて 2 つ以上 買える', aw.every((a) => a && a.buyable >= 1 && a.buyable5 >= 2), aw);

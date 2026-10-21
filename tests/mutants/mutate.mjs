@@ -263,6 +263,17 @@ const M = [
   ['MW48 もくもくこうば：fastForward が 2 倍の速さで進む（advance が step と食い違う）', '計算', 'games/seizai/logic.js', '        stepMut(s, STEP, ev);\n        for (const e of ev) {\n          if (e.kind === "sold") sold += e.n;', '        stepMut(s, STEP * 2, ev);\n        for (const e of ev) {\n          if (e.kind === "sold") sold += e.n;'],
   ['MW49 もくもくこうば：とくべつな注文の旗が保存で消える', '保存', 'games/seizai/logic.js', 'need, got: intIn(r.got, 0, need - 1, 0), reward, accepted: r.accepted === true, big\n', 'need, got: intIn(r.got, 0, need - 1, 0), reward, accepted: r.accepted === true, big: false\n'],
   ['MW50 もくもくこうば：とくべつな注文が出ない', 'ルール', 'games/seizai/logic.js', 'const big = rand(s) < ORDER_BIG_RATE;', 'const big = rand(s) < 0;'],
+  // もくもくこうば v26（契約 §19.1.6。工程と道具。WL12・WL13 が見つけるはず）
+  ['MW51 もくもくこうば：かんそう を飛ばす（いた が角材を直接使う）', 'ルール', 'games/seizai/logic.js', /work\(s, "plank", dt, b\.dried, ([^\n]*)\n(\s*)b\.dried -= n;/, 'work(s, "plank", dt, b.beams, $1\n$2b.beams -= n;'],
+  ['MW52 もくもくこうば：かんな を飛ばす（みなと でも いた が売り物の山へ出る）', 'ルール', 'games/seizai/logic.js', 'const out = st === 3 ? "goods" : "planks";', 'const out = "goods";'],
+  ['MW53 もくもくこうば：古い保存（かんそう の欄が無い）で かんそう を 0台にする（こうじょう で止まり続ける）', '保存', 'games/seizai/logic.js', 'if (x.kind === "line") d.lines = open ? intIn(src.lines, 1, cap, 1) : 0;', 'if (x.kind === "line") d.lines = open && has ? intIn(src.lines, 1, cap, 1) : 0;'],
+  ['MW54 もくもくこうば：もうかる の数に かんそう・かんな を数えない（最大 7 のまま）', '計算', 'games/seizai/logic.js', 'for (const id of IDS) if (unlocked(s.stage, id) && s.depts[id].mgr === "gain") n++;', 'for (const id of IDS) if (id !== "dry" && id !== "plane" && unlocked(s.stage, id) && s.depts[id].mgr === "gain") n++;'],
+  ['MW55 もくもくこうば：toolTier の境目を >= から > に（Lv5 で道具が変わらない）', 'ルール', 'games/seizai/logic.js', 'if (level >= TOOL_LV[i]) t = i;', 'if (level > TOOL_LV[i]) t = i;'],
+  ['MW56 もくもくこうば：toolUp を きかい の Lv が上がるたびに出す', 'ルール', 'games/seizai/logic.js', 'if (tier > before) toolUp', 'if (tier >= before) toolUp'],
+  ['MW57 もくもくこうば：みなと の売り物が板のまま（つるつるいた にならない）', 'ルール', 'games/seizai/logic.js', 'product: "smooth", goal: SHIP_BASE,', 'product: "planks", goal: SHIP_BASE,'],
+  ['MW58 もくもくこうば：こうじょう に広げても かんそう の台が来ない', 'ルール', 'games/seizai/logic.js', 'if (x.kind === "line" && x.stage === s.stage && s.depts[x.id].lines < 1)', 'if (x.kind === "line" && x.stage === s.stage && x.id !== "dry" && s.depts[x.id].lines < 1)'],
+  ['MW59 もくもくこうば：つまりの判定で かんな を板の数のまま比べる（丸太に直さない）', '計算', 'games/seizai/logic.js', 'f.plane = rateOf(s, "plane") / PLANKS_PER_BEAM;', 'f.plane = rateOf(s, "plane");'],
+  ['MW60 もくもくこうば：かんな ができても totals.smooth を数えない（保存・記録が増えない）', '保存', 'games/seizai/logic.js', 's.done.plane += n; s.totals.smooth += n;', 's.done.plane += n;'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;
