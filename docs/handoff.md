@@ -28,7 +28,7 @@
 | 公開版 | `master` = c42dcbe、**v26・2026-10-21** |
 | ゲーム | 11本：ブロックパズル、ばいばいタイル、キリトリ道場、いろコード、ゼンマイさんぽ、ピカッと早押し、ハシわたり、いろびん、まとめてポン、ミチビキ空港、**もくもくこうば**（新） |
 | 関門テスト（v26 の時点、クラウド） | Chromium smoke 155/155・full 295/297（WW18・HW9）、WebKit smoke 152/153（HW4）。3件は並列のときだけ落ち、単独で各3回合格（課題 T-08）。ユーザーの承認で公開。変異：もくもくこうば MW1〜MW60（ロジック側は WL で、画面側21個は full 21/21） |
-| 作業中のブランチ | なし（公開済み）。古い GitHub のブランチ（`feature/test-headed`・`feature/michibiki` ほか）を消すかはユーザーが決める。今回の `feature/seizai*`・`feature/hashi-skip`・`feature/asteroid-plan`・`release/v25`・`release/v26` はローカルのみで push していない |
+| 作業中のブランチ | なし（公開済み）。古い GitHub のブランチ（`feature/test-headed`・`feature/michibiki` ほか）を消すかはユーザーが決める。今回の `feature/seizai*`・`feature/hashi-skip`・`feature/asteroid-plan`・`release/v25`・`feature/seizai-v26*`・`fix/seizai-naegi` はローカルのみで push していない |
 
 ## 2. この会話でやったこと（2026-10-20〜21）
 
