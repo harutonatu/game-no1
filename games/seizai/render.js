@@ -582,7 +582,37 @@
       ctx.fillStyle = op.ink || "#ffffff";
       ctx.textBaseline = "middle";
       ctx.fillText(text, lx + fz * 0.35, y + h / 2 + 0.5);
+      lastLabelW = w;
       return h;
+    }
+    let lastLabelW = 0;
+    function labelWidth(text, bold) {
+      const fz = Math.max(12.5, 9 * scale) / scale;
+      ctx.font = (bold ? "700 " : "600 ") + fz.toFixed(1) + "px " + "\"Hiragino Sans\", system-ui, sans-serif";
+      return ctx.measureText(text).width + fz * 0.7;
+    }
+    // 最初の買い物まで なえぎを光らせる（買ったものが 1 つも無い間。§17.3 B1）
+    let initDepts = null;
+    function noPurchaseYet(s) {
+      if (!initDepts) { try { initDepts = Lg().newGame(1).depts; } catch (e) { initDepts = {}; } }
+      const ds = s.depts || {};
+      for (const d in initDepts) {
+        const a = ds[d], b = initDepts[d];
+        if (!a || !b) continue;
+        if (num(a.level, 1) > num(b.level, 1) || a.mgr || num(a.staff, 0) > num(b.staff, 0) || num(a.lines, 0) > num(b.lines, 0)) return false;
+      }
+      return true;
+    }
+    // 今のお金で買えるものがある部署か（名札の「＋」。main.js の canBuyAny と同じ見方）
+    function canBuyAny(s, d) {
+      const L = Lg();
+      if (d === "goods" || typeof L.costOf !== "function") return false;
+      for (const what of ["staff", "line", "level", "mgr"]) {
+        let c = null;
+        try { c = L.costOf(s, d, what); } catch (e) { c = null; }
+        if (typeof c === "number" && Number.isFinite(c) && num(s.money, 0) >= c) return true;
+      }
+      return false;
     }
     function drawPiles(s) {
       const b = s.buf || {};
@@ -878,6 +908,11 @@
         const right = d === "carry";
         const lx = right ? z.x + z.w - 3 : z.x + 3;
         const hh = label(NAMES[d] || d, lx, z.y + 3, { bg: "rgba(20,24,30,0.7)", bold: true, right });
+        // 今のお金で買えるものがあれば、名札の横に小さな黄色の「＋」（色だけに頼らず形でも。§17.3 B8）
+        if (d !== "goods" && canBuyAny(s, d)) {
+          const nw = lastLabelW;
+          label("＋", right ? lx - nw - 3 : lx + nw + 3, z.y + 3, { bg: "#ffd84d", ink: "#2b2200", bold: true, right });
+        }
         if (d !== "goods") {
           const n = Math.floor(num(LINE_DEPTS[d] ? x.lines : x.staff, 0));
           let sub = n + (LINE_DEPTS[d] ? "だい" : "にん") + " Lv" + Math.floor(num(x.level, 1));
@@ -890,7 +925,20 @@
           if (ctx.setLineDash) ctx.setLineDash([6, 4]);
           ctx.strokeRect(z.x + 1.5, z.y + 1.5, z.w - 3, z.h - 3);
           if (ctx.setLineDash) ctx.setLineDash([]);
-          label("つまり", z.x + 3, z.y + z.h - 22, { bg: "#ffd84d", ink: "#2b2200", bold: true });
+          // 子どもに伝わる言葉（入りきらない幅では短い言葉）
+          const jamText = labelWidth("ここが おそい！", true) <= z.w - 6 ? "ここが おそい！" : "おそい！";
+          label(jamText, z.x + 3, z.y + z.h - 22, { bg: "#ffd84d", ink: "#2b2200", bold: true });
+        }
+        // 最初の一手：なえぎを「おして！」の札つきでゆっくり光らせる（動きを減らす設定では光らせず札だけ）
+        if (d === "plant" && stage === 1 && noPurchaseYet(s)) {
+          if (!calm) {
+            const pulse = 0.5 + 0.5 * Math.sin(clk * 2.6);
+            ctx.strokeStyle = "rgba(255,255,255," + (0.35 + 0.65 * pulse).toFixed(2) + ")"; ctx.lineWidth = 3.4;
+            ctx.strokeRect(z.x + 2, z.y + 2, z.w - 4, z.h - 4);
+            ctx.fillStyle = "rgba(255,216,77," + (0.05 + 0.2 * pulse).toFixed(2) + ")";
+            ctx.fillRect(z.x + 2, z.y + 2, z.w - 4, z.h - 4);
+          }
+          label("おして！", z.x + z.w / 2, z.y + z.h - 24, { center: true, bg: "#ffffff", ink: "#2b2200", bold: true });
         }
         // 応援・よびこみの残り時間（丸）
         let until = 0, total = 1, boosting = false;

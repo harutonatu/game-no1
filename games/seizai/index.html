@@ -177,7 +177,14 @@
     word-break: keep-all;
     overflow-wrap: anywhere;
     animation: glow 1.6s ease-in-out infinite;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
   }
+  #expandBtn .xcost { font: 800 13px/1.25 var(--font-display); font-variant-numeric: tabular-nums; }
+  #expandBtn .xcost:empty { display: none; }
   #expandBtn:active { filter: brightness(1.15); }
   @keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(240, 164, 58, 0.0); } 50% { box-shadow: 0 0 0 4px rgba(240, 164, 58, 0.45); } }
   #orderTag {
@@ -187,20 +194,27 @@
     box-sizing: border-box;
     padding: 2px 10px;
     border-radius: 999px;
-    background: #4a3b16;
-    box-shadow: 0 0 0 1px #8a6d1f;
+    background: var(--panel2);
+    box-shadow: 0 0 0 1px #c9a43a;
     color: var(--gold);
     font: 700 13px/1.4 var(--font-text);
     overflow-wrap: anywhere;
     border: 0;
     text-align: left;
   }
+  #orderTag .tag-note { display: block; font: 600 12px/1.35 var(--font-text); color: var(--muted); }
+  #orderTag .tag-note:empty { display: none; }
   /* まだ受けていない注文の札は押すとカードが開く（あとで閉じても いつでも受けられる §3.7）。押せる大きさ 44px */
   #orderTag[data-accepted="0"] { min-height: 44px; padding: 4px 14px; cursor: pointer; text-decoration: underline; }
   #orderTag[data-accepted="1"] { pointer-events: none; }
   /* とくべつな ちゅうもん（§17.2 C3）：札のふちを明るく（色だけに頼らず、カードの見出しの文字でも分かる） */
-  #orderTag[data-big="1"] { background: #5a2f12; box-shadow: 0 0 0 2px #f0a43a; color: #ffe08a; }
+  #orderTag[data-big="1"] { background: var(--accent); box-shadow: 0 0 0 2px var(--gold); color: var(--accent-ink); }
+  #orderTag[data-big="1"] .tag-note { color: var(--accent-ink); }
+  #orderTag[data-big="1"]::before { content: "★ "; }
+  #orderCard[data-big="1"] .card { box-shadow: 0 0 0 3px var(--accent), 0 20px 50px rgba(0, 0, 0, 0.5); }
   #orderCard[data-big="1"] #orderTitle { color: var(--gold); }
+  #orderCard[data-big="1"] #orderTitle::before { content: "★ "; }
+  #orderCard[data-big="1"] #orderTitle::after { content: " ★"; }
 
   /* ===== #scene（上下スクロール。canvas は見えている所の大きさで sticky） ===== */
   .scene {
@@ -311,6 +325,8 @@
   .mgr-switch button small { font: 600 12px/1.25 var(--font-text); opacity: 0.9; white-space: nowrap; }
   .mgr-switch button[aria-pressed="true"] { background: #f0a43a; border-color: #f0a43a; color: var(--accent-ink); }
   .mgr-switch button[aria-pressed="true"] > span::before { content: "✓ "; }
+  #mgrHelp { margin: 0; font: 600 12px/1.35 var(--font-text); color: var(--muted); word-break: keep-all; overflow-wrap: anywhere; }
+  #mgrHelp[hidden] { display: none; }
 
   /* ヒント：2行分の高さに固定し、文言が変わっても配置が動かない */
   .hint {
@@ -415,7 +431,9 @@
   .card ol.rules { margin: 0; padding-left: 1.4em; text-align: left; font: 15px/1.5 var(--font-text); display: flex; flex-direction: column; gap: 6px; word-break: keep-all; overflow-wrap: anywhere; }
   .card ul.gains { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; text-align: left; font: 700 15px/1.4 var(--font-text); }
   .card ul.gains li { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 10px; background: var(--panel2); overflow-wrap: anywhere; }
-  .card ul.gains li::before { content: "★"; color: var(--gold); flex: 0 0 auto; }
+  .card ul.gains li .gic { flex: 0 0 auto; width: 28px; height: 28px; }
+  .card ul.gains li .gtx { display: flex; flex-direction: column; min-width: 0; }
+  .card ul.gains li .gtx small { font: 600 12px/1.35 var(--font-text); color: var(--muted); }
   .card .btns { display: flex; flex-direction: column; gap: 8px; }
   .card .btns button {
     box-sizing: border-box;
@@ -484,9 +502,9 @@
     <p id="goalText">むきまるたを 100こ うろう（0/100）</p>
     <div class="goal-row">
       <div id="goalBar" role="progressbar" aria-label="めあての すすみ" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="goalFill"></span></div>
-      <button id="expandBtn" type="button" hidden>こうばに ひろげる</button>
+      <button id="expandBtn" type="button" hidden><span class="xlabel" data-part="label">こうばに ひろげる</span><span class="xcost" data-part="cost"></span></button>
     </div>
-    <button id="orderTag" type="button" hidden>ちゅうもん：いた 0/0</button>
+    <button id="orderTag" type="button" hidden><span data-part="main">ちゅうもん：いた 0/0</span><span class="tag-note" data-part="note"></span></button>
   </section>
 
   <main class="scene" id="scene" aria-label="こうば">
@@ -518,6 +536,7 @@
         <button type="button" id="mgrFast" aria-pressed="true" hidden><span>はやい</span><small>はやさ 1.5ばい</small></button>
         <button type="button" id="mgrGain" aria-pressed="false" hidden><span>もうかる</span><small>ねだん ＋25%</small></button>
       </div>
+      <p class="wide" id="mgrHelp" hidden>おそい ばしょは『はやい』、ほかは『もうかる』が おとく（いつでも むりょうで きりかえ）</p>
     </div>
   </section>
 
@@ -530,8 +549,8 @@
     <h2 id="helpTitle">あそびかた</h2>
     <ol class="rules">
       <li>もりから おみせまで、みんなが はたらいて おかねが たまるよ。</li>
-      <li>ばしょを おすと、ひとを ふやしたり きかいを よくしたり できるよ。おすと すこし がんばるよ。</li>
-      <li>とじていても はんぶんの はやさで 2じかん まで はたらくよ。めあてを たっせいすると おみせが おおきく なるよ。</li>
+      <li>ひかっている ばしょを おして、ひとを ふやそう。まずは なえぎ！</li>
+      <li>とじていても はんぶんの はやさで 2じかん まで はたらくよ。めあてを たっせいすると おみせが おおきく なって、こうばからは ちゅうもんも くるよ。</li>
     </ol>
     <div class="btns"><button type="button" id="helpOk" class="primary">わかった</button></div>
   </div>
@@ -561,8 +580,9 @@
 <div class="overlay" id="orderCard" role="dialog" aria-modal="true" aria-labelledby="orderTitle" hidden>
   <div class="card">
     <h2 id="orderTitle">おおぐちの ちゅうもん</h2>
+    <p class="small" id="orderWho"></p>
     <p id="orderText"></p>
-    <p class="small" id="orderNote">きげんは ないよ。あとでも うけられるよ</p>
+    <p class="small" id="orderNote">うけると、できた いたは ちゅうもんに さきに はいるよ。きげんは ないよ</p>
     <div class="btns">
       <button type="button" id="orderAccept" class="primary">うける</button>
       <button type="button" id="orderLater">あとで</button>

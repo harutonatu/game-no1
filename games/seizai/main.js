@@ -42,10 +42,34 @@
   const DEPT_NAME_FALLBACK = { cut: "きこり", plant: "なえぎ", carry: "はこぶ", peel: "かわむき", beam: "かくざい", plank: "いた", shop: "おみせ" };
   const STAGE_NAME_FALLBACK = ["こや", "こうば", "こうじょう", "みなと"];
   // 節目のカードに出す「増えたもの」（3 つまで。§3.6）
+  // icon は ICONS の名前（小さな絵。文字だけにしない。§17.3 B9）、sub は一言の説明
   const STAGE_NEWS = {
-    2: ["かくざいの だい", "マネージャー", "おおぐちの ちゅうもん"],   // 大口の注文は こうば から（§17.2 C2）
-    3: ["いたの だい", "ひのき", "かぐやさん"],
-    4: ["けやき", "ふねの しょうにん", "おおきな ふねの ちゅうもん"]
+    2: [
+      { icon: "beam", text: "かくざいの だい", sub: "まるたから かくざいを つくるよ" },
+      { icon: "flag", text: "マネージャー", sub: "（はやく する・ねだんを あげる）" },
+      { icon: "order", text: "おおぐちの ちゅうもん", sub: "こうばから ちゅうもんが くるよ" }   // 大口の注文は こうば から（§17.2 C2）
+    ],
+    3: [
+      { icon: "plank", text: "いたの だい", sub: "かくざいから いたを つくるよ" },
+      { icon: "tree", text: "ひのき", sub: "たかく うれるよ" },
+      { icon: "person", text: "かぐやさん", sub: "たくさん かってくれるよ" }
+    ],
+    4: [
+      { icon: "ship", text: "おおきな ふねの ちゅうもん", sub: "とどけると ゴール！" },
+      { icon: "person", text: "ふねの しょうにん", sub: "いっぱい かってくれるよ" },
+      { icon: "tree", text: "けやき", sub: "もっと たかく うれるよ" }
+    ]
+  };
+  // 節目のカードに添える小さな絵（24x24。静的な文字列だけ）
+  const SVG_HEAD = '<svg class="gic" viewBox="0 0 24 24" aria-hidden="true" focusable="false">';
+  const ICONS = {
+    beam: SVG_HEAD + '<rect x="3" y="8" width="18" height="8" rx="1" fill="#d9a95f"/><rect x="3" y="8" width="18" height="2.4" fill="#f0d39a"/><circle cx="19" cy="12" r="2" fill="#a97b3c"/></svg>',
+    plank: SVG_HEAD + '<rect x="3" y="5" width="18" height="3.6" fill="#f0d39a"/><rect x="3" y="10.2" width="18" height="3.6" fill="#e7c48c"/><rect x="3" y="15.4" width="18" height="3.6" fill="#f0d39a"/></svg>',
+    flag: SVG_HEAD + '<rect x="5" y="3" width="2.4" height="19" fill="#f2f5ef"/><path d="M7.4 4 L20 8.5 L7.4 13 Z" fill="#f0a43a"/></svg>',
+    order: SVG_HEAD + '<rect x="3" y="6" width="18" height="13" rx="2" fill="#f2f5ef"/><path d="M3.5 7 L12 14 L20.5 7" fill="none" stroke="#34483b" stroke-width="2"/><circle cx="19" cy="6" r="3.4" fill="#ffd84d"/></svg>',
+    tree: SVG_HEAD + '<rect x="10.6" y="15" width="2.8" height="6" fill="#8a5a2b"/><path d="M12 2 L19 12 H15 L20 17 H4 L9 12 H5 Z" fill="#5fb54f"/></svg>',
+    person: SVG_HEAD + '<circle cx="12" cy="7.5" r="4" fill="#f1c27d"/><path d="M4.5 21 Q4.5 12.5 12 12.5 Q19.5 12.5 19.5 21 Z" fill="#3d6fb6"/></svg>',
+    ship: SVG_HEAD + '<path d="M2 15 H22 L19 20 H5 Z" fill="#7a2e2e"/><rect x="11.4" y="3" width="1.6" height="12" fill="#f2f5ef"/><path d="M13.6 4 L19.5 13 H13.6 Z" fill="#f8f4ea"/><path d="M1 21.5 Q4 20 7 21.5 T13 21.5 T19 21.5 T25 21.5" fill="none" stroke="#3d8fc4" stroke-width="1.6"/></svg>'
   };
   // 部署の「1ぷんに ○」の単位（plank は 角材1本 → 板 PLANKS_PER_BEAM 枚 なので、その倍にして「まい」。数は logic の値）
   const PLANKS_PER_BEAM = Number.isFinite(L.PLANKS_PER_BEAM) ? L.PLANKS_PER_BEAM : 1;
@@ -55,6 +79,8 @@
   const HINT_MONEY = "おかねが たりないよ";
   const HINT_MAX = "これいじょう ふやせないよ";
   const HINT_MGR_LOCKED = "こうばに なると やとえるよ";
+  const ORDER_MONEY_NOTE = "ちゅうもん ちゅう：おかねは おれいで まとめて";
+  const HINT_STUCK_FOREST = "きこりが きを まっているよ。なえぎを おして ふやそう";
   const HINT_BROKEN = "ほぞんが よめなかったので さいしょから はじめるよ";
 
   const now = () => performance.now();
@@ -122,6 +148,8 @@
   let stageCardTimer = 0;
   let focusBack = null;
   let sheetDept = null;        // 開いているシートの部署
+  let orderIntroPending = false; // 最初の注文が シートを開いている間に来た（シートを閉じたらカードを開く）
+  let forestHinted = false;    // 森が止まっているヒントを出した（止まりが直るまで 1 回だけ）
   let wallLast = Date.now();   // 最後に動いていた実際の時刻（閉じた間を測るだけに使う）
   let lastAway = null;         // 最後の catchUp の report
   let saveCount = 0;
@@ -131,6 +159,7 @@
   let hintTimer = 0;
   let lastLayoutKey = "";
   let zonesCache = [];
+  let layoutInfo = null;       // render.layout の返り値（scale など。みなとへのスクロールに使う）
   let shownStage = 0;
   let lastUi = {};             // DOM に書いた値（同じなら書かない）
   let best = 0;
@@ -182,6 +211,20 @@
     const sec = safeCall(() => L.awaySeconds(from, to), 0) || 0;
     if (sec >= OFFLINE_CAP_SEC) { const raw = (to - from) / 1000; if (Number.isFinite(raw) && raw > sec) return raw; }
     return sec;
+  }
+  // なえぎが 0 人で、切れる木が尽きて森が止まっている
+  function forestStuck() {
+    if (!state || !state.depts || !state.depts.plant || !state.forest) return false;
+    return (state.depts.plant.staff | 0) === 0 && Math.floor(Number(state.forest.trees) || 0) < 1;
+  }
+  // 今のお金で買えるものがある部署（名札の「＋」と読み上げ。render.js の印と同じ見方。§17.3 B8）
+  function canBuyAny(d) {
+    if (!state || d === "goods" || deptUnlock(d) > state.stage) return false;
+    for (const what of ["staff", "line", "level", "mgr"]) {
+      const c = safeCall(() => L.costOf(state, d, what), null);
+      if (Number.isFinite(c) && state.money >= c) return true;
+    }
+    return false;
   }
   const goalReached = (g) => !!(g && Number.isFinite(g.done) && Number.isFinite(g.need) && g.need > 0 && g.done >= g.need && g.kind !== "ship");
 
@@ -304,7 +347,7 @@
         case "order":
           sfx.play("order");
           saveNow();
-          openCard("order");
+          announceOrder();
           break;
         case "delivered":
           sfx.play("deliver", state && state.stage === 4 ? "ship" : undefined);   // みなとでは船で届ける（トラック・船の演出は render.frame が events から出す）
@@ -332,6 +375,13 @@
       }
     }
   }
+  // 注文が来た：最初の 1 回だけカードを自動で開く。2 回目からは札と #hint だけ。シートを開いている間は開かない（閉じたら開く。§17.3 B5）
+  function announceOrder() {
+    const first = state && (state.orderSeq | 0) <= 1;
+    if (first) {
+      if (sheetDept) orderIntroPending = true; else openCard("order");
+    } else setHint(state && state.order && state.order.big ? "とくべつな ちゅうもんが きたよ" : "ちゅうもんが きたよ", 4000);
+  }
   function bump(node) {
     if (!node || calm) return;
     node.classList.remove("bump");
@@ -353,9 +403,23 @@
     // 閉じている間に起きたこと（注文が来た・エンディング・船が出た）
     if (!before.cleared && state.cleared) { writeBest(5); cardQueueAdd("end"); }
     else if ((state.ships | 0) > (before.ships | 0)) bump(el.shipCount);
-    if (state.order && !state.order.accepted && (!before.order || before.order.id !== state.order.id)) cardQueueAdd("order");
-    if ((Number(rep.seconds) || 0) >= AWAY_CARD_MIN_SEC) openCard("away");
-    else flushCards();
+    if (state.order && !state.order.accepted && (!before.order || before.order.id !== state.order.id)) {
+      if ((state.orderSeq | 0) <= 1) { if (sheetDept) orderIntroPending = true; else cardQueueAdd("order"); }
+      else setHint("ちゅうもんが きたよ", 4000);
+    }
+    if ((Number(rep.seconds) || 0) >= AWAY_CARD_MIN_SEC) {
+      // 注文のカードが開いているときは、おかえり を先に出して、注文は後ろに戻す（遊び方・節目・エンディングの間は今のまま待たせる。§17.3 B6）
+      if (overlay === "order") {
+        const box = CARDS.order.box(), fb = focusBack;
+        if (box) box.hidden = true;
+        overlay = null;
+        unlockCardButtons();
+        cancel(cardUnlockTimer);
+        openCard("away");
+        focusBack = fb;
+        cardQueueAdd("order");
+      } else openCard("away");
+    } else flushCards();
     saveNow();
     R_call("frame", state, [], 0);
     updateUi();
@@ -447,9 +511,19 @@
     if (!sleeping) setPhase("play");
     const fb = focusBack; focusBack = null;
     if (fb && fb.isConnected && fb !== document.body && !(box && box.contains(fb))) { try { fb.focus({ preventScroll: true }); } catch (e) { /* 無視 */ } }
+    if (kind === "stage" && state && state.stage === 4) showHarbor();
     flushCards();
     updateUi();
     return true;
+  }
+  // みなと（4 段目）に着いたら、節目のカードを閉じたあと #scene を船の位置までゆっくりスクロールして海を見せる（動きを減らす設定では一瞬で。§17.3 B9）
+  const HARBOR_SHIP_Y = 880;   // 世界の座標（actors.js geometry の harbor.seaY）
+  function showHarbor() {
+    if (!el.scene) return;
+    const scale = layoutInfo && Number.isFinite(layoutInfo.scale) ? layoutInfo.scale : (el.scene.clientWidth || 360) / 360;
+    const maxTop = Math.max(0, el.scene.scrollHeight - el.scene.clientHeight);
+    const top = Math.max(0, Math.min(maxTop, Math.round(HARBOR_SHIP_Y * scale - el.scene.clientHeight * 0.65)));
+    try { el.scene.scrollTo({ top, behavior: calm ? "auto" : "smooth" }); } catch (e) { el.scene.scrollTop = top; }
   }
   function flushCards() {
     if (overlay || !cardQueue.length) return;
@@ -461,7 +535,7 @@
     if (kind === "away") {
       const r = lastAway || { earned: 0, sold: 0, capped: false };
       const p = PRODUCT[productOf(state ? state.stage : 1)] || PRODUCT.peeled;
-      setText(el.awayText, `おかえり！ るすの あいだに ${yen(r.earned)} かせいだよ`);
+      setText(el.awayText, `るすの あいだに ${yen(r.earned)} かせいだよ`);   // 「おかえり！」は見出し #awayTitle だけ（SZ-02。読み上げで二重にしない）
       setText($("awayNote"), r.capped ? "2じかん いじょう たったので 2じかんぶん だよ" : "とじている あいだは はんぶんの はやさで、2じかん まで はたらくよ");
       setText($("awaySold"), `うった ${p[0]}：${Math.max(0, Math.floor(Number(r.sold) || 0)).toLocaleString("ja-JP")}${p[1]}`);
       if (!$("awayNote") && el.awayText) {
@@ -475,23 +549,36 @@
       const list = $("stageList");
       if (list) {
         list.textContent = "";
-        for (const s of news) { const li = document.createElement("li"); li.textContent = s; list.append(li); }
+        for (const it of news) {
+          const li = document.createElement("li");
+          if (ICONS[it.icon]) li.insertAdjacentHTML("afterbegin", ICONS[it.icon]);
+          const tx = document.createElement("span");
+          tx.className = "gtx";
+          tx.append(it.text);
+          if (it.sub) { const sm = document.createElement("small"); sm.textContent = it.sub; tx.append(sm); }
+          li.append(tx);
+          list.append(li);
+        }
       }
       const txt = $("stageText");
-      if (txt) txt.textContent = news.length ? "ふえたもの：" + news.join("・") : "";
+      if (txt) txt.textContent = news.length ? "ふえたもの：" + news.map((it) => it.text).join("・") : "";
     } else if (kind === "order") {
       const o = state && state.order;
       if (!o) return;
       const p = PRODUCT[productOf(state.stage)] || PRODUCT.planks;
       setText($("orderTitle"), o.big ? "とくべつな ちゅうもん" : "おおぐちの ちゅうもん");
       if (el.orderCard) el.orderCard.dataset.big = o.big ? "1" : "0";
-      setText($("orderText"), `${o.who || "おきゃくさん"}：${p[0]} ${num(o.need)}${p[1]} → おれい ${yen(o.reward)}`);
+      setText($("orderWho"), `${o.who || "おきゃくさん"}から`);
+      setText($("orderText"), `${p[0]} ${num(o.need)}${p[1]} とどけると、おれい ${yen(o.reward)}`);
+      setText($("orderNote"), `うけると、できた ${p[0]}は ちゅうもんに さきに はいるよ。きげんは ないよ`);
     } else if (kind === "end") {
       const s = state || {};
       const t = Math.max(0, Math.floor(Number(s.t) || 0));
       const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60);
       const planks = s.totals ? Math.floor(Number(s.totals.planks) || 0) : 0;
-      setText($("endText"), `おおきな ふねが でたよ！ あそんだ じかん ${h}じかん${m}ふん・つくった いた ${num(planks)}まい`);
+      // 見出し #endTitle「おおきな ふねが でたよ！」と重ならない本文（SZ-02 と同じ直し）。数えているのは つくった いた（totals.planks）
+      setText($("endText"), "ありがとう！ みなとまで そだったね");
+      setText($("endStats"), `あそんだ じかん ${h}じかん${m}ふん・つくった いた ${num(planks)}まい`);
     }
   }
   const num = (n) => Math.max(0, Math.floor(Number(n) || 0)).toLocaleString("ja-JP");
@@ -566,6 +653,10 @@
     delete el.sheet.dataset.dept;
     el.sheet.classList.remove("open");
     el.sheet.hidden = true;
+    if (orderIntroPending) {
+      orderIntroPending = false;
+      if (state && state.order && !state.order.accepted && !overlay) openCard("order");
+    }
     return true;
   }
   function setBtn(btn, label, price, disabled, reason) {
@@ -609,9 +700,12 @@
     const perMin = rate * 60 * mul;
     const perMinText = perMin < 10 ? (Math.floor(perMin * 10) / 10).toString() : Math.floor(perMin).toLocaleString("ja-JP");
     const jam = bottleneck() === d;
-    setText($("sheetInfo"), unlocked ? `1ぷんに ${perMinText}${unit}${jam ? "。ここが つまっているよ" : ""}` : `${stageName(deptUnlock(d))}に なると つかえるよ`);
+    const stuck = forestStuck() && (d === "cut" || d === "plant");   // なえぎが 0 人で森の木が尽きている
+    setText($("sheetInfo"), !unlocked ? `${stageName(deptUnlock(d))}に なると つかえるよ`
+      : stuck ? "もりの きが たりないよ。なえぎを ふやすと きが そだつよ"
+      : `1ぷんに ${perMinText}${unit}${jam ? "。ここが おそいよ" : ""}`);
     const sheetRate = $("sheetRate"); if (sheetRate) setText(sheetRate, unlocked ? `1ぷんに ${perMinText}${unit}` : "");
-    const sheetJam = $("sheetJam"); if (sheetJam) { setText(sheetJam, jam ? "ここが つまっているよ" : ""); sheetJam.hidden = !jam; }
+    const sheetJam = $("sheetJam"); if (sheetJam) { setText(sheetJam, jam ? "ここが おそいよ" : ""); sheetJam.hidden = !jam; }
     el.sheet.dataset.jam = jam ? "1" : "0";
     const info = $("sheetInfo"); if (info) info.dataset.jam = jam ? "1" : "0";   // CSS は #sheetInfo[data-jam="1"]（§17.1 A9）
     const q = (w) => el.sheet.querySelector(`[data-buy="${w}"]`);
@@ -640,6 +734,7 @@
       b.hidden = !showMgr;
       b.setAttribute("aria-pressed", String(ds.mgr === k));
     }
+    const mh = $("mgrHelp"); if (mh) mh.hidden = !showMgr;   // 雇ったあとだけ、使い分けの考えどころを 1 行
   }
   function doBuy(dept, what, btn) {
     if (!state) return { ok: false, reason: "locked" };
@@ -775,25 +870,29 @@
         el.expandBtn.hidden = !reached;
         if (reached) {
           const c = expandCost(st);
-          const label = c === null ? `${stageName(st + 1)}に ひろげる` : `${stageName(st + 1)}に ひろげる（${yen(c)}）`;
-          const lab = el.expandBtn.querySelector("[data-part=label]");
-          if (lab) setText(lab, label); else setText(el.expandBtn, label);
+          // ラベルと値段は別の行（SE 縦でボタンが 2 行に割れても崩れない。§17.3 B11）
+          const lab = el.expandBtn.querySelector("[data-part=label]"), cst = el.expandBtn.querySelector("[data-part=cost]");
+          if (lab && cst) { setText(lab, `${stageName(st + 1)}に ひろげる`); setText(cst, c === null ? "" : yen(c)); }
+          else setText(el.expandBtn, c === null ? `${stageName(st + 1)}に ひろげる` : `${stageName(st + 1)}に ひろげる（${yen(c)}）`);
           if (can) el.expandBtn.removeAttribute("aria-disabled"); else el.expandBtn.setAttribute("aria-disabled", "true");
         }
       }
     }
     if (el.orderTag) {
       const o = state.order;
-      let t = "";
+      let t = "", note = "";
       if (o) {
         const p = PRODUCT[productOf(st)] || PRODUCT.planks;
-        t = o.accepted ? `ちゅうもん：${p[0]} ${num(o.got)}/${num(o.need)}` : "ちゅうもんが きたよ（おしてね）";
+        const name = o.big ? "とくべつな ちゅうもん" : "ちゅうもん";   // 色だけに頼らず、文字でも分かる（§17.3 B4）
+        t = o.accepted ? `${name}：${p[0]} ${num(o.got)}/${num(o.need)}` : `${name}が きたよ（おしてね）`;
+        if (o.accepted) note = ORDER_MONEY_NOTE;   // 受けている間は お金が止まる（できた しなは ちゅうもんへ）
       }
-      const okey = t + (o && o.big ? "|big" : "");
+      const okey = t + "|" + note + (o && o.big ? "|big" : "");
       if (lastUi.order !== okey) {
         lastUi.order = okey;
         el.orderTag.hidden = !t;
-        setText(el.orderTag, t);
+        const mainPart = el.orderTag.querySelector("[data-part=main]"), notePart = el.orderTag.querySelector("[data-part=note]");
+        if (mainPart) { setText(mainPart, t); setText(notePart, note); } else setText(el.orderTag, t);
         el.orderTag.dataset.accepted = o && o.accepted ? "1" : "0";
         el.orderTag.dataset.big = o && o.big ? "1" : "0";
         if (o && o.accepted) { el.orderTag.setAttribute("tabindex", "-1"); el.orderTag.setAttribute("aria-disabled", "true"); }   // 受けた後は数を見せるだけ
@@ -805,9 +904,12 @@
       const t = n >= 1 ? `とどけた ふね ${num(n)} せき` : "";
       if (lastUi.ships !== t) { lastUi.ships = t; el.shipCount.hidden = n < 1; setText(el.shipCount, t); el.shipCount.dataset.value = String(n); }
     }
+    const stuck = forestStuck();
+    if (stuck && !forestHinted && !sleeping) { forestHinted = true; setHint(HINT_STUCK_FOREST, 5000); }
+    else if (!stuck) forestHinted = false;
     updateZones();
     if (sheetDept) {
-      const key = [sheetDept, state.money, st, JSON.stringify(state.depts && state.depts[sheetDept]), bottleneck(), Math.floor((Number(ratesOf()[sheetDept]) || 0) * 600)].join("|");
+      const key = [sheetDept, stuck, state.money, st, JSON.stringify(state.depts && state.depts[sheetDept]), bottleneck(), Math.floor((Number(ratesOf()[sheetDept]) || 0) * 600)].join("|");
       if (lastUi.sheetKey !== key) { lastUi.sheetKey = key; renderSheet(); }
     }
   }
@@ -821,6 +923,7 @@
     lastLayoutKey = key;
     const res = R_call("layout", state.stage, w, h);
     zonesCache = res && Array.isArray(res.zones) ? res.zones : [];
+    layoutInfo = res && typeof res === "object" ? res : null;
     placeZones();
   }
   function placeZones() {
@@ -865,7 +968,7 @@
         const ds = state.depts && state.depts[d];
         if (!ds || deptUnlock(d) > state.stage) label = `${deptName(d)}：${stageName(deptUnlock(d))}に なると つかえるよ`;
         else {
-          label = `${deptName(d)}：${countOf(d)}${isLineDept(d) ? "だい" : "にん"}。${jam === d ? "つまっているよ。" : ""}おすと がんばるよ`;
+          label = `${deptName(d)}：${countOf(d)}${isLineDept(d) ? "だい" : "にん"}。${jam === d ? "ここが おそいよ。" : ""}${canBuyAny(d) ? "かえるものが あるよ。" : ""}おすと がんばるよ`;
           const left = (Number(ds.cooldownUntil) || 0) - t;
           cool = left > 0 ? Math.min(1, left / (L.BOOST_COOLDOWN || 15)) : 0;
           boost = (Number(ds.boostUntil) || 0) > t ? 1 : 0;
