@@ -1403,7 +1403,7 @@
         updateUi(true);
         return { money: state.money, text: yen(state.money) };
       }, { desc: "お金を足す（MONEY_MAX まで）", args: "{ yen }" });
-      D.command("gostage", (a) => gostage(a && a.stage), { desc: "その段の始めへ飛ぶ（人・台は上限の半分、きかい Lv10）", args: "{ stage }（1〜4）" });
+      D.command("gostage", (a) => gostage(a && a.stage), { desc: "その段の始めへ飛ぶ（人・台は上限の半分、どうぐ Lv10）", args: "{ stage }（1〜4）" });
       D.command("neworder", () => {
         if (!state || state.stage < (L.ORDER_FROM_STAGE || 2)) throw new Error("こうば から");
         if (state.order) throw new Error("もう ちゅうもんが でている");
