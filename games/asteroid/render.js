@@ -395,7 +395,7 @@
         absorbed(1);
       }
       const a = rnd() * Math.PI * 2, sp = calm ? 0 : (40 + rnd() * 90) * (spread || 1);
-      particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - (calm ? 0 : 20), age: 0, home: calm ? 0.0001 : 0, sx: 0, sy: 0, dur: calm ? 0.5 : 0.6, col, size: 2 + rnd() * 1.6 });
+      particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - (calm ? 0 : 20), age: 0, home: calm ? 0.0001 : 0, sx: 0, sy: 0, dur: calm ? 0.5 : 0.6, col, size: 2.6 + rnd() * 1.8 });
       const p = particles[particles.length - 1];
       if (calm) { p.sx = x; p.sy = y; }
     }
@@ -831,7 +831,7 @@
     }
     function drawFighter() {
       const x = fighterX, y = fighterY + recoil;
-      const sc = 1 + (calm ? 0.15 : 0.35) * pulse;
+      const sc = 1.3 * (1 + (calm ? 0.15 : 0.35) * pulse);   // 少し大きめに描く（小さな画面でも形が分かる）
       ctx.save();
       ctx.translate(x, y);
       ctx.scale(sc, sc);
