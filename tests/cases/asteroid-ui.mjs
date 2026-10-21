@@ -123,6 +123,25 @@ const LINES_OF = (sel) => {
 };
 // 武器を n 枠・Lv lv にする文（setL 用）。武器の id は WEAPONS の順から読む（決め打ちしない）
 const ARMS = (n, lv) => `l.slots = L.WEAPONS.slice(0, ${n}).map((w) => ({ id: w.id, lv: ${lv} })); l.offer = null;`;
+// logic の state から、ゲームと同じ STEP で step を回して先を読む（決定的なので、そのあと advance で同じ所へ行ける）。
+// until(s, p, evs) が true になった step までの数 n と、途中の出来事（milestone・clear・bounce）を返す。見つからなければ null
+const predict = (p, until, maxSec = 120) => p.evaluate(([until, maxSec]) => {
+  const L = window.AsteroidLogic, f = new Function('s', 'p', 'evs', 'return (' + until + ');');
+  let s = window.AsteroidGame.logic();
+  const evs = [];
+  for (let n = 1; n <= Math.round(maxSec / L.STEP); n++) {
+    const r = L.step(s, L.STEP);
+    if (!r) return null;
+    s = r.state;
+    for (const e of r.events) if (['milestone', 'clear', 'bounce', 'ending'].includes(e.kind)) evs.push(e);
+    if (f(s, L.progressOf(s), evs)) return { n, evs, s };
+  }
+  return null;
+}, [until, maxSec]);
+// 星の上から、こわした割合が frac をこえない一番近い所までマスを消す文（setL 用。区切りの直前にする）
+const BREAK_BELOW = (frac) => `const T = l.rock.total; let k = l.rock.total - l.rock.left; for (let i = 0; i < l.rock.mats.length && (k + 1) / T < ${frac}; i++) if (l.rock.mats[i]) { l.rock.mats[i] = 0; l.rock.hp[i] = 0; k++; }`;
+// 秒 →「3ぷん20びょう」「45びょう」「1じかん5ふん」（クリアの帯の書き方。契約 §18.1 C の例「3ぷん12びょう」）
+const fmtT = (sec) => { const t = Math.max(1, Math.round(sec)); const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), r = t % 60; return h > 0 ? `${h}じかん${m}ふん` : m > 0 ? `${m}ぷん${r}びょう` : `${r}びょう`; };
 
 export const tests = [
   // ================= smoke =================
@@ -494,6 +513,124 @@ export const tests = [
       r.endOpen = await frozen(page, async () => { await dbg(page, 'win'); return advUntil(page, 'end', { step: 1 / 30, maxSec: 60, key: 'overlay' }); });
       await go('end');
       check('遊んでいる途中・遊び方・2択・はね返し・クリア・エンディングのどれからも a#back が見えて押せ、メニューが開く', Object.values(r).length === 11 && Object.values(r).every(Boolean), r);
+      await ctx.close();
+    },
+  },
+
+  {
+    id: 'KW18', tier: 'smoke', title: 'ほしくだき 区切り（§18.1 B）：こわした割合が 25% をこえた step で #msBanner（「…こわした！」・「＋N かけら」、N は milestone の bonus＝floor(星の value×MILESTONE_BONUS)）・かけらに足す・ms に 25、1 秒で消える。はね返しのあとの挑戦では同じ区切りをもらい直せない（帯なし・ms のまま）、まだの区切り（50%）はもらえる。ms は保存され、壊れた ms（重複・知らない値・文字）は直して読む',
+    async run({ browser, check, root }) {
+      const L = logicOf(root);
+      const { ctx, page } = await openK(browser, 'KW18', { v: SMOKE_V(), debug: true });
+      const p25 = L.MILESTONES[0], p50 = L.MILESTONES[1];
+      const banner = () => page.evaluate(() => { const b = document.querySelector('#msBanner'); return { shown: !!b && !b.hidden && b.getBoundingClientRect().width > 0, main: b && b.querySelector('[data-part="main"]').textContent.trim(), sub: b && b.querySelector('[data-part="sub"]').textContent.trim() }; });
+      // 25% の直前まで こわし、区切りをこえる step まで先を読んで advance で同じ所へ
+      await setL(page, `${BREAK_BELOW(p25 / 100)} l.ms = [];`);
+      const r = await frozen(page, async () => {
+        const a = await lg(page);
+        const pr = await predict(page, `p.broken >= ${p25 / 100}`, 60);
+        if (!pr) return { a, pr };
+        await adv(page, pr.n * L.STEP);
+        return { a, pr, b: await lg(page), bn: await banner() };
+      });
+      if (!r.pr) throw new Error('60 秒で 25% をこえない');
+      const ms1 = r.pr.evs.filter((e) => e.kind === 'milestone');
+      const bonus = Math.floor(r.a.rock.value * L.MILESTONE_BONUS);
+      check(`25% をこえた step の出来事 milestone ${JSON.stringify(ms1)}：pct ${p25}・bonus = floor(星の value ${r.a.rock.value} × ${L.MILESTONE_BONUS}) = ${bonus}`, ms1.length === 1 && ms1[0].pct === p25 && ms1[0].bonus === bonus && bonus > 0, ms1);
+      check(`#msBanner が出る（「${r.bn && r.bn.main}」「${r.bn && r.bn.sub}」＝「＋${L.formatKakera(bonus)} かけら」）、ms ${JSON.stringify(r.b && r.b.ms)}、かけら ${r.a.kakera} → ${r.b && r.b.kakera}（おまけ ${bonus} 以上ふえる）`,
+        !!r.b && r.bn.shown && /こわした！$/.test(r.bn.main) && r.bn.sub === `＋${L.formatKakera(bonus)} かけら` && JSON.stringify(r.b.ms) === JSON.stringify([p25]) && r.b.kakera - r.a.kakera >= bonus, { bn: r.bn, ms: r.b && r.b.ms });
+      // 1 秒（ロジックの時計）で消える
+      const h = await frozen(page, async () => { await adv(page, 1.1); return { bn: await banner(), l: await lg(page) }; });
+      check(`区切りの帯は 1 秒で消える（ロジックの時計で 1.1 秒後 ${h.bn.shown ? '出ている' : '消えた'}・ms ${JSON.stringify(h.l.ms)}）`, h.l.ms.length > 1 || !h.bn.shown, h);
+      // はね返し → 同じ星の次の挑戦：25% はもらい直せない、50% はもらえる
+      const bo = await frozen(page, async () => { await dbg(page, 'lose'); const ok = await advUntil(page, 'bounce', { step: 1 / 30, maxSec: 20 }); await adv(page, L.BOUNCE_SEC + 0.1); return { ok, l: await lg(page) }; });
+      await setL(page, BREAK_BELOW(p25 / 100));
+      const r2 = await frozen(page, async () => {
+        const a = await lg(page);
+        const pr = await predict(page, `p.broken >= ${p25 / 100}`, 60);
+        if (!pr) return { a, pr };
+        await adv(page, pr.n * L.STEP);
+        return { a, pr, b: await lg(page), bn: await banner() };
+      });
+      if (!r2.pr) throw new Error('やり直しのあと 60 秒で 25% をこえない');
+      check(`はね返し（tries ${bo.l.tries}・ms ${JSON.stringify(bo.l.ms)}）のあと、もう一度 25% をこえても区切りは出ない（出来事 ${JSON.stringify(r2.pr.evs)}・帯 ${r2.bn.shown}・ms ${JSON.stringify(r2.b.ms)}）`,
+        bo.ok && bo.l.phase === 'fly' && bo.l.tries === r.a.tries + 1 && JSON.stringify(bo.l.ms) === JSON.stringify([p25]) && r2.pr.evs.every((e) => e.kind !== 'milestone') && !r2.bn.shown && JSON.stringify(r2.b.ms) === JSON.stringify([p25]), { bo: { ok: bo.ok, tries: bo.l.tries, ms: bo.l.ms }, evs: r2.pr.evs, bn: r2.bn });
+      await setL(page, BREAK_BELOW(p50 / 100));
+      const r3 = await frozen(page, async () => {
+        const a = await lg(page);
+        const pr = await predict(page, `p.broken >= ${p50 / 100}`, 60);
+        if (!pr) return { a, pr };
+        await adv(page, pr.n * L.STEP);
+        return { a, pr, b: await lg(page), bn: await banner(), raw: await stored(page, 'asteroid.save') };
+      });
+      if (!r3.pr) throw new Error('60 秒で 50% をこえない');
+      const ms3 = r3.pr.evs.filter((e) => e.kind === 'milestone');
+      check(`まだもらっていない ${p50}% はもらえる（出来事 ${JSON.stringify(ms3)}・帯「${r3.bn.main}」「${r3.bn.sub}」・ms ${JSON.stringify(r3.b.ms)}）`, ms3.length === 1 && ms3[0].pct === p50 && r3.bn.shown && r3.bn.sub === `＋${L.formatKakera(ms3[0].bonus)} かけら` && JSON.stringify(r3.b.ms) === JSON.stringify([p25, p50]), { ms3, bn: r3.bn, ms: r3.b.ms });
+      const sv = JSON.parse(r3.raw);
+      check(`ms は保存に入る（asteroid.save の ms ${JSON.stringify(sv.ms)}）`, JSON.stringify(sv.ms) === JSON.stringify([p25, p50]), sv.ms);
+      // 壊れた ms：重複・知らない値・文字・配列でない → 捨てて直す（mid は消して星の最初から）
+      const rows = [];
+      for (const [bad, want] of [[[p50, p25, p25, 99, String(p25)], [p25, p50]], ['25', []], [{ 0: 25 }, []], [[-25, 0, 100, 25.5], []]]) {
+        await gotoK(page, { 'asteroid.save': JSON.stringify({ ...sv, mid: undefined, ms: bad }) });
+        const l = await lg(page);
+        rows.push({ bad, ms: l.ms, ok: JSON.stringify(l.ms) === JSON.stringify(want) && l.star === sv.star && (await gs(page)).phase === 'fly' });
+      }
+      check(`壊れた ms は直して読む（${rows.map((x) => `${JSON.stringify(x.bad)}→${JSON.stringify(x.ms)}`).join(' ／ ')}）、星はそのまま`, rows.every((x) => x.ok), rows);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'KW19', tier: 'smoke', title: 'ほしくだき クリアの帯（§18.1 C）：clear の出来事の time（いまの挑戦の始めから）・best・distance・bonus から、#clearBanner に「3ぷん20びょう・はじめて」／「…・ベスト！」／「…・ベスト N」、「ちきゅうまで あと N%」、「＋N かけら」。ベスト時間は速いときだけ bestT に入り asteroid.save に保存、壊れた bestT（キーが整数でない・0・負・文字・大きすぎ）は捨てて 0.1 秒に丸めて読む',
+    async run({ browser, check, root }) {
+      const L = logicOf(root);
+      const { ctx, page } = await openK(browser, 'KW19', { v: SMOKE_V(), debug: true });
+      const parts = () => page.evaluate(() => { const b = document.querySelector('#clearBanner'); const q = (n) => b.querySelector(`[data-part="${n}"]`).textContent.trim(); return { shown: !b.hidden && b.getBoundingClientRect().width > 0, main: q('main'), time: q('time'), dist: q('dist'), sub: q('sub') }; });
+      // win で 1 マスにして、clear の出来事まで先を読み、advance で同じ所へ
+      const clearOnce = (prep) => frozen(page, async () => {
+        if (prep) await setL(page, prep);
+        await dbg(page, 'win');
+        const a = await lg(page);
+        const pr = await predict(page, `evs.some((e) => e.kind === 'clear')`, 60);
+        if (!pr) return { a, pr };
+        await adv(page, pr.n * L.STEP);
+        return { a, pr, ev: pr.evs.find((e) => e.kind === 'clear'), b: await lg(page), ui: await parts(), raw: await stored(page, 'asteroid.save') };
+      });
+      const want = (ev) => ({
+        main: `ほし ${ev.star} クリア！`,
+        time: `${fmtT(ev.time)}・${ev.best === null ? 'はじめて' : ev.time < ev.best ? 'ベスト！' : `ベスト ${fmtT(ev.best)}`}`,
+        dist: Math.round(ev.distance * 100) >= 1 ? `ちきゅうまで あと ${Math.round(ev.distance * 100)}%` : 'ちきゅうの すぐ そばだった！',
+        sub: ev.bonus > 0 ? `＋${L.formatKakera(ev.bonus)}かけら` : '',
+      });
+      // 1 回目：いまの挑戦は 200 秒前から（tryAt）、ベストなし → 「3ぷん20びょう・はじめて」
+      const r1 = await clearOnce('l.t = 1000; l.tryAt = 800; l.bestT = {};');
+      if (!r1.pr) throw new Error('win のあと 60 秒でクリアにならない');
+      const w1 = want(r1.ev), star = r1.ev.star;
+      check(`clear の出来事 ${JSON.stringify(r1.ev)}：time はいまの挑戦の始め（tryAt）から 200 秒あまり・best は null`, r1.ev.time >= 200 && r1.ev.time < 260 && r1.ev.best === null && r1.ev.distance > 0 && r1.ev.distance <= 1, r1.ev);
+      check(`#clearBanner「${r1.ui.main}」「${r1.ui.time}」「${r1.ui.dist}」「${r1.ui.sub}」が出来事どおり（${w1.time}・${w1.dist}・${w1.sub}）`, r1.ui.shown && r1.ui.main === w1.main && r1.ui.time === w1.time && r1.ui.dist === w1.dist && r1.ui.sub === w1.sub, { ui: r1.ui, w1 });
+      const sv1 = JSON.parse(r1.raw);
+      check(`ベスト時間を保存（bestT ${JSON.stringify(r1.b.bestT)}・asteroid.save の bestT ${JSON.stringify(sv1.bestT)}）`, r1.b.bestT[star] === r1.ev.time && sv1.bestT && sv1.bestT[star] === r1.ev.time, { b: r1.b.bestT, sv: sv1.bestT });
+      // 2 回目：前のベストより速い → 「ベスト！」・bestT が速いほうへ
+      await adv(page, L.CLEAR_SEC + 0.2);
+      const r2 = await clearOnce(`l.star = ${star}; delete l.rock; l.bestT = { ${star}: 99999 };`);
+      const w2 = r2.ev && want(r2.ev);
+      check(`前のベスト 99999 秒より速い（${r2.ev && r2.ev.time} 秒）と「${r2.ui && r2.ui.time}」（${w2 && w2.time}）・bestT が ${r2.b && r2.b.bestT[star]} に`, !!r2.ev && r2.ev.star === star && r2.ev.best === 99999 && r2.ui.time === w2.time && /ベスト！$/.test(r2.ui.time) && r2.b.bestT[star] === r2.ev.time, { ev: r2.ev, ui: r2.ui });
+      // 3 回目：前のベスト（0.1 秒）より遅い → 「ベスト 1びょう」・bestT は変えない
+      await adv(page, L.CLEAR_SEC + 0.2);
+      const r3 = await clearOnce(`l.star = ${star}; delete l.rock; l.bestT = { ${star}: 0.1 };`);
+      const w3 = r3.ev && want(r3.ev);
+      check(`前のベスト 0.1 秒より遅い（${r3.ev && r3.ev.time} 秒）と「${r3.ui && r3.ui.time}」（${w3 && w3.time}）・bestT は 0.1 のまま（${r3.b && r3.b.bestT[star]}）`, !!r3.ev && r3.ev.best === 0.1 && r3.ui.time === w3.time && r3.b.bestT[star] === 0.1, { ev: r3.ev, ui: r3.ui });
+      // 壊れた bestT
+      const base = JSON.parse(r3.raw);
+      const bad = { 1: 12.34, '07': 5, 0: 3, 2: -1, 3: 'x', 4: 1e8, 5: 0.04, 6: null, 10000: 5, 7: 0, '8.5': 3, 9: 1e7 };
+      await gotoK(page, { 'asteroid.save': JSON.stringify({ ...base, mid: undefined, bestT: bad }) });
+      const lb = await lg(page);
+      const wantB = { 1: 12.3, 5: 0.1, 9: 1e7 };
+      check(`壊れた bestT（${JSON.stringify(bad)}）は捨てて丸める → ${JSON.stringify(lb.bestT)}、星（${lb.star}）はそのまま、落ちない`, JSON.stringify(lb.bestT) === JSON.stringify(wantB) && lb.star === base.star && (await gs(page)).phase === 'fly', { got: lb.bestT, wantB });
+      for (const raw of ['"abc"', '[1,2]', '42', 'null']) {
+        await gotoK(page, { 'asteroid.save': JSON.stringify({ ...base, mid: undefined }).replace(/"bestT":\{[^}]*\}/, `"bestT":${raw}`) });
+        const l = await lg(page);
+        if (JSON.stringify(l.bestT) !== '{}' || l.star !== base.star) { check(`bestT が ${raw} の保存は {} で読む`, false, l.bestT); break; }
+      }
       await ctx.close();
     },
   },
@@ -878,6 +1015,47 @@ export const tests = [
       }
       check(`素早い2回タップで拡大しない（${Object.entries(res).map(([k, v]) => `${k}:${v.scale}`).join(' / ')}）`, Object.values(res).every((v) => v.scale === 1), res);
       check('場の2回タップで logic が変わらない', res['#fieldCanvas'].same === true, res);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'KW20', tier: 'full', title: 'ほしくだき 星に合う武器（§18.1 C・U6）：starInfo(star).main が てつ・こおり の星では、WEAPONS の good がそれと同じ武器の行だけに ◎（.wrow[data-fit="1"]）、いわ だけの星（main null）では どの行にも付かない。2択カードの冒頭 #choiceLead は「この ほしは てつが おおいよ」／いわ だけなら MATS の from から「つぎの ほしから …」「ほし N から … が でてくるよ」、候補のボタンの data-fit も同じ決まり。gostar の表で星の始めの武器になる',
+    async run({ browser, check, root }) {
+      const L = logicOf(root);
+      const { ctx, page } = await openK(browser, 'KW20', { debug: true });
+      const find = (main) => { for (let n = 2; n <= 60; n++) if (L.starInfo(n).main === main) return n; return 0; };
+      const nIron = find('iron'), nIce = find('ice');
+      let nNone2 = 0; for (let n = 2; n <= 10 && !nNone2; n++) if (L.starInfo(n).main === null) nNone2 = n;
+      if (!nIron || !nIce) throw new Error(`starInfo で てつ・こおり の星が見つからない（${nIron}・${nIce}）`);
+      const matName = (id) => L.MATS.find((m) => m.id === id)?.name;
+      const leadWant = (n) => {
+        const main = L.starInfo(n).main;
+        if (main) return `この ほしは ${matName(main)}が おおいよ`;
+        const nx = L.MATS.filter((m) => (m.id === 'iron' || m.id === 'ice') && m.from > n).sort((a, b) => a.from - b.from)[0];
+        return nx ? `${nx.from === n + 1 ? 'つぎの ほしから ' : `ほし ${nx.from} から `}${nx.name}が でてくるよ` : '';
+      };
+      const rows = [];
+      for (const n of [1, nNone2, nIron, nIce].filter(Boolean)) {
+        const main = L.starInfo(n).main;
+        // 4 枠（WEAPONS の前から 4 つ）：◎ の行
+        await setL(page, `l.star = ${n}; delete l.rock; ${ARMS(4, 5)}`);
+        const fit = await page.evaluate(() => [...document.querySelectorAll('.wrow[data-fit="1"]')].filter((e) => !e.hidden).map((e) => Number(e.dataset.slot)));
+        const fitWant = L.WEAPONS.slice(0, 4).map((w, k) => (main && w.good === main ? k : -1)).filter((k) => k >= 0);
+        // 1 枠にして 2択を開く：#choiceLead と候補の data-fit
+        await setL(page, `l.star = ${n}; delete l.rock; l.slots = [{ id: 'shot', lv: 1 }]; l.offer = null; l.kakera = L.slotCostOf(l);`);
+        const u = await page.evaluate(() => window.AsteroidGame.unlock());
+        await wait(page, 50);
+        const c = await page.evaluate(() => { const lead = document.querySelector('#choiceLead'); return { lead: lead.hidden ? '' : lead.textContent.trim(), fits: ['#choiceA', '#choiceB'].map((s) => document.querySelector(s).getAttribute('data-fit')) }; });
+        const offer = (await gs(page)).offer || [];
+        const fitsWant = offer.map((id) => (main && L.WEAPONS.find((w) => w.id === id).good === main ? '1' : '0'));
+        rows.push({ n, main, fit, fitWant, lead: c.lead, leadWant: leadWant(n), fits: c.fits, fitsWant, ok: u.ok && JSON.stringify(fit) === JSON.stringify(fitWant) && c.lead === leadWant(n) && JSON.stringify(c.fits) === JSON.stringify(fitsWant) && (main ? fitWant.length > 0 : fitWant.length === 0) && c.lead !== '' });
+        await page.evaluate(() => window.AsteroidGame.choose(0));
+      }
+      check(`◎ と 2択の案内が星の札どおり（${rows.map((r) => `ほし${r.n}(${r.main || 'いわ'})：◎ ${JSON.stringify(r.fit)}・「${r.lead}」・候補 ${r.fits.join('/')}`).join(' ／ ')}）`, rows.length >= 3 && rows.every((r) => r.ok), rows);
+      // gostar：星の始めに見合う武器（表）
+      const g = await dbg(page, 'gostar', { star: nIron });
+      const gl = await lg(page);
+      check(`gostar ${nIron} で ほし ${gl.star} の最初（こわした割合 ${L.progressOf(gl).broken}）・武器 ${JSON.stringify(gl.slots)}（Lv1 より強い）`, g.star === nIron && gl.star === nIron && L.progressOf(gl).broken === 0 && gl.slots.length >= 2 && gl.slots.every((x) => x.lv > 1) && gl.phase === 'fly', { g, slots: gl.slots });
       await ctx.close();
     },
   },
