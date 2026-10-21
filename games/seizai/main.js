@@ -233,16 +233,16 @@
     }
   }
   // [待つ理由, 次にすること]（どちらも無ければ null）
-  function waitParts(d) {
+  // bn：つまりの部署（呼ぶ側が 1 回だけ求めて渡す。bottleneck は state を写すので毎回呼ばない）
+  function waitParts(d, bn) {
     if (!state || deptUnlock(d) > state.stage || countOf(d) < 1 || !waitSeen[d]) return null;
-    const bn = bottleneck();
     if (bn === d) return null;
     const why = waitSeen[d].kind === "out" ? "おきばが いっぱいだよ" : WAIT_WHY[d] || "まっているよ";
     const fix = !bn ? "" : d === "plant" && bn === "cut" ? "きこりを ふやすと うえられるよ" : `${deptName(bn)}を ふやそう`;
     return [why, fix];
   }
-  function waitAdvice(d) {
-    const w = waitParts(d);
+  function waitAdvice(d, bn) {
+    const w = waitParts(d, bn);
     return !w ? "" : w[1] ? `${w[0]}。${w[1]}` : w[0];
   }
   // 今のお金で買えるものがある部署（名札の「＋」と読み上げ。render.js の印と同じ見方。§17.3 B8）
@@ -727,10 +727,11 @@
     const [unit, mul] = RATE_UNIT[d] || ["こ", 1];
     const perMin = rate * 60 * mul;
     const perMinText = perMin < 10 ? (Math.floor(perMin * 10) / 10).toString() : Math.floor(perMin).toLocaleString("ja-JP");
-    const jam = bottleneck() === d;
+    const bnS = bottleneck();
+    const jam = bnS === d;
     const stuck = forestStuck() && (d === "cut" || d === "plant");   // なえぎが 0 人で森の木が尽きている
-    const wp = unlocked && !stuck && !jam ? waitParts(d) : null;
-    const waitTxt = wp ? waitAdvice(d) : "";
+    const wp = unlocked && !stuck && !jam ? waitParts(d, bnS) : null;
+    const waitTxt = wp ? (wp[1] ? `${wp[0]}。${wp[1]}` : wp[0]) : "";
     const infoEl = $("sheetInfo");
     if (wp && infoEl) {
       // 待つ理由は span.why（横向きで背が低い画面では隠し、次にすることだけ出す。吹き出しが理由を見せている）
@@ -944,9 +945,10 @@
     if (stuck && !forestHinted && !sleeping) { forestHinted = true; setHint(HINT_STUCK_FOREST, 5000); }
     else if (!stuck) forestHinted = false;
     trackWait();
-    updateZones();
+    const bnNow = bottleneck();
+    updateZones(bnNow);
     if (sheetDept) {
-      const key = [sheetDept, stuck, waitAdvice(sheetDept), state.money, st, JSON.stringify(state.depts && state.depts[sheetDept]), bottleneck(), Math.floor((Number(ratesOf()[sheetDept]) || 0) * 600)].join("|");
+      const key = [sheetDept, stuck, waitAdvice(sheetDept, bnNow), state.money, st, JSON.stringify(state.depts && state.depts[sheetDept]), bnNow, Math.floor((Number(ratesOf()[sheetDept]) || 0) * 600)].join("|");
       if (lastUi.sheetKey !== key) { lastUi.sheetKey = key; renderSheet(); }
     }
   }
@@ -988,10 +990,10 @@
     el.scene.querySelectorAll(".zone[data-dept]").forEach((b) => { if (!seen.has(b)) b.hidden = true; });
     lastUi.zones = "";
   }
-  function updateZones() {
+  function updateZones(bnIn) {
     if (!el.scene || !state) return;
     const t = Number(state.t) || 0;
-    const jam = bottleneck();
+    const jam = bnIn !== undefined ? bnIn : bottleneck();
     el.scene.querySelectorAll(".zone[data-dept]").forEach((b) => {
       const d = b.dataset.dept;
       let label, cool = 0, boost = 0;
@@ -1005,7 +1007,7 @@
         const ds = state.depts && state.depts[d];
         if (!ds || deptUnlock(d) > state.stage) label = `${deptName(d)}：${stageName(deptUnlock(d))}に なると つかえるよ`;
         else {
-          const wt = jam === d ? "" : waitAdvice(d);
+          const wt = jam === d ? "" : waitAdvice(d, jam);
           label = `${deptName(d)}：${countOf(d)}${isLineDept(d) ? "だい" : "にん"}。${jam === d ? "ここが おそいよ。" : ""}${wt ? wt + "。" : ""}${canBuyAny(d) ? "かえるものが あるよ。" : ""}おすと がんばるよ`;
           const left = (Number(ds.cooldownUntil) || 0) - t;
           cool = left > 0 ? Math.min(1, left / (L.BOOST_COOLDOWN || 15)) : 0;
