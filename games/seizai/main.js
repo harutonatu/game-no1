@@ -38,8 +38,9 @@
   const OFFLINE_CAP_SEC = Number.isFinite(L.OFFLINE_CAP_SEC) ? L.OFFLINE_CAP_SEC : 7200;
   const CARD_PRIORITY = ["help", "away", "end", "stage", "order"];
 
-  const DEPT_IDS = ["cut", "plant", "carry", "peel", "beam", "plank", "shop"];
-  const DEPT_NAME_FALLBACK = { cut: "きこり", plant: "なえぎ", carry: "はこぶ", peel: "かわむき", beam: "かくざい", plank: "いた", shop: "おみせ" };
+  // 流れの順（§19.1.1）。かんそう は こうじょう から、かんな は みなと から
+  const DEPT_IDS = ["cut", "plant", "carry", "peel", "beam", "dry", "plank", "plane", "shop"];
+  const DEPT_NAME_FALLBACK = { cut: "きこり", plant: "なえぎ", carry: "はこぶ", peel: "かわむき", beam: "かくざい", dry: "かんそう", plank: "いた", plane: "かんな", shop: "おみせ" };
   const STAGE_NAME_FALLBACK = ["こや", "こうば", "こうじょう", "みなと"];
   // 節目のカードに出す「増えたもの」（3 つまで。§3.6）
   // icon は ICONS の名前（小さな絵。文字だけにしない。§17.3 B9）、sub は一言の説明
@@ -51,19 +52,21 @@
     ],
     3: [
       { icon: "plank", text: "いたの だい", sub: "かくざいから いたを つくるよ" },
-      { icon: "tree", text: "ひのき", sub: "たかく うれるよ" },
-      { icon: "person", text: "かぐやさん", sub: "たくさん かってくれるよ" }
+      { icon: "dry", text: "かんそうの だい", sub: "きを かわかすよ" },   // §19.4
+      { icon: "tree", text: "ひのき", sub: "たかく うれるよ" }
     ],
     4: [
       { icon: "ship", text: "おおきな ふねの ちゅうもん", sub: "とどけると ゴール！" },
-      { icon: "person", text: "ふねの しょうにん", sub: "いっぱい かってくれるよ" },
-      { icon: "tree", text: "けやき", sub: "もっと たかく うれるよ" }
+      { icon: "plane", text: "かんなの だい", sub: "つるつるに するよ" },   // §19.4
+      { icon: "person", text: "ふねの しょうにん", sub: "いっぱい かってくれるよ" }
     ]
   };
   // 節目のカードに添える小さな絵（24x24。静的な文字列だけ）
   const SVG_HEAD = '<svg class="gic" viewBox="0 0 24 24" aria-hidden="true" focusable="false">';
   const ICONS = {
     beam: SVG_HEAD + '<rect x="3" y="8" width="18" height="8" rx="1" fill="#d9a95f"/><rect x="3" y="8" width="18" height="2.4" fill="#f0d39a"/><circle cx="19" cy="12" r="2" fill="#a97b3c"/></svg>',
+    dry: SVG_HEAD + '<rect x="3" y="4" width="2.2" height="17" fill="#8a5a2b"/><rect x="18" y="4" width="2.2" height="17" fill="#8a5a2b"/><rect x="3" y="4" width="17" height="2" fill="#8a5a2b"/><rect x="7" y="8" width="3" height="13" fill="#e8bf72" transform="rotate(-12 8.5 14)"/><rect x="12" y="8" width="3" height="13" fill="#e8bf72" transform="rotate(-12 13.5 14)"/><circle cx="20" cy="4" r="3" fill="#ffcf33"/></svg>',
+    plane: SVG_HEAD + '<rect x="2" y="15" width="20" height="4" fill="#fbe9c4"/><rect x="3" y="16" width="18" height="1" fill="#ffffff"/><rect x="7" y="9" width="10" height="6" rx="1" fill="#b07a3a"/><path d="M18 12 q4 -1 3 3 q-1 2 -3 0" fill="none" stroke="#f0d296" stroke-width="1.4"/></svg>',
     plank: SVG_HEAD + '<rect x="3" y="5" width="18" height="3.6" fill="#f0d39a"/><rect x="3" y="10.2" width="18" height="3.6" fill="#e7c48c"/><rect x="3" y="15.4" width="18" height="3.6" fill="#f0d39a"/></svg>',
     flag: SVG_HEAD + '<rect x="5" y="3" width="2.4" height="19" fill="#f2f5ef"/><path d="M7.4 4 L20 8.5 L7.4 13 Z" fill="#f0a43a"/></svg>',
     order: SVG_HEAD + '<rect x="3" y="6" width="18" height="13" rx="2" fill="#f2f5ef"/><path d="M3.5 7 L12 14 L20.5 7" fill="none" stroke="#34483b" stroke-width="2"/><circle cx="19" cy="6" r="3.4" fill="#ffd84d"/></svg>',
@@ -73,8 +76,15 @@
   };
   // 部署の「1ぷんに ○」の単位（plank は 角材1本 → 板 PLANKS_PER_BEAM 枚 なので、その倍にして「まい」。数は logic の値）
   const PLANKS_PER_BEAM = Number.isFinite(L.PLANKS_PER_BEAM) ? L.PLANKS_PER_BEAM : 1;
-  const RATE_UNIT = { cut: ["ぽん", 1], plant: ["ほん", 1], carry: ["ぽん", 1], peel: ["ぽん", 1], beam: ["ぽん", 1], plank: ["まい", PLANKS_PER_BEAM], shop: ["にん", 1] };
-  const PRODUCT = { peeled: ["むきまるた", "こ"], beams: ["かくざい", "ぽん"], planks: ["いた", "まい"] };
+  const RATE_UNIT = { cut: ["ぽん", 1], plant: ["ほん", 1], carry: ["ぽん", 1], peel: ["ぽん", 1], beam: ["ぽん", 1], dry: ["ぽん", 1], plank: ["まい", PLANKS_PER_BEAM], plane: ["まい", PLANKS_PER_BEAM], shop: ["にん", 1] };
+  // 品の名前と単位（logic の PRODUCT_NAME・PRODUCT_UNIT を先に使う。無いときの控え）
+  const PRODUCT_FALLBACK = { peeled: ["むきまるた", "こ"], beams: ["かくざい", "ぽん"], dried: ["かわいた かくざい", "ぽん"], planks: ["いた", "まい"], smooth: ["つるつるいた", "まい"] };
+  const PRODUCT = {};
+  for (const k of Object.keys(PRODUCT_FALLBACK)) {
+    const n = L.PRODUCT_NAME && typeof L.PRODUCT_NAME[k] === "string" && L.PRODUCT_NAME[k] ? L.PRODUCT_NAME[k] : PRODUCT_FALLBACK[k][0];
+    const u = L.PRODUCT_UNIT && typeof L.PRODUCT_UNIT[k] === "string" && L.PRODUCT_UNIT[k] ? L.PRODUCT_UNIT[k] : PRODUCT_FALLBACK[k][1];
+    PRODUCT[k] = [n, u];
+  }
 
   const HINT_MONEY = "おかねが たりないよ";
   const HINT_MAX = "これいじょう ふやせないよ";
@@ -161,6 +171,7 @@
   let zonesCache = [];
   let layoutInfo = null;       // render.layout の返り値（scale など。みなとへのスクロールに使う）
   let shownStage = 0;
+  let lastTool = null;         // 最後に変わった道具 { dept, tier, name }（§19.3.3）
   let lastUi = {};             // DOM に書いた値（同じなら書かない）
   let best = 0;
 
@@ -205,7 +216,9 @@
   const goalOf = () => (state ? safeCall(() => L.goalOf(state), null) : null);
   const ratesOf = () => (state ? safeCall(() => L.rates(state), {}) || {} : {});
   const bottleneck = () => (state ? safeCall(() => L.bottleneck(state), null) : null);
-  const productOf = (stage) => safeCall(() => L.productOf(stage), null) || (stage >= 3 ? "planks" : stage === 2 ? "beams" : "peeled");
+  const productOf = (stage) => safeCall(() => L.productOf(stage), null) || (stage >= 4 ? "smooth" : stage === 3 ? "planks" : stage === 2 ? "beams" : "peeled");
+  // 道具（logic の toolOf。名前の表は logic だけが持つ §19.2.1）：{ tier, name, next: null | { name, lv } } | null
+  const toolOf = (d) => (state && typeof L.toolOf === "function" ? safeCall(() => L.toolOf(state, d), null) : null);
   // 閉じていた秒（awaySeconds）。上限に着いたときは切る前の秒を返し、catchUp が 7200 に丸めて capped を立てる（§17.1 A1・SZ-01）
   function awayFor(from, to) {
     const sec = safeCall(() => L.awaySeconds(from, to), 0) || 0;
@@ -219,7 +232,9 @@
   }
   // 前の工程が遅くて待っている部署の、待つ理由と次にすること（なえぎ「きりかぶ まち」など。§18・SZ-03）
   // actors.js の waitOf（人の「待つ」姿と同じ見方）。ちらつかないよう、待たなくなってから 1.5 秒（ゲームの時間）は出したまま
-  const WAIT_WHY = { cut: "きる きが まだ ないよ", plant: "きりかぶが まだ ないよ", carry: "まるたが まだ ないよ", peel: "まるたが まだ こないよ", beam: "むきまるたが まだ こないよ", plank: "かくざいが まだ こないよ", shop: "うりものが まだ ないよ" };
+  const WAIT_WHY = { cut: "きる きが まだ ないよ", plant: "きりかぶが まだ ないよ", carry: "まるたが まだ ないよ", peel: "まるたが まだ こないよ", beam: "むきまるたが まだ こないよ", dry: "かくざいが まだ こないよ", plank: "かくざいが まだ こないよ", plane: "いたが まだ こないよ", shop: "うりものが まだ ないよ" };
+  // いた は こうじょう から かんそう の後（かわいた かくざい を待つ）
+  const waitWhy = (d) => (d === "plank" && state && state.stage >= 3 ? "かわいた かくざいが まだ こないよ" : WAIT_WHY[d]);
   const WAIT_HOLD = 1.5;
   let waitSeen = {};
   function trackWait() {
@@ -237,7 +252,7 @@
   function waitParts(d, bn) {
     if (!state || deptUnlock(d) > state.stage || countOf(d) < 1 || !waitSeen[d]) return null;
     if (bn === d) return null;
-    const why = waitSeen[d].kind === "out" ? "おきばが いっぱいだよ" : WAIT_WHY[d] || "まっているよ";
+    const why = waitSeen[d].kind === "out" ? "おきばが いっぱいだよ" : waitWhy(d) || "まっているよ";
     const fix = !bn ? "" : d === "plant" && bn === "cut" ? "きこりを ふやすと うえられるよ" : `${deptName(bn)}を ふやそう`;
     return [why, fix];
   }
@@ -367,7 +382,7 @@
       switch (e.kind) {
         case "made":
           if (e.dept === "cut") sfx.play("chop");
-          else if (e.dept === "peel" || e.dept === "beam" || e.dept === "plank") sfx.play("saw");
+          else if (e.dept === "peel" || e.dept === "beam" || e.dept === "dry" || e.dept === "plank" || e.dept === "plane") sfx.play("saw");
           break;
         case "sold":
           sfx.play("sell");   // 間引きは sfx.js の側（担当D）。お金の数字の跳ねは render が付ける（付いていれば何もしない。§17.1 A3）
@@ -515,6 +530,7 @@
     if (!sleeping) setPhase("card");
     cardShownAt = now();
     lockCardButtons(box);
+    queueCue();
     if (kind === "away") sfx.play("away");
     const p = CARDS[kind].primary();
     if (p) { try { p.focus({ preventScroll: true }); } catch (e) { try { p.focus(); } catch (e2) { /* 無視 */ } } }
@@ -541,13 +557,19 @@
     if (fb && fb.isConnected && fb !== document.body && !(box && box.contains(fb))) { try { fb.focus({ preventScroll: true }); } catch (e) { /* 無視 */ } }
     if (kind === "stage" && state && state.stage === 4) showHarbor();
     flushCards();
+    queueCue();
     updateUi();
     return true;
   }
   // みなと（4 段目）に着いたら、節目のカードを閉じたあと #scene を船の位置までゆっくりスクロールして海を見せる（動きを減らす設定では一瞬で。§17.3 B9）
-  const HARBOR_SHIP_Y = 880;   // 世界の座標（actors.js geometry の harbor.seaY）
+  function harborY() {
+    const A = window.SeizaiActors;
+    const g = A && typeof A.geometry === "function" ? safeCall(() => A.geometry(4), null) : null;
+    return g && g.harbor && Number.isFinite(g.harbor.seaY) ? g.harbor.seaY : 1180;   // 世界の座標（actors.js geometry の harbor.seaY）
+  }
   function showHarbor() {
     if (!el.scene) return;
+    const HARBOR_SHIP_Y = harborY();
     const scale = layoutInfo && Number.isFinite(layoutInfo.scale) ? layoutInfo.scale : (el.scene.clientWidth || 360) / 360;
     const maxTop = Math.max(0, el.scene.scrollHeight - el.scene.clientHeight);
     const top = Math.max(0, Math.min(maxTop, Math.round(HARBOR_SHIP_Y * scale - el.scene.clientHeight * 0.65)));
@@ -654,7 +676,9 @@
     lastUi.sheetKey = "";
     renderSheet();
     markZone(dept, true);
+    syncSheetH();
     revealZone(dept);
+    queueCue();
     return true;
   }
   const zoneOf = (dept) => (el.scene ? el.scene.querySelector(`.zone[data-dept="${dept}"]`) : null);
@@ -663,16 +687,46 @@
     if (!z) return;
     if (open) z.setAttribute("aria-expanded", "true"); else z.removeAttribute("aria-expanded");
   }
-  // 押した部署がシートに隠れないよう、#scene の中でいちばん近い見える位置へスクロールする（§17.1 A6）
+  // シートが #scene に重なっている高さ（縦向き。横向きは右の列なので 0）を --sheet-h に入れる。
+  // #sceneSpacer がその高さになり、いちばん下の場所もシートの上までスクロールできる（§19.3.1）
+  let sheetH = 0;
+  function sheetOverlap() {
+    if (!el.sheet || el.sheet.hidden || !el.scene) return 0;
+    const sr = el.scene.getBoundingClientRect(), hr = el.sheet.getBoundingClientRect();
+    if (!(hr.height > 0) || hr.left >= sr.right || hr.right <= sr.left) return 0;
+    return Math.max(0, Math.round(sr.bottom - hr.top));
+  }
+  function syncSheetH() {
+    const h = sheetOverlap();
+    if (h === sheetH) return h;
+    sheetH = h;
+    if (el.scene) el.scene.style.setProperty("--sheet-h", h + "px");
+    return h;
+  }
+  if (window.ResizeObserver && el.sheet) {
+    new ResizeObserver(() => {
+      const before = sheetH;
+      syncSheetH();
+      if (sheetDept && sheetH > before + 2) revealZone(sheetDept);   // シートが高くなったときだけ、開いた場所が隠れないように
+    }).observe(el.sheet);
+  }
+  // 押した部署がシートに隠れないよう #scene をスクロールする（§17.1 A6・§19.3.1）
+  // 見える範囲は #scene の上端〜（シートが重なっていれば）シートの上端 − 8px。場所が見える範囲より高いときは、場所の上端をそろえる
   function revealZone(dept) {
     const z = zoneOf(dept);
     if (!z || !el.scene) return;
     const sr = el.scene.getBoundingClientRect(), zr = z.getBoundingClientRect();
     if (!(sr.height > 0 && zr.height > 0)) return;
+    const ov = sheetOverlap();
+    const top = sr.top, bottom = ov > 0 ? sr.bottom - ov - 8 : sr.bottom;
+    const room = bottom - top;
     let dy = 0;
-    if (zr.top < sr.top) dy = zr.top - sr.top;
-    else if (zr.bottom > sr.bottom) dy = Math.min(zr.bottom - sr.bottom, zr.top - sr.top);
-    if (Math.abs(dy) >= 1) el.scene.scrollTop += Math.round(dy);
+    if (zr.height > room || zr.top < top) dy = zr.top - top;
+    else if (zr.bottom > bottom) dy = zr.bottom - bottom;
+    if (Math.abs(dy) >= 1) {
+      const maxTop = Math.max(0, el.scene.scrollHeight - el.scene.clientHeight);
+      el.scene.scrollTop = Math.max(0, Math.min(maxTop, el.scene.scrollTop + Math.round(dy)));
+    }
   }
   function closeSheet() {
     if (!el.sheet || !sheetDept) return false;
@@ -681,6 +735,8 @@
     delete el.sheet.dataset.dept;
     el.sheet.classList.remove("open");
     el.sheet.hidden = true;
+    syncSheetH();
+    queueCue();
     if (orderIntroPending) {
       orderIntroPending = false;
       if (state && state.order && !state.order.accepted && !overlay) openCard("order");
@@ -749,7 +805,7 @@
     const labels = {
       staff: "＋1にん",
       line: "＋1だい",
-      level: lv >= (L.LEVEL_MAX || 50) ? "きかい" : `きかいを よくする Lv${lv}→${lv + 1}`,
+      level: lv >= (L.LEVEL_MAX || 50) ? "どうぐ" : `どうぐを よくする Lv${lv}→${lv + 1}`,
       mgr: "マネージャーを やとう"
     };
     for (const w of ["staff", "line", "level", "mgr"]) {
@@ -763,6 +819,14 @@
       if (t.cost === null && t.reason === "max") setBtn(b, labels[w], "", true, "さいだい");
       else if (t.cost === null) setBtn(b, labels[w], "", true, reasonText(t.reason, w, d));
       else setBtn(b, labels[w], yen(t.cost), !t.ok, t.ok ? "" : HINT_MONEY);
+    }
+    // 次の道具（§19.2.4）：「つぎ：のこぎり（Lv5）」、次の Lv で変わるときは「つぎで のこぎりに なる！」、いちばん上の段では空
+    const lvBtn = q("level"), nx = lvBtn && lvBtn.querySelector("[data-part=next]");
+    if (nx) {
+      const tl = unlocked ? toolOf(d) : null;
+      const n = tl && tl.next && typeof tl.next.name === "string" ? tl.next : null;
+      setText(nx, !n ? "" : (n.lv | 0) === lv + 1 ? `つぎで ${n.name}に なる！` : `つぎ：${n.name}（Lv${n.lv | 0}）`);
+      nx.dataset.soon = n && (n.lv | 0) === lv + 1 ? "1" : "0";
     }
     const f = $("mgrFast"), g = $("mgrGain");
     const showMgr = unlocked && !!ds.mgr;
@@ -780,11 +844,20 @@
     const r = safeCall(() => L.buy(state, d, what), null);
     if (r && r.ok && r.state) {
       state = r.state;
-      sfx.play(what === "mgr" ? "hire" : "buy");
-      R_call("burst", "buy", d);
+      const tu = r.toolUp && typeof r.toolUp === "object" && typeof r.toolUp.name === "string" ? r.toolUp : null;
+      if (tu) {
+        // 道具が次の段に変わった（§19.2.3）：#hint「のこぎりに なった！」・音 tool・光の粒と人の cheer
+        lastTool = { dept: tu.dept || d, tier: tu.tier | 0, name: tu.name };
+        sfx.play("tool");
+        R_call("burst", "tool", lastTool.dept);
+        setHint(`${tu.name}に なった！`, HINT_MS);
+      } else {
+        sfx.play(what === "mgr" ? "hire" : "buy");
+        R_call("burst", "buy", d);
+      }
       saveNow();
       updateUi(true);
-      return { ok: true };
+      return { ok: true, toolUp: tu ? Object.assign({}, lastTool) : null };
     }
     const reason = r && r.reason ? r.reason : "money";
     sfx.play("deny");
@@ -854,6 +927,7 @@
     writeBest(state.stage);
     saveNow();
     closeSheet();
+    cueNew = (CUE_NEW[state.stage] || []).slice();   // 新しい部署が見えるまで「あたらしい …」の案内
     relayout(true);
     R_call("burst", "stage", null);
     sfx.play("stage", state.stage);
@@ -882,7 +956,10 @@
     const st = state.stage | 0;
     if (shownStage !== st) { shownStage = st; body.dataset.stage = String(st); relayout(true); }
     const m = yen(state.money);
-    if (lastUi.money !== m) { lastUi.money = m; setText(el.money, m); if (el.money) el.money.dataset.value = String(state.money); }
+    if (lastUi.money !== m) {
+      lastUi.money = m; setText(el.money, m);
+      if (el.money) { el.money.dataset.value = String(state.money); const lg = m.length >= 9 ? "1" : "0"; if (el.money.dataset.long !== lg) el.money.dataset.long = lg; }
+    }
     const g = goalOf();
     if (g) {
       const gt = String(g.text || "");
@@ -953,6 +1030,93 @@
     }
   }
 
+  // ===== スクロールの案内 #scrollCue（§19.3.1） =====
+  // 流れの順で「半分以上が見える範囲より下に隠れている最初の部署」を「↓ したに おみせ」と出す。部署が全部見えていて
+  // みなとの船が隠れていれば「↓ したに ふね」、下に何もなく森が上に隠れていれば「↑ うえに もり」。
+  // 節目のあとは、新しい部署が見えるまで「↓ あたらしい かんそう」（data-new="1"）。シート・カードの間と、全部入るときは出さない。
+  // 数え直すのはスクロール・配置・シート・カードが変わったときだけ（rAF で 1 コマ 1 回まで）
+  const CUE_FLOW = ["cut", "plant", "carry", "peel", "beam", "dry", "plank", "plane", "goods", "shop"];
+  const CUE_NEW = { 2: ["beam"], 3: ["dry", "plank"], 4: ["plane"] };
+  const cueName = (d) => (d === "goods" || d === "shop" ? deptName("shop") : d === "ship" ? "ふね" : d === "forest" ? "もり" : deptName(d));
+  el.cue = $("scrollCue");
+  let cueNew = [];             // 節目のあと、まだ見えていない新しい部署
+  let cue = null;              // { dir, dept, text, isNew }
+  let cueQueued = false, cueShows = 0;
+  function queueCue() {
+    if (cueQueued || !el.cue) return;
+    cueQueued = true;
+    requestAnimationFrame(() => { cueQueued = false; safeCall(updateCue, null); });
+  }
+  function cueTarget() {
+    if (!state || !el.scene || sheetDept || overlay) return null;
+    const top = el.scene.scrollTop, vh = el.scene.clientHeight, total = el.scene.scrollHeight;
+    if (!(vh > 0) || total <= vh + 1) return null;           // 全部入る（iPad など）
+    const bot = top + vh;
+    const zs = {};
+    for (const z of zonesCache) if (z && typeof z.dept === "string") zs[z.dept] = z;
+    const below = (y, h) => Math.max(0, y + h - bot) >= h / 2;
+    const above = (y, h) => Math.max(0, top - y) >= h / 2;
+    const seen = (y, h) => Math.min(y + h, bot) - Math.max(y, top) >= Math.min(h, vh) / 2;
+    cueNew = cueNew.filter((d) => !(zs[d] && seen(zs[d].y, zs[d].h)) && !!zs[d]);
+    if (cueNew.length) {
+      const d = CUE_FLOW.find((x) => cueNew.includes(x));
+      const z = zs[d];
+      const dir = z.y >= top ? "down" : "up";
+      return { dir, dept: d, text: `${dir === "down" ? "↓" : "↑"} あたらしい ${cueName(d)}`, isNew: true };
+    }
+    for (const d of CUE_FLOW) {
+      const z = zs[d];
+      if (z && below(z.y, z.h)) return { dir: "down", dept: d, text: `↓ したに ${cueName(d)}`, isNew: false };
+    }
+    if (state.stage === 4 && layoutInfo && Number.isFinite(layoutInfo.scale)) {
+      const sy = harborY() * layoutInfo.scale, sh = 60 * layoutInfo.scale;
+      if (below(sy - sh * 0.7, sh)) return { dir: "down", dept: "ship", text: "↓ したに ふね", isNew: false };
+    }
+    for (const d of ["cut", "plant"]) {
+      const z = zs[d];
+      if (z && above(z.y, z.h)) return { dir: "up", dept: "forest", text: "↑ うえに もり", isNew: false };
+    }
+    return null;
+  }
+  function updateCue() {
+    if (!el.cue) return;
+    const c = cueTarget();
+    const key = c ? c.text + "|" + c.isNew : "";
+    const was = cue ? cue.text + "|" + cue.isNew : "";
+    cue = c;
+    if (key === was && el.cue.hidden === !c) return;
+    if (!c) { el.cue.hidden = true; el.cue.classList.remove("bounce"); return; }
+    const showing = el.cue.hidden;
+    setText(el.cue, c.text);
+    el.cue.setAttribute("aria-label", c.text);
+    el.cue.dataset.dir = c.dir;
+    if (c.isNew) el.cue.dataset.new = "1"; else delete el.cue.dataset.new;
+    el.cue.hidden = false;
+    // はじめの 3 回は小さく弾む（動きを減らす設定では弾まない）
+    if (showing && cueShows < 3 && !calm) { cueShows += 1; el.cue.classList.remove("bounce"); void el.cue.offsetWidth; el.cue.classList.add("bounce"); }
+  }
+  if (el.cue) el.cue.addEventListener("animationend", () => el.cue.classList.remove("bounce"));
+  if (el.scene) el.scene.addEventListener("scroll", queueCue, { passive: true });
+  // 押すと：その部署（ふね・もり）が見える所までゆっくりスクロール（動きを減らす設定では一瞬）
+  function goCue() {
+    const c = cue || cueTarget();
+    if (!c || !el.scene) return false;
+    if (c.dept === "ship") { showHarbor(); return true; }
+    let topTo = 0;
+    if (c.dept !== "forest") {
+      const z = zonesCache.find((q) => q && q.dept === c.dept);
+      if (!z) return false;
+      const vh = el.scene.clientHeight;
+      topTo = c.dir === "down" ? Math.max(z.y - 8, z.y + z.h + 8 - vh) : z.y - 8;
+      if (z.h + 16 > vh) topTo = z.y - 8;
+    }
+    const maxTop = Math.max(0, el.scene.scrollHeight - el.scene.clientHeight);
+    topTo = Math.max(0, Math.min(maxTop, Math.round(topTo)));
+    try { el.scene.scrollTo({ top: topTo, behavior: calm ? "auto" : "smooth" }); } catch (e) { el.scene.scrollTop = topTo; }
+    queueCue();
+    return true;
+  }
+
   // ===== 場所のボタン（.zone）の配置と、読み上げの文 =====
   function relayout(force) {
     if (!el.scene || !state) return;
@@ -964,6 +1128,8 @@
     zonesCache = res && Array.isArray(res.zones) ? res.zones : [];
     layoutInfo = res && typeof res === "object" ? res : null;
     placeZones();
+    syncSheetH();
+    queueCue();
   }
   function placeZones() {
     if (!el.scene || !zonesCache.length) return;   // 配置が無いときは担当B の HTML のまま
@@ -1008,7 +1174,8 @@
         if (!ds || deptUnlock(d) > state.stage) label = `${deptName(d)}：${stageName(deptUnlock(d))}に なると つかえるよ`;
         else {
           const wt = jam === d ? "" : waitAdvice(d, jam);
-          label = `${deptName(d)}：${countOf(d)}${isLineDept(d) ? "だい" : "にん"}。${jam === d ? "ここが おそいよ。" : ""}${wt ? wt + "。" : ""}${canBuyAny(d) ? "かえるものが あるよ。" : ""}おすと がんばるよ`;
+          const tl = toolOf(d);
+          label = `${deptName(d)}：${countOf(d)}${isLineDept(d) ? "だい" : "にん"}${tl && tl.name ? "・" + tl.name : ""}。${jam === d ? "ここが おそいよ。" : ""}${wt ? wt + "。" : ""}${canBuyAny(d) ? "かえるものが あるよ。" : ""}おすと がんばるよ`;
           const left = (Number(ds.cooldownUntil) || 0) - t;
           cool = left > 0 ? Math.min(1, left / (L.BOOST_COOLDOWN || 15)) : 0;
           boost = (Number(ds.boostUntil) || 0) > t ? 1 : 0;
@@ -1052,6 +1219,7 @@
       case "mgrFast": doSetMgr(sheetDept, "fast"); break;
       case "mgrGain": doSetMgr(sheetDept, "gain"); break;
       case "outside": if (!overlay) closeSheet(); break;
+      case "scrollCue": if (!overlay) goCue(); break;
       case "back": saveNow(); clearLater(); break;              // a のまま移動する
       default: break;
     }
@@ -1081,7 +1249,9 @@
       sheet: sheetDept, overlay, queue: cardQueue.slice(),
       actors: st.actors | 0, frames: st.frames | 0, slowFrames: st.slowFrames | 0, bgRedraws: st.bgRedraws | 0,
       wallLast, lastAway: lastAway ? JSON.parse(JSON.stringify(lastAway)) : null, saveCount, calm, timers: timers.size,
-      sleeping, hint: el.hint ? el.hint.textContent : "", best
+      sleeping, hint: el.hint ? el.hint.textContent : "", best,
+      scrollCue: cue ? { dir: cue.dir, dept: cue.dept, text: cue.text } : null,
+      lastTool: lastTool ? Object.assign({}, lastTool) : null
     };
   }
   function advance(sec) {

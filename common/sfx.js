@@ -12,7 +12,7 @@
  *   const sfx = YubiSfx.create("irobin");   // いろびん（pick/drop/pour(count)/reveal/seal(colorId)/cork/deliver(n)/arrive/clear/deny/undo/stuck/unveil）
  *   const sfx = YubiSfx.create("matomete"); // まとめてポン（select(n)/pop(n)/fall/allclear/over/deny/undo/blast(r)/streak(n)）
  *   const sfx = YubiSfx.create("michibiki"); // ミチビキ空港（warn/pick/lock/land(n)/near/crash/bounce/open(color)/over）
- *   const sfx = YubiSfx.create("seizai");   // もくもくこうば（chop/saw/sell/buy/hire/cheer/deny/order/deliver(kind)/stage(n)/away）
+ *   const sfx = YubiSfx.create("seizai");   // もくもくこうば（chop/saw/sell/buy/hire/tool/cheer/deny/order/deliver(kind)/stage(n)/away）
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -32,7 +32,7 @@
   // ミチビキ空港だけの間引き（lock・land は ブロック・ハシわたりにも同じ名前の音があるので、全体の GAP に入れずにこのゲームだけに効かせる）
   const GAP_MICHIBIKI = { warn: 0.2, near: 0.5, bounce: 0.15, land: 0.05, lock: 0.1 };
   // もくもくこうばだけの間引き。作業音（chop・saw）は「合わせて」0.4 秒に 1 回まで（同じ組 work で最後に鳴った時刻を共有する）、売れた音は 1 秒に 2 回まで
-  const GAP_SEIZAI = { chop: 0.4, saw: 0.4, sell: 0.5, buy: 0.06, deny: 0.2, cheer: 0.15 };
+  const GAP_SEIZAI = { chop: 0.4, saw: 0.4, sell: 0.5, buy: 0.06, deny: 0.2, cheer: 0.15, tool: 0.3 };
   const GROUP_SEIZAI = { chop: "work", saw: "work" };
 
   function create(game, opts) {
@@ -583,6 +583,12 @@
         const t = N();
         [C5, E5, G5, C6].forEach((f, i) => mallet(f, t + i * 0.06, { vol: 0.1 + i * 0.01, decay: i === 3 ? 0.35 : 0.15 }));
         bell(G6, t + 0.24, { vol: 0.04, decay: 0.4 });
+      },
+      // 道具が次の段に変わった（のこぎりに なった！）：buy より華やか、hire より短い（上がる3音＋小さなベル）
+      tool: () => {
+        const t = N();
+        [E5, G5, C6].forEach((f, i) => mallet(f, t + i * 0.055, { vol: 0.1 + i * 0.01, decay: i === 2 ? 0.26 : 0.12 }));
+        bell(E6, t + 0.15, { vol: 0.035, decay: 0.25 });
       },
       // 応援「ぽんぽん」：短い2音
       cheer: () => { const t = N(); mallet(A5, t, { vol: 0.09, decay: 0.08, bright: 0.4 }); mallet(C6, t + 0.06, { vol: 0.09, decay: 0.1, bright: 0.4 }); },

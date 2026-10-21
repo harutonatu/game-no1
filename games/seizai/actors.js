@@ -10,20 +10,29 @@
  * SeizaiActors.geometry(stage) → 段ごとの配置（世界の座標）。render.js と共有する
  * - 人の数・速さは state から決める。位置は保存しない（開き直したら持ち場に並べ直す）
  * - done[dept] が増えたら、その部署の誰かが「できた」動き。1 フレームに部署ごと 3 回まで（早送り・るすの あいだは省く）
- * - 人の数の上限 MAX_ACTORS = 60。超える分はお客さんから省く（§6.4）
+ * - 人の数の上限 MAX_ACTORS = 66（§19.3.1）。超える分はお客さんから省く（§6.4）
+ * - こうじょう から工場は 2 つの帯（上「さぎょうば」＝ かわむき・かくざい、下「しあげ」＝ かんそう・いた（・かんな））。§19.3.1
+ * - 道具の段（logic の toolTier。Lv 1・5・15・30）ごとに、作業の手の動きを ANIM_MUL 倍に（見た目だけ。§19.2.2）
  */
 (function (root) {
   "use strict";
 
   const W = 360;
-  const STAGE_H = { 1: 640, 2: 760, 3: 880, 4: 1000 };
+  const STAGE_H = { 1: 640, 2: 760, 3: 1180, 4: 1300 };
+  const HARBOR_H = 180;
   const ROWS = { 1: 2, 2: 3, 3: 4, 4: 4 };
   const ROW_H = { 1: 64, 2: 66, 3: 66, 4: 66 };
-  const DEPT_IDS = ["cut", "plant", "carry", "peel", "beam", "plank", "shop"];
-  const DEPT_FROM = { cut: 1, plant: 1, carry: 1, peel: 1, beam: 2, plank: 3, shop: 1 };
-  const ROLE_OF = { cut: "cutter", plant: "planter", carry: "carrier", peel: "peeler", beam: "beamer", plank: "planker", shop: "seller" };
-  const LINE_DEPTS = { peel: 1, beam: 1, plank: 1 };
-  const MAX_ACTORS = 60;
+  const BAND_HEAD = 30;
+  // 流れの順（step の中の順。§19.1.1）
+  const DEPT_IDS = ["cut", "plant", "carry", "peel", "beam", "dry", "plank", "plane", "shop"];
+  const DEPT_FROM = { cut: 1, plant: 1, carry: 1, peel: 1, beam: 2, dry: 3, plank: 3, plane: 4, shop: 1 };
+  const ROLE_OF = { cut: "cutter", plant: "planter", carry: "carrier", peel: "peeler", beam: "beamer", dry: "dryer", plank: "planker", plane: "planer", shop: "seller" };
+  const LINE_DEPTS = { peel: 1, beam: 1, dry: 1, plank: 1, plane: 1 };
+  // 道具の段ごとの手の動きの速さ（見た目だけ。logic には置かない §19.2.2）
+  const ANIM_MUL = [1, 1.3, 1.6, 2];
+  // はこぶ の 1 回に運ぶ数の見た目（てで・ておしぐるま・にぐるま・トラック）
+  const CARRY_LOAD = [1, 2, 4, 6];
+  const MAX_ACTORS = 66;
   const MAX_LEAVING = 4;
   const MAX_MADE = 3;
   const WALK = 46, WALK_CALM = 26;
@@ -53,15 +62,37 @@
     if (dept === "carry") return "logs";
     if (dept === "peel") return stage === 1 ? "goods" : "peeled";
     if (dept === "beam") return stage === 2 ? "goods" : "beams";
-    if (dept === "plank") return "goods";
+    if (dept === "dry") return "dried";
+    if (dept === "plank") return stage >= 4 ? "planks" : "goods";
+    if (dept === "plane") return "goods";
     return null;
+  }
+  // 前の工程から来る品（置き場の山・待つ理由）
+  function inOf(dept, stage) {
+    if (dept === "carry") return "yard";
+    if (dept === "peel") return "logs";
+    if (dept === "beam") return "peeled";
+    if (dept === "dry") return "beams";
+    if (dept === "plank") return stage >= 3 ? "dried" : "beams";
+    if (dept === "plane") return "planks";
+    return null;
+  }
+  // 道具の段（0〜3）。logic の toolTier を使う（表は logic だけが持つ §19.2.1）
+  function tierOf(state, dept) {
+    const L = Lg();
+    const d = state && state.depts && state.depts[dept];
+    if (!d || typeof L.toolTier !== "function") return 0;
+    let t = 0;
+    try { t = L.toolTier(d.level); } catch (e) { t = 0; }
+    t = Math.floor(num(t, 0));
+    return t >= 0 && t <= 3 ? t : 0;
   }
 
   // ===== 待っている理由（見た目と main.js の文で共有。§6.1・§18）=====
   // 部署ごとに "in"（前の工程の品が来ない）・"out"（置き場が いっぱい）・""（待っていない）
   // plant の "in" は「切り株が無い」＝ きこりを待っている。cut の "in" は「切れる木が無い」＝ なえぎ（森）を待っている
   function waitOf(state) {
-    const o = { cut: "", plant: "", carry: "", peel: "", beam: "", plank: "", shop: "" };
+    const o = { cut: "", plant: "", carry: "", peel: "", beam: "", dry: "", plank: "", plane: "", shop: "" };
     if (!state || typeof state !== "object") return o;
     const stage = clampStage(state.stage);
     const caps = capsOf(stage);
@@ -74,43 +105,58 @@
     o.cut = trees < 1 ? "in" : full("yard") ? "out" : "";
     o.plant = stumps < 1 ? "in" : "";
     o.carry = v("yard") < 1 ? "in" : full("logs") ? "out" : "";
-    o.peel = v("logs") < 1 ? "in" : full(outOf("peel", stage)) ? "out" : "";
-    if (stage >= 2) o.beam = v("peeled") < 1 ? "in" : full(outOf("beam", stage)) ? "out" : "";
-    if (stage >= 3) o.plank = v("beams") < 1 ? "in" : full("goods") ? "out" : "";
+    for (const d of ["peel", "beam", "dry", "plank", "plane"]) {
+      if (stage < DEPT_FROM[d]) continue;
+      o[d] = v(inOf(d, stage)) < 1 ? "in" : full(outOf(d, stage)) ? "out" : "";
+    }
     o.shop = qlen > 0 && v("goods") < 1 ? "in" : "";
     return o;
   }
 
   // ===== 配置（世界の座標。幅 360、高さは段ごと）=====
+  // こや・こうば は工場が 1 つの帯。こうじょう から 2 つの帯（上「さぎょうば」・下「しあげ」。§19.3.1）
   function geometry(stageIn) {
     const stage = clampStage(stageIn);
     const H = STAGE_H[stage];
     const rows = ROWS[stage], rowH = ROW_H[stage];
-    const fTop = 290, rowTop = 320;
-    const fBot = rowTop + rows * rowH + 8;
-    const sTop = fBot, sBot = stage === 4 ? 820 : H;
-    const colDefs = stage === 1 ? [["peel", 4, 356]]
-      : stage === 2 ? [["peel", 4, 178], ["beam", 182, 356]]
-      : [["peel", 4, 118], ["beam", 122, 238], ["plank", 242, 356]];
+    const fTop = 290;
+    const COLS2 = [[4, 178], [182, 356]], COLS3 = [[4, 118], [122, 238], [242, 356]];
+    const bandDefs = stage === 1 ? [{ name: "", depts: ["peel"], xs: [[4, 356]] }]
+      : stage === 2 ? [{ name: "", depts: ["peel", "beam"], xs: COLS2 }]
+      : stage === 3 ? [{ name: "さぎょうば", depts: ["peel", "beam"], xs: COLS2 }, { name: "しあげ", depts: ["dry", "plank"], xs: COLS2 }]
+      : [{ name: "さぎょうば", depts: ["peel", "beam"], xs: COLS2 }, { name: "しあげ", depts: ["dry", "plank", "plane"], xs: COLS3 }];
     const zones = {
       cut: { x: 4, y: 38, w: 228, h: 166 },
       plant: { x: 236, y: 38, w: 120, h: 166 },
       carry: { x: 4, y: 210, w: 352, h: 76 }
     };
-    const cols = colDefs.map(([d, x0, x1]) => {
-      zones[d] = { x: x0, y: fTop + 4, w: x1 - x0, h: fBot - fTop - 8 };
-      return { dept: d, x0, x1, cx: (x0 + x1) / 2, tableX: x0 + (x1 - x0) * 0.62 };
+    const cols = [], bands = [];
+    let y = fTop;
+    bandDefs.forEach((bd, bi) => {
+      const y0 = y, rt = y0 + BAND_HEAD, y1 = rt + rows * rowH + 8;
+      const bcols = bd.depts.map((d, i) => {
+        const [x0, x1] = bd.xs[i];
+        zones[d] = { x: x0, y: y0 + 4, w: x1 - x0, h: y1 - y0 - 8 };
+        const c = { dept: d, x0, x1, cx: (x0 + x1) / 2, tableX: x0 + (x1 - x0) * 0.62, y0, y1, rowTop: rt, band: bi };
+        cols.push(c);
+        return c;
+      });
+      bands.push({ name: bd.name, y0, y1, rowTop: rt, cols: bcols });
+      y = y1;
     });
+    const fBot = y;
+    const sTop = fBot, sBot = stage === 4 ? H - HARBOR_H : H;
     zones.goods = { x: 4, y: sTop + 6, w: 140, h: 116 };
     zones.shop = { x: 148, y: sTop + 6, w: 208, h: 116 };
-    const order = ["cut", "plant", "carry", "peel", "beam", "plank", "goods", "shop"].filter((d) => zones[d]);
+    const order = ["cut", "plant", "carry", "peel", "beam", "dry", "plank", "plane", "goods", "shop"].filter((d) => zones[d]);
+    const hy = H - HARBOR_H;
     return {
       stage, W, H,
       forest: { y0: 34, y1: 206, rows: [124, 198] },
       road: { y0: 206, y1: 290, walkY: 266, yardX: 44, gateX: 330 },
-      factory: { y0: fTop, y1: fBot, rowTop, rowH, rows, cols },
+      factory: { y0: fTop, y1: fBot, rowTop: bands[0].rowTop, rowH, rows, cols, bands },
       shop: { y0: sTop, y1: sBot, counterY: sTop + 70, sellerY: sTop + 68, queueY: sTop + 116, leaveY: sTop + 136, pileX: 74, pileY: sTop + 100 },
-      harbor: stage === 4 ? { y0: 820, y1: 1000, pierY: 874, seaY: 880, shipX: 236 } : null,
+      harbor: stage === 4 ? { y0: hy, y1: H, pierY: hy + 54, seaY: hy + 60, shipX: 236 } : null,
       zones, order
     };
   }
@@ -122,7 +168,7 @@
     const c = colOf(geo, dept);
     if (!c) return null;
     const r = clamp(i, 0, geo.factory.rows - 1);
-    const fy = geo.factory.rowTop + r * geo.factory.rowH + geo.factory.rowH - 10;
+    const fy = num(c.rowTop, geo.factory.rowTop) + r * geo.factory.rowH + geo.factory.rowH - 10;
     return { wx: c.tableX - 40, wy: fy, tx: c.tableX, ty: fy };
   }
 
@@ -269,10 +315,10 @@
       let rates = null;
       try { rates = typeof Lg().rates === "function" ? Lg().rates(state) : null; } catch (e) { rates = null; }
       const why = waitOf(state);
-      const stuck = {};
-      for (const d of DEPT_IDS) stuck[d] = !!why[d];
+      const stuck = {}, tier = {};
+      for (const d of DEPT_IDS) { stuck[d] = !!why[d]; tier[d] = tierOf(state, d); }
       return {
-        stuck, why,
+        stuck, why, tier,
         goodsEmpty: v("goods") < 1,
         qlen, boosted, rates: rates || {}, yard: v("yard"), logsFull: full("logs")
       };
@@ -440,6 +486,8 @@
       else if (d === "plant") { /* 葉っぱは 実際に植えた所で出す（update の planter） */ }
       else if (d === "carry") effects.push({ kind: "drop", x: geo.road.gateX, y: geo.road.walkY - 4, dept: d });
       else if (d === "shop") effects.push({ kind: "coin", x: a.x, y: a.y - 26, dept: d });
+      else if (d === "plane") { const st = station(geo, d, a.idx); if (st) effects.push({ kind: "curl", x: st.tx - 4, y: st.ty - 16, dept: d }); }
+      else if (d === "dry") { const st = station(geo, d, a.idx); if (st) effects.push({ kind: "steam", x: st.tx, y: st.ty - 30, dept: d }); }
       else { const st = station(geo, d, a.idx); if (st) effects.push({ kind: "chips", x: st.tx, y: st.ty - 14, dept: d }); }
     }
 
@@ -448,10 +496,13 @@
       if (calm) return WALK_CALM;
       let s = WALK;
       if (a.role === "carrier") {
+        // 往復の速さは rates から（1 回に運ぶ数 1・2・4・6 を掛けて往復の回数を減らす）。トラックは歩く人の 2 倍以上に見える速さ（§19.2.2）
         const staff = Math.max(1, countOf(lastState, "carry", geo.stage));
+        const tier = info.tier.carry | 0;
         const per = num(info.rates.carry, 0) / staff;
-        const oneWay = per > 0 ? clamp(0.5 / per, 1.4, 9) : 6;
+        const oneWay = per > 0 ? clamp(0.5 * CARRY_LOAD[tier] / per, 1.4, 9) : 6;
         s = (geo.road.gateX - geo.road.yardX) / oneWay;
+        if (tier === 3) s = Math.max(s, WALK * 2);
       } else if (info.boosted[a.dept]) s *= 1.6;
       return s;
     }
@@ -465,11 +516,14 @@
       return false;
     }
     function workPose(a, stuck) {
+      if (a.cheerT > 0) return "cheer";   // 道具が変わった直後の 1 秒（§19.2.3）
       if (stuck) return "wait";
       return info.boosted[a.dept] ? "cheer" : "work";
     }
     function update(a, dt) {
       if (a.made > 0) a.made = Math.max(0, a.made - dt);
+      if (a.cheerT > 0) a.cheerT = Math.max(0, a.cheerT - dt);
+      a.tier = info.tier[a.dept] | 0;
       if (a.bow > 0 && !a.walkIn) a.bow = Math.max(0, a.bow - dt);
       if (a.walkIn) {
         const h = homeOf(a);
@@ -528,7 +582,7 @@
           }
           break;
         }
-        case "peeler": case "beamer": case "planker": case "seller": {
+        case "peeler": case "beamer": case "dryer": case "planker": case "planer": case "seller": {
           const h = homeOf(a);
           if (!moveTo(a, h.x, h.y, dt, sp)) { a.pose = "walk"; a.active = false; break; }
           a.dir = 1;
@@ -686,10 +740,17 @@
       first = false;
     }
     function list() {
-      return actors.map((a) => ({ id: a.id, role: a.role, dept: a.dept, x: a.x, y: a.y, pose: a.pose, carry: a.carry, tool: a.tool, active: a.active, look: a.look, dir: a.dir }));
+      return actors.map((a) => ({ id: a.id, role: a.role, dept: a.dept, x: a.x, y: a.y, pose: a.pose, carry: a.carry, tool: a.tool, active: a.active, look: a.look, dir: a.dir, tier: a.tier | 0 }));
+    }
+    // 道具が次の段に変わった：その部署の人が 1 秒 cheer（動きを減らす設定では跳ねない＝何もしない。§19.2.3）
+    function cheer(dept, sec) {
+      if (calm) return 0;
+      let n = 0;
+      for (const a of actors) if (a.dept === dept && a.role === ROLE_OF[dept] && !a.leaving) { a.cheerT = num(sec, 1); n++; }
+      return n;
     }
     return {
-      sync, list,
+      sync, list, cheer,
       all: () => actors,
       slots: () => slots,
       why: () => (info ? info.why : {}),
@@ -701,7 +762,7 @@
     };
   }
 
-  const api = Object.freeze({ create, geometry, station, waitOf, MAX_ACTORS, W, STAGE_H, DEPT_IDS, DEPT_FROM, ROLE_OF, byStage, capsOf, outOf });
+  const api = Object.freeze({ create, geometry, station, waitOf, tierOf, inOf, MAX_ACTORS, ANIM_MUL, CARRY_LOAD, LINE_DEPTS, W, STAGE_H, DEPT_IDS, DEPT_FROM, ROLE_OF, byStage, capsOf, outOf });
   if (typeof module === "object" && module.exports) module.exports = api;
   root.SeizaiActors = api;
 })(typeof window !== "undefined" ? window : globalThis);

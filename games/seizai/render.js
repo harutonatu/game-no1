@@ -12,6 +12,10 @@
  *   （世界の高さぶんの canvas を作らない＝iPad でも重くない）。.zone のボタンは #sceneInner に世界の座標で並べる
  * - 背景（空・地面・建物）は段と大きさが変わったときだけ、オフスクリーン canvas に描き直す（bgRedraws）
  * - 影・ぼかしは使わない。1人の描画は図形 10 回以内。見えない所の人は描かない（§6.4）
+ * - 道具の絵は logic の toolTier（Lv 1・5・15・30 の 4 段）で形が変わる。名前の表は logic の TOOLS だけ（§19.2）。
+ *   「きんの」は前の段と同じ形で金色＋小さな光。手の動きの速さは SeizaiActors.ANIM_MUL（見た目だけ）
+ * - #sheet が #scene に重なっている間は #scene の下に余白（#sceneSpacer）があるので、canvas は世界の下端で止まる。
+ *   描く位置はスクロールの量を「世界の高さ − 見える高さ」で頭打ちにして合わせる
  */
 (function (root) {
   "use strict";
@@ -25,17 +29,25 @@
   const MAX_SCALE = 1.8;
   const BG_MAX_PIX = 4.2e6;
   const SLOW_MS = 34;
-  const NAMES = { cut: "きこり", plant: "なえぎ", carry: "はこぶ", peel: "かわむき", beam: "かくざい", plank: "いた", shop: "おみせ", goods: "うりもの" };
-  const LINE_DEPTS = { peel: 1, beam: 1, plank: 1 };
+  const NAMES_FALLBACK = { cut: "きこり", plant: "なえぎ", carry: "はこぶ", peel: "かわむき", beam: "かくざい", dry: "かんそう", plank: "いた", plane: "かんな", shop: "おみせ", goods: "うりもの" };
+  // 名前は logic の DEPTS を先に使う
+  function nameOf(d) {
+    const D = Lg().DEPTS;
+    if (d !== "goods" && Array.isArray(D)) { const x = D.find((q) => q && q.id === d); if (x && typeof x.name === "string" && x.name) return x.name; }
+    return NAMES_FALLBACK[d] || d;
+  }
+  const LINE_DEPTS = A.LINE_DEPTS || { peel: 1, beam: 1, dry: 1, plank: 1, plane: 1 };
+  const ANIM_MUL = A.ANIM_MUL || [1, 1.3, 1.6, 2];
+  const GOLD = "#e3b52a", GOLD_HI = "#fff2a8";
   // 部署の色（Okabe-Ito を元に。色だけに頼らず帽子の形と文字でも分ける §6.2）
   const ROLE_COL = {
     cutter: "#d55e00", planter: "#009e73", carrier: "#0072b2", peeler: "#e69f00", beamer: "#cc79a7",
-    planker: "#56b4e9", seller: "#f0e442", manager: "#2b2b2b", sailor: "#f4f4f4", customer: "#8a8f98"
+    dryer: "#a0522d", planker: "#56b4e9", planer: "#7a9a2a", seller: "#f0e442", manager: "#2b2b2b", sailor: "#f4f4f4", customer: "#8a8f98"
   };
-  const DEPT_ROLE = { cut: "cutter", plant: "planter", carry: "carrier", peel: "peeler", beam: "beamer", plank: "planker", shop: "seller" };
+  const DEPT_ROLE = A.ROLE_OF || { cut: "cutter", plant: "planter", carry: "carrier", peel: "peeler", beam: "beamer", dry: "dryer", plank: "planker", plane: "planer", shop: "seller" };
   const SKIN = ["#f1c27d", "#e0ac69", "#c68642", "#ffdbac"];
   const CUST_BODY = ["#9aa3ad", "#3d6fb6", "#5b8c3a", "#24395e"];
-  const ITEM_COL = { log: "#8a5a2b", peeled: "#e7c48c", beam: "#d9a95f", plank: "#f0d39a" };
+  const ITEM_COL = { log: "#8a5a2b", peeled: "#e7c48c", beam: "#d9a95f", dried: "#e8bf72", plank: "#f0d39a", smooth: "#fbe9c4" };
   const STAGE_SKY = { 1: ["#a9dcf5", "#e6f6ff"], 2: ["#9fd3f0", "#e2f3ff"], 3: ["#b8cfe0", "#eef2f4"], 4: ["#8fd0f0", "#e8f8ff"] };
 
   function mulberry(seed) {
@@ -50,9 +62,9 @@
   }
   function productKey(stage) {
     try { const p = Lg().productOf && Lg().productOf(stage); if (p) return p; } catch (e) { /* 下の既定 */ }
-    return stage === 1 ? "peeled" : stage === 2 ? "beams" : "planks";
+    return stage === 1 ? "peeled" : stage === 2 ? "beams" : stage === 3 ? "planks" : "smooth";
   }
-  const ITEM_OF = { peeled: "peeled", beams: "beam", planks: "plank", logs: "log", yard: "log" };
+  const ITEM_OF = { peeled: "peeled", beams: "beam", dried: "dried", planks: "plank", smooth: "smooth", logs: "log", yard: "log" };
 
   function create(canvas, opts) {
     const o = opts || {};
@@ -70,6 +82,7 @@
     let stage = 1;
     let cssW = 320, viewH = 400, scale = 320 / W, offX = 0, dpr = 1, worldCssH = 640 * scale;
     let scrollY = 0;
+    const scrollTopRaw = () => scrollY;
     let bg = null, bgKey = "", bgRedraws = 0, bgRatio = 1;
     let frames = 0, slowFrames = 0, lastFrameAt = null;
     const drawTimes = [];
@@ -84,6 +97,7 @@
     let goalAt = -1, moneyEl = null, fillEl = null;
     let scrollDrawQueued = false;
     let lastZonesKey = "";
+    let lastToolBurst = null;
 
     const doc = root.document;
     function el(id) { try { return doc ? doc.getElementById(id) : null; } catch (e) { return null; } }
@@ -135,7 +149,8 @@
       if (canvas.width !== wpx) canvas.width = wpx;
       if (canvas.height !== hpx) canvas.height = hpx;
       if (scroller) {
-        const maxS = Math.max(0, worldCssH - scroller.clientHeight);
+        // 下の余白（#sceneSpacer。シートを重ねている間）もスクロールできるので、scrollHeight で頭打ち
+        const maxS = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
         if (scroller.scrollTop > maxS) scroller.scrollTop = maxS;
         scrollY = scroller.scrollTop;
       }
@@ -204,39 +219,47 @@
       rect(c, 8, 236, 70, 6, "#7a5530");
       // 工場の入口（矢印）
       c.fillStyle = "#7a5530"; c.beginPath(); c.moveTo(322, 280); c.lineTo(338, 280); c.lineTo(330, 290); c.closePath(); c.fill();
-      // 道具（段ごと）
-      if (st === 1) drawHandcart(c, 96, 240);
-      else if (st === 2) drawWagon(c, 92, 238);
-      // 工場
+      // 段ごとの止まっている車（手押し車・荷車）は描かない（はこぶ の道具と食い違うため。§19.2.1）
+      // 工場（こうじょう からは 2 つの帯。上「さぎょうば」・下「しあげ」§19.3.1）
       const f = g.factory;
-      if (st === 1) {
-        rect(c, 0, f.y0, W, f.y1 - f.y0, "#a8774a");
-        c.fillStyle = "#946640"; for (let x = 0; x < W; x += 18) c.fillRect(x, f.y0, 2, f.y1 - f.y0);
-        rect(c, 0, f.y0, W, 26, "#7b5232");
-      } else if (st === 2) {
-        rect(c, 0, f.y0, W, f.y1 - f.y0, "#b78a5c");
-        c.fillStyle = "#a57b50"; for (let x = 0; x < W; x += 18) c.fillRect(x, f.y0, 2, f.y1 - f.y0);
-        rect(c, 0, f.y0, W, 26, "#6d7680");
-        c.fillStyle = "#58616b"; for (let x = 0; x < W; x += 12) c.fillRect(x, f.y0 + 20, 8, 6);
-      } else {
-        rect(c, 0, f.y0, W, f.y1 - f.y0, "#a65a43");
-        c.fillStyle = "#8f4a36";
-        for (let y = f.y0 + 26; y < f.y1; y += 10) {
-          c.fillRect(0, y, W, 1.5);
-          for (let x = ((y / 10) % 2) * 12; x < W; x += 24) c.fillRect(x, y, 1.5, 10);
+      for (const b of f.bands) {
+        const h = b.y1 - b.y0;
+        if (st === 1) {
+          rect(c, 0, b.y0, W, h, "#a8774a");
+          c.fillStyle = "#946640"; for (let x = 0; x < W; x += 18) c.fillRect(x, b.y0, 2, h);
+          rect(c, 0, b.y0, W, 26, "#7b5232");
+        } else if (st === 2) {
+          rect(c, 0, b.y0, W, h, "#b78a5c");
+          c.fillStyle = "#a57b50"; for (let x = 0; x < W; x += 18) c.fillRect(x, b.y0, 2, h);
+          rect(c, 0, b.y0, W, 26, "#6d7680");
+          c.fillStyle = "#58616b"; for (let x = 0; x < W; x += 12) c.fillRect(x, b.y0 + 20, 8, 6);
+        } else {
+          rect(c, 0, b.y0, W, h, b === f.bands[0] ? "#a65a43" : "#9a5e48");
+          c.fillStyle = "#8f4a36";
+          for (let y = b.y0 + 26; y < b.y1; y += 10) {
+            c.fillRect(0, y, W, 1.5);
+            for (let x = ((y / 10) % 2) * 12; x < W; x += 24) c.fillRect(x, y, 1.5, 10);
+          }
+          rect(c, 0, b.y0, W, 26, "#5b6168");
         }
-        rect(c, 0, f.y0, W, 26, "#5b6168");
+        // 帯の名前（右上。場所の名札は左上なので重ならない）
+        if (b.name) {
+          c.font = "700 11px \"Hiragino Sans\", system-ui, sans-serif";
+          c.textBaseline = "middle"; c.textAlign = "right";
+          c.fillStyle = "rgba(255,255,255,0.85)";
+          c.fillText(b.name, W - 26, b.y0 + 13);
+          c.textAlign = "left";
+        }
+        // 列の床（台が増えると行が増える）
+        for (let r = 0; r < f.rows; r++) rect(c, 0, b.rowTop + r * f.rowH + f.rowH - 10, W, 3, "rgba(0,0,0,0.18)");
+        for (let i = 1; i < b.cols.length; i++) rect(c, b.cols[i].x0 - 3, b.y0 + 26, 2, h - 26, "rgba(0,0,0,0.22)");
+        rect(c, 0, b.y1 - 4, W, 4, "rgba(0,0,0,0.25)");
+      }
+      if (st >= 3) {
         // 煙突
         rect(c, 300, 214, 22, 76, "#8f4a36");
         rect(c, 296, 210, 30, 8, "#5b6168");
       }
-      // 列の床（台が増えると行が増える）
-      for (let r = 0; r < f.rows; r++) {
-        const y = f.rowTop + r * f.rowH + f.rowH - 10;
-        rect(c, 0, y, W, 3, "rgba(0,0,0,0.18)");
-      }
-      for (let i = 1; i < f.cols.length; i++) rect(c, f.cols[i].x0 - 3, f.y0 + 26, 2, f.y1 - f.y0 - 26, "rgba(0,0,0,0.22)");
-      rect(c, 0, f.y1 - 4, W, 4, "rgba(0,0,0,0.25)");
       // お店
       const s = g.shop;
       rect(c, 0, s.y0, W, s.y1 - s.y0, st >= 3 ? "#e4dccb" : "#e8dcc0");
@@ -274,18 +297,6 @@
         c.fillStyle = "#6b4321"; for (let x = 8; x < 214; x += 30) c.fillRect(x, h.pierY + 8, 5, 40);
       }
     }
-    function drawHandcart(c, x, y) {
-      rect(c, x, y, 30, 10, "#8a5a2b");
-      c.fillStyle = "#3b3b3b"; c.beginPath(); c.arc(x + 24, y + 12, 5, 0, 6.29); c.fill();
-      c.strokeStyle = "#5d3c1d"; c.lineWidth = 2; c.beginPath(); c.moveTo(x, y + 2); c.lineTo(x - 12, y + 10); c.stroke();
-    }
-    function drawWagon(c, x, y) {
-      rect(c, x, y, 46, 12, "#8a5a2b");
-      c.fillStyle = "#3b3b3b";
-      c.beginPath(); c.arc(x + 10, y + 14, 6, 0, 6.29); c.arc(x + 36, y + 14, 6, 0, 6.29); c.fill();
-      c.strokeStyle = "#5d3c1d"; c.lineWidth = 2; c.beginPath(); c.moveTo(x + 46, y + 4); c.lineTo(x + 62, y + 12); c.stroke();
-    }
-
     // ===== 1フレーム =====
     function frame(state, events, dtSec) {
       if (!state || typeof state !== "object") return;
@@ -401,6 +412,8 @@
       else if (e.kind === "fall") { if (particles.filter((p) => p.fall).length < 3) particles.push({ fall: true, x: e.x, y: e.y, dir: e.dir, life: 0.7, t: 0 }); }
       else if (e.kind === "fall-old") particles.push({ fall: true, x: e.x, y: e.y, dir: e.dir, life: 0.7, t: 0 });
       else if (e.kind === "log") { if (particles.filter((p) => p.log).length < 4) particles.push({ log: true, x: e.x, y: e.y, x0: e.x, y0: e.y, tx: e.tx, ty: e.ty, life: 0.9, t: 0 }); }
+      else if (e.kind === "curl") particles.push({ curl: true, x: e.x, y: e.y, vx: -8 - rnd() * 8, vy: -6, life: 0.8, t: 0 });
+      else if (e.kind === "steam") { if (particles.filter((p) => p.steam).length < 6) particles.push({ steam: true, x: e.x + (rnd() - 0.5) * 10, y: e.y, vx: 0, vy: -16, life: 0.9, t: 0 }); }
       else if (e.kind === "hello") particles.push({ ring: true, x: e.x, y: e.y - 12, life: 0.5, t: 0, col: "#ffffff" });
       if (particles.length > 90) particles.splice(0, particles.length - 90);
     }
@@ -412,6 +425,7 @@
       for (const p of particles) {
         p.life -= dt;
         if (p.fall || p.ring) { p.t += dt; continue; }
+        if (p.curl || p.steam) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; if (p.curl) p.vy += 40 * dt; continue; }
         if (p.log) {
           p.t += dt;
           const q = clamp(p.t / 0.85, 0, 1);
@@ -460,6 +474,12 @@
         case "stage":
           startStageAnim();
           break;
+        case "tool":
+          // 道具が次の段に変わった：光の粒＋その部署の人が 1 秒 cheer（動きを減らす設定では粒と跳ねなし。絵はすぐ変わる §19.2.3）
+          if (z) { flashes[dept] = Math.max(flashes[dept] || 0, 0.6); addSparkles(z, 14, "#ffe066"); }
+          actors.cheer(dept, 1);
+          lastToolBurst = { dept, at: clk };
+          break;
         default: break;
       }
     }
@@ -467,6 +487,8 @@
     // ===== 描く =====
     function draw(state) {
       if (!ctx) return;
+      // canvas（sticky）は #sceneInner（世界の高さ）の下端で止まるので、描く位置も同じ所で止める
+      const scrollY = clamp(scrollTopRaw(), 0, Math.max(0, worldCssH - viewH));
       const vTop = scrollY / scale, vBot = (scrollY + viewH) / scale;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.fillStyle = "#e4dccb";
@@ -576,6 +598,7 @@
           if (item === "log" || item === "peeled") {
             ctx.fillStyle = col; ctx.beginPath(); ctx.arc(px + 4, py - 3, 3.6, 0, 6.29); ctx.fill();
           } else if (item === "plank") { ctx.fillStyle = col; ctx.fillRect(px - 1, py - 3, 10, 3); }
+          else if (item === "smooth") { ctx.fillStyle = col; ctx.fillRect(px - 1, py - 3, 10, 3); ctx.fillStyle = "#ffffff"; ctx.fillRect(px, py - 2.6, 8, 0.8); }
           else { ctx.fillStyle = col; ctx.fillRect(px, py - 6, 7.5, 6); }
         }
       }
@@ -632,15 +655,12 @@
       // 森の置き場（丸太）
       drawPile(12, 244, v("yard"), "log", 8);
       label(String(v("yard")), 50, 230, {});
-      // 工場の入口と、台と台の間の置き場
+      // 工場の入口と、台と台の間の置き場（その台に入る品。名前の札は左上なので、山は見出しの帯の右に）
       const f = geo.factory;
-      const piles = [["logs", "log", "peel"], ["peeled", "peeled", "beam"], ["beams", "beam", "plank"]];
-      for (const [k, item, d] of piles) {
-        const c = f.cols.find((cc) => cc.dept === d);
-        if (!c) continue;
-        if (k === productKey(stage)) continue;
-        // 名前の札は左上なので、置き場の山は見出しの帯の右に（数は山の高さで見せる）
-        drawPile(c.x1 - 44, f.y0 + 24, v(k), item, 7);
+      for (const c of f.cols) {
+        const k = A.inOf ? A.inOf(c.dept, stage) : null;
+        if (!k) continue;
+        drawPile(c.x1 - 44, c.y0 + 24, v(k), ITEM_OF[k] || "beam", 7);
       }
       // 売り物の山
       const gk = productKey(stage);
@@ -650,6 +670,13 @@
       drawPile(sx, sy, g, ITEM_OF[gk] || "plank", 16);
       label(String(g), geo.zones.goods.x + geo.zones.goods.w - 8, sy - 34, { right: true });
     }
+    const tierOf = (s, d) => (A.tierOf ? A.tierOf(s, d) : 0);
+    // 「きんの」：前の段と同じ形で金色＋小さな光（色だけに頼らない。§19.2.1）
+    function glint(x, y, r) {
+      const q = calm ? 0.6 : 0.5 + 0.5 * Math.sin(clk * 5 + x);
+      ctx.fillStyle = "rgba(255,250,210," + (0.55 + 0.45 * q).toFixed(2) + ")";
+      ctx.fillRect(x - r, y - 0.7, r * 2, 1.4); ctx.fillRect(x - 0.7, y - r, 1.4, r * 2);
+    }
     function drawStations(s) {
       const f = geo.factory;
       const depts = s.depts || {};
@@ -657,8 +684,9 @@
         const d = c.dept;
         const x = depts[d] || {};
         const lines = clamp(Math.floor(num(x.lines, 0)), 0, f.rows);
-        const lv = Math.floor(num(x.level, 1));
-        const metal = lv >= 30 ? "#d4a017" : lv >= 10 ? "#8b97a3" : "#7a5530";
+        const tier = tierOf(s, d);
+        const boosted = num(x.boostUntil, -1) > num(s.t, 0);
+        const mul = calm ? 1 : ANIM_MUL[tier] || 1;
         for (let r = 0; r < f.rows; r++) {
           const st = A.station(geo, d, r);
           if (r >= lines) {
@@ -675,30 +703,158 @@
           ctx.save();
           ctx.translate(st.tx, st.ty);
           if (k !== 1) ctx.scale(k, k);
-          rect(ctx, -22, -14, 44, 5, "#c79a64");
-          rect(ctx, -20, -9, 4, 9, "#6b4321");
-          rect(ctx, 16, -9, 4, 9, "#6b4321");
-          const spin = calm || !active ? 0 : clk * (s.depts && s.depts[d] && num(s.depts[d].boostUntil, -1) > num(s.t, 0) ? 14 : 7);
-          if (d === "peel") {
-            ctx.fillStyle = metal; ctx.beginPath(); ctx.arc(12, -24, 9, 0, 6.29); ctx.fill();
-            ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(12, -24); ctx.lineTo(12 + Math.cos(spin) * 8, -24 + Math.sin(spin) * 8); ctx.stroke();
-            ctx.fillStyle = ITEM_COL.log; ctx.fillRect(-14, -21, 18, 7);
-          } else if (d === "beam") {
-            ctx.fillStyle = metal; ctx.beginPath(); ctx.arc(12, -20, 10, Math.PI, 0); ctx.fill();
-            ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(12, -20); ctx.lineTo(12 + Math.cos(spin) * 9, -20 - Math.abs(Math.sin(spin)) * 9); ctx.stroke();
-            ctx.fillStyle = ITEM_COL.beam; ctx.fillRect(-14, -21, 14, 7);
-          } else {
-            ctx.fillStyle = metal; ctx.fillRect(8, -36, 8, 22);
-            ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(12, -36); ctx.lineTo(12, -14); ctx.stroke();
-            ctx.fillStyle = ITEM_COL.plank; ctx.fillRect(-16, -18, 22, 3); ctx.fillRect(-16, -22, 22, 3);
+          if (d !== "dry") {
+            rect(ctx, -22, -14, 44, 5, "#c79a64");
+            rect(ctx, -20, -9, 4, 9, "#6b4321");
+            rect(ctx, 16, -9, 4, 9, "#6b4321");
           }
+          const spin = calm || !active ? 0 : clk * (boosted ? 14 : 7) * mul;
+          const mv = calm || !active ? 0 : Math.sin(clk * (boosted ? 12 : 6) * mul);
+          drawTool(d, tier, spin, mv, active);
           if (flashes[d]) { ctx.fillStyle = "rgba(255,255,220," + (Math.min(1, flashes[d] / 0.6) * 0.7).toFixed(2) + ")"; ctx.fillRect(-24, -40, 48, 40); }
           ctx.restore();
         }
       }
-      // お店のカウンター（本体は drawActors で売り子の前に描く）
+      // お店の看板（おみせ の道具。屋根の右。§19.2.1）
+      drawShopSign(tierOf(s, "shop"));
       const sh = geo.shop;
       if (flashes.shop) { ctx.fillStyle = "rgba(255,255,220,0.5)"; ctx.fillRect(152, sh.counterY - 30, 200, 44); }
+    }
+    // 台の上の道具（原点は台の上の真ん中。台の上面は y = -14）
+    function drawTool(d, tier, spin, mv, active) {
+      const gold = tier === 3;
+      const metal = gold ? GOLD : "#8b97a3";
+      if (d === "peel") {
+        ctx.fillStyle = ITEM_COL.log; ctx.fillRect(-16, -21, 20, 7);
+        if (tier === 0) {
+          // へら：手で丸太の皮をこそぐ
+          ctx.save(); ctx.translate(-4 + mv * 5, -22); ctx.rotate(-0.7);
+          rect(ctx, -1, -12, 2.4, 10, "#8a5a2b"); rect(ctx, -3, -2, 6.4, 3, "#c9ced4");
+          ctx.restore();
+        } else if (tier === 1) {
+          // ローラー：2 本の筒が回る
+          for (const cx of [-10, 0]) {
+            ctx.fillStyle = "#6d7680"; ctx.beginPath(); ctx.arc(cx, -26, 4.2, 0, 6.29); ctx.fill();
+            ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(cx, -26); ctx.lineTo(cx + Math.cos(spin) * 3.6, -26 + Math.sin(spin) * 3.6); ctx.stroke();
+          }
+        } else {
+          // かわむきマシン：箱と回る輪
+          rect(ctx, 6, -36, 14, 22, metal);
+          ctx.fillStyle = gold ? "#a87f10" : "#5b6168"; ctx.beginPath(); ctx.arc(13, -28, 6, 0, 6.29); ctx.fill();
+          ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(13, -28); ctx.lineTo(13 + Math.cos(spin) * 5.5, -28 + Math.sin(spin) * 5.5); ctx.stroke();
+          if (gold) glint(18, -36, 3);
+        }
+      } else if (d === "beam") {
+        ctx.fillStyle = ITEM_COL.beam; ctx.fillRect(-16, -21, 14, 7);
+        if (tier === 0) {
+          // おおのこ：大きな手のこを上下に引く
+          const y = -30 + mv * 4;
+          ctx.fillStyle = "#c9ced4"; ctx.beginPath(); ctx.moveTo(2, y); ctx.lineTo(22, y - 4); ctx.lineTo(22, y + 4); ctx.lineTo(2, y + 7); ctx.closePath(); ctx.fill();
+          rect(ctx, -4, y - 1, 7, 5, "#8a5a2b");
+        } else {
+          // まるのこ（半円）／おおきな まるのこ（丸と覆い）
+          const R = tier === 1 ? 10 : 13;
+          ctx.fillStyle = metal; ctx.beginPath();
+          if (tier === 1) ctx.arc(12, -20, R, Math.PI, 0); else ctx.arc(10, -24, R, 0, 6.29);
+          ctx.fill();
+          ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.5; ctx.beginPath();
+          const cy = tier === 1 ? -20 : -24, cx = tier === 1 ? 12 : 10;
+          ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(spin) * (R - 1), cy - Math.abs(Math.sin(spin)) * (R - 1)); ctx.stroke();
+          if (tier >= 2) rect(ctx, -2, -40, 24, 4, gold ? "#a87f10" : "#5b6168");
+          if (gold) glint(20, -38, 3);
+        }
+      } else if (d === "dry") {
+        // ほしだな：角材を立てかけた棚
+        rect(ctx, -22, -40, 3, 40, "#6b4321"); rect(ctx, 10, -40, 3, 40, "#6b4321"); rect(ctx, -22, -40, 35, 3, "#6b4321");
+        ctx.fillStyle = ITEM_COL.dried;
+        for (let i = 0; i < 3; i++) { ctx.save(); ctx.translate(-16 + i * 9, -2); ctx.rotate(-0.25); ctx.fillRect(-2, -34, 5, 34); ctx.restore(); }
+        if (tier === 0) {
+          // おひさま
+          const q = calm ? 0 : Math.sin(clk * 1.5) * 0.15;
+          ctx.fillStyle = "#ffcf33"; ctx.beginPath(); ctx.arc(20, -40, 6 + q * 4, 0, 6.29); ctx.fill();
+          ctx.strokeStyle = "#ffcf33"; ctx.lineWidth = 1.4; ctx.beginPath();
+          for (let i = 0; i < 6; i++) { const a = i * 1.047 + q; ctx.moveTo(20 + Math.cos(a) * 8, -40 + Math.sin(a) * 8); ctx.lineTo(20 + Math.cos(a) * 11, -40 + Math.sin(a) * 11); }
+          ctx.stroke();
+        } else if (tier === 1) {
+          // せんぷうき：回る羽根
+          rect(ctx, 20, -16, 2, 16, "#5b6168");
+          ctx.fillStyle = "#cfe6ff";
+          for (let i = 0; i < 3; i++) { const a = spin * 1.6 + i * 2.094; ctx.beginPath(); ctx.ellipse(21 + Math.cos(a) * 4, -22 + Math.sin(a) * 4, 4.5, 2, a, 0, 6.29); ctx.fill(); }
+        } else if (tier === 2) {
+          // ストーブ：ゆらゆら の熱
+          rect(ctx, 15, -14, 11, 14, "#5b6168"); rect(ctx, 17, -10, 7, 5, active && !calm ? "#ff8a3c" : "#c0602a");
+          ctx.strokeStyle = "rgba(255,170,90,0.85)"; ctx.lineWidth = 1.3; ctx.beginPath();
+          for (let i = 0; i < 2; i++) { const x0 = 17 + i * 5, w = calm ? 0 : Math.sin(clk * 4 + i) * 2; ctx.moveTo(x0, -16); ctx.quadraticCurveTo(x0 + 3 + w, -21, x0, -26); ctx.quadraticCurveTo(x0 - 3 - w, -31, x0, -36); }
+          ctx.stroke();
+        } else {
+          // かんそうマシン：箱と湯気
+          rect(ctx, -24, -44, 50, 44, "rgba(120,130,140,0.55)"); rect(ctx, -24, -44, 50, 4, "#6d7680");
+          rect(ctx, 16, -40, 8, 6, "#7fd1ff");
+          if (!calm) { const q = (clk * 0.8) % 1; ctx.fillStyle = "rgba(255,255,255," + (0.8 - q * 0.7).toFixed(2) + ")"; ctx.beginPath(); ctx.arc(4 + q * 6, -48 - q * 10, 3 + q * 3, 0, 6.29); ctx.fill(); }
+        }
+      } else if (d === "plank") {
+        ctx.fillStyle = ITEM_COL.plank; ctx.fillRect(-16, -18, 22, 3); ctx.fillRect(-16, -22, 22, 3);
+        if (tier === 0) {
+          // てのこ：小さな のこぎりを前後に
+          const x = 2 + mv * 4;
+          ctx.fillStyle = "#c9ced4"; ctx.beginPath(); ctx.moveTo(x, -24); ctx.lineTo(x + 14, -26); ctx.lineTo(x + 14, -22); ctx.closePath(); ctx.fill();
+          rect(ctx, x + 13, -28, 5, 7, "#8a5a2b");
+        } else {
+          // でんきのこ（刃 1 枚）／ならびのこ（刃 3 枚）
+          const n = tier === 1 ? 1 : 3;
+          for (let i = 0; i < n; i++) {
+            const bx = 8 + i * 6 - (n - 1) * 3;
+            rect(ctx, bx, -36, 5, 22, metal);
+            ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1; ctx.beginPath();
+            const yy = -36 + (((spin * 3) + i * 7) % 22 + 22) % 22;
+            ctx.moveTo(bx + 0.5, yy); ctx.lineTo(bx + 4.5, yy); ctx.stroke();
+          }
+          if (tier >= 2) rect(ctx, 0, -40, 26, 4, gold ? "#a87f10" : "#5b6168");
+          if (gold) glint(22, -40, 3);
+        }
+      } else if (d === "plane") {
+        // かんな：板の上を前後に。けずりくずは できたとき（curl）
+        ctx.fillStyle = ITEM_COL.smooth; ctx.fillRect(-18, -18, 30, 4);
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(-16, -17, 26, 1);
+        if (tier <= 1) {
+          const w = tier === 0 ? 9 : 14, x = -6 + mv * 7;
+          rect(ctx, x - w / 2, -24, w, 6, "#b07a3a"); rect(ctx, x - 1, -27, 3, 3, "#6b4321");
+        } else {
+          // でんきかんな（きんの かんな も同じ形で金色）
+          rect(ctx, -2, -32, 22, 14, metal);
+          ctx.fillStyle = gold ? "#a87f10" : "#5b6168"; ctx.beginPath(); ctx.arc(9, -22, 4, 0, 6.29); ctx.fill();
+          ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(9, -22); ctx.lineTo(9 + Math.cos(spin * 1.5) * 3.6, -22 + Math.sin(spin * 1.5) * 3.6); ctx.stroke();
+          if (gold) glint(18, -32, 3);
+        }
+      }
+    }
+    // おみせ の看板：はりがみ → かんばん → ひかる かんばん → きんの かんばん（屋根の右、売り子より上）
+    function drawShopSign(tier) {
+      const sh = geo.shop;
+      const x = 274, y = sh.y0 + 32;
+      if (tier === 0) {
+        ctx.save(); ctx.translate(x + 30, y + 9); ctx.rotate(-0.06);
+        rect(ctx, -16, -9, 32, 18, "#fbf7ec");
+        rect(ctx, -12, -5, 24, 2, "#a0522d"); rect(ctx, -12, 0, 18, 2, "#a0522d");
+        ctx.restore();
+        return;
+      }
+      const gold = tier === 3;
+      rect(ctx, x + 6, y + 18, 3, 6, "#6b4321"); rect(ctx, x + 63, y + 18, 3, 6, "#6b4321");
+      rect(ctx, x, y, 72, 19, gold ? GOLD : "#7a4e2a");
+      rect(ctx, x + 3, y + 3, 66, 13, gold ? "#f5d76e" : "#a8774a");
+      ctx.font = "800 10px \"Hiragino Sans\", system-ui, sans-serif"; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+      ctx.fillStyle = gold ? "#5a3f00" : "#fff6dc"; ctx.fillText("もくもく", x + 36, y + 10);
+      ctx.textAlign = "left";
+      if (tier >= 2) {
+        // ひかる：ふちの電球がじゅんばんに光る
+        for (let i = 0; i < 6; i++) {
+          const on = calm ? true : Math.floor(clk * 4 + i) % 2 === 0;
+          ctx.fillStyle = on ? "#fff36b" : "#9a8a40";
+          ctx.beginPath(); ctx.arc(x + 6 + i * 12, y - 2, 2, 0, 6.29); ctx.fill();
+        }
+      }
+      if (gold) glint(x + 66, y + 2, 4);
     }
     function actorsActive(d, r) {
       for (const a of actors.all()) if (a.dept === d && a.idx === r && a.role === DEPT_ROLE[d]) return a.active;
@@ -706,7 +862,8 @@
     }
 
     // 待つ人の吹き出しの言葉（何を待っているか。§18）。部署ごとに 1 人だけ（ほかの人は「…」）
-    const WAIT_IN = { cut: "きが ないよ", plant: "きりかぶ まち", carry: "まるた まち", peel: "まるた まち", beam: "むきまるた まち", plank: "かくざい まち" };
+    const WAIT_IN = { cut: "きが ないよ", plant: "きりかぶ まち", carry: "まるた まち", peel: "まるた まち", beam: "むきまるた まち", dry: "かくざい まち", plank: "かくざい まち", plane: "いた まち" };
+    const waitInText = (d) => (d === "plank" && stage >= 3 ? "かんそう まち" : WAIT_IN[d]);
     let speakers = {};
     function pickSpeakers() {
       const why = typeof actors.why === "function" ? actors.why() || {} : {};
@@ -718,7 +875,7 @@
         if (!cur || a.idx > cur.idx) out[a.dept] = a;   // 下の段の人（上の名札から遠い）
       }
       speakers = {};
-      for (const d in out) speakers[out[d].id] = why[d] === "out" ? "おきば いっぱい" : WAIT_IN[d] || "まち";
+      for (const d in out) speakers[out[d].id] = why[d] === "out" ? "おきば いっぱい" : waitInText(d) || "まち";
     }
     function drawBubble(a, text) {
       const w = labelWidth(text, true);
@@ -777,6 +934,7 @@
       if (!calm && a.made > 0) hop = Math.max(hop, Math.sin((a.made / 0.35) * Math.PI) * 2.5);
       const x = a.x, y = a.y - hop;
       const bow = a.bow > 0 ? Math.sin(Math.min(1, a.bow / 1.2) * Math.PI) : 0;
+      if (a.role === "carrier" && (a.tier | 0) === 3) { drawTruck(a); return; }
       ctx.save();
       ctx.translate(x, y);
       if (k !== 1) ctx.scale(k, k);
@@ -812,6 +970,24 @@
         ctx.textAlign = "left";
       }
     }
+    // はこぶ の トラック：人が乗った小さな車（6 本つむ）。§19.2.1
+    function drawTruck(a) {
+      const d = a.dir;
+      ctx.save();
+      ctx.translate(a.x, a.y);
+      if (d < 0) ctx.scale(-1, 1);
+      rect(ctx, -16, -13, 21, 9, "#4e7fbf");
+      rect(ctx, 5, -17, 10, 13, "#2f5c96");
+      rect(ctx, 8, -15, 6, 5, "#cfe6ff");
+      ctx.fillStyle = SKIN[a.id % 4]; ctx.beginPath(); ctx.arc(10, -12.5, 2.4, 0, 6.29); ctx.fill();
+      ctx.fillStyle = "#2b2b2b"; ctx.beginPath(); ctx.arc(-10, -3, 3.2, 0, 6.29); ctx.moveTo(13, -3); ctx.arc(10, -3, 3.2, 0, 6.29); ctx.fill();
+      if (a.carry) {
+        ctx.fillStyle = ITEM_COL.log; ctx.beginPath();
+        for (let i = 0; i < 6; i++) { const lx = -13 + (i % 3) * 6.5, ly = -15.5 - Math.floor(i / 3) * 4.5; ctx.moveTo(lx + 3, ly); ctx.arc(lx, ly, 3, 0, 6.29); }
+        ctx.fill();
+      }
+      ctx.restore();
+    }
     function drawHat(a, hx, hy) {
       const col = a.role === "customer" ? null : ROLE_COL[a.role];
       ctx.fillStyle = col || "#333";
@@ -822,6 +998,8 @@
         case "carrier": ctx.rect(hx - 4.6, hy - 3.6, 9.2, 2.6); ctx.rect(hx - 7.5 * a.dir - 1.5, hy - 3.4, 3, 4); break;  // 鉢巻
         case "peeler": ctx.arc(hx, hy - 2, 4.6, Math.PI, 0); break;  // 丸い帽子
         case "beamer": ctx.rect(hx - 4.5, hy - 9, 9, 6.5); break;  // 四角
+        case "dryer": ctx.rect(hx - 4.8, hy - 4.2, 9.6, 3); ctx.rect(hx - 1.5, hy - 9, 3, 5); break;  // タオルの鉢巻と結び目（上に立つ）
+        case "planer": ctx.ellipse(hx + a.dir * 1.2, hy - 4, 5.6, 2.6, 0, 0, 6.29); break;  // ひらたい帽子
         case "planker": ctx.rect(hx - 4.5, hy - 6, 9, 3.4); ctx.rect(hx + (a.dir > 0 ? 3 : -8), hy - 3.6, 5, 1.6); break;  // つばの帽子
         case "seller": ctx.moveTo(hx - 5, hy - 5); ctx.lineTo(hx, hy - 2); ctx.lineTo(hx + 5, hy - 5); ctx.lineTo(hx + 5, hy - 1); ctx.lineTo(hx - 5, hy - 1); ctx.closePath(); break;  // リボン
         case "manager": ctx.rect(hx - 3.6, hy - 11, 7.2, 8); ctx.rect(hx - 6, hy - 3.5, 12, 1.6); break;  // シルクハット
@@ -843,12 +1021,33 @@
       const d = a.dir;
       const working = a.pose === "work" || a.pose === "cheer";
       const fast = a.pose === "cheer" ? 2 : 1;
+      const tier = a.tier | 0;
+      const mul = calm ? 1 : ANIM_MUL[tier] || 1;   // 道具が よくなると手が速く動く（見た目だけ §19.2.2）
+      const on = working && a.active && !calm;
       switch (a.role) {
         case "cutter": {
-          const sw = working && a.active && !calm ? Math.sin(ph * 0.8 * fast) * 0.9 : (working && a.active ? 0.4 : -0.6);
-          const ex = d * (Math.cos(sw) * 9), ey = -13 - Math.sin(sw) * 9;
-          ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(ex, ey); ctx.stroke();
-          ctx.fillStyle = "#9aa3ad"; ctx.fillRect(ex - 2, ey - 2.5, 4, 5);
+          if (tier === 0) {
+            // おの：振り下ろす
+            const sw = on ? Math.sin(ph * 0.8 * fast * mul) * 0.9 : (working && a.active ? 0.4 : -0.6);
+            const ex = d * (Math.cos(sw) * 9), ey = -13 - Math.sin(sw) * 9;
+            ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(ex, ey); ctx.stroke();
+            ctx.fillStyle = "#9aa3ad"; ctx.fillRect(ex - 2, ey - 2.5, 4, 5);
+          } else if (tier === 1) {
+            // のこぎり：前後に引く
+            const hx = d * (6 + (on ? Math.sin(ph * 0.9 * fast * mul) * 3 : 0));
+            ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(hx, -11); ctx.stroke();
+            ctx.fillStyle = "#c9ced4"; ctx.beginPath(); ctx.moveTo(hx, -12.5); ctx.lineTo(hx + d * 13, -11.5); ctx.lineTo(hx + d * 13, -9); ctx.lineTo(hx, -9); ctx.closePath(); ctx.fill();
+            rect(ctx, hx - (d > 0 ? 3 : 0), -13, 3, 4, "#8a5a2b");
+          } else {
+            // チェーンソー（きんの は同じ形で金色＋光）：刃が光って小さな木くず
+            const gold = tier === 3;
+            const jit = on ? Math.sin(clk * 40) * 0.6 : 0;
+            ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(d * 5, -11); ctx.stroke();
+            rect(ctx, d > 0 ? 4 : -11, -14 + jit, 7, 6, gold ? GOLD : "#e8752a");
+            rect(ctx, d > 0 ? 11 : -22, -12.5 + jit, 11, 3, on ? "#e9eef2" : "#aab2ba");
+            if (on && Math.floor(clk * 12 + a.ph) % 2 === 0) { ctx.fillStyle = "#f2d6a2"; ctx.fillRect(d * 20, -8, 1.8, 1.8); ctx.fillRect(d * 17, -6, 1.5, 1.5); }
+            if (gold) glint(d * 8, -15, 2.4);
+          }
           break;
         }
         case "planter": {
@@ -863,16 +1062,65 @@
             }
             break;
           }
-          const dy = working && a.active && !calm ? Math.abs(Math.sin(ph * 0.6)) * 4 : 0;
-          ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(d * 6, -8 + dy); ctx.stroke();
-          ctx.fillStyle = "#79c25a"; ctx.beginPath(); ctx.arc(d * 7, -9 + dy, 2.2, 0, 6.29); ctx.fill();
+          const dy = on ? Math.abs(Math.sin(ph * 0.6 * mul)) * 4 : 0;
+          if (tier === 2) {
+            // なえぎぐるま：苗木を 3 本のせた手押し車を押す
+            ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(d * 7, -9); ctx.stroke();
+            rect(ctx, d > 0 ? 7 : -21, -9, 14, 5, "#8a5a2b");
+            ctx.fillStyle = "#3b3b3b"; ctx.beginPath(); ctx.arc(d * 18, -2.5, 2.6, 0, 6.29); ctx.fill();
+            ctx.fillStyle = "#79c25a"; ctx.beginPath();
+            for (let i = 0; i < 3; i++) { ctx.moveTo(d * (10 + i * 4) + 2, -11); ctx.arc(d * (10 + i * 4), -11, 2, 0, 6.29); }
+            ctx.fill();
+          } else if (tier === 1) {
+            // くわ：長い柄を振る
+            const ex = d * 12, ey = -3 - dy;
+            ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(d * 4, -11); ctx.moveTo(d * 2, -17); ctx.lineTo(ex, ey); ctx.stroke();
+            rect(ctx, d > 0 ? ex - 1 : ex - 3, ey, 4, 3, "#9aa3ad");
+          } else {
+            // スコップ（きんの スコップ は金色＋光）
+            const gold = tier === 3;
+            ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(d * 6, -9 + dy); ctx.moveTo(d * 6, -12 + dy); ctx.lineTo(d * 8, -3 + dy); ctx.stroke();
+            ctx.fillStyle = gold ? GOLD : "#9aa3ad"; ctx.fillRect(d * 8 - 2.2, -4 + dy, 4.4, 4.4);
+            if (gold) glint(d * 8, -4 + dy, 2.4);
+          }
           break;
         }
-        case "carrier": case "sailor": {
+        case "carrier": {
+          // てで（1 本）→ ておしぐるま（2 本）→ にぐるま（4 本）。トラックは drawTruck
+          if (tier === 0) {
+            if (a.carry) {
+              ctx.fillStyle = ITEM_COL.log;
+              ctx.beginPath();
+              if (ctx.roundRect) ctx.roundRect(-9, -21, 18, 5, 2); else ctx.rect(-9, -21, 18, 5);
+              ctx.fill();
+              ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(d * 4, -19); ctx.stroke();
+            } else {
+              const sw = Math.sin(ph) * 3;
+              ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(sw, -7); ctx.stroke();
+            }
+          } else {
+            const big = tier === 2;
+            const len = big ? 22 : 15, x0 = d > 0 ? 7 : -7 - len;
+            ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(d * 7, -9); ctx.stroke();
+            rect(ctx, x0, -9, len, 5, "#8a5a2b");
+            ctx.fillStyle = "#3b3b3b"; ctx.beginPath();
+            if (big) { ctx.arc(x0 + 5, -2.5, 2.8, 0, 6.29); ctx.moveTo(x0 + len - 2, -2.5); ctx.arc(x0 + len - 5, -2.5, 2.8, 0, 6.29); }
+            else ctx.arc(x0 + len / 2, -2.5, 2.8, 0, 6.29);
+            ctx.fill();
+            if (a.carry) {
+              ctx.fillStyle = ITEM_COL.log; ctx.beginPath();
+              const n = big ? 4 : 2;
+              for (let i = 0; i < n; i++) { const lx = x0 + 4 + (i % 2) * 7 + (big ? Math.floor(i / 2) * 2 : 0), ly = -11.5 - Math.floor(i / 2) * 4; ctx.moveTo(lx + 3, ly); ctx.arc(lx, ly, 3, 0, 6.29); }
+              ctx.fill();
+            }
+          }
+          break;
+        }
+        case "sailor": {
           if (a.carry) {
-            ctx.fillStyle = a.carry === "plank" ? ITEM_COL.plank : ITEM_COL.log;
+            ctx.fillStyle = stage >= 4 ? ITEM_COL.smooth : ITEM_COL.plank;
             ctx.beginPath();
-            if (ctx.roundRect) ctx.roundRect(-9, -21, 18, a.carry === "plank" ? 3 : 5, 2); else ctx.rect(-9, -21, 18, 5);
+            if (ctx.roundRect) ctx.roundRect(-9, -21, 18, 3, 2); else ctx.rect(-9, -21, 18, 3);
             ctx.fill();
             ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(d * 4, -19); ctx.stroke();
           } else {
@@ -881,8 +1129,8 @@
           }
           break;
         }
-        case "peeler": case "beamer": case "planker": case "seller": {
-          const mv = working && a.active && !calm ? Math.sin(ph * fast) * 2.5 : 0;
+        case "peeler": case "beamer": case "dryer": case "planker": case "planer": case "seller": {
+          const mv = on ? Math.sin(ph * fast * mul) * 2.5 : 0;
           ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(d * 8, -11 + mv); ctx.stroke();
           break;
         }
@@ -972,7 +1220,7 @@
         // 名前の札（文字でも部署が分かる）
         const right = d === "carry";
         const lx = right ? z.x + z.w - 3 : z.x + 3;
-        const hh = label(NAMES[d] || d, lx, z.y + 3, { bg: "rgba(20,24,30,0.7)", bold: true, right });
+        const hh = label(nameOf(d), lx, z.y + 3, { bg: "rgba(20,24,30,0.7)", bold: true, right });
         // 今のお金で買えるものがあれば、名札の横に小さな黄色の「＋」（色だけに頼らず形でも。§17.3 B8）
         if (d !== "goods" && canBuyAny(s, d)) {
           const nw = lastLabelW;
@@ -1041,6 +1289,17 @@
           ctx.fillStyle = "#e6c48f"; ctx.beginPath(); ctx.arc(p.x + 6, p.y, 2.4, 0, 6.29); ctx.fill();
           continue;
         }
+        if (p.curl) {
+          // かんなの けずりくず：くるっと丸まって落ちる
+          ctx.strokeStyle = "rgba(240,210,150," + clamp(p.life / 0.4, 0, 1).toFixed(2) + ")"; ctx.lineWidth = 1.4;
+          ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, p.t * 9, p.t * 9 + 4.2); ctx.stroke();
+          continue;
+        }
+        if (p.steam) {
+          ctx.fillStyle = "rgba(255,255,255," + (clamp(p.life / 0.9, 0, 1) * 0.7).toFixed(2) + ")";
+          ctx.beginPath(); ctx.arc(p.x, p.y, 2.5 + p.t * 4, 0, 6.29); ctx.fill();
+          continue;
+        }
         if (p.ring) {
           ctx.strokeStyle = "rgba(255,255,255," + clamp(p.life / 0.5, 0, 1).toFixed(2) + ")"; ctx.lineWidth = 1.5;
           ctx.beginPath(); ctx.arc(p.x, p.y, 6 + p.t * 30, 0, 6.29); ctx.stroke();
@@ -1066,7 +1325,7 @@
       resume() { paused = false; lastFrameAt = null; },
       stats() {
         const sorted = drawTimes.slice().sort((p, q) => p - q);
-        return { actors: actors.all().length, frames, slowFrames, bgRedraws, drawMs: sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0, calm };
+        return { actors: actors.all().length, frames, slowFrames, bgRedraws, drawMs: sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0, calm, toolBurst: lastToolBurst ? lastToolBurst.dept : null };
       },
       actors: () => actors.list(),
       get calm() { return calm; }
