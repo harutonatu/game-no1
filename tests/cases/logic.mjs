@@ -97,8 +97,8 @@ export const tests = [
       const files = [...(sw.match(/APP_FILES\s*=\s*\[([\s\S]*?)\]/) || [, ''])[1].matchAll(/["']([^"']+)["']/g)].map((m) => m[1]);
       const missing = files.filter((f) => { const p = path.join(root, f); return !(fs.existsSync(p) && (fs.statSync(p).isFile() || fs.existsSync(path.join(p, 'index.html')))); });
       check(`事前キャッシュする ${files.length} ファイルがすべて存在（1つでも欠けると install が失敗しオフライン不可）`, files.length >= 8 && missing.length === 0, missing);
-      const pages = ['index.html', 'games/blocks/index.html', 'games/2048/index.html', 'games/kiritori/index.html', 'games/irocode/index.html', 'games/zenmai/index.html', 'games/irobin/index.html', 'games/matomete/index.html', 'games/michibiki/index.html'];
-      const needed = ['./', './games/blocks/', './games/2048/', './games/kiritori/', './games/irocode/', './games/zenmai/', './games/irobin/', './games/matomete/', './games/michibiki/', './manifest.webmanifest'];
+      const pages = ['index.html', 'games/blocks/index.html', 'games/2048/index.html', 'games/kiritori/index.html', 'games/irocode/index.html', 'games/zenmai/index.html', 'games/irobin/index.html', 'games/matomete/index.html', 'games/michibiki/index.html', 'games/seizai/index.html'];
+      const needed = ['./', './games/blocks/', './games/2048/', './games/kiritori/', './games/irocode/', './games/zenmai/', './games/irobin/', './games/matomete/', './games/michibiki/', './games/seizai/', './manifest.webmanifest'];
       check('メニュー・各ゲーム・manifest が事前キャッシュに含まれる', needed.every((n) => files.includes(n)), files);
       const m = JSON.parse(fs.readFileSync(path.join(root, 'manifest.webmanifest'), 'utf8'));
       const icons = (m.icons || []).map((i) => i.src);
@@ -116,12 +116,13 @@ export const tests = [
       }
       const menu = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
       // best（数値のキー）・stats（いろコードの JSON）・bestText（ゼンマイの関数。キー名は zenmai.progress）のどれでもよい
+      // bestText の関数は、中の最初の getItem("…") か readBest("…")（ミチビキ空港の michibikiBest）を保存キーとして読む
       const games = [...menu.matchAll(/url: "([^"]+)", (?:best|stats): "([^"]+)", art: "([^"]+)"|url: "([^"]+)", bestText: \(\) => (\w+)\(\), art: "([^"]+)"/g)]
-        .map((m) => m[1] ? [m[1], m[2], m[3]] : [m[4], (menu.match(new RegExp(`function ${m[5]}\\(\\)[\\s\\S]*?getItem\\("([^"]+)"\\)`)) || [])[1] || m[5], m[6]]);
+        .map((m) => m[1] ? [m[1], m[2], m[3]] : [m[4], (menu.match(new RegExp(`function ${m[5]}\\(\\)[\\s\\S]*?(?:getItem|readBest)\\("([^"]+)"\\)`)) || [])[1] || m[5], m[6]]);
       const gamesTotal = (menu.slice(menu.indexOf('const GAMES = ['), menu.indexOf('];', menu.indexOf('const GAMES = ['))).match(/url: "/g) || []).length;
       const artOk = games.every(([, , a]) => new RegExp(`\\n    ${a}\\(ctx, w, h\\)`).test(menu));
-      check(`メニューの GAMES（${games.length} 本）：各ゲームの url が事前キャッシュにあり、ベストのキーが重ならず、絵（ART）が用意されている（キリトリ道場・いろコード・ゼンマイさんぽを含む 5 本以上）`,
-        games.length >= 5 && games.length === gamesTotal && games.some(([u, b]) => u === 'games/kiritori/' && b === 'kiritori.best') && games.some(([u, b]) => u === 'games/irocode/' && b === 'irocode.stats') && games.some(([u, b]) => u === 'games/zenmai/' && b === 'zenmai.progress') && games.every(([u]) => files.includes('./' + u)) && new Set(games.map((g) => g[1])).size === games.length && artOk, { games, artOk });
+      check(`メニューの GAMES（${games.length} 本）：各ゲームの url が事前キャッシュにあり、ベストのキーが重ならず、絵（ART）が用意されている（キリトリ道場・いろコード・ゼンマイさんぽ・ミチビキ空港（readBest）・もくもくこうばを含む 5 本以上）`,
+        games.length >= 5 && games.length === gamesTotal && games.some(([u, b]) => u === 'games/kiritori/' && b === 'kiritori.best') && games.some(([u, b]) => u === 'games/irocode/' && b === 'irocode.stats') && games.some(([u, b]) => u === 'games/zenmai/' && b === 'zenmai.progress') && games.some(([u, b]) => u === 'games/michibiki/' && b === 'michibiki.best') && games.some(([u, b]) => u === 'games/seizai/' && b === 'seizai.best') && games.every(([u]) => files.includes('./' + u)) && new Set(games.map((g) => g[1])).size === games.length && artOk, { games, artOk });
       check('全ページが同じ manifest・アイコン・ホーム画面名を相対パスで参照（/ 始まりの参照なし）', bad.length === 0, bad);
       // ページが読む同じサイト内のファイル（script src・img src・link href）がすべて事前キャッシュにある（ないとオフラインで欠ける）
       const notCached = [];
