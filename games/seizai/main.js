@@ -23,7 +23,6 @@
   const AWAY_CARD_MIN_SEC = Number.isFinite(L.AWAY_CARD_MIN_SEC) ? L.AWAY_CARD_MIN_SEC : 60;
   const MONEY_MAX = Number.isFinite(L.MONEY_MAX) ? L.MONEY_MAX : 9e15;
   const SHIPS_MAX = Number.isFinite(L.SHIPS_MAX) ? L.SHIPS_MAX : 9999;
-  const ORDER_EVERY = Number.isFinite(L.ORDER_EVERY) ? L.ORDER_EVERY : 150;
   const KEY_SAVE = L.SAVE_KEY || "seizai.save";
   const KEY_BAK = L.SAVE_KEY_BAK || "seizai.save.bak";
   const KEY_BEST = L.SAVE_KEY_BEST || "seizai.best";
@@ -39,18 +38,16 @@
 
   const DEPT_IDS = ["cut", "plant", "carry", "peel", "beam", "plank", "shop"];
   const DEPT_NAME_FALLBACK = { cut: "きこり", plant: "なえぎ", carry: "はこぶ", peel: "かわむき", beam: "かくざい", plank: "いた", shop: "おみせ" };
-  const DEPT_UNLOCK_FALLBACK = { cut: 1, plant: 1, carry: 1, peel: 1, beam: 2, plank: 3, shop: 1 };
-  const LINE_DEPTS_FALLBACK = ["peel", "beam", "plank"];
   const STAGE_NAME_FALLBACK = ["こや", "こうば", "こうじょう", "みなと"];
-  const EXPAND_COST_FALLBACK = [1500, 60000, 2500000];
   // 節目のカードに出す「増えたもの」（3 つまで。§3.6）
   const STAGE_NEWS = {
     2: ["かくざいの だい", "マネージャー", "だいくさん"],
     3: ["いたの だい", "おおぐちの ちゅうもん", "ひのき"],
     4: ["けやき", "ふねの しょうにん", "おおきな ふねの ちゅうもん"]
   };
-  // 部署の「1ぷんに ○」の単位（plank は 角材1本 → 板4枚 なので 4 倍して「まい」）
-  const RATE_UNIT = { cut: ["ぽん", 1], plant: ["ほん", 1], carry: ["ぽん", 1], peel: ["ぽん", 1], beam: ["ぽん", 1], plank: ["まい", 4], shop: ["にん", 1] };
+  // 部署の「1ぷんに ○」の単位（plank は 角材1本 → 板 PLANKS_PER_BEAM 枚 なので、その倍にして「まい」。数は logic の値）
+  const PLANKS_PER_BEAM = Number.isFinite(L.PLANKS_PER_BEAM) ? L.PLANKS_PER_BEAM : 1;
+  const RATE_UNIT = { cut: ["ぽん", 1], plant: ["ほん", 1], carry: ["ぽん", 1], peel: ["ぽん", 1], beam: ["ぽん", 1], plank: ["まい", PLANKS_PER_BEAM], shop: ["にん", 1] };
   const PRODUCT = { peeled: ["むきまるた", "こ"], beams: ["かくざい", "ぽん"], planks: ["いた", "まい"] };
 
   const HINT_MONEY = "おかねが たりないよ";
@@ -157,40 +154,22 @@
   if (reduceMotion.addEventListener) reduceMotion.addEventListener("change", onCalmChange);
   else if (reduceMotion.addListener) reduceMotion.addListener(onCalmChange);
 
-  // ===== logic の表を読む（形が違っても落ちないよう、なければ契約の値） =====
+  // ===== logic の表を読む（DEPTS：{ id, name, kind:'staff'|'line', stage }、STAGES[段−1]：{ id, name, cost }） =====
   function deptInfo(id) {
-    const D = L.DEPTS;
-    let d = null;
-    if (Array.isArray(D)) d = D.find((x) => x && x.id === id) || null;
-    else if (D && typeof D === "object") d = D[id] || null;
+    const d = Array.isArray(L.DEPTS) ? L.DEPTS.find((x) => x && x.id === id) : null;
     return d && typeof d === "object" ? d : {};
   }
   const deptName = (id) => { const n = deptInfo(id).name; return typeof n === "string" && n ? n : DEPT_NAME_FALLBACK[id] || id; };
-  function isLineDept(id) {
-    const s = state && state.depts && state.depts[id];
-    if (s && typeof s === "object") { if ("lines" in s) return true; if ("staff" in s) return false; }
-    const k = deptInfo(id).kind;
-    if (k === "line" || k === "台" || k === "lines") return true;
-    if (k === "staff" || k === "人") return false;
-    return LINE_DEPTS_FALLBACK.includes(id);
-  }
+  const isLineDept = (id) => deptInfo(id).kind === "line";
   const countOf = (id) => { const s = state && state.depts && state.depts[id]; return s ? (isLineDept(id) ? s.lines : s.staff) | 0 : 0; };
   function stageInfo(n) {
-    const S = L.STAGES;
-    const s = Array.isArray(S) ? (S[n - 1] && S[n - 1].stage === n ? S[n - 1] : S.find((x) => x && x.stage === n) || S[n - 1]) : (S && S[n]) || null;
+    const s = Array.isArray(L.STAGES) ? L.STAGES[n - 1] : null;
     return s && typeof s === "object" ? s : {};
   }
   const stageName = (n) => { const v = stageInfo(n).name; return typeof v === "string" && v ? v : STAGE_NAME_FALLBACK[n - 1] || ""; };
-  function expandCost(n) {
-    const s = stageInfo(n);
-    for (const k of ["expandCost", "cost", "expand"]) if (Number.isFinite(s[k])) return s[k];
-    return EXPAND_COST_FALLBACK[n - 1] || 0;
-  }
-  function deptUnlock(id) {
-    const d = deptInfo(id);
-    for (const k of ["stage", "from", "unlock", "minStage"]) if (Number.isFinite(d[k])) return d[k];
-    return DEPT_UNLOCK_FALLBACK[id] || 1;
-  }
+  // 広げる費用は logic の STAGES[段−1].cost をそのまま出す（予備の値は持たない。§13-1）
+  const expandCost = (n) => { const c = stageInfo(n).cost; return Number.isFinite(c) ? c : null; };
+  const deptUnlock = (id) => { const v = deptInfo(id).stage; return Number.isFinite(v) ? v : 1; };
   const yen = (n) => safeCall(() => L.formatYen(n), null) || (Math.floor(Number(n) || 0).toLocaleString("ja-JP") + " えん");
   const goalOf = () => (state ? safeCall(() => L.goalOf(state), null) : null);
   const ratesOf = () => (state ? safeCall(() => L.rates(state), {}) || {} : {});
@@ -305,8 +284,7 @@
           openCard("order");
           break;
         case "delivered":
-          sfx.play("deliver", state && state.stage === 4 ? "ship" : undefined);   // みなとでは船で届ける
-          R_call("burst", "deliver", null);
+          sfx.play("deliver", state && state.stage === 4 ? "ship" : undefined);   // みなとでは船で届ける（トラック・船の演出は render.frame が events から出す）
           setHint(`ちゅうもんを とどけたよ！ おれい ${yen(e.yen)}`, 4000);
           saveNow();
           break;
@@ -317,13 +295,11 @@
         case "ship":
           if (e.ending) {
             sfx.play("deliver", "ship");
-            R_call("burst", "ship", null);
             writeBest(5);
             saveNow();
             openCard("end");
           } else {
             sfx.play("deliver", "ship");
-            R_call("burst", "ship", null);
             setHint(`ふねが でたよ！ おれい ${yen(e.yen)}`, 4000);
             bump(el.shipCount);
             saveNow();
@@ -739,8 +715,7 @@
           lastUi.bar = key;
           el.goalBar.setAttribute("aria-valuemin", "0");
           el.goalBar.setAttribute("aria-valuemax", String(need));
-          el.goalBar.setAttribute("aria-valuenow", String(Math.floor(done)));
-          el.goalBar.style.setProperty("--p", String(done / need));
+          el.goalBar.setAttribute("aria-valuenow", String(Math.floor(done)));   // 棒の幅（#goalFill）は render が書く
         }
       }
     }
@@ -752,7 +727,8 @@
         lastUi.expand = key;
         el.expandBtn.hidden = !reached;
         if (reached) {
-          const label = `${stageName(st + 1)}に ひろげる（${yen(expandCost(st))}）`;
+          const c = expandCost(st);
+          const label = c === null ? `${stageName(st + 1)}に ひろげる` : `${stageName(st + 1)}に ひろげる（${yen(c)}）`;
           const lab = el.expandBtn.querySelector("[data-part=label]");
           if (lab) setText(lab, label); else setText(el.expandBtn, label);
           if (can) el.expandBtn.removeAttribute("aria-disabled"); else el.expandBtn.setAttribute("aria-disabled", "true");
@@ -764,13 +740,15 @@
       let t = "";
       if (o) {
         const p = PRODUCT[productOf(st)] || PRODUCT.planks;
-        t = o.accepted ? `ちゅうもん：${p[0]} ${num(o.got)}/${num(o.need)}` : "ちゅうもんが きているよ";
+        t = o.accepted ? `ちゅうもん：${p[0]} ${num(o.got)}/${num(o.need)}` : "ちゅうもんが きているよ（おすと みられるよ）";
       }
       if (lastUi.order !== t) {
         lastUi.order = t;
         el.orderTag.hidden = !t;
         setText(el.orderTag, t);
         el.orderTag.dataset.accepted = o && o.accepted ? "1" : "0";
+        if (o && o.accepted) { el.orderTag.setAttribute("tabindex", "-1"); el.orderTag.setAttribute("aria-disabled", "true"); }   // 受けた後は数を見せるだけ
+        else { el.orderTag.removeAttribute("tabindex"); el.orderTag.removeAttribute("aria-disabled"); }
       }
     }
     if (el.shipCount) {
@@ -799,8 +777,7 @@
   function placeZones() {
     if (!el.scene || !zonesCache.length) return;   // 配置が無いときは担当B の HTML のまま
     const host = (el.canvas && el.canvas.parentElement) || el.scene;
-    const ox = el.canvas && el.canvas.parentElement === host ? el.canvas.offsetLeft : 0;
-    const oy = el.canvas && el.canvas.parentElement === host ? el.canvas.offsetTop : 0;
+    // zones は #sceneInner（canvas の親）の座標（render が並べるのと同じ）。canvas は sticky なので canvas の offsetTop は足さない（スクロールでずれる）
     const seen = new Set();
     for (const z of zonesCache) {
       if (!z || typeof z.dept !== "string") continue;
@@ -814,8 +791,8 @@
       }
       seen.add(b);
       b.hidden = false;
-      b.style.left = Math.round(ox + (Number(z.x) || 0)) + "px";
-      b.style.top = Math.round(oy + (Number(z.y) || 0)) + "px";
+      b.style.left = Math.round(Number(z.x) || 0) + "px";
+      b.style.top = Math.round(Number(z.y) || 0) + "px";
       b.style.width = Math.max(44, Math.round(Number(z.w) || 0)) + "px";
       b.style.height = Math.max(44, Math.round(Number(z.h) || 0)) + "px";
     }
@@ -1017,17 +994,11 @@
       D.command("neworder", () => {
         if (!state || state.stage < 3) throw new Error("こうじょう から");
         if (state.order) throw new Error("もう ちゅうもんが でている");
-        // 次の1つが売れたら注文が来るところまで数えを進め、来るまで（最大 120 秒）進める
-        const s = normalize(Object.assign({}, state, { soldSinceOrder: Math.max(0, ORDER_EVERY - 1) }));
-        if (!s) throw new Error("出せなかった");
-        state = s;
-        for (let i = 0; i < 1200 && !state.order; i++) {
-          if (i % 50 === 0) { const c = safeCall(() => L.callCustomer(state), null); if (c && c.ok && c.state) state = c.state; }
-          stepOnce(STEP, null);
-        }
+        const r = safeCall(() => L.forceOrder(state), null);   // logic が注文を作る（数・お礼・お客さんは logic の式）
+        if (!r || !r.ok || !r.state) throw new Error("出せなかった");
+        state = r.state;
+        handleEvents(Array.isArray(r.events) ? r.events : []);   // 'order' → 音・保存・カード
         updateUi(true);
-        if (!state.order) throw new Error("出せなかった（売り物が ない）");
-        if (overlay !== "order") openCard("order");
         return state.order;
       }, { desc: "大口の注文をすぐ出す（こうじょう から）", args: "なし" });
       D.command("ships", (a) => {

@@ -192,7 +192,12 @@
     color: var(--gold);
     font: 700 13px/1.4 var(--font-text);
     overflow-wrap: anywhere;
+    border: 0;
+    text-align: left;
   }
+  /* まだ受けていない注文の札は押すとカードが開く（あとで閉じても いつでも受けられる §3.7）。押せる大きさ 44px */
+  #orderTag[data-accepted="0"] { min-height: 44px; padding: 4px 14px; cursor: pointer; text-decoration: underline; }
+  #orderTag[data-accepted="1"] { pointer-events: none; }
 
   /* ===== #scene（上下スクロール。canvas は見えている所の大きさで sticky） ===== */
   .scene {
@@ -473,12 +478,12 @@
   </header>
 
   <section class="goal" id="goal" aria-label="めあて">
-    <p id="goalText">めあて：むきまるたを 100こ うろう（0/100）</p>
+    <p id="goalText">むきまるたを 100こ うろう（0/100）</p>
     <div class="goal-row">
       <div id="goalBar" role="progressbar" aria-label="めあての すすみ" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="goalFill"></span></div>
       <button id="expandBtn" type="button" hidden>こうばに ひろげる</button>
     </div>
-    <p id="orderTag" hidden>ちゅうもん：いた 0/0</p>
+    <button id="orderTag" type="button" hidden>ちゅうもん：いた 0/0</button>
   </section>
 
   <main class="scene" id="scene" aria-label="こうば">
