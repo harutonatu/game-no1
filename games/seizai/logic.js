@@ -59,13 +59,17 @@
     Object.freeze({ id: "carry", name: "はこぶ", kind: "staff", stage: 1, from: 1, baseTime: 8 }),
     Object.freeze({ id: "peel", name: "かわむき", kind: "line", stage: 1, from: 1, baseTime: 5 }),
     Object.freeze({ id: "beam", name: "かくざい", kind: "line", stage: 2, from: 2, baseTime: 8 }),
+    Object.freeze({ id: "dry", name: "かんそう", kind: "line", stage: 3, from: 3, baseTime: 10 }),     // §19.1：角材 → かわいた かくざい
     Object.freeze({ id: "plank", name: "いた", kind: "line", stage: 3, from: 3, baseTime: 10 }),
+    Object.freeze({ id: "plane", name: "かんな", kind: "line", stage: 4, from: 4, baseTime: 5 }),     // §19.1：板 → つるつるいた
     Object.freeze({ id: "shop", name: "おみせ", kind: "staff", stage: 1, from: 1, baseTime: 3 })
   ]);
   const IDS = DEPTS.map((d) => d.id);
   const DEPT = {};
   for (const d of DEPTS) DEPT[d.id] = d;
-  const BASE_TIME = Object.freeze({ cut: 6, plant: 5, carry: 8, peel: 5, beam: 8, plank: 10, shop: 3 });
+  const BASE_TIME = Object.freeze({ cut: 6, plant: 5, carry: 8, peel: 5, beam: 8, dry: 10, plank: 10, plane: 5, shop: 3 });
+  // 段に広げて新しい台が来たときの きかい の Lv（§19.1.2。古い保存の補いにも使う）
+  const START_LEVEL = Object.freeze({ dry: 1, plane: 1 });
   const PLANKS_PER_BEAM = 2;
 
   // 段ごとの値は [こや, こうば, こうじょう, みなと] の順（index = stage − 1）
@@ -75,35 +79,35 @@
   const CUST_EVERY = Object.freeze([4, 3, 2.5, 2]);
   const STAGE_MUL = Object.freeze([1, 1.5, 3, 6]);
   const WOOD = Object.freeze(["すぎ", "すぎ", "ひのき", "けやき"]);
-  const PRICE = Object.freeze({ peeled: 5, beams: 30, planks: 20 });
-  const PRODUCT_NAME = Object.freeze({ peeled: "むきまるた", beams: "かくざい", planks: "いた" });
-  const PRODUCT_UNIT = Object.freeze({ peeled: "こ", beams: "ぽん", planks: "まい" });
+  const PRICE = Object.freeze({ peeled: 5, beams: 30, planks: 20, smooth: 30 });
+  const PRODUCT_NAME = Object.freeze({ peeled: "むきまるた", beams: "かくざい", dried: "かわいた かくざい", planks: "いた", smooth: "つるつるいた" });
+  const PRODUCT_UNIT = Object.freeze({ peeled: "こ", beams: "ぽん", dried: "ぽん", planks: "まい", smooth: "まい" });
 
   const STAFF_COST = Object.freeze({ cut: 15, plant: 10, carry: 25, shop: 40 });
   const STAFF_START = Object.freeze({ cut: 1, plant: 0, carry: 1, shop: 1 });
   const STAFF_GROWTH = 1.55;
-  const LEVEL_COST = Object.freeze({ cut: 10, plant: 10, carry: 12, peel: 15, beam: 700, plank: 3000, shop: 20 });
+  const LEVEL_COST = Object.freeze({ cut: 10, plant: 10, carry: 12, peel: 15, beam: 700, dry: 1500, plank: 3000, plane: 20000, shop: 20 });
   const LEVEL_GROWTH = 1.18;
-  const LINE_COST = Object.freeze({ peel: 100, beam: 3000, plank: 20000 });
+  const LINE_COST = Object.freeze({ peel: 100, beam: 3000, dry: 10000, plank: 20000, plane: 150000 });
   const LINE_GROWTH = 5;
-  const MGR_COST = Object.freeze({ cut: 300, plant: 300, carry: 400, peel: 500, beam: 8000, plank: 50000, shop: 1000 });
+  const MGR_COST = Object.freeze({ cut: 300, plant: 300, carry: 400, peel: 500, beam: 8000, dry: 30000, plank: 50000, plane: 300000, shop: 1000 });
   const MGR_FAST = 1.5;
   const MGR_GAIN = 0.25;
   const BOOST_MUL = 2;
 
   // 人数・台数の上限（§3.2 の表）。CAPS[stage − 1][dept]。0 はまだ使えない
   const CAPS = Object.freeze([
-    Object.freeze({ cut: 3, plant: 1, carry: 3, peel: 2, beam: 0, plank: 0, shop: 1 }),
-    Object.freeze({ cut: 5, plant: 2, carry: 5, peel: 3, beam: 3, plank: 0, shop: 2 }),
-    Object.freeze({ cut: 6, plant: 3, carry: 6, peel: 4, beam: 4, plank: 4, shop: 3 }),
-    Object.freeze({ cut: 8, plant: 4, carry: 8, peel: 4, beam: 4, plank: 4, shop: 4 })
+    Object.freeze({ cut: 3, plant: 1, carry: 3, peel: 2, beam: 0, dry: 0, plank: 0, plane: 0, shop: 1 }),
+    Object.freeze({ cut: 5, plant: 2, carry: 5, peel: 3, beam: 3, dry: 0, plank: 0, plane: 0, shop: 2 }),
+    Object.freeze({ cut: 6, plant: 3, carry: 6, peel: 4, beam: 4, dry: 4, plank: 4, plane: 0, shop: 3 }),
+    Object.freeze({ cut: 8, plant: 4, carry: 8, peel: 4, beam: 4, dry: 4, plank: 4, plane: 4, shop: 4 })
   ]);
 
   const STAGES = Object.freeze([
     Object.freeze({ id: 1, key: "koya", name: "こや", product: "peeled", goal: 100, cost: 250, expandCost: 250 }),
     Object.freeze({ id: 2, key: "kouba", name: "こうば", product: "beams", goal: 1000, cost: 20000, expandCost: 20000 }),
     Object.freeze({ id: 3, key: "koujou", name: "こうじょう", product: "planks", goal: 25000, cost: 500000, expandCost: 500000 }),
-    Object.freeze({ id: 4, key: "minato", name: "みなと", product: "planks", goal: SHIP_BASE, cost: null, expandCost: null })
+    Object.freeze({ id: 4, key: "minato", name: "みなと", product: "smooth", goal: SHIP_BASE, cost: null, expandCost: null })
   ]);
 
   const CUSTOMERS = Object.freeze([
@@ -126,6 +130,20 @@
   const SAVE_KEY_BAK = "seizai.save.bak";
   const SAVE_KEY_BEST = "seizai.best";
   const SAVE_KEY_HELP = "seizai.help";
+
+  // 道具の段階（§19.2。全部署で同じ Lv で変わる。画面は表を持たず toolOf を使う）
+  const TOOL_LV = Object.freeze([1, 5, 15, 30]);
+  const TOOLS = Object.freeze({
+    cut: Object.freeze(["おの", "のこぎり", "チェーンソー", "きんの チェーンソー"]),
+    plant: Object.freeze(["スコップ", "くわ", "なえぎぐるま", "きんの スコップ"]),
+    carry: Object.freeze(["てで", "ておしぐるま", "にぐるま", "トラック"]),
+    peel: Object.freeze(["へら", "ローラー", "かわむきマシン", "きんの マシン"]),
+    beam: Object.freeze(["おおのこ", "まるのこ", "おおきな まるのこ", "きんの まるのこ"]),
+    dry: Object.freeze(["おひさま", "せんぷうき", "ストーブ", "かんそうマシン"]),
+    plank: Object.freeze(["てのこ", "でんきのこ", "ならびのこ", "きんの ならびのこ"]),
+    plane: Object.freeze(["かんな", "おおかんな", "でんきかんな", "きんの かんな"]),
+    shop: Object.freeze(["はりがみ", "かんばん", "ひかる かんばん", "きんの かんばん"])
+  });
 
   // ---------------------------------------------------------------- 小さな道具
   const isNum = (x) => typeof x === "number" && Number.isFinite(x);
@@ -170,8 +188,8 @@
     return d;
   }
   const zeroBy = (keys) => { const o = {}; for (const k of keys) o[k] = 0; return o; };
-  const BUF_KEYS = ["yard", "logs", "peeled", "beams", "planks", "goods"];
-  const TOTAL_KEYS = ["logs", "peeled", "beams", "planks", "sold", "earned"];
+  const BUF_KEYS = ["yard", "logs", "peeled", "beams", "dried", "planks", "goods"];
+  const TOTAL_KEYS = ["logs", "peeled", "beams", "dried", "planks", "smooth", "sold", "earned"];
 
   function normSeed(seed) {
     if (!isNum(seed)) return 1;
@@ -267,7 +285,9 @@
     f.carry = rateOf(s, "carry");
     f.peel = rateOf(s, "peel");
     if (s.stage >= 2) f.beam = rateOf(s, "beam");
+    if (s.stage >= 3) f.dry = rateOf(s, "dry");
     if (s.stage >= 3) f.plank = rateOf(s, "plank");
+    if (s.stage >= 4) f.plane = rateOf(s, "plane") / PLANKS_PER_BEAM;   // 板 2まい ＝ 丸太 1本
     f.shop = Math.min(rateOf(s, "shop"), 1 / custInterval(s)) * avgWant(s.stage) / perLog;
     return f;
   }
@@ -424,10 +444,21 @@
       const n = work(s, "beam", dt, b.peeled, (out === "goods" ? gcap : cap) - b[out], 1);
       b.peeled -= n; b[out] += n; s.done.beam += n; s.totals.beams += n; made(ev, "beam", n);
     }
-    // いた
+    // かんそう（こうじょう から。角材 → かわいた かくざい。§19.1）
     if (st >= 3) {
-      const n = work(s, "plank", dt, b.beams, gcap - b.goods, PLANKS_PER_BEAM);
-      b.beams -= n; b.goods += n * PLANKS_PER_BEAM; s.done.plank += n; s.totals.planks += n * PLANKS_PER_BEAM; made(ev, "plank", n);
+      const n = work(s, "dry", dt, b.beams, cap - b.dried, 1);
+      b.beams -= n; b.dried += n; s.done.dry += n; s.totals.dried += n; made(ev, "dry", n);
+    }
+    // いた（かわいた かくざい 1本 → 板 2まい。みなと では かんな へ回す）
+    if (st >= 3) {
+      const out = st === 3 ? "goods" : "planks";
+      const n = work(s, "plank", dt, b.dried, (out === "goods" ? gcap : cap) - b[out], PLANKS_PER_BEAM);
+      b.dried -= n; b[out] += n * PLANKS_PER_BEAM; s.done.plank += n; s.totals.planks += n * PLANKS_PER_BEAM; made(ev, "plank", n);
+    }
+    // かんな（みなと から。板 1まい → つるつるいた 1まい）
+    if (st >= 4) {
+      const n = work(s, "plane", dt, b.planks, gcap - b.goods, 1);
+      b.planks -= n; b.goods += n; s.done.plane += n; s.totals.smooth += n; made(ev, "plane", n);
     }
     // 注文へ入れる
     if (s.order && s.order.accepted) {
@@ -529,11 +560,36 @@
   }
   function buy(state, dept, what) {
     try {
-      if (!okState(state)) return { state, ok: false, reason: "locked" };
+      if (!okState(state)) return { state, ok: false, reason: "locked", toolUp: null };
       const s = clone(state);
+      const before = what === "level" && DEPT[dept] ? toolTier(s.depts[dept].level) : 0;
       const r = buyMut(s, dept, what);
-      return r ? { state, ok: false, reason: r } : { state: s, ok: true };
-    } catch (e) { return { state, ok: false, reason: "locked" }; }
+      if (r) return { state, ok: false, reason: r, toolUp: null };
+      let toolUp = null;
+      if (what === "level") {
+        const tier = toolTier(s.depts[dept].level);
+        if (tier > before) toolUp = { dept, tier, name: TOOLS[dept][tier] };
+      }
+      return { state: s, ok: true, toolUp };
+    } catch (e) { return { state, ok: false, reason: "locked", toolUp: null }; }
+  }
+
+  // ---------------------------------------------------------------- 道具の段階（§19.2）
+  function toolTier(level) {
+    if (!isNum(level)) return 0;
+    let t = 0;
+    for (let i = 1; i < TOOL_LV.length; i++) if (level >= TOOL_LV[i]) t = i;
+    return t;
+  }
+  function toolOf(state, dept) {
+    try {
+      if (!okState(state) || typeof dept !== "string" || !DEPT[dept]) return null;
+      const s = clone(state);
+      if (!unlocked(s.stage, dept)) return null;
+      const tier = toolTier(s.depts[dept].level);
+      const next = tier + 1 < TOOL_LV.length ? { name: TOOLS[dept][tier + 1], lv: TOOL_LV[tier + 1] } : null;
+      return { tier, name: TOOLS[dept][tier], next };
+    } catch (e) { return null; }
   }
   function setMgr(state, dept, kind) {
     try {
@@ -620,7 +676,7 @@
     }
     s.stage += 1;
     s.goal.done = 0;
-    for (const x of DEPTS) if (x.kind === "line" && x.stage === s.stage && s.depts[x.id].lines < 1) s.depts[x.id].lines = 1;
+    for (const x of DEPTS) if (x.kind === "line" && x.stage === s.stage && s.depts[x.id].lines < 1) { s.depts[x.id].lines = 1; s.depts[x.id].level = Math.max(s.depts[x.id].level, START_LEVEL[x.id] || 1); }
     if (s.stage === 4) s.ship.got = 0;
     return null;
   }
@@ -640,7 +696,8 @@
       if (s.stage >= 4) {
         const need = shipNeed(s.ships);
         const done = Math.min(Math.floor(s.ship.got), need);
-        const head = s.ships >= 1 ? "つぎの ふね：いたを つもう" : "おおきな ふねに いたを つもう";
+        const pn = PRODUCT_NAME[productOfStage(4)];
+        const head = s.ships >= 1 ? `つぎの ふね：${pn}を つもう` : `おおきな ふねに ${pn}を つもう`;
         return { text: `${head}（${fmtInt(done)}/${fmtInt(need)}）`, done, need, kind: "ship" };
       }
       const g = STAGES[s.stage - 1];
@@ -784,13 +841,15 @@
       for (const k of BUF_KEYS) s.buf[k] = intIn(b[k], 0, k === "goods" ? GOODS_CAP[si] : BUF_CAP[si], 0);
       const D = isObj(o.depts) ? o.depts : {};
       for (const x of DEPTS) {
-        const src = isObj(D[x.id]) ? D[x.id] : {};
+        const has = isObj(D[x.id]);
+        const src = has ? D[x.id] : {};
         const d = s.depts[x.id];
         const cap = CAPS[si][x.id];
         const open = x.stage <= s.stage;
         if (x.kind === "line") d.lines = open ? intIn(src.lines, 1, cap, 1) : 0;
         else { const lo = STAFF_START[x.id]; d.staff = intIn(src.staff, lo, cap, lo); }
-        d.level = intIn(src.level, 1, LEVEL_MAX, 1);
+        // 欄が無い（v25 までの保存の かんそう・かんな）：使える段なら 1台・START_LEVEL（§19.1.5）
+        d.level = has ? intIn(src.level, 1, LEVEL_MAX, 1) : open ? (START_LEVEL[x.id] || 1) : 1;
         d.mgr = open && s.stage >= 2 && (src.mgr === "fast" || src.mgr === "gain") ? src.mgr : null;
       }
       const g = isObj(o.goal) ? o.goal : {};
@@ -886,7 +945,7 @@
       const rep = {
         policy: pol, away, seed: s.seed, reached: { 2: null, 3: null, 4: null, end: null }, days: { 2: null, 3: null, 4: null, end: null },
         buys: 0, buysByStage: { 1: 0, 2: 0, 3: 0, 4: 0 }, timeByStage: { 1: 0, 2: 0, 3: 0, 4: 0 }, maxGapByStage: { 1: 0, 2: 0, 3: 0, 4: 0 }, maxGapAtByStage: { 1: null, 2: null, 3: null, 4: null },
-        firstBuy: null, moneyMax: 0, awayCheck: {}, ships: [], orders: 0, delivered: 0, t: 0, wall: 0, stuck: false, error: null, minTrees: Infinity
+        firstBuy: null, moneyMax: 0, expandEarn: {}, awayCheck: {}, ships: [], orders: 0, delivered: 0, t: 0, wall: 0, stuck: false, error: null, minTrees: Infinity
       };
       const ev = [];
       let lastBuy = 0;
@@ -898,6 +957,9 @@
       let checkedHalf = { 1: false, 2: false, 3: false, 4: false };
       let i = 0;
       const stepsPerSec = Math.round(1 / STEP);
+      // 節目の直後の稼ぎ（§19.1.4）：1 秒ごとの totals.earned を残し、広げる直前・直後の 10 分（えん/分）を比べる
+      const earnAt = [];
+      const expMark = {};
       while (s.t < maxSec) {
         ev.length = 0;
         stepMut(s, STEP, ev);
@@ -912,11 +974,14 @@
         if (s.forest.trees < rep.minTrees) rep.minTrees = s.forest.trees;
         if (!s.cleared) rep.timeByStage[s.stage] += STEP;   // 買い物の間隔はエンディングまでで測る
         if (typeof opts.trace === "function" && i % (stepsPerSec * 300) === 0) opts.trace(clone(s), bottleneckS(s));
+        if (i % stepsPerSec === 0) earnAt.push(s.totals.earned);
         if (i % stepsPerSec === 0 && pol !== "idle") {
           // 1秒ごとの判断
           if (s.order && !s.order.accepted) s.order.accepted = true;
           if (canExpandS(s)) {
+            const eb = s.totals.earned, sec0 = earnAt.length - 1;
             expandMut(s);
+            expMark[s.stage] = { sec: sec0, before: eb, after: s.totals.earned };
             setMgrModes(s);
             rep.reached[s.stage] = s.t;
             rep.days[s.stage] = wall / 86400;
@@ -963,6 +1028,10 @@
           }
         }
       }
+      for (const k in expMark) {
+        const m = expMark[k];
+        if (m.sec >= 600 && m.sec + 600 < earnAt.length) rep.expandEarn[k] = { before: (m.before - earnAt[m.sec - 600]) / 10, after: (earnAt[m.sec + 600] - m.after) / 10 };
+      }
       rep.t = s.t;
       rep.wall = wall;
       rep.final = { stage: s.stage, money: s.money, ships: s.ships, totals: Object.assign({}, s.totals), depts: JSON.parse(JSON.stringify(s.depts)), trees: s.forest.trees };
@@ -994,7 +1063,8 @@
     SHIP_BASE, SHIP_GROWTH, SHIP_NEED_MAX, SHIPS_MAX, SHIP_REWARD_MUL,
     STEP, OFFLINE_CAP_SEC, OFFLINE_STEP, AWAY_RATE, AWAY_CARD_MIN_SEC,
     SAVE_VERSION, SAVE_KEY, SAVE_KEY_BAK, SAVE_KEY_BEST, SAVE_KEY_HELP,
-    speedMul,
+    START_LEVEL, TOOL_LV, TOOLS,
+    speedMul, toolTier, toolOf,
     newGame, step, rates, bottleneck, priceOf, productOf, costOf, buy, setMgr, boost, callCustomer, acceptOrder, forceOrder,
     canExpand, expand, goalOf, shipNeed, awaySeconds, catchUp, fastForward, formatYen, makeSave, loadSave, validateBest, validateFlag, simulate
   };
