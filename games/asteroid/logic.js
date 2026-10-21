@@ -20,6 +20,9 @@
  *       burns[] には spread（となりの こおり へ広げたか）を足している
  *   - 契約に無い便利な関数（足しただけ。契約の関数は変えていない）：
  *       hpMul・valMul・dmg・upCost・affOf・shapeOf・cellHp・cellValue・matOf（テストと画面の説明用）
+ *   - upgrade の返り値に events（Lv10・20… に届いたら [{ kind:'evolve', slot, lv }]）を足している。
+ *   - エンディング（phase 'end'）では星はもう 31 に進み、cleared は true。step は進まない。
+ *     「このまま あそぶ」は loadSave(makeSave(state)) で星 31 の最初から fly になる（契約に専用の関数が無いため）。
  */
 (function (root, factory) {
   "use strict";
