@@ -291,16 +291,34 @@ export const tests = [
     },
   },
   {
-    id: 'WL6', tier: 'smoke', node: true, title: 'もくもくこうば：大口の注文（こうじょう から・売った数で来る・同時に1つ・受けた後は先に入る・お礼は1回・あとでも罰なし）',
+    id: 'WL6', tier: 'smoke', node: true, title: 'もくもくこうば：大口の注文（こうば から（§17.2）・売った数で来る・同時に1つ・受けた後は先に入る・お礼は1回・あとでも罰なし・とくべつな注文 5 回に 1 回くらい・相手は段ごとに 3 種類以上）',
     run({ check, root }) {
       const L = load(root);
-      const lo = run(L, maxed(L, 2), 600);
-      check('こうば では注文は来ない', ofKind(lo.evs, 'order').length === 0 && lo.s.order === null, lo.s.order);
+      const lo = run(L, maxed(L, 1), 900);
+      check('こや では注文は来ない（ORDER_FROM_STAGE 2）', L.ORDER_FROM_STAGE === 2 && ofKind(lo.evs, 'order').length === 0 && lo.s.order === null, lo.s.order);
+      const k2 = run(L, maxed(L, 2), 900);
+      const o2 = ofKind(k2.evs, 'order')[0];
+      check('こうば でも売るうちに注文が来る（品は角材＝productOf(2)、相手は こうば の ORDER_BOSSES）', !!o2 && L.productOf(2) === 'beams' && L.ORDER_BOSSES[1].includes(o2.order.who), o2 && o2.order);
+      check('相手の名前は こうば・こうじょう・みなと で 3 種類以上（こや は 0）、40 文字以内', L.ORDER_BOSSES[0].length === 0 && [1, 2, 3].every((i) => new Set(L.ORDER_BOSSES[i]).size >= 3 && L.ORDER_BOSSES[i].every((w) => typeof w === 'string' && w.length > 0 && w.length <= 40)), L.ORDER_BOSSES);
+      // とくべつな注文：注文をたくさん作って割合・数・お礼を見る（forceOrder は newOrder と同じ式）
+      {
+        let st = maxed(L, 3);
+        const os = [];
+        for (let i = 0; i < 400; i++) { const f = L.forceOrder({ ...st, rng: (i * 2654435761) >>> 0 }); if (f.ok) os.push(f.state.order); }
+        const big = os.filter((o) => o.big === true), nor = os.filter((o) => o.big === false);
+        const p = L.priceOf(st);
+        const okNor = nor.every((o) => o.reward === Math.floor(o.need * p * 3 + 1e-6) && o.need % 10 === 0);
+        const okBig = big.every((o) => o.reward === Math.floor(o.need * p * 3 * 4 / 1.5 + 1e-6) && o.need % 10 === 0);
+        const maxNor = Math.max(...nor.map((o) => o.need)), maxBig = Math.max(...big.map((o) => o.need));
+        check(`とくべつな注文（big: true）は 400 回中 ${big.length} 回（5 回に 1 回くらい＝50〜110 回）、ほかは big: false`, os.length === 400 && big.length >= 50 && big.length <= 110 && big.length + nor.length === 400 && L.ORDER_BIG_RATE === 0.2, big.length);
+        check('ふつうの注文のお礼は need×売値×3、とくべつは need×売値×3×4÷1.5（ふつうの 4 倍）、数は 10 の倍数', okNor && okBig && L.ORDER_BIG_NEED === 1.5 && L.ORDER_BIG_REWARD === 4, { p, nor: nor.slice(0, 2), big: big.slice(0, 2) });
+        check(`とくべつな注文の数はふつうより大きい（最大 ${maxBig} ＞ ${maxNor}）`, maxBig > maxNor, [maxBig, maxNor]);
+      }
       const x = run(L, maxed(L, 3), 900);
       const os = ofKind(x.evs, 'order');
       check("こうじょう では売るうちに注文が来る（{ kind:'order', order }）", os.length === 1 && x.s.order && x.s.order.accepted === false, os.length);
       const o = os[0] && os[0].order;
-      check('注文の形 { id, who, need, got:0, reward, accepted:false }、need は 10 の倍数、reward = need×売値×3', o && Number.isInteger(o.id) && typeof o.who === 'string' && o.who && o.need % 10 === 0 && o.need >= 10 && o.got === 0 && o.reward === Math.floor(o.need * L.priceOf(x.s) * 3) && o.accepted === false, o);
+      check('注文の形 { id, who, need, got:0, reward, accepted:false, big }、need は 10 の倍数、reward = need×売値×3（とくべつは ×4÷1.5）', o && Number.isInteger(o.id) && typeof o.who === 'string' && o.who && o.need % 10 === 0 && o.need >= 10 && o.got === 0 && o.reward === Math.floor(o.need * L.priceOf(x.s) * 3 * (o.big ? 4 / 1.5 : 1) + 1e-6) && o.accepted === false && typeof o.big === 'boolean', o);
       check('受けないままでも次の注文は来ない（同時に1つ）、お客さんには売れ続ける（あとでも罰なし）', x.s.totals.sold > L.ORDER_EVERY * 2 && ofKind(x.evs, 'order').length === 1, x.s.totals.sold);
       const s1 = x.s;
       const before = { sold: s1.totals.sold, money: s1.money };
@@ -317,7 +335,7 @@ export const tests = [
       check('お礼は1回だけ（同じ id の delivered は1つ）', new Set(dv.map((d) => d.order.id)).size === dv.length, dv.map((d) => d.order.id));
       check('届いた後に 次の注文が来られる（soldSinceOrder は 0 から）', ofKind(y.evs, 'order').length >= 1, ofKind(y.evs, 'order').length);
       const f = L.forceOrder(maxed(L, 3));
-      check('forceOrder（デバッグ用）：こうじょう で注文がすぐ出る、こうば・注文があるときは ok false', f.ok && f.state.order && !L.forceOrder(maxed(L, 2)).ok && !L.forceOrder(f.state).ok, f.state && f.state.order);
+      check('forceOrder（デバッグ用）：こうば・こうじょう で注文がすぐ出る、こや・注文があるときは ok false', f.ok && f.state.order && L.forceOrder(maxed(L, 2)).ok && !L.forceOrder(maxed(L, 1)).ok && !L.forceOrder(f.state).ok, f.state && f.state.order);
       void before;
     },
   },
@@ -374,7 +392,7 @@ export const tests = [
     run({ check, root }) {
       const L = load(root);
       let s = run(L, maxed(L, 3), 400).s;
-      s = { ...s, money: 123456, order: { id: 3, who: 'かぐやの おやかた', need: 120, got: 40, reward: 9999, accepted: true }, orderSeq: 3 };
+      s = { ...s, money: 123456, order: { id: 3, who: 'かぐやの おやかた', need: 120, got: 40, reward: 9999, accepted: true, big: true }, orderSeq: 3 };
       const txt = L.makeSave(s, 1792000000000);
       const back = L.loadSave(txt);
       const strip = (x) => { const { prog, queue, done, arrive, callUntil, ...rest } = x; const depts = {}; for (const id of IDS) { const { boostUntil, cooldownUntil, ...d } = x.depts[id]; depts[id] = d; } return { ...rest, depts }; };
@@ -407,6 +425,12 @@ export const tests = [
         ['order 壊れ', { stage: 3, order: { need: 'x' } }, (r) => r.state.order === null],
         ['order こや', { stage: 1, order: { id: 1, need: 10, got: 0, reward: 5, accepted: true } }, (r) => r.state.order === null],
         ['order got 超え', { stage: 3, order: { id: 1, who: 'a', need: 10, got: 50, reward: 5, accepted: 'yes' } }, (r) => r.state.order && r.state.order.got === 9 && r.state.order.accepted === false],
+        ['order こうば（§17.2 こうば から）', { stage: 2, order: { id: 1, who: 'a', need: 10, got: 0, reward: 5, accepted: true } }, (r) => r.state.order && r.state.order.need === 10 && r.state.order.accepted === true],
+        ['order reward 0・負・文字 → need×売値×3 で計算し直す', { stage: 3, order: { id: 1, who: 'a', need: 120, got: 0, reward: 0 } }, (r) => r.state.order && r.state.order.reward === Math.floor(120 * L.priceOf(r.state) * 3 + 1e-6) && r.state.order.reward > 0],
+        ['order reward 文字', { stage: 2, order: { id: 1, who: 'a', need: 30, got: 0, reward: 'x' } }, (r) => r.state.order && r.state.order.reward === Math.floor(30 * L.priceOf(r.state) * 3 + 1e-6)],
+        ['order reward 負・とくべつ', { stage: 3, order: { id: 1, who: 'a', need: 150, got: 0, reward: -7, big: true } }, (r) => r.state.order && r.state.order.big === true && r.state.order.reward === Math.floor(150 * L.priceOf(r.state) * 3 * 4 / 1.5 + 1e-6)],
+        ['order reward 超え', { stage: 3, order: { id: 1, who: 'a', need: 10, got: 0, reward: 1e30 } }, (r) => r.state.order && r.state.order.reward === L.MONEY_MAX],
+        ['order big 文字・1 → false', { stage: 3, order: { id: 1, who: 'a', need: 10, got: 0, reward: 5, big: 'yes' } }, (r) => r.state.order && r.state.order.big === false && L.loadSave(JSON.stringify({ v: 1, stage: 3, order: { need: 10, big: 1 } })).state.order.big === false],
         ['goal 負', { goal: { done: -9 } }, (r) => r.state.goal.done === 0],
         ['totals 壊れ', { totals: { sold: -1, earned: 'x', logs: 1e40 } }, (r) => r.state.totals.sold === 0 && r.state.totals.earned === 0 && r.state.totals.logs === L.MONEY_MAX],
         ['seed・rng 壊れ', { seed: 'x', rng: -1 }, (r) => Number.isInteger(r.state.seed) && Number.isInteger(r.state.rng) && r.state.rng >= 0],
@@ -435,8 +459,20 @@ export const tests = [
       check('同じ局面からは同じ結果（お客さんの種類・数は種つきの乱数）', J(a) === J(b) && J(play(5)) !== J(play(6)), null);
       const s0 = run(L, maxed(L, 3), 50).s;
       const snap = J(s0);
-      L.step(s0, 0.5); L.buy({ ...s0, money: 1e9 }, 'cut', 'level'); L.boost(s0, 'cut'); L.callCustomer(s0); L.catchUp(s0, 600); L.expand(s0); L.setMgr(s0, 'cut', 'fast'); L.acceptOrder(s0); L.makeSave(s0, 1); L.goalOf(s0); L.rates(s0); L.forceOrder(s0);
+      L.step(s0, 0.5); L.buy({ ...s0, money: 1e9 }, 'cut', 'level'); L.boost(s0, 'cut'); L.callCustomer(s0); L.catchUp(s0, 600); L.expand(s0); L.setMgr(s0, 'cut', 'fast'); L.acceptOrder(s0); L.makeSave(s0, 1); L.goalOf(s0); L.rates(s0); L.forceOrder(s0); L.fastForward(s0, 30);
       check('どの関数も渡した state を書き換えない', J(s0) === snap, null);
+      // fastForward（§17.1 A8）：step を STEP ずつ繰り返したのと同じ結果・同じ出来事（order・delivered・goal・ship）
+      {
+        const keep = (evs) => evs.filter((e) => ['order', 'delivered', 'goal', 'ship'].includes(e.kind));
+        const fails = [];
+        for (const [name, st0, sec] of [['こや 120 秒', L.newGame(3), 120], ['こうば 600 秒', maxed(L, 2), 600], ['こうじょう 注文を受けて 900 秒', L.acceptOrder(L.forceOrder(maxed(L, 3)).state).state, 900], ['みなと 300 秒', { ...maxed(L, 4), ship: { got: L.shipNeed(0) - 50 } }, 300]]) {
+          const a = run(L, st0, sec), f = L.fastForward(st0, sec);
+          if (J(a.s) !== J(f.state) || J(keep(a.evs)) !== J(f.events) || f.report.steps !== Math.round(sec / L.STEP)) fails.push({ name, ev: [keep(a.evs).length, f.events.length], t: [a.s.t, f.state.t] });
+        }
+        check('fastForward(s, sec) は step(0.1) を sec÷0.1 回まわした結果と同じ（state と order・delivered・goal・ship の出来事）', fails.length === 0, fails);
+        const z = L.fastForward(s0, -5), n = L.fastForward(s0, NaN), big = L.fastForward(L.newGame(1), 1e12);
+        check('fastForward：負・NaN は進めない、とても大きい秒は FF_MAX_SEC（1 日）で止める、おかしな state は例外なし', z.report.steps === 0 && n.report.steps === 0 && J(z.state) === J(L.step(s0, 0).state) && big.report.steps === Math.round(L.FF_MAX_SEC / L.STEP) && (() => { try { L.fastForward(null, 5); L.fastForward('x', 'y'); return true; } catch { return false; } })(), [z.report, n.report, big.report.steps]);
+      }
       const st = L.step(s0, 0.1).state;
       check('step は新しいオブジェクトを返す（中の objects も別）', st !== s0 && st.buf !== s0.buf && st.depts !== s0.depts && st.depts.cut !== s0.depts.cut, null);
       const m = L.setMgr(mk(L, 2, { depts: { cut: { mgr: 'fast' } } }), 'cut', 'gain');
@@ -508,11 +544,23 @@ export const tests = [
       check('最初の買い物まで 30 秒以内', g.firstBuy !== null && g.firstBuy <= 30, g.firstBuy);
       check('こうば に 8〜15 分', g.reached[2] >= 8 * 60 && g.reached[2] <= 15 * 60, h(g.reached[2]));
       check('こうじょう に 45〜90 分（累計）', g.reached[3] >= 45 * 60 && g.reached[3] <= 90 * 60, h(g.reached[3]));
-      check('みなと に 2.5〜4 時間（累計）', g.reached[4] >= 2.5 * 3600 && g.reached[4] <= 4 * 3600, h(g.reached[4]));
+      check('みなと に 2.5〜4.5 時間（累計。§17.2 C1 で 4 → 4.5 に直した）', g.reached[4] >= 2.5 * 3600 && g.reached[4] <= 4.5 * 3600, h(g.reached[4]));
       check('エンディング 6〜10 時間（ユーザー決定「合計6〜10時間」）', g.reached.end >= 6 * 3600 && g.reached.end <= 10 * 3600, h(g.reached.end));
       // 買い物の間隔：みなと（§3.9 の表は「2 分に 1 回以上」。実測は 2 分 14 秒。§3.9 に書いたとおり みなと は 2.5 分まで）
       const gaps = [1, 2, 3, 4].map((k) => g.avgGapByStage[k]);
       check('買い物の平均の間隔：こや・こうば・こうじょう 2 分以内、みなと 2.5 分以内（§3.9）', gaps[0] <= 120 && gaps[1] <= 120 && gaps[2] <= 120 && gaps[3] <= 150, gaps.map((x) => Math.round(x)));
+      // 買い物の最大の間隔（§17.2 C1。広げる費用をためる間も含む）：こや 1 分・こうば 5 分・こうじょう 15 分・みなと 25 分 以内。seed 1〜5 のどれでも
+      {
+        const MAXGAP = { 1: 60, 2: 5 * 60, 3: 15 * 60, 4: 25 * 60 };
+        const over = [], ends = [];
+        for (const seed of [1, 2, 3, 4, 5]) {
+          const r = seed === 1 ? g : L.simulate('greedy', { seed, away: 'none', ships: 0, maxSec: 14 * 3600 });
+          ends.push(h(r.reached.end));
+          for (const k of [1, 2, 3, 4]) if (!(r.maxGapByStage[k] <= MAXGAP[k])) over.push({ seed, stage: k, gap: Math.round(r.maxGapByStage[k]), at: Math.round(r.maxGapAtByStage[k]) });
+        }
+        check('買い物の最大の間隔：こや 1 分・こうば 5 分・こうじょう 15 分・みなと 25 分 以内（seed 1〜5。§17.2 C1）', over.length === 0, over);
+        check(`seed 1〜5 のエンディングがどれも 6〜10 時間（${ends.join('・')} 時間）`, ends.every((x) => x >= 6 && x <= 10), ends);
+      }
       const aw = [1, 2, 3, 4].map((k) => g.awayCheck[k]);
       check('2時間の るす のあと、どの段でも るすの稼ぎで 1 つ以上・起動後 5 分と合わせて 2 つ以上 買える', aw.every((a) => a && a.buyable >= 1 && a.buyable5 >= 2), aw);
       check('お金の最大が MONEY_MAX 以下', g.moneyMax <= L.MONEY_MAX, g.moneyMax);

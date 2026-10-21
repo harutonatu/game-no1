@@ -37,6 +37,10 @@
   const ORDER_MIN_SEC = 60;             // 注文の数は いまの速さで 1〜2 分ぶん
   const ORDER_MAX_SEC = 120;
   const ORDER_REWARD_MUL = 3;
+  const ORDER_FROM_STAGE = 2;           // 大口の注文は こうば から（ユーザー決定「2段目から」。§3.7・§17.2）
+  const ORDER_BIG_RATE = 0.2;           // とくべつな注文になる割合（5 回に 1 回くらい。種つきの乱数）
+  const ORDER_BIG_NEED = 1.5;           // とくべつな注文の数（ふつうの 1.5 倍）
+  const ORDER_BIG_REWARD = 4;           // とくべつな注文のお礼（ふつうの注文の 4 倍）
   const QUEUE_MAX = 6;
   const SHIP_BASE = 30000;
   const SHIP_GROWTH = 1.2;
@@ -78,7 +82,7 @@
   const STAFF_COST = Object.freeze({ cut: 15, plant: 10, carry: 25, shop: 40 });
   const STAFF_START = Object.freeze({ cut: 1, plant: 0, carry: 1, shop: 1 });
   const STAFF_GROWTH = 1.55;
-  const LEVEL_COST = Object.freeze({ cut: 10, plant: 10, carry: 12, peel: 15, beam: 1000, plank: 4000, shop: 20 });
+  const LEVEL_COST = Object.freeze({ cut: 10, plant: 10, carry: 12, peel: 15, beam: 700, plank: 3000, shop: 20 });
   const LEVEL_GROWTH = 1.18;
   const LINE_COST = Object.freeze({ peel: 100, beam: 3000, plank: 20000 });
   const LINE_GROWTH = 5;
@@ -96,9 +100,9 @@
   ]);
 
   const STAGES = Object.freeze([
-    Object.freeze({ id: 1, key: "koya", name: "こや", product: "peeled", goal: 100, cost: 600, expandCost: 600 }),
-    Object.freeze({ id: 2, key: "kouba", name: "こうば", product: "beams", goal: 500, cost: 60000, expandCost: 60000 }),
-    Object.freeze({ id: 3, key: "koujou", name: "こうじょう", product: "planks", goal: 6000, cost: 3000000, expandCost: 3000000 }),
+    Object.freeze({ id: 1, key: "koya", name: "こや", product: "peeled", goal: 100, cost: 250, expandCost: 250 }),
+    Object.freeze({ id: 2, key: "kouba", name: "こうば", product: "beams", goal: 1000, cost: 20000, expandCost: 20000 }),
+    Object.freeze({ id: 3, key: "koujou", name: "こうじょう", product: "planks", goal: 25000, cost: 500000, expandCost: 500000 }),
     Object.freeze({ id: 4, key: "minato", name: "みなと", product: "planks", goal: SHIP_BASE, cost: null, expandCost: null })
   ]);
 
@@ -110,6 +114,13 @@
   ]);
   const CUST = {};
   for (const c of CUSTOMERS) CUST[c.kind] = c;
+  // 大口の注文の相手（段ごとに 3 種類以上。こや では注文は来ない。§3.7）
+  const ORDER_BOSSES = Object.freeze([
+    Object.freeze([]),
+    Object.freeze(["だいくの とうりょう", "まちの やくば", "おてらの おしょうさん"]),
+    Object.freeze(["かぐやの おやかた", "がっこうの こうちょうせんせい", "えきの えきちょうさん", "だいくの とうりょう"]),
+    Object.freeze(["ふねの せんちょう", "しまの そんちょうさん", "みなとの くらもと", "かぐやの おやかた"])
+  ]);
 
   const SAVE_KEY = "seizai.save";
   const SAVE_KEY_BAK = "seizai.save.bak";
@@ -198,7 +209,7 @@
       forest: { trees: num(s.forest && s.forest.trees, b.forest.trees), saplings: num(s.forest && s.forest.saplings, 0) },
       buf: {}, prog: {}, depts: {}, queue: [], callUntil: num(s.callUntil, 0), arrive: num(s.arrive, 0),
       goal: { done: num(s.goal && s.goal.done, 0) },
-      order: isObj(s.order) ? { id: num(s.order.id, 0), who: String(s.order.who || ""), need: num(s.order.need, 10), got: num(s.order.got, 0), reward: num(s.order.reward, 0), accepted: !!s.order.accepted } : null,
+      order: isObj(s.order) ? { id: num(s.order.id, 0), who: String(s.order.who || ""), need: num(s.order.need, 10), got: num(s.order.got, 0), reward: num(s.order.reward, 0), accepted: !!s.order.accepted, big: s.order.big === true } : null,
       orderSeq: num(s.orderSeq, 0), soldSinceOrder: num(s.soldSinceOrder, 0),
       ships: num(s.ships, 0), ship: { got: num(s.ship && s.ship.got, 0) },
       totals: {}, done: {},
@@ -314,14 +325,22 @@
 
   // 次の注文までに売る数：ORDER_EVERY か「いまの売り物の速さ × ORDER_GAP_SEC」の大きいほう（10 の倍数）
   function orderEvery(s) { return Math.max(ORDER_EVERY, Math.ceil((productRate(s) * ORDER_GAP_SEC) / 10) * 10); }
+  // 注文のお礼（とくべつな注文は 1 つあたり ORDER_BIG_REWARD ÷ ORDER_BIG_NEED 倍＝ふつうの注文の 4 倍のお礼）
+  function orderReward(need, price, big) {
+    const mul = ORDER_REWARD_MUL * (big ? ORDER_BIG_REWARD / ORDER_BIG_NEED : 1);
+    return Math.min(MONEY_MAX, Math.floor(need * price * mul + 1e-6));
+  }
+  function bossesOf(stage) { return ORDER_BOSSES[stIdx(stage)].length ? ORDER_BOSSES[stIdx(stage)] : ORDER_BOSSES[1]; }
   function newOrder(s, ev) {
-    const pool = CUSTOMERS.filter((c) => c.stage <= s.stage);
-    const who = pool[Math.floor(rand(s) * pool.length)].boss;
+    const pool = bossesOf(s.stage);
+    const who = pool[Math.floor(rand(s) * pool.length)];
     const sec = ORDER_MIN_SEC + Math.floor(rand(s) * (ORDER_MAX_SEC - ORDER_MIN_SEC + 1));
-    const need = Math.max(10, Math.ceil(Math.ceil(productRate(s) * sec) / 10) * 10);
-    const reward = Math.min(MONEY_MAX, Math.floor(need * priceOfS(s) * ORDER_REWARD_MUL));
+    const big = rand(s) < ORDER_BIG_RATE;
+    let need = Math.max(10, Math.ceil(Math.ceil(productRate(s) * sec) / 10) * 10);
+    if (big) need = Math.ceil((need * ORDER_BIG_NEED) / 10) * 10;
+    const reward = orderReward(need, priceOfS(s), big);
     s.orderSeq += 1;
-    s.order = { id: s.orderSeq, who, need, got: 0, reward, accepted: false };
+    s.order = { id: s.orderSeq, who, need, got: 0, reward, accepted: false, big };
     s.soldSinceOrder = 0;
     ev.push({ kind: "order", order: Object.assign({}, s.order) });
   }
@@ -344,7 +363,7 @@
       s.goal.done += n;
       s.ship.got += n;   // SHIPS_MAX のときは shipCheck が need − 1 で止める
     }
-    if (s.stage >= 3 && s.order === null) {
+    if (s.stage >= ORDER_FROM_STAGE && s.order === null) {
       s.soldSinceOrder += n;
       if (s.soldSinceOrder >= orderEvery(s)) newOrder(s, ev);
     }
@@ -565,12 +584,12 @@
     } catch (e) { return { state, ok: false }; }
   }
 
-  // 大口の注文をすぐ出す（デバッグ命令 neworder 用。こうじょう から・注文が無いときだけ）
+  // 大口の注文をすぐ出す（デバッグ命令 neworder 用。こうば から・注文が無いときだけ）
   function forceOrder(state) {
     try {
       if (!okState(state)) return { state, ok: false };
       const s = clone(state);
-      if (s.stage < 3 || s.order !== null) return { state, ok: false };
+      if (s.stage < ORDER_FROM_STAGE || s.order !== null) return { state, ok: false };
       const ev = [];
       newOrder(s, ev);
       return { state: s, ok: true, events: ev };
@@ -675,6 +694,33 @@
     } catch (e) { return { state, report: { seconds: 0, effective: 0, capped: false, earned: 0, sold: 0, made: zeroBy(IDS), delivered: [] } }; }
   }
 
+  // ---------------------------------------------------------------- 開いたまま早送り（テスト用 advance・デバッグ ff。§17.1 A8）
+  // catchUp と同じく写した state を中で書き換えながら STEP ずつ進める（step を繰り返したのと同じ結果。毎回写さないので軽い）。
+  // events は画面が知りたいものだけ（order・delivered・goal・ship）。made・sold・arrive は数だけ report に入れる
+  const FF_MAX_SEC = 86400;
+  function fastForward(state, seconds) {
+    const empty = { state, events: [], report: { seconds: 0, steps: 0, sold: 0, earned: 0 } };
+    try {
+      if (!okState(state)) return empty;
+      const sec = isNum(seconds) ? clamp(seconds, 0, FF_MAX_SEC) : 0;
+      const n = Math.round(sec / STEP);
+      const s = clone(state);
+      const startMoney = s.money;
+      const out = [];
+      const ev = [];
+      let sold = 0;
+      for (let i = 0; i < n; i++) {
+        ev.length = 0;
+        stepMut(s, STEP, ev);
+        for (const e of ev) {
+          if (e.kind === "sold") sold += e.n;
+          else if (e.kind === "order" || e.kind === "delivered" || e.kind === "goal" || e.kind === "ship") out.push(e);
+        }
+      }
+      return { state: s, events: out, report: { seconds: n * STEP, steps: n, sold, earned: Math.max(0, s.money - startMoney) } };
+    } catch (e) { return empty; }
+  }
+
   // ---------------------------------------------------------------- 表示
   function formatYen(n) {
     if (!isNum(n) || n <= 0) return "0 えん";
@@ -752,13 +798,16 @@
       s.orderSeq = intIn(o.orderSeq, 0, 1e9, 0);
       s.soldSinceOrder = intIn(o.soldSinceOrder, 0, 1e12, 0);
       s.order = null;
-      if (s.stage >= 3 && isObj(o.order)) {
+      if (s.stage >= ORDER_FROM_STAGE && isObj(o.order)) {
         const r = o.order;
         const need = intIn(r.need, 1, 1e12, null);
         if (need !== null) {
+          const big = r.big === true;
+          // お礼が数でない・0 以下なら式で計算し直す（売値は読み込んだ段・マネージャーで決まるので、depts を読んだ後）
+          const reward = isNum(r.reward) && r.reward > 0 ? intIn(r.reward, 1, MONEY_MAX, 1) : orderReward(need, priceOfS(s), big);
           s.order = {
-            id: intIn(r.id, 0, 1e9, s.orderSeq), who: typeof r.who === "string" && r.who.length <= 40 ? r.who : CUSTOMERS[2].boss,
-            need, got: intIn(r.got, 0, need - 1, 0), reward: intIn(r.reward, 0, MONEY_MAX, 0), accepted: r.accepted === true
+            id: intIn(r.id, 0, 1e9, s.orderSeq), who: typeof r.who === "string" && r.who.length <= 40 ? r.who : bossesOf(s.stage)[0],
+            need, got: intIn(r.got, 0, need - 1, 0), reward, accepted: r.accepted === true, big
           };
         }
       }
@@ -836,7 +885,7 @@
       const s = newGame(isNum(opts.seed) ? opts.seed : 1);
       const rep = {
         policy: pol, away, seed: s.seed, reached: { 2: null, 3: null, 4: null, end: null }, days: { 2: null, 3: null, 4: null, end: null },
-        buys: 0, buysByStage: { 1: 0, 2: 0, 3: 0, 4: 0 }, timeByStage: { 1: 0, 2: 0, 3: 0, 4: 0 }, maxGapByStage: { 1: 0, 2: 0, 3: 0, 4: 0 },
+        buys: 0, buysByStage: { 1: 0, 2: 0, 3: 0, 4: 0 }, timeByStage: { 1: 0, 2: 0, 3: 0, 4: 0 }, maxGapByStage: { 1: 0, 2: 0, 3: 0, 4: 0 }, maxGapAtByStage: { 1: null, 2: null, 3: null, 4: null },
         firstBuy: null, moneyMax: 0, awayCheck: {}, ships: [], orders: 0, delivered: 0, t: 0, wall: 0, stuck: false, error: null, minTrees: Infinity
       };
       const ev = [];
@@ -879,7 +928,7 @@
               rep.buys++; rep.buysByStage[stBefore]++;
               if (rep.firstBuy === null) rep.firstBuy = s.t;
               const gap = s.t - lastBuy;
-              if (gap > rep.maxGapByStage[stBefore]) rep.maxGapByStage[stBefore] = gap;
+              if (gap > rep.maxGapByStage[stBefore]) { rep.maxGapByStage[stBefore] = gap; rep.maxGapAtByStage[stBefore] = s.t; }
               lastBuy = s.t;
             }
             setMgrModes(s);
@@ -941,12 +990,13 @@
     STAFF_GROWTH, LEVEL_GROWTH, LINE_GROWTH, MGR_FAST, MGR_GAIN, BOOST_MUL,
     LEVEL_MAX, MONEY_MAX, BUF_CAP, GOODS_CAP, FOREST_CAP, GROW_TIME, NATURAL_REGROW,
     BOOST_SEC, BOOST_COOLDOWN, CALL_COOLDOWN, ORDER_EVERY, ORDER_GAP_SEC, ORDER_MIN_SEC, ORDER_MAX_SEC, ORDER_REWARD_MUL,
+    ORDER_FROM_STAGE, ORDER_BIG_RATE, ORDER_BIG_NEED, ORDER_BIG_REWARD, ORDER_BOSSES, FF_MAX_SEC,
     SHIP_BASE, SHIP_GROWTH, SHIP_NEED_MAX, SHIPS_MAX, SHIP_REWARD_MUL,
     STEP, OFFLINE_CAP_SEC, OFFLINE_STEP, AWAY_RATE, AWAY_CARD_MIN_SEC,
     SAVE_VERSION, SAVE_KEY, SAVE_KEY_BAK, SAVE_KEY_BEST, SAVE_KEY_HELP,
     speedMul,
     newGame, step, rates, bottleneck, priceOf, productOf, costOf, buy, setMgr, boost, callCustomer, acceptOrder, forceOrder,
-    canExpand, expand, goalOf, shipNeed, awaySeconds, catchUp, formatYen, makeSave, loadSave, validateBest, validateFlag, simulate
+    canExpand, expand, goalOf, shipNeed, awaySeconds, catchUp, fastForward, formatYen, makeSave, loadSave, validateBest, validateFlag, simulate
   };
   return Object.freeze(api);
 });
