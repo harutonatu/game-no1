@@ -740,7 +740,7 @@
       let t = "";
       if (o) {
         const p = PRODUCT[productOf(st)] || PRODUCT.planks;
-        t = o.accepted ? `ちゅうもん：${p[0]} ${num(o.got)}/${num(o.need)}` : "ちゅうもんが きているよ（おすと みられるよ）";
+        t = o.accepted ? `ちゅうもん：${p[0]} ${num(o.got)}/${num(o.need)}` : "ちゅうもんが きたよ（おしてね）";
       }
       if (lastUi.order !== t) {
         lastUi.order = t;
