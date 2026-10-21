@@ -1016,7 +1016,7 @@ export const tests = [
       }
       // --- みなとで景色へスクロール（動きを減らす設定で一瞬。通常はゆっくり） ---
       for (const calm of [true, false]) {
-        const { ctx, page } = await OPEN(mkState(L, 3, { goal: { done: 25000 }, money: 9e12 }), { reducedMotion: calm ? 'reduce' : 'no-preference' });
+        const { ctx, page } = await OPEN(mkState(L, 3, { goal: { done: L.STAGES[2].goal }, money: 9e12 }), { reducedMotion: calm ? 'reduce' : 'no-preference' });
         await page.evaluate(() => { document.querySelector('#scene').scrollTop = 0; });
         await page.click('#expandBtn'); await waitOverlay(page, 'stage', 2500);
         const t0 = await page.evaluate(() => document.querySelector('#scene').scrollTop);
