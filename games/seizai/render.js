@@ -938,7 +938,7 @@
             ctx.fillStyle = "rgba(255,216,77," + (0.05 + 0.2 * pulse).toFixed(2) + ")";
             ctx.fillRect(z.x + 2, z.y + 2, z.w - 4, z.h - 4);
           }
-          label("おして！", z.x + z.w / 2, z.y + z.h - 24, { center: true, bg: "#ffffff", ink: "#2b2200", bold: true });
+          label("おして！", z.x + z.w / 2, z.y + z.h / 2 - 8, { center: true, bg: "#ffffff", ink: "#2b2200", bold: true });
         }
         // 応援・よびこみの残り時間（丸）
         let until = 0, total = 1, boosting = false;

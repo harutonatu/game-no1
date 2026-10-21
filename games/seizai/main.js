@@ -413,8 +413,8 @@
         const box = CARDS.order.box(), fb = focusBack;
         if (box) box.hidden = true;
         overlay = null;
-        unlockCardButtons();
         cancel(cardUnlockTimer);
+        unlockCardButtons();
         openCard("away");
         focusBack = fb;
         cardQueueAdd("order");
@@ -506,8 +506,8 @@
     const box = CARDS[kind].box();
     if (box) box.hidden = true;
     overlay = null;
+    cancel(cardUnlockTimer);      // 先に止める（unlockCardButtons が id を 0 にするので、後だと古いタイマーが次のカードを早く解いてしまう）
     unlockCardButtons();
-    cancel(cardUnlockTimer);
     if (!sleeping) setPhase("play");
     const fb = focusBack; focusBack = null;
     if (fb && fb.isConnected && fb !== document.body && !(box && box.contains(fb))) { try { fb.focus({ preventScroll: true }); } catch (e) { /* 無視 */ } }

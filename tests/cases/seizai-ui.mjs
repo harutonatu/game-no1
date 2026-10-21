@@ -12,7 +12,7 @@
 //   るすの あいだ（§4.3・§7.1）は、ページの時計を clockTime で決まった瞬間に固定して確かめる（日本・ロサンゼルスの2つのタイムゾーン）。
 //   期待値は Node で読んだ logic.js（同じ root）から作る。半分の速さの 45 秒・上限の 7200 秒は決め打ちの値で比べる（logic が変わっても見逃さない）。
 //   無いときに合格にしない（空振りの合格を作らない）：SeizaiGame・YubiDebug が無ければ例外で不合格にする。
-//   smoke：WW1〜WW6。full：WW7〜WW18（WW18 はレビュー後の直し §17.1。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
+//   smoke：WW1〜WW6。full：WW7〜WW19（WW18 はレビュー後の直し §17.1、WW19 は §17.3 の B。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -872,6 +872,161 @@ export const tests = [
       check(`advance(120) は logic の step(0.1) を 1200 回まわしたのと同じ（お金 ${b1.money}・t ${b1.t.toFixed(1)}）`, b1.money === m.money && Math.abs(b1.t - m.t) < 1e-6 && JSON.stringify(b1.buf) === JSON.stringify(m.buf), { got: [b1.money, b1.t], want: [m.money, m.t] });
       check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
       await ctx.close();
+    },
+  },
+  {
+    id: 'WW19', tier: 'full', title: 'もくもくこうば レビュー後の直し B（§17.3）：注文カードは最初の1回だけ自動で開く（2回目からは札と #hint・シートを開いている間は閉じてから）、注文のカードが開いているときの おかえり が先（待ちに注文が戻る・遊び方は今のまま）、おかえり／エンディングの文が見出しと重ならない、注文カード・札の文、森が止まったときの案内、買える印、節目カードの絵、広げるボタンの2段組み、みなとで景色へスクロール',
+    async run({ browser, check, root, errors }) {
+      const L = logicOf(root);
+      const e0 = errors.length;
+      const OPEN = (st, o = {}) => openW(browser, 'WW19', { v: SMOKE_V(), debug: true, items: { 'seizai.save': saveOf(L, st, T0) }, opts: { clockTime: new Date(T0 + 1000), ...o } });
+      // --- 注文：最初の 1 回だけ自動で開く ---
+      {
+        const { ctx, page } = await OPEN(mkState(L, 2));
+        await dbg(page, 'neworder'); await wait(page, 100);
+        const g1 = await gs(page);
+        const ot = await txt(page, '#orderText'), on = await txt(page, '#orderNote'), ow = await txt(page, '#orderWho');
+        check(`最初の注文はカードが自動で開く（overlay ${g1.overlay}・orderSeq 1）`, g1.overlay === 'order' && (await lg(page)).orderSeq === 1, g1.overlay);
+        check(`注文の文「${ot}」は「かくざい ○ぽん とどけると、おれい ○」の形で、おれい は formatYen、注記「${on}」に品の名前・「きげんは ないよ」、相手「${ow}」`, g1.order && ot === `かくざい ${g1.order.need.toLocaleString('ja-JP')}ぽん とどけると、おれい ${await yenIn(page, g1.order.reward)}` && /かくざいは/.test(on) && /きげんは ないよ/.test(on) && /から$/.test(ow) && L.ORDER_BOSSES[1].some((w) => ow.includes(w)), { ot, on, ow });
+        await pressCard(page, '#orderLater');
+        await setL(page, 'l.order = null;');
+        await dbg(page, 'neworder'); await wait(page, 100);
+        const g2 = await gs(page), tag = await txt(page, '#orderTag');
+        check(`2回目の注文はカードを開かず（overlay ${g2.overlay}）、#orderTag「${tag}」と #hint「${g2.hint}」で知らせる`, g2.overlay === null && g2.order && !g2.order.accepted && (await shown(page, '#orderTag')) && /ちゅうもんが きたよ/.test(tag) && /ちゅうもんが きたよ/.test(g2.hint), { g2: g2.overlay, tag, hint: g2.hint });
+        await page.click('#orderTag'); await wait(page, 60);
+        check('#orderTag を押せば開く', (await gs(page)).overlay === 'order', (await gs(page)).overlay);
+        await ctx.close();
+      }
+      // --- 注文：シートを開いている間は開かない（閉じたら開く） ---
+      {
+        const { ctx, page } = await OPEN(mkState(L, 2));
+        await page.evaluate(() => document.querySelector('.zone[data-dept="cut"]').click()); await wait(page, 100);
+        await dbg(page, 'neworder'); await wait(page, 100);
+        const a = await gs(page);
+        check(`シートを開いている間は最初の注文でもカードを開かない（overlay ${a.overlay}・sheet ${a.sheet}）、札は出る`, a.overlay === null && a.sheet === 'cut' && (await shown(page, '#orderTag')), a);
+        await page.click('#sheetClose'); await wait(page, 100);
+        check('シートを閉じるとカードが開く', (await gs(page)).overlay === 'order', (await gs(page)).overlay);
+        await ctx.close();
+      }
+      // --- おかえり が先 ---
+      {
+        const { ctx, page } = await OPEN(mkState(L, 2));
+        await dbg(page, 'neworder'); await wait(page, 100);
+        await page.evaluate(() => window.SeizaiGame.away(120)); await wait(page, 100);
+        const a = await gs(page);
+        check(`注文のカードが開いているときに おかえり が足されたら、おかえり が先（overlay ${a.overlay}・待ち ${a.queue}）`, a.overlay === 'away' && a.queue.includes('order') && !(await shown(page, '#orderCard')) && (await shown(page, '#awayCard')), a);
+        await pressCard(page, '#awayOk');
+        const b = await gs(page);
+        check(`おかえり を閉じると注文が出る（overlay ${b.overlay}・注文は受けていない）`, b.overlay === 'order' && b.order && !b.order.accepted, b);
+        await pressCard(page, '#orderLater');
+        // 遊び方の間は今のまま待たせる
+        await page.click('#helpBtn');await wait(page, 100);
+        await page.evaluate(() => window.SeizaiGame.away(120)); await wait(page, 100);
+        const c = await gs(page);
+        check(`遊び方を開いている間は おかえり を割り込ませず待たせる（overlay ${c.overlay}・待ち ${c.queue}）`, c.overlay === 'help' && c.queue.includes('away'), c);
+        await closeCards(page);
+        // 文の重なり（SZ-02）
+        await page.evaluate(() => window.SeizaiGame.away(300)); await wait(page, 100);
+        const at = await txt(page, '#awayText'), card = await txt(page, '#awayCard'), earned = (await gs(page)).lastAway.earned;
+        check(`おかえり の本文「${at}」は「るすの あいだに ${await yenIn(page, earned)} かせいだよ」だけ（「おかえり」はカード全体で 1 回）`, at === `るすの あいだに ${await yenIn(page, earned)} かせいだよ` && (card.match(/おかえり/g) || []).length === 1, { at, card });
+        await closeCards(page);
+        await ctx.close();
+      }
+      // --- エンディングの文 ---
+      {
+        const { ctx, page } = await OPEN(mkState(L, 4));
+        await dbg(page, 'ships', { n: 0, got: 29999 });
+        await adv(page, 60); await waitOverlay(page, 'end', 1000);
+        const card = await txt(page, '#endCard'), et = await txt(page, '#endText'), es = await txt(page, '#endStats');
+        check(`エンディングの本文「${et}」と数「${es}」が見出し「おおきな ふねが でたよ！」と重ならない（「でたよ」は 1 回）`, (await gs(page)).overlay === 'end' && !/ふねが でたよ/.test(et + es) && /ありがとう/.test(et) && /あそんだ じかん \d+じかん\d+ふん/.test(es) && /いた [\d,]+まい/.test(es) && (card.match(/でたよ/g) || []).length === 1, { et, es, card });
+        await closeCards(page);
+        await ctx.close();
+      }
+      // --- 札：とくべつ・受けている間のお金の札 ---
+      {
+        const { ctx, page } = await OPEN(mkState(L, 2));
+        await setL(page, 'l.order = { id: 1, who: "だいくの おじさん", need: 50, got: 10, reward: 99999, accepted: true, big: true }; l.orderSeq = 3;');
+        const tagBig = await txt(page, '#orderTag');
+        await setL(page, 'l.order = { id: 2, who: "だいくの おじさん", need: 50, got: 10, reward: 99999, accepted: true, big: false }; l.orderSeq = 4;');
+        const tagNor = await txt(page, '#orderTag');
+        check(`受けた札：とくべつは「${tagBig}」（文字で分かる）、ふつうは「${tagNor}」、どちらも「おかねは おれいで まとめて」の札つき`, /とくべつな ちゅうもん：かくざい 10\/50/.test(tagBig) && /ちゅうもん：かくざい 10\/50/.test(tagNor) && !/とくべつ/.test(tagNor) && /おかねは おれいで まとめて/.test(tagBig) && /おかねは おれいで まとめて/.test(tagNor), { tagBig, tagNor });
+        await setL(page, 'l.order = { id: 3, who: "だいくの おじさん", need: 50, got: 0, reward: 99999, accepted: false, big: true }; l.orderSeq = 5;');
+        const tagNew = await txt(page, '#orderTag');
+        check(`まだ受けていない札も とくべつは文字で分かる（「${tagNew}」）`, /とくべつな ちゅうもんが きたよ/.test(tagNew), tagNew);
+        await ctx.close();
+      }
+      // --- 最初の一手：最初の買い物まで なえぎに「おして！」の札（canvas の白い札の画素で確かめる）。買うと消える ---
+      for (const calm of [false, true]) {
+        const { ctx, page } = await openW(browser, 'WW19', { v: SMOKE_V(), debug: true, opts: { reducedMotion: calm ? 'reduce' : 'no-preference' } });
+        const whites = () => page.evaluate(() => {
+          const c = document.querySelector('#sceneCanvas'), z = document.querySelector('.zone[data-dept="plant"]');
+          const cr = c.getBoundingClientRect(), zr = z.getBoundingClientRect(), k = c.width / cr.width;
+          const x0 = Math.max(0, Math.floor((zr.left - cr.left) * k)), y0 = Math.max(0, Math.floor((zr.top - cr.top) * k)), w = Math.floor(zr.width * k), h = Math.floor(zr.height * k);
+          const d = c.getContext('2d').getImageData(x0, y0, Math.min(w, c.width - x0), Math.min(h, c.height - y0)).data;
+          let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] >= 254 && d[i + 1] >= 254 && d[i + 2] >= 254) n++;
+          return n;
+        });
+        await wait(page, 300);
+        const w0 = await whites();
+        await dbg(page, 'addmoney', { yen: 50 });
+        await page.evaluate(() => window.SeizaiGame.buy('plant', 'staff')); await wait(page, 300);
+        const w1 = await whites();
+        check(`${calm ? '動きを減らす設定' : '通常'}：最初の買い物まで なえぎの場所に白い「おして！」の札（白い画素 ${w0}）、なえぎを買うと消える（${w1}）`, w0 > w1 + 150, { w0, w1 });
+        await ctx.close();
+      }
+      // --- 森が止まったときの案内・買える印 ---
+      {
+        const st = mkState(L, 1, { forest: { trees: 0, saplings: 0 }, money: 50, depts: { plant: { staff: 0, level: 1 } } });
+        const { ctx, page } = await OPEN(st);
+        await wait(page, 300);
+        const hint = (await gs(page)).hint;
+        check(`なえぎが 0 人で森の木が尽きたら #hint「${hint}」`, /きこりが きを まっているよ。なえぎを おして ふやそう/.test(hint), hint);
+        await page.evaluate(() => document.querySelector('.zone[data-dept="cut"]').click()); await wait(page, 100);
+        const info = await txt(page, '#sheetInfo');
+        check(`シート #sheetInfo「${info}」`, /もりの きが たりないよ。なえぎを ふやすと きが そだつよ/.test(info), info);
+        await page.click('#sheetClose'); await wait(page, 50);
+        const lab = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.zone[data-dept]')].map((z) => [z.dataset.dept, z.getAttribute('aria-label')])));
+        await setL(page, 'l.money = 0;'); await wait(page, 100);
+        const lab0 = await page.evaluate(() => document.querySelector('.zone[data-dept="cut"]').getAttribute('aria-label'));
+        check(`お金 50 で買えるもののある部署は読み上げに「かえるものが あるよ」（きこり：${lab.cut}）、お金 0 ではつかない（${lab0}）`, /かえるものが あるよ/.test(lab.cut) && /かえるものが あるよ/.test(lab.plant) && !/かえるものが あるよ/.test(lab0), { lab, lab0 });
+        await ctx.close();
+      }
+      // --- 広げるボタンの2段組み（SE 縦） ---
+      {
+        const st = mkState(L, 1, { goal: { done: 100 }, money: 250000 });
+        const { ctx, page } = await OPEN(st);
+        const eb = await page.evaluate(() => {
+          const b = document.querySelector('#expandBtn'), r = b.getBoundingClientRect(), l = b.querySelector('[data-part=label]'), c = b.querySelector('[data-part=cost]');
+          return { hidden: b.hidden, h: r.height, in: r.left >= 0 && r.right <= innerWidth, label: l && l.textContent, cost: c && c.textContent, ly: l && l.getBoundingClientRect().bottom <= c.getBoundingClientRect().top + 1 };
+        });
+        check(`「ひろげる」ボタンはラベル「${eb.label}」と値段「${eb.cost}」の2段（高さ ${Math.round(eb.h)}・画面内）`, !eb.hidden && eb.h >= 43.5 && eb.in && eb.ly && eb.cost === L.formatYen(L.STAGES[0].cost) && eb.label === 'こうばに ひろげる', eb);
+        // 節目カードの絵
+        await page.click('#expandBtn'); await waitOverlay(page, 'stage', 2500);
+        const sc = await page.evaluate(() => [...document.querySelectorAll('#stageList li')].map((li) => ({ svg: !!li.querySelector('svg.gic'), text: li.textContent.trim() })));
+        check(`節目カードの3つに小さな絵（svg）が付く（${sc.map((x) => x.text).join(' / ')}）`, sc.length === 3 && sc.every((x) => x.svg) && sc.some((x) => /マネージャー（はやく する・ねだんを あげる）/.test(x.text)), sc);
+        await ctx.close();
+      }
+      // --- マネージャーのシート ---
+      {
+        const { ctx, page } = await OPEN(mkState(L, 2, { depts: { cut: { staff: 2, level: 10, mgr: 'fast' } } }));
+        await page.evaluate(() => document.querySelector('.zone[data-dept="cut"]').click()); await wait(page, 100);
+        const mh = await page.evaluate(() => { const e = document.querySelector('#mgrHelp'); return e && { hidden: e.hidden, text: e.textContent }; });
+        check(`マネージャーを雇った部署のシートに 1 行「${mh && mh.text}」`, mh && !mh.hidden && /おそい ばしょは『はやい』、ほかは『もうかる』が おとく（いつでも むりょうで きりかえ）/.test(mh.text), mh);
+        await ctx.close();
+      }
+      // --- みなとで景色へスクロール（動きを減らす設定で一瞬。通常はゆっくり） ---
+      for (const calm of [true, false]) {
+        const { ctx, page } = await OPEN(mkState(L, 3, { goal: { done: 25000 }, money: 9e12 }), { reducedMotion: calm ? 'reduce' : 'no-preference' });
+        await page.evaluate(() => { document.querySelector('#scene').scrollTop = 0; });
+        await page.click('#expandBtn'); await waitOverlay(page, 'stage', 2500);
+        const t0 = await page.evaluate(() => document.querySelector('#scene').scrollTop);
+        await pressCard(page, '#stageOk');
+        if (calm) await wait(page, 100); else { await sleep(1800); await wait(page, 100); }
+        const t1 = await page.evaluate(() => { const s = document.querySelector('#scene'); return { top: s.scrollTop, max: s.scrollHeight - s.clientHeight }; });
+        check(`${calm ? '動きを減らす設定' : '通常'}：みなとの節目カードを閉じると #scene が船のほうへスクロール（${Math.round(t0)} → ${Math.round(t1.top)}／最大 ${Math.round(t1.max)}）`, (await gs(page)).stage === 4 && t1.top > t0 + 100, { t0, t1 });
+        await ctx.close();
+      }
+      check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
     },
   },
 ];

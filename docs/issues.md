@@ -194,7 +194,7 @@
 | 番号 | 優先度 | 内容 | 場所 | 状態 | 対応 |
 |---|---|---|---|---|---|
 | SZ-01 | 中 | 3 時間閉じて開いても「2じかん いじょう たったので 2じかんぶん だよ」が出ない（いつも「はんぶんの はやさで、2じかん まで」）。main.js が awaySeconds（7200 で切った秒）を catchUp に渡すので、catchUp の `capped`（seconds > 7200）がいつも false になる。再現：保存の savedAt を 3 時間前にして開く → `SeizaiGame.getState().lastAway.capped === false` | games/seizai/main.js:355（wake）・1026（boot）、logic.js:649 | 解消 | feature/seizai（2026-10-21、契約 §17.1 A1）。main.js の awayFor が、awaySeconds が上限に着いたときは切る前の秒を catchUp に渡す（catchUp が 7200 に丸めて capped: true）。WW3 の既知の不具合 W-K1 を外して合否に含めた。変異 MW40 で戻りを検出 |
-| SZ-02 | 低 | おかえりカードの「おかえり！」が二重（見出し #awayTitle と、#awayText の先頭）。読み上げでも 2 回読む | games/seizai/main.js:441（fillCard）、index.html:540 | 未着手 | |
+| SZ-02 | 低 | おかえりカードの「おかえり！」が二重（見出し #awayTitle と、#awayText の先頭）。読み上げでも 2 回読む | games/seizai/main.js:441（fillCard）、index.html:540 | 解消 | feature/seizai（2026-10-21、契約 §17.3 B10）。#awayText から「おかえり！」を外し（見出し #awayTitle だけ）、エンディングの本文も見出しと重ならない形に。WW19 が「おかえり」「でたよ」がカード全体で 1 回だけを確かめる |
 
 ## テストの環境
 
