@@ -227,12 +227,12 @@ export const tests = [
     },
   },
   {
-    id: 'KW3', tier: 'smoke', title: 'ほしくだき はね返し：半分こわした星を lose でバリアまで下げると phase bounce・#bounceBanner「あと N%」（N = max(1, round((1-broken)×100))）・おすすめの行、かけらと Lv は残る、BOUNCE_SEC 後に実時間で自動で次の挑戦（同じ星・最初から・tries+1・帯が消える）',
+    id: 'KW3', tier: 'smoke', title: 'ほしくだき はね返し：6 割こわした星を lose でバリアまで下げると phase bounce・#bounceBanner「あと N%」（N = max(1, round((1-broken)×100))）・おすすめの行、かけらと Lv は残る、BOUNCE_SEC 後に実時間で自動で次の挑戦（同じ星・最初から・tries+1・帯が消える）',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await openK(browser, 'KW3', { v: SMOKE_V(), debug: true });
-      // 星を半分こわした状態にする（最初からに戻ったことが分かるように）・かけらと Lv を持たせる
-      await setL(page, 'const n = l.rock.mats.length; let k = 0; for (let i = 0; i < n && k < l.rock.left / 2; i++) if (l.rock.mats[i]) { l.rock.mats[i] = 0; l.rock.hp[i] = 0; k++; } l.kakera = 777; l.slots[0].lv = 3;');
+      // 星を 6 割こわした状態にする（最初からに戻ったこと・「あと N%」がこわした割合でないことが分かるように）・かけらと Lv を持たせる
+      await setL(page, 'const n = l.rock.mats.length; let k = 0; for (let i = 0; i < n && k < l.rock.left * 0.6; i++) if (l.rock.mats[i]) { l.rock.mats[i] = 0; l.rock.hp[i] = 0; k++; } l.kakera = 777; l.slots[0].lv = 3;');
       const r = await frozen(page, async () => {
         await dbg(page, 'lose');
         const a = await lg(page);

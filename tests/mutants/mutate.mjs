@@ -274,6 +274,30 @@ const M = [
   ['MW58 もくもくこうば：こうじょう に広げても かんそう の台が来ない', 'ルール', 'games/seizai/logic.js', 'if (x.kind === "line" && x.stage === s.stage && s.depts[x.id].lines < 1)', 'if (x.kind === "line" && x.stage === s.stage && x.id !== "dry" && s.depts[x.id].lines < 1)'],
   ['MW59 もくもくこうば：つまりの判定で かんな を板の数のまま比べる（丸太に直さない）', '計算', 'games/seizai/logic.js', 'f.plane = rateOf(s, "plane") / PLANKS_PER_BEAM;', 'f.plane = rateOf(s, "plane");'],
   ['MW60 もくもくこうば：かんな ができても totals.smooth を数えない（保存・記録が増えない）', '保存', 'games/seizai/logic.js', 's.done.plane += n; s.totals.smooth += n;', 's.done.plane += n;'],
+  // ---- ちきゅうを守れ！ほしくだき（games/asteroid/）。中身の仕組みを変えたときだけ、このゲームの分だけ流す（契約 §11.4）。----
+  //      数値（星の時間・値段・体力）の調整中なので、数値を変える変異は KL に任せ、ここは画面・保存・中断・オフライン・場を押す・ルールの流れを中心にする
+  ['MK1 ほしくだき：2択の間も場が進む（choose でも step が進み、fly に戻る）', 'ルール', 'games/asteroid/logic.js', 'if (s.phase === "choose" || s.phase === "end") return;', 'if (s.phase === "end") return;'],
+  ['MK2 ほしくだき：とどいたら かけら・武器を消す', 'データ消失', 'games/asteroid/logic.js', 's.tries = Math.min(TRIES_MAX, s.tries + 1);', 's.tries = Math.min(TRIES_MAX, s.tries + 1); s.kakera = 0; s.slots = s.slots.map((x) => ({ id: x.id, lv: 1 }));'],
+  ['MK3 ほしくだき：とどいたとき星を最初からにしない（残りのまま続く）', 'ルール', 'games/asteroid/logic.js', 'function restartStar(s) {\n    s.rock = genRock(s.seed, s.star, s.tries);', 'function restartStar(s) {\n    s.rock = Object.assign({}, s.rock, { mats: s.rock.mats.slice(), hp: s.rock.hp.slice(), y: s.rock.y - 120 });'],
+  ['MK4 ほしくだき：エンディングを2回出す（星 ENDING_STAR より先のクリアでも出す）', 'ルール', 'games/asteroid/logic.js', 'if (was === ENDING_STAR && !s.cleared) {', 'if (was >= ENDING_STAR) {'],
+  ['MK5 ほしくだき：場を押すと進む（#fieldCanvas のクリックで step を進める）', '操作', 'games/asteroid/main.js', '  if (el.helpOk) el.helpOk.addEventListener("click", closeHelp);', '  if (el.canvas) el.canvas.addEventListener("click", () => { if (state && state.phase !== "fly") state = Object.assign({}, state, { wait: 0 }); stepOnce(STEP, null); updateUi(); });\n  if (el.helpOk) el.helpOk.addEventListener("click", closeHelp);'],
+  ['MK6 ほしくだき：壊れた保存を bak に写さず上書き', '保存', 'games/asteroid/main.js', 'if (!keepBroken(raw)) saveBlocked = true;', ''],
+  ['MK7 ほしくだき：bak が既にあっても上書き（最初の壊れた保存が消える）', '保存', 'games/asteroid/main.js', '    if (readKey(KEY_BAK) !== null) return true;\n', ''],
+  ['MK8 ほしくだき：hidden でも進む（visibilitychange の hidden で sleep を呼ばない）', '中断', 'games/asteroid/main.js', 'document.addEventListener("visibilitychange", () => { if (document.hidden) sleep(); else wake(); });', 'document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });'],
+  ['MK9 ほしくだき：logic.js を APP_FILES から外す', 'オフライン', 'sw.js', '  "./games/asteroid/logic.js",\n', ''],
+  ['MK10 ほしくだき：render.js を APP_FILES から外す', 'オフライン', 'sw.js', '  "./games/asteroid/render.js",\n', ''],
+  ['MK11 ほしくだき：2択のカードの 400ms のロックなし（出た直後に押せる）', '誤タップ', 'games/asteroid/main.js', 'const cardLocked = () => now() - cardShownAt < CARD_LOCK_MS;', 'const cardLocked = () => false;'],
+  ['MK12 ほしくだき：#kakera が 1 ずれる（表示の1ずれ）', '表示', 'games/asteroid/main.js', 'setText(el.kakera, fmt(s.kakera));', 'setText(el.kakera, fmt(s.kakera + 1));'],
+  ['MK13 ほしくだき：行の値段が upCostOf と 1 割ずれる（表示の1ずれ）', '表示', 'games/asteroid/main.js', 'setText(r.cost, fmt(cost));', 'setText(r.cost, fmt(Math.round(cost * 1.1)));'],
+  ['MK14 ほしくだき：#starBar がこわした割合とずれる', '表示', 'games/asteroid/main.js', 'Math.floor(pr.broken * 100)', 'Math.floor(pr.broken * 90)'],
+  ['MK15 ほしくだき：はね返しの「あと N%」をこわした割合で出す', '表示', 'games/asteroid/main.js', 'Math.max(1, Math.round((1 - broken) * 100))', 'Math.max(1, Math.round(broken * 100))'],
+  ['MK16 ほしくだき：クリアしても asteroid.best を書かない', '保存', 'games/asteroid/main.js', '          writeBest(e.star);\n', ''],
+  ['MK17 ほしくだき：かけらが足りないとき音 deny もヒントも出さない', '表示', 'games/asteroid/main.js', '    if (r.reason === "money") {\n      sfx.play("deny");\n      const cost', '    if (false) {\n      sfx.play("deny");\n      const cost'],
+  ['MK18 ほしくだき：開き直すと かけらが 0 になる（保存を読んでも かけらを捨てる）', 'データ消失', 'games/asteroid/main.js', '      loaded.t = extra.t;\n      state = loaded;', '      loaded.t = extra.t;\n      state = Object.assign({}, loaded, { kakera: 0 });'],
+  ['MK19 ほしくだき：pagehide でタイマーを片付けない', '中断', 'games/asteroid/main.js', 'window.addEventListener("pagehide", () => { sleep(); clearLater(); });', 'window.addEventListener("pagehide", () => { sleep(); });'],
+  ['MK20 ほしくだき：遊び方を開いている間も止めない', '中断', 'games/asteroid/main.js', 'const running = () => !sleeping && overlay !== "help" && overlay !== "end";', 'const running = () => !sleeping && overlay !== "end";'],
+  ['MK21 ほしくだき：動きを減らす設定を見ない', '動き', 'games/asteroid/main.js', 'let calm = !!reduceMotion.matches;', 'let calm = false;'],
+  ['MK22 ほしくだき：2択が開き直しで変わる（保存の offer を入れ替えて読む）', '保存', 'games/asteroid/logic.js', 'if (okOffer) base.offer = [f[0], f[1]];', 'if (okOffer) base.offer = [f[1], f[0]];'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;
