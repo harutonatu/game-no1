@@ -400,6 +400,7 @@
       else if (e.kind === "coin") particles.push({ x: e.x, y: e.y, vx: 0, vy: -24, life: 0.6, col: "#ffd84d", r: 2.4 });
       else if (e.kind === "fall") { if (particles.filter((p) => p.fall).length < 3) particles.push({ fall: true, x: e.x, y: e.y, dir: e.dir, life: 0.7, t: 0 }); }
       else if (e.kind === "fall-old") particles.push({ fall: true, x: e.x, y: e.y, dir: e.dir, life: 0.7, t: 0 });
+      else if (e.kind === "log") { if (particles.filter((p) => p.log).length < 4) particles.push({ log: true, x: e.x, y: e.y, x0: e.x, y0: e.y, tx: e.tx, ty: e.ty, life: 0.9, t: 0 }); }
       else if (e.kind === "hello") particles.push({ ring: true, x: e.x, y: e.y - 12, life: 0.5, t: 0, col: "#ffffff" });
       if (particles.length > 90) particles.splice(0, particles.length - 90);
     }
@@ -411,6 +412,13 @@
       for (const p of particles) {
         p.life -= dt;
         if (p.fall || p.ring) { p.t += dt; continue; }
+        if (p.log) {
+          p.t += dt;
+          const q = clamp(p.t / 0.85, 0, 1);
+          p.x = p.x0 + (p.tx - p.x0) * q;
+          p.y = p.y0 + (p.ty - p.y0) * q - Math.sin(q * Math.PI) * 26;
+          continue;
+        }
         p.x += (p.vx || 0) * dt; p.y += (p.vy || 0) * dt; p.vy = (p.vy || 0) + (p.star ? 0 : 90) * dt;
       }
       if (particles.length) particles = particles.filter((p) => p.life > 0);
@@ -548,9 +556,13 @@
       ctx.fillStyle = "#79c25a";
       ctx.beginPath(); ctx.ellipse(x - 3.5, y - 10, 4, 2.2, -0.5, 0, 6.29); ctx.ellipse(x + 3.5, y - 11, 4, 2.2, 0.5, 0, 6.29); ctx.fill();
     }
+    // 切り株：年輪のある低い株（なえぎが植える場所。§18）
     function drawStump(x, y) {
-      ctx.fillStyle = "#7a4e2a"; ctx.fillRect(x - 5, y - 5, 10, 5);
-      ctx.fillStyle = "#d9b27c"; ctx.beginPath(); ctx.ellipse(x, y - 5, 5, 1.8, 0, 0, 6.29); ctx.fill();
+      ctx.fillStyle = "#6b4321";
+      ctx.beginPath(); ctx.moveTo(x - 9, y); ctx.lineTo(x - 6, y - 7); ctx.lineTo(x + 6, y - 7); ctx.lineTo(x + 9, y); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#e6c48f"; ctx.beginPath(); ctx.ellipse(x, y - 7, 6.2, 2.4, 0, 0, 6.29); ctx.fill();
+      ctx.strokeStyle = "#a8743f"; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.ellipse(x, y - 7, 3.8, 1.45, 0, 0, 6.29); ctx.moveTo(x + 1.4, y - 7); ctx.ellipse(x, y - 7, 1.4, 0.55, 0, 0, 6.29); ctx.stroke();
     }
 
     function drawPile(x, y, n, item, maxIcons) {
@@ -693,7 +705,44 @@
       return false;
     }
 
+    // 待つ人の吹き出しの言葉（何を待っているか。§18）。部署ごとに 1 人だけ（ほかの人は「…」）
+    const WAIT_IN = { cut: "きが ないよ", plant: "きりかぶ まち", carry: "まるた まち", peel: "まるた まち", beam: "むきまるた まち", plank: "かくざい まち" };
+    let speakers = {};
+    function pickSpeakers() {
+      const why = typeof actors.why === "function" ? actors.why() || {} : {};
+      const out = {};
+      for (const a of actors.all()) {
+        // 売り子は名札の すぐ下に立つので吹き出しを出さない（「…」のまま。待つ理由はシートと読み上げで出す）
+        if (a.pose !== "wait" || a.role !== DEPT_ROLE[a.dept] || a.role === "seller" || !why[a.dept]) continue;
+        const cur = out[a.dept];
+        if (!cur || a.idx > cur.idx) out[a.dept] = a;   // 下の段の人（上の名札から遠い）
+      }
+      speakers = {};
+      for (const d in out) speakers[out[d].id] = why[d] === "out" ? "おきば いっぱい" : WAIT_IN[d] || "まち";
+    }
+    function drawBubble(a, text) {
+      const w = labelWidth(text, true);
+      const h = Math.max(12.5, 9 * scale) / scale * 1.35;
+      ctx.fillStyle = "rgba(255,255,255,0.94)";
+      // 頭の上に出すと場所の名札（左上の 2 行）に重なるときは、横に出す。はこぶ は上に森の「ここが おそい！」があるので いつも横
+      const z = geo.zones[a.dept];
+      const y = a.y - 34 - h;
+      const tagBot = z ? z.y + 3 + h * 2 + 6 : -1;
+      const nearTag = z && a.role !== "planter" && a.role !== "cutter" && y < tagBot && a.x - w / 2 < z.x + 120;
+      if (a.role === "carrier" || nearTag) {
+        const right = a.x + 22 + w <= W - 2;
+        const lx = right ? a.x + 22 : a.x - 22 - w, sy = a.y - 22 - h / 2;
+        const ex = right ? lx + 1 : lx + w - 1;
+        ctx.beginPath(); ctx.moveTo(ex, sy + h / 2 - 3); ctx.lineTo(ex, sy + h / 2 + 3); ctx.lineTo(a.x + (right ? 7 : -7), a.y - 20); ctx.closePath(); ctx.fill();
+        label(text, lx, sy, { bg: "rgba(255,255,255,0.94)", ink: "#2b2200", bold: true });
+        return;
+      }
+      const cx = clamp(a.x, 4 + w / 2, W - 4 - w / 2);
+      ctx.beginPath(); ctx.moveTo(a.x - 3, a.y - 34.5); ctx.lineTo(a.x + 3, a.y - 34.5); ctx.lineTo(a.x, a.y - 30); ctx.closePath(); ctx.fill();
+      label(text, cx, y, { center: true, bg: "rgba(255,255,255,0.94)", ink: "#2b2200", bold: true });
+    }
     function drawActors(vTop, vBot) {
+      pickSpeakers();
       const list = actors.all().slice().sort((p, q) => p.y - q.y);
       let counterDone = false;
       for (const a of list) {
@@ -705,6 +754,11 @@
         drawPerson(a);
       }
       if (!counterDone) drawCounter();
+      // 吹き出しは人より前に（ほかの人に隠れない）
+      for (const a of list) {
+        const t = speakers[a.id];
+        if (t && a.y >= vTop - 10 && a.y - 60 <= vBot) drawBubble(a, t);
+      }
     }
     function drawCounter() {
       const sh = geo.shop;
@@ -746,7 +800,7 @@
       drawHands(a, ph);
       ctx.restore();
       // 6. 頭の上の印（…＝まち、！＝おうえん）
-      if (a.pose === "wait" || a.pose === "cheer") {
+      if ((a.pose === "wait" && !speakers[a.id]) || a.pose === "cheer") {
         const my = a.y - 30 * k - hop;
         ctx.font = "800 11px system-ui, sans-serif";
         ctx.textBaseline = "alphabetic";
@@ -798,6 +852,17 @@
           break;
         }
         case "planter": {
+          if (a.tool === "can") {
+            // じょうろで若木に水をやる（切り株を待っている間）
+            ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(d * 6, -10); ctx.stroke();
+            ctx.fillStyle = "#7fa7c9"; ctx.fillRect(d * 6 - 3, -13, 6, 5);
+            ctx.beginPath(); ctx.moveTo(d * 9, -12); ctx.lineTo(d * 13, -15); ctx.stroke();
+            if (!calm) {
+              const q = (clk * 1.6 + a.ph) % 1;
+              ctx.fillStyle = "#7fd1ff"; ctx.fillRect(d * (13 + q * 2) - 0.8, -14 + q * 12, 1.6, 2.2);
+            }
+            break;
+          }
           const dy = working && a.active && !calm ? Math.abs(Math.sin(ph * 0.6)) * 4 : 0;
           ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(d * 6, -8 + dy); ctx.stroke();
           ctx.fillStyle = "#79c25a"; ctx.beginPath(); ctx.arc(d * 7, -9 + dy, 2.2, 0, 6.29); ctx.fill();
@@ -964,6 +1029,14 @@
           ctx.fillStyle = stage === 4 ? "#7c9a3a" : stage === 3 ? "#3f9a5a" : "#2f6b3a";
           ctx.beginPath(); ctx.moveTo(-10, -10); ctx.lineTo(0, -44); ctx.lineTo(10, -10); ctx.closePath(); ctx.fill();
           ctx.restore(); ctx.globalAlpha = 1;
+          continue;
+        }
+        if (p.log) {
+          ctx.fillStyle = ITEM_COL.log;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(p.x - 7, p.y - 3, 14, 6, 3); else ctx.rect(p.x - 7, p.y - 3, 14, 6);
+          ctx.fill();
+          ctx.fillStyle = "#e6c48f"; ctx.beginPath(); ctx.arc(p.x + 6, p.y, 2.4, 0, 6.29); ctx.fill();
           continue;
         }
         if (p.ring) {

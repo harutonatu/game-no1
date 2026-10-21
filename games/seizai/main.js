@@ -217,6 +217,29 @@
     if (!state || !state.depts || !state.depts.plant || !state.forest) return false;
     return (state.depts.plant.staff | 0) === 0 && Math.floor(Number(state.forest.trees) || 0) < 1;
   }
+  // 前の工程が遅くて待っている部署の、待つ理由と次にすること（なえぎ「きりかぶ まち」など。§18・SZ-03）
+  // actors.js の waitOf（人の「待つ」姿と同じ見方）。ちらつかないよう、待たなくなってから 1.5 秒（ゲームの時間）は出したまま
+  const WAIT_WHY = { cut: "きる きが まだ ないよ", plant: "うえる きりかぶが まだ ないよ", carry: "はこぶ まるたが まだ ないよ", peel: "まるたが まだ こないよ", beam: "むきまるたが まだ こないよ", plank: "かくざいが まだ こないよ", shop: "うりものが まだ ないよ" };
+  const WAIT_HOLD = 1.5;
+  let waitSeen = {};
+  function trackWait() {
+    const A = window.SeizaiActors;
+    if (!state || !A || typeof A.waitOf !== "function") return;
+    const w = safeCall(() => A.waitOf(state), null) || {};
+    const t = Number(state.t) || 0;
+    for (const d of DEPT_IDS) {
+      if (w[d]) waitSeen[d] = { t, kind: w[d] };
+      else if (waitSeen[d] && (t - waitSeen[d].t > WAIT_HOLD || t < waitSeen[d].t)) delete waitSeen[d];
+    }
+  }
+  function waitAdvice(d) {
+    if (!state || deptUnlock(d) > state.stage || countOf(d) < 1 || !waitSeen[d]) return "";
+    const bn = bottleneck();
+    if (bn === d) return "";
+    const why = waitSeen[d].kind === "out" ? "おきばが いっぱいで まっているよ" : WAIT_WHY[d] || "まっているよ";
+    const fix = !bn ? "" : d === "plant" && bn === "cut" ? "きこりを ふやすと うえられるよ" : `${deptName(bn)}を ふやすと はやく なるよ`;
+    return fix ? `${why}。${fix}` : why;
+  }
   // 今のお金で買えるものがある部署（名札の「＋」と読み上げ。render.js の印と同じ見方。§17.3 B8）
   function canBuyAny(d) {
     if (!state || d === "goods" || deptUnlock(d) > state.stage) return false;
@@ -701,13 +724,14 @@
     const perMinText = perMin < 10 ? (Math.floor(perMin * 10) / 10).toString() : Math.floor(perMin).toLocaleString("ja-JP");
     const jam = bottleneck() === d;
     const stuck = forestStuck() && (d === "cut" || d === "plant");   // なえぎが 0 人で森の木が尽きている
+    const waitTxt = unlocked && !stuck && !jam ? waitAdvice(d) : "";
     setText($("sheetInfo"), !unlocked ? `${stageName(deptUnlock(d))}に なると つかえるよ`
       : stuck ? "もりの きが たりないよ。なえぎを ふやすと きが そだつよ"
-      : `1ぷんに ${perMinText}${unit}${jam ? "。ここが おそいよ" : ""}`);
+      : `1ぷんに ${perMinText}${unit}${jam ? "。ここが おそいよ" : waitTxt ? "。" + waitTxt : ""}`);
     const sheetRate = $("sheetRate"); if (sheetRate) setText(sheetRate, unlocked ? `1ぷんに ${perMinText}${unit}` : "");
     const sheetJam = $("sheetJam"); if (sheetJam) { setText(sheetJam, jam ? "ここが おそいよ" : ""); sheetJam.hidden = !jam; }
     el.sheet.dataset.jam = jam ? "1" : "0";
-    const info = $("sheetInfo"); if (info) info.dataset.jam = jam ? "1" : "0";   // CSS は #sheetInfo[data-jam="1"]（§17.1 A9）
+    const info = $("sheetInfo"); if (info) { info.dataset.jam = jam ? "1" : "0"; info.dataset.wait = waitTxt ? "1" : "0"; }   // CSS は #sheetInfo[data-jam="1"]（§17.1 A9）
     const q = (w) => el.sheet.querySelector(`[data-buy="${w}"]`);
     const labels = {
       staff: "＋1にん",
@@ -907,9 +931,10 @@
     const stuck = forestStuck();
     if (stuck && !forestHinted && !sleeping) { forestHinted = true; setHint(HINT_STUCK_FOREST, 5000); }
     else if (!stuck) forestHinted = false;
+    trackWait();
     updateZones();
     if (sheetDept) {
-      const key = [sheetDept, stuck, state.money, st, JSON.stringify(state.depts && state.depts[sheetDept]), bottleneck(), Math.floor((Number(ratesOf()[sheetDept]) || 0) * 600)].join("|");
+      const key = [sheetDept, stuck, waitAdvice(sheetDept), state.money, st, JSON.stringify(state.depts && state.depts[sheetDept]), bottleneck(), Math.floor((Number(ratesOf()[sheetDept]) || 0) * 600)].join("|");
       if (lastUi.sheetKey !== key) { lastUi.sheetKey = key; renderSheet(); }
     }
   }
@@ -968,7 +993,8 @@
         const ds = state.depts && state.depts[d];
         if (!ds || deptUnlock(d) > state.stage) label = `${deptName(d)}：${stageName(deptUnlock(d))}に なると つかえるよ`;
         else {
-          label = `${deptName(d)}：${countOf(d)}${isLineDept(d) ? "だい" : "にん"}。${jam === d ? "ここが おそいよ。" : ""}${canBuyAny(d) ? "かえるものが あるよ。" : ""}おすと がんばるよ`;
+          const wt = jam === d ? "" : waitAdvice(d);
+          label = `${deptName(d)}：${countOf(d)}${isLineDept(d) ? "だい" : "にん"}。${jam === d ? "ここが おそいよ。" : ""}${wt ? wt + "。" : ""}${canBuyAny(d) ? "かえるものが あるよ。" : ""}おすと がんばるよ`;
           const left = (Number(ds.cooldownUntil) || 0) - t;
           cool = left > 0 ? Math.min(1, left / (L.BOOST_COOLDOWN || 15)) : 0;
           boost = (Number(ds.boostUntil) || 0) > t ? 1 : 0;

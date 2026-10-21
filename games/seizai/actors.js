@@ -57,6 +57,30 @@
     return null;
   }
 
+  // ===== 待っている理由（見た目と main.js の文で共有。§6.1・§18）=====
+  // 部署ごとに "in"（前の工程の品が来ない）・"out"（置き場が いっぱい）・""（待っていない）
+  // plant の "in" は「切り株が無い」＝ きこりを待っている。cut の "in" は「切れる木が無い」＝ なえぎ（森）を待っている
+  function waitOf(state) {
+    const o = { cut: "", plant: "", carry: "", peel: "", beam: "", plank: "", shop: "" };
+    if (!state || typeof state !== "object") return o;
+    const stage = clampStage(state.stage);
+    const caps = capsOf(stage);
+    const buf = state.buf || {}, f = state.forest || {};
+    const v = (k) => num(buf[k], 0);
+    const full = (k) => (k === "goods" ? v(k) >= caps.goods - 1e-6 : v(k) >= caps.buf - 1e-6);
+    const trees = num(f.trees, 0), saps = num(f.saplings, 0);
+    const stumps = caps.forest - trees - saps;
+    const qlen = Array.isArray(state.queue) ? state.queue.length : 0;
+    o.cut = trees < 1 ? "in" : full("yard") ? "out" : "";
+    o.plant = stumps < 1 ? "in" : "";
+    o.carry = v("yard") < 1 ? "in" : full("logs") ? "out" : "";
+    o.peel = v("logs") < 1 ? "in" : full(outOf("peel", stage)) ? "out" : "";
+    if (stage >= 2) o.beam = v("peeled") < 1 ? "in" : full(outOf("beam", stage)) ? "out" : "";
+    if (stage >= 3) o.plank = v("beams") < 1 ? "in" : full("goods") ? "out" : "";
+    o.shop = qlen > 0 && v("goods") < 1 ? "in" : "";
+    return o;
+  }
+
   // ===== 配置（世界の座標。幅 360、高さは段ごと）=====
   function geometry(stageIn) {
     const stage = clampStage(stageIn);
@@ -141,77 +165,114 @@
       for (const a of actors) if (a.role === role && a.slot === i && a.pose !== "walk") return true;
       return false;
     }
-    function pickSlot(kind, role) {
+    // pend：0 ＝ 植える前（ただの切り株）だけ、1 ＝ なえぎの人が向かう切り株（logic では もう苗木）だけ、-1 ＝ どちらでも
+    function pickSlot(kind, role, pend) {
       const cands = [];
-      for (let i = 0; i < slots.length; i++) if (slots[i].kind === kind) cands.push(i);
+      for (let i = 0; i < slots.length; i++) {
+        const sl = slots[i];
+        if (sl.kind !== kind) continue;
+        if (pend === 0 && sl.pend) continue;
+        if (pend === 1 && !sl.pend) continue;
+        cands.push(i);
+      }
       if (!cands.length) return -1;
       for (const i of cands) if (claimedBy(i, role)) return i;
       return cands[Math.floor(rnd() * cands.length)];
+    }
+    // いちばん新しく切られた切り株（きこりが切った所へ なえぎが歩いて行く）
+    function newestStump() {
+      let best = -1, at = -Infinity;
+      for (let i = 0; i < slots.length; i++) {
+        const sl = slots[i];
+        if (sl.kind !== "stump" || sl.pend) continue;
+        if (sl.cutAt > at || best < 0) { best = i; at = sl.cutAt; }
+      }
+      return best;
+    }
+    function crewOf(role) { let n = 0; for (const a of actors) if (a.role === role && !a.leaving) n++; return n; }
+    function pendCount() { let n = 0; for (const sl of slots) if (sl.pend) n++; return n; }
+    function plantNow(i) {
+      const sl = slots[i];
+      sl.kind = "sapling"; sl.pend = false; sl.pendT = 0; sl.grow = 0;
     }
     function syncForest(state, stage, replace) {
       const caps = capsOf(stage);
       const cap = caps.forest;
       const f = state.forest || {};
       const T = clamp(Math.floor(num(f.trees, 0)), 0, cap);
-      const S = clamp(Math.floor(num(f.saplings, 0)), 0, cap - T);
+      // 見える切り株の数は floor（logic の切り株）にそろえる（切り株が 1 つ未満で なえぎが待つ間に、切り株が見えない。§18）
+      const stumpsL = cap - num(f.trees, 0) - num(f.saplings, 0);
+      const S = clamp(cap - T - Math.max(0, Math.floor(stumpsL + 1e-9)), 0, cap - T);
       if (replace || slots.length !== cap) {
         const pos = slotPositions(cap);
         const order = pos.map((_, i) => i);
         for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; }
-        slots = pos.map((p) => ({ x: p.x, y: p.y, kind: "stump", fall: 0, grow: 1 }));
+        slots = pos.map((p) => ({ x: p.x, y: p.y, kind: "stump", fall: 0, grow: 1, pend: false, pendT: 0, cutAt: -1 }));
         order.forEach((idx, k) => { slots[idx].kind = k < T ? "tree" : k < T + S ? "sapling" : "stump"; });
         return;
       }
+      // 「なえぎの人が向かっている切り株」（pend）は logic では もう苗木。植え終わるまで切り株のまま見せる（§18）
       let t = 0, s = 0;
-      for (const sl of slots) { if (sl.kind === "tree") t++; else if (sl.kind === "sapling") s++; }
+      for (const sl of slots) { if (sl.kind === "tree") t++; else if (sl.kind === "sapling" || sl.pend) s++; }
       let guard = 200;
       while (t > T && guard--) {
-        const i = pickSlot("tree", "cutter"); if (i < 0) break;
-        slots[i].kind = "stump"; t--;
-        if (!calm) effects.push({ kind: "fall", x: slots[i].x, y: slots[i].y, dir: rnd() < 0.5 ? -1 : 1 });
+        const i = pickSlot("tree", "cutter", -1); if (i < 0) break;
+        const sl = slots[i];
+        sl.kind = "stump"; sl.pend = false; sl.cutAt = clk; t--;
+        if (!calm) effects.push({ kind: "fall", x: sl.x, y: sl.y, dir: rnd() < 0.5 ? -1 : 1 });
       }
       while (s > S && t < T && guard--) {
-        const i = pickSlot("sapling", "-"); if (i < 0) break;
-        slots[i].kind = "tree"; slots[i].grow = 0; s--; t++;
+        let i = pickSlot("sapling", "-", -1);
+        if (i < 0) i = pickSlot("stump", "-", 1);
+        if (i < 0) break;
+        slots[i].kind = "tree"; slots[i].pend = false; slots[i].grow = 0; s--; t++;
       }
       while (t < T && guard--) {
-        const i = pickSlot("stump", "-"); if (i < 0) break;
-        slots[i].kind = "tree"; slots[i].grow = 0; t++;
+        let i = pickSlot("stump", "-", 0);
+        if (i < 0) { i = pickSlot("stump", "-", 1); if (i >= 0) s--; }
+        if (i < 0) break;
+        slots[i].kind = "tree"; slots[i].pend = false; slots[i].grow = 0; t++;
       }
       while (s > S && guard--) {
-        const i = pickSlot("sapling", "-"); if (i < 0) break;
+        let i = pickSlot("stump", "-", 1);
+        if (i >= 0) { slots[i].pend = false; s--; continue; }
+        i = pickSlot("sapling", "-", -1); if (i < 0) break;
         slots[i].kind = "stump"; s--;
       }
+      const crew = crewOf("planter");
       while (s < S && guard--) {
-        const i = pickSlot("stump", "planter"); if (i < 0) break;
-        slots[i].kind = "sapling"; slots[i].grow = 0; s++;
+        // その切り株の横に なえぎの人が立っていれば、すぐ植わる
+        let i = -1;
+        for (let k = 0; k < slots.length; k++) if (slots[k].kind === "stump" && !slots[k].pend && claimedBy(k, "planter")) { i = k; break; }
+        if (i >= 0) { plantNow(i); s++; continue; }
+        // なえぎの人がいれば、いちばん新しい切り株へ歩いて行って植える（向かう先が多すぎるときは すぐ植わる）
+        if (crew > 0 && pendCount() < crew * 2 + 1) {
+          i = newestStump(); if (i < 0) break;
+          slots[i].pend = true; slots[i].pendT = 0; s++;
+          continue;
+        }
+        i = pickSlot("stump", "-", 0); if (i < 0) break;
+        plantNow(i); s++;
       }
     }
 
     // ===== 流れの様子（つまり・応援）=====
     function flowInfo(state, stage) {
       const caps = capsOf(stage);
-      const buf = state.buf || {}, f = state.forest || {}, depts = state.depts || {};
+      const buf = state.buf || {}, depts = state.depts || {};
       const v = (k) => num(buf[k], 0);
       const full = (k) => (k === "goods" ? v(k) >= caps.goods - 1e-6 : v(k) >= caps.buf - 1e-6);
-      const trees = num(f.trees, 0), saps = num(f.saplings, 0);
-      const stumps = caps.forest - trees - saps;
       const qlen = Array.isArray(state.queue) ? state.queue.length : 0;
       const t = num(state.t, 0);
       const boosted = {};
       for (const d of DEPT_IDS) boosted[d] = !!(depts[d] && num(depts[d].boostUntil, -1) > t);
       let rates = null;
       try { rates = typeof Lg().rates === "function" ? Lg().rates(state) : null; } catch (e) { rates = null; }
+      const why = waitOf(state);
+      const stuck = {};
+      for (const d of DEPT_IDS) stuck[d] = !!why[d];
       return {
-        stuck: {
-          cut: trees < 1 || full("yard"),
-          plant: stumps < 1,
-          carry: v("yard") < 1 || full("logs"),
-          peel: v("logs") < 1 || full(outOf("peel", stage)),
-          beam: v("peeled") < 1 || full(outOf("beam", stage)),
-          plank: v("beams") < 1 || full("goods"),
-          shop: qlen > 0 && v("goods") < 1
-        },
+        stuck, why,
         goodsEmpty: v("goods") < 1,
         qlen, boosted, rates: rates || {}, yard: v("yard"), logsFull: full("logs")
       };
@@ -371,8 +432,12 @@
       const a = crew[Math.floor(rnd() * crew.length)];
       a.made = 0.35;
       if (calm) return;
-      if (d === "cut") effects.push({ kind: "chop", x: a.x + 8 * a.dir, y: a.y - 12, dept: d });
-      else if (d === "plant") effects.push({ kind: "leaf", x: a.x + 6 * a.dir, y: a.y - 4, dept: d });
+      if (d === "cut") {
+        effects.push({ kind: "chop", x: a.x + 8 * a.dir, y: a.y - 12, dept: d });
+        // 切った木が丸太になって、森の置き場（はこぶ の出発点）へ転がる
+        effects.push({ kind: "log", x: a.x, y: a.y - 2, tx: geo.road.yardX - 18, ty: 240, dept: d });
+      }
+      else if (d === "plant") { /* 葉っぱは 実際に植えた所で出す（update の planter） */ }
       else if (d === "carry") effects.push({ kind: "drop", x: geo.road.gateX, y: geo.road.walkY - 4, dept: d });
       else if (d === "shop") effects.push({ kind: "coin", x: a.x, y: a.y - 26, dept: d });
       else { const st = station(geo, d, a.idx); if (st) effects.push({ kind: "chips", x: st.tx, y: st.ty - 14, dept: d }); }
@@ -414,8 +479,9 @@
       }
       const sp = speedOf(a);
       switch (a.role) {
-        case "cutter": case "planter": {
-          const isCut = a.role === "cutter";
+        case "planter": updatePlanter(a, dt, sp); break;
+        case "cutter": {
+          const isCut = true;
           const stuck = info.stuck[a.dept];
           const want = isCut ? "tree" : "stump";
           if (stuck) {
@@ -523,6 +589,71 @@
       }
     }
 
+    // なえぎ：切り株（きこりが切った所）へ歩いて行って植える。切り株が無い間は若木に水をやって待つ（§18）
+    function updatePlanter(a, dt, sp) {
+      const stuck = info.stuck.plant;
+      let sl = a.slot >= 0 ? slots[a.slot] : null;
+      if (!sl || sl.kind !== "stump" || (!sl.pend && stuck)) {
+        a.slot = -1; a.plantT = 0; sl = null;
+        const cands = [];
+        for (let i = 0; i < slots.length; i++) {
+          const c = slots[i];
+          if (c.kind !== "stump" || (!c.pend && stuck)) continue;
+          let taken = false;
+          for (const b of actors) if (b !== a && b.role === "planter" && b.slot === i) { taken = true; break; }
+          cands.push({ i, taken, pend: c.pend ? 0 : 1, d: Math.abs(c.x - a.x) + Math.abs(c.y - a.y) * 0.5 });
+        }
+        cands.sort((p, q) => (p.taken - q.taken) || (p.pend - q.pend) || (p.d - q.d));
+        if (cands.length && !cands[0].taken) { a.slot = cands[0].i; sl = slots[a.slot]; }
+      }
+      if (sl) {
+        a.tool = null; a.water = -1;
+        const side = (a.idx % 2) ? 1 : -1;
+        if (!moveTo(a, sl.x + side * 10, sl.y, dt, sp)) { a.active = false; a.pose = "walk"; return; }
+        a.dir = -side; a.active = true; a.pose = workPose(a, false);
+        if (sl.pend) {
+          a.plantT = num(a.plantT, 0) + dt;
+          if (a.plantT >= (calm ? 0.3 : 0.6)) {
+            plantNow(a.slot);
+            a.made = 0.35; a.plantT = 0; a.slot = -1;
+            if (!calm) effects.push({ kind: "leaf", x: sl.x, y: sl.y - 6, dept: "plant" });
+          }
+        }
+        return;
+      }
+      // 待つ：近くの若木に水をやる（数秒ごとに別の若木へ）。若木が無ければ持ち場で見回す
+      a.active = false;
+      a.waterT = num(a.waterT, 0) + dt;
+      let w = num(a.water, -1);
+      if (w < 0 || !slots[w] || slots[w].kind !== "sapling" || slots[w].y !== geo.forest.rows[1] || a.waterT > 3.2) {
+        const opts = [];
+        for (let i = 0; i < slots.length; i++) {
+          // 水をやるのは手前の列だけ（奥の列だと吹き出しが場所の名札に重なる）
+          // 左下は「ここが おそい！」の札に隠れるので避ける
+          if (slots[i].kind !== "sapling" || i === w || slots[i].y !== geo.forest.rows[1] || slots[i].x < 120) continue;
+          let taken = false;
+          for (const b of actors) if (b !== a && b.role === "planter" && b.water === i) { taken = true; break; }
+          if (!taken) opts.push(i);
+        }
+        // 持ち場に近い若木から（遠くまで行かない）
+        const hx = homeOf(a).x;
+        opts.sort((p, q) => Math.abs(slots[p].x - hx) - Math.abs(slots[q].x - hx));
+        opts.length = Math.min(opts.length, 2);
+        w = opts.length ? opts[Math.floor(rnd() * opts.length)] : (w >= 0 && slots[w] && slots[w].kind === "sapling" && slots[w].y === geo.forest.rows[1] ? w : -1);
+        a.water = w; a.waterT = 0;
+      }
+      if (w >= 0) {
+        const t = slots[w];
+        const side = (a.idx % 2) ? 1 : -1;
+        if (moveTo(a, t.x + side * 9, t.y, dt, sp * 0.7)) { a.dir = -side; a.pose = "wait"; a.tool = "can"; }
+        else { a.pose = "walk"; a.tool = null; }
+      } else {
+        const h = homeOf(a);
+        a.tool = null;
+        a.pose = moveTo(a, h.x, h.y, dt, sp) ? "wait" : "walk";
+      }
+    }
+
     let lastState = null;
     function sync(state, events, dt) {
       if (!state || typeof state !== "object") return;
@@ -539,9 +670,17 @@
         if (replace) actors = actors.filter((a) => a.role !== "customer");
         syncCustomers(state, events, replace);
         madeTriggers(state, events, replace);
-        for (const a of actors) update(a, d);
+        for (const a of actors) {
+          update(a, d);
+          // 待つ人は ときどき左右を見回す（「手が空いている」が分かる軽い動き。動きを減らす設定では しない）
+          if (a.pose === "wait" && !calm && a.role !== "planter" && a.role !== "customer") a.dir = Math.sin(clk * 0.9 + a.ph) >= 0 ? 1 : -1;
+        }
         if (actors.some((a) => a.gone)) actors = actors.filter((a) => !a.gone);
-        for (const sl of slots) if (sl.grow < 1) sl.grow = Math.min(1, sl.grow + d * 1.5);
+        for (const sl of slots) {
+          if (sl.grow < 1) sl.grow = Math.min(1, sl.grow + d * 1.5);
+          // 向かう人がいないまま長く残った切り株は、そのまま植わったことにする（見た目が logic から離れすぎない）
+          if (sl.pend) { sl.pendT += d; if (sl.pendT > 9) plantNow(slots.indexOf(sl)); }
+        }
         if (effects.length > 60) effects = effects.slice(-60);
       } catch (e) { /* 見た目だけなので、止めない */ }
       first = false;
@@ -553,6 +692,7 @@
       sync, list,
       all: () => actors,
       slots: () => slots,
+      why: () => (info ? info.why : {}),
       drain() { const e = effects; effects = []; return e; },
       setCalm(b) { calm = !!b; },
       geometry: () => geo,
@@ -561,7 +701,7 @@
     };
   }
 
-  const api = Object.freeze({ create, geometry, station, MAX_ACTORS, W, STAGE_H, DEPT_IDS, DEPT_FROM, ROLE_OF, byStage, capsOf, outOf });
+  const api = Object.freeze({ create, geometry, station, waitOf, MAX_ACTORS, W, STAGE_H, DEPT_IDS, DEPT_FROM, ROLE_OF, byStage, capsOf, outOf });
   if (typeof module === "object" && module.exports) module.exports = api;
   root.SeizaiActors = api;
 })(typeof window !== "undefined" ? window : globalThis);

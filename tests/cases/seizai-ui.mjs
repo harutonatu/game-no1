@@ -12,7 +12,7 @@
 //   るすの あいだ（§4.3・§7.1）は、ページの時計を clockTime で決まった瞬間に固定して確かめる（日本・ロサンゼルスの2つのタイムゾーン）。
 //   期待値は Node で読んだ logic.js（同じ root）から作る。半分の速さの 45 秒・上限の 7200 秒は決め打ちの値で比べる（logic が変わっても見逃さない）。
 //   無いときに合格にしない（空振りの合格を作らない）：SeizaiGame・YubiDebug が無ければ例外で不合格にする。
-//   smoke：WW1〜WW6。full：WW7〜WW19（WW18 はレビュー後の直し §17.1、WW19 は §17.3 の B。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
+//   smoke：WW1〜WW6。full：WW7〜WW20（WW18 はレビュー後の直し §17.1、WW19 は §17.3 の B、WW20 は §18 待つ理由（SZ-03）。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -1024,6 +1024,62 @@ export const tests = [
         if (calm) await wait(page, 100); else { await sleep(1800); await wait(page, 100); }
         const t1 = await page.evaluate(() => { const s = document.querySelector('#scene'); return { top: s.scrollTop, max: s.scrollHeight - s.clientHeight }; });
         check(`${calm ? '動きを減らす設定' : '通常'}：みなとの節目カードを閉じると #scene が船のほうへスクロール（${Math.round(t0)} → ${Math.round(t1.top)}／最大 ${Math.round(t1.max)}）`, (await gs(page)).stage === 4 && t1.top > t0 + 100, { t0, t1 });
+        await ctx.close();
+      }
+      check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
+    },
+  },
+  {
+    id: 'WW20', tier: 'full', title: 'もくもくこうば 待つ理由（§18・SZ-03）：きこりが遅くて切り株が無い間、なえぎのシート #sheetInfo（data-wait=1）と場所の読み上げに「うえる きりかぶが まだ ないよ。きこりを ふやすと うえられるよ」、はこぶ・かわむき にも待つ理由と「きこりを ふやすと」、きこり は「ここが おそいよ」で待つ文なし。切り株があれば待つ文は出ない。なえぎの人は切られた切り株まで歩いて行ってから植える（着くまで切り株のまま）',
+    async run({ browser, check, root, errors }) {
+      const L = logicOf(root);
+      const e0 = errors.length;
+      const OPEN = (st) => openW(browser, 'WW20', { v: SMOKE_V(), items: { 'seizai.save': saveOf(L, st, T0) }, opts: { clockTime: new Date(T0 + 1000) } });
+      // 録画と同じ局面：段1、きこり 1にん Lv2、なえぎ 1にん Lv2、はこぶ 2にん、森は木と若木でいっぱい
+      const base = { money: 120, forest: { trees: 8, saplings: 4 }, buf: { yard: 0, logs: 0, goods: 0 }, depts: { cut: { staff: 1, level: 2 }, plant: { staff: 1, level: 2 }, carry: { staff: 2, level: 1 }, peel: { lines: 1, level: 1 }, shop: { staff: 1, level: 1 } } };
+      {
+        const { ctx, page } = await OPEN(mkState(L, 1, base));
+        await adv(page, 20); await wait(page, 100);
+        const g = await gs(page);
+        const open = async (d) => { await page.evaluate((x) => document.querySelector(`.zone[data-dept="${x}"]`).click(), d); await wait(page, 120); return page.evaluate(() => { const e = document.querySelector('#sheetInfo'); return { t: e.textContent.trim(), wait: e.dataset.wait, jam: e.dataset.jam }; }); };
+        const pl = await open('plant');
+        const za = await page.evaluate(() => document.querySelector('.zone[data-dept="plant"]').getAttribute('aria-label'));
+        check(`つまりは きこり（${g.bottleneck}）。なえぎのシート「${pl.t}」（data-wait ${pl.wait}）と読み上げ「${za}」に、待つ理由と「きこりを ふやすと うえられるよ」`, g.bottleneck === 'cut' && pl.wait === '1' && /うえる きりかぶが まだ ないよ。きこりを ふやすと うえられるよ/.test(pl.t) && /うえる きりかぶが まだ ないよ。きこりを ふやすと うえられるよ/.test(za), { g: g.bottleneck, pl, za });
+        const ca = await open('carry'), pe = await open('peel');
+        check(`横展開：はこぶ「${ca.t}」・かわむき「${pe.t}」にも待つ理由と「きこりを ふやすと」`, ca.wait === '1' && /まるたが まだ/.test(ca.t) && /きこりを ふやすと/.test(ca.t) && pe.wait === '1' && /まるたが まだ こないよ/.test(pe.t) && /きこりを ふやすと/.test(pe.t), { ca, pe });
+        await open('cut');   // 押すと応援で速くなるので、応援が切れるまで進めてから見る
+        await adv(page, 8); await wait(page, 150);
+        const cu = await page.evaluate(() => { const e = document.querySelector('#sheetInfo'); return { t: e.textContent.trim(), wait: e.dataset.wait, jam: e.dataset.jam }; });
+        check(`きこり「${cu.t}」は「ここが おそいよ」で、待つ文は出ない（食い違わない）`, cu.jam === '1' && cu.wait === '0' && /ここが おそいよ/.test(cu.t) && !/まだ/.test(cu.t), cu);
+        await ctx.close();
+      }
+      {
+        // 切り株がたくさんある（なえぎが遅い側）：待つ文は出ない
+        const { ctx, page } = await OPEN(mkState(L, 1, { ...base, forest: { trees: 2, saplings: 0 } }));
+        await adv(page, 2); await wait(page, 100);
+        await page.evaluate(() => document.querySelector('.zone[data-dept="plant"]').click()); await wait(page, 120);
+        const pl = await page.evaluate(() => { const e = document.querySelector('#sheetInfo'); return { t: e.textContent.trim(), wait: e.dataset.wait }; });
+        check(`切り株があれば なえぎのシート「${pl.t}」に待つ文は出ない`, pl.wait === '0' && !/きりかぶが まだ/.test(pl.t), pl);
+        // 人の動き（actors.js を直接）：切られた切り株へ なえぎの人が歩いて行き、着いてから植わる
+        const r = await page.evaluate(() => {
+          const A = window.SeizaiActors, Lg = window.SeizaiLogic;
+          const s = Lg.newGame(1);
+          s.depts.plant.staff = 1; s.forest.trees = 12; s.forest.saplings = 0;
+          const act = A.create(3);
+          for (let i = 0; i < 30; i++) act.sync(s, [], 0.1);
+          s.forest.trees = 11; s.forest.saplings = 1;   // 1 本切られて、logic では すぐ苗木に
+          act.sync(s, [], 0.1);
+          const sl = act.slots();
+          const idx = sl.findIndex((x) => x.pend);
+          const stumpAtCut = idx >= 0 && sl[idx].kind === 'stump';
+          const p = act.all().find((a) => a.role === 'planter');
+          const d0 = Math.abs(p.x - sl[idx].x);
+          let planted = -1;
+          for (let i = 0; i < 200 && planted < 0; i++) { act.sync(s, [], 0.1); if (sl[idx].kind === 'sapling') planted = i; }
+          const p1 = act.all().find((a) => a.role === 'planter');
+          return { stumpAtCut, d0, planted, d1: Math.abs(p1.x - sl[idx].x), why: A.waitOf(s).plant };
+        });
+        check(`切られた所は切り株のまま（${r.stumpAtCut}・なえぎの人まで ${Math.round(r.d0)}）、なえぎの人が歩いて着いてから植わる（${r.planted} コマ目・そのときの距離 ${Math.round(r.d1)}）`, r.stumpAtCut && r.planted > 0 && r.d1 <= 14 && (r.d0 < 14 || r.planted >= 3), r);
         await ctx.close();
       }
       check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
