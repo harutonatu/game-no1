@@ -293,11 +293,27 @@ const M = [
   ['MK15 ほしくだき：はね返しの「あと N%」をこわした割合で出す', '表示', 'games/asteroid/main.js', 'Math.max(1, Math.round((1 - broken) * 100))', 'Math.max(1, Math.round(broken * 100))'],
   ['MK16 ほしくだき：クリアしても asteroid.best を書かない', '保存', 'games/asteroid/main.js', '          writeBest(e.star);\n', ''],
   ['MK17 ほしくだき：かけらが足りないとき音 deny もヒントも出さない', '表示', 'games/asteroid/main.js', '    if (r.reason === "money") {\n      sfx.play("deny");\n      const cost', '    if (false) {\n      sfx.play("deny");\n      const cost'],
-  ['MK18 ほしくだき：開き直すと かけらが 0 になる（保存を読んでも かけらを捨てる）', 'データ消失', 'games/asteroid/main.js', '      loaded.t = extra.t;\n      state = loaded;', '      loaded.t = extra.t;\n      state = Object.assign({}, loaded, { kakera: 0 });'],
+  ['MK18 ほしくだき：開き直すと かけらが 0 になる（保存を読んでも かけらを捨てる）', 'データ消失', 'games/asteroid/main.js', '      setClock(loaded, extra.t);\n      state = loaded;', '      setClock(loaded, extra.t);\n      state = Object.assign({}, loaded, { kakera: 0 });'],
   ['MK19 ほしくだき：pagehide でタイマーを片付けない', '中断', 'games/asteroid/main.js', 'window.addEventListener("pagehide", () => { sleep(); clearLater(); });', 'window.addEventListener("pagehide", () => { sleep(); });'],
   ['MK20 ほしくだき：遊び方を開いている間も止めない', '中断', 'games/asteroid/main.js', 'const running = () => !sleeping && overlay !== "help" && overlay !== "end";', 'const running = () => !sleeping && overlay !== "end";'],
   ['MK21 ほしくだき：動きを減らす設定を見ない', '動き', 'games/asteroid/main.js', 'let calm = !!reduceMotion.matches;', 'let calm = false;'],
   ['MK22 ほしくだき：2択が開き直しで変わる（保存の offer を入れ替えて読む）', '保存', 'games/asteroid/logic.js', 'if (okOffer) base.offer = [f[0], f[1]];', 'if (okOffer) base.offer = [f[1], f[0]];'],
+  // §18（レビュー後の変更：区切り・クリアの時間とベスト・もろい底・相性・星の途中の保存・手ごたえの表示）。2026-10-21、feature/asteroid-test2
+  ['MK23 ほしくだき：区切りをやり直し（はね返し）でもらい直せる', 'ルール', 'games/asteroid/logic.js', '    s.tryAt = s.t;   // 区切り（ms）は星ごとなので', '    s.ms = []; s.tryAt = s.t;   // 区切り（ms）は星ごとなので'],
+  ['MK24 ほしくだき：星のベスト時間を遅いほうにする', '保存', 'games/asteroid/logic.js', 'if (prev === null || time < prev) s.bestT', 'if (prev === null || time > prev) s.bestT'],
+  ['MK25 ほしくだき：もろい底なし（下の行も体力 1 倍）', '計算', 'games/asteroid/logic.js', 'const SOFT = deepFreeze({ q: 0.2, mul: 0.05, ramp: 0.15 });', 'const SOFT = deepFreeze({ q: 0.2, mul: 1, ramp: 0.15 });'],
+  ['MK26 ほしくだき：相性の倍率 aff がいつも 1', '計算', 'games/asteroid/logic.js', 'return isNum(a) ? a : 1;', 'return 1;'],
+  ['MK27 ほしくだき：星の途中の保存（mid）を捨てる', 'データ消失', 'games/asteroid/logic.js', 'if (withMid) { const m = midOf(state); if (m) o.mid = m; }', ''],
+  ['MK28 ほしくだき：区切りの帯 #msBanner を出さない', '表示', 'games/asteroid/main.js', 'setHidden(el.msBanner, !(s.phase === "fly" && s.t < msUntil));', 'setHidden(el.msBanner, true);'],
+  ['MK29 ほしくだき：開き直しで いまの挑戦の始め（tryAt）をずらさない（クリアの時間に遊んだ合計の秒が足される）', '計算', 'games/asteroid/main.js', '    s.tryAt = (Number.isFinite(s.tryAt) ? s.tryAt : 0) + d;\n', ''],
+  ['MK30 ほしくだき：◎ を星の札に関係なく得意のある武器ぜんぶに付ける', '表示', 'games/asteroid/main.js', 'const fit = !!main && !!WEAPON[x.id] && WEAPON[x.id].good === main;', 'const fit = !!WEAPON[x.id] && !!WEAPON[x.id].good;'],
+  ['MK31 ほしくだき：クリアの帯の「ちきゅうまで あと N%」を近さの逆で出す', '表示', 'games/asteroid/main.js', 'Math.round(Math.max(0, Math.min(1, dist)) * 100)', 'Math.round((1 - Math.max(0, Math.min(1, dist))) * 100)'],
+  ['MK32 ほしくだき：買った行に「＋N%」を出さない', '表示', 'games/asteroid/main.js', '      showPlus(k, dpsBefore, safeCall(() => L.dpsOf(state, k), null));\n', ''],
+  ['MK33 ほしくだき：買えない間の「あと N」を不足分でなく値段で出す', '表示', 'games/asteroid/main.js', '"あと " + fmt(lack)', '"あと " + fmt(cost)'],
+  ['MK34 ほしくだき：はね返しのおすすめをいつも 1 行目にする（いちばん安い行を見ない）', '表示', 'games/asteroid/main.js', 'suggestSlot = cheapestSlot();', 'suggestSlot = 0;'],
+  ['MK35 ほしくだき：2択の冒頭の案内 #choiceLead を出さない', '表示', 'games/asteroid/main.js', 'el.choiceLead.hidden = !lead;', 'el.choiceLead.hidden = true;'],
+  ['MK36 ほしくだき：クリアの演出中の保存を同じ星にする（開き直すと同じ星をもう一度）', '保存', 'games/asteroid/logic.js', 'if (state.phase === "clear" && !(state.star === ENDING_STAR && !state.cleared)) {', 'if (false) {'],
+  ['MK37 ほしくだき：壊れた bestT（キーが整数でない・0 以下・大きすぎ）を捨てない', '保存', 'games/asteroid/logic.js', 'if (!/^[1-9][0-9]{0,3}$/.test(k) || Number(k) > STAR_MAX || !isNum(v) || v <= 0 || v > 1e7) continue;', 'if (!isNum(v)) continue;'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;
