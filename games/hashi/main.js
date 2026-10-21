@@ -21,6 +21,9 @@
   const KEY_SLOW = "hashi.slow";
   const KEY_GUIDE = "hashi.guide";
   const KEY_TAP = "hashi.tap";
+  const KEY_STAGE = L.SAVE_KEY_STAGE || "hashi.stage";   // ステージの到達（つづきから）
+  const KEY_MODE = "hashi.mode";                         // さいごに選んだ遊び方（"stage" | "endless"）
+  const C = window.HashiCourse;
 
   const HINT_HOLD = "ながく おして、はなしてね";
   const HINT_TAP = "タップで のばして、もう一度 タップ";
@@ -38,13 +41,15 @@
   const SKIP_FX_SEC = (window.HashiRender && Number(window.HashiRender.SKIP_FX_SEC)) || 1.0;
   const CARD_LOCK_MS = 400;     // 結果カードを出してから押せない時間
   const STAGE_BLOCK_MS = 300;   // カードを閉じた後、#stageWrap の押下を受けない時間
-  const ANIM_PHASES = ["falling", "walking", "scrolling", "dropping", "respawn"];
+  const CLEAR_SEC = 2.6;         // ステージクリアの演出（跳ねる→花火→蓮の花）。タップで早送り
+  const CLEAR_SEC_CALM = 1.2;    // 動きを減らす設定のとき（花が静かに咲くだけ）
+    const ANIM_PHASES = ["falling", "walking", "scrolling", "dropping", "respawn", "clear"];
 
   const now = () => performance.now();
   const $ = (id) => document.getElementById(id);
   const el = {
     playView: $("playView"), stageWrap: $("stageWrap"), canvas: $("stage"), hint: $("hint"), sr: $("sr"),
-    score: $("score"), best: $("best"), lives: $("lives"), hearts: $("hearts"), streak: $("streak"), streakBox: $("streakBox"),
+    score: $("score"), best: $("best"), lives: $("lives"), scoreLabel: $("scoreLabel"), bestLabel: $("bestLabel"), livesBox: $("livesBox"), hearts: $("hearts"), streak: $("streak"), streakBox: $("streakBox"),
     helpBtn: $("helpBtn"), soundBtn: $("soundBtn"), overlay: $("overlay"), card: $("card")
   };
   const missing = Object.keys(el).filter((k) => !el[k]);
@@ -75,6 +80,10 @@
   let slow = L.validateFlag(readKey(KEY_SLOW));
   let guide = L.validateFlag(readKey(KEY_GUIDE));
   let tap = L.validateFlag(readKey(KEY_TAP));   // タップ式（押し続けなくてよい）
+  // ステージの到達は壊れていても 1 として遊べる。読めた値は書き換えない（先へ進んだときだけ書く）
+  let stageReach = L.validateStage(readKey(KEY_STAGE));
+  let mode = readKey(KEY_MODE) === "stage" ? "stage" : "endless";
+  let curStage = stageReach;     // 遊んでいるステージ
   const hintReady = () => (tap ? HINT_TAP : HINT_HOLD);
   function renderStageLabel() { el.stageWrap.setAttribute("aria-label", tap ? STAGE_LABEL_TAP : STAGE_LABEL_HOLD); }
   // 読み上げ（#sr、aria-live=polite）：結果ごとに1文だけ入れる。#hint の「元に戻す」は読ませない
@@ -127,6 +136,7 @@
   let cameraX = 0, camFrom = 0, camTo = 0;
   let walkFrom = 0, walkTo = 0, nextStep = 0;
   let prevLeaves = [];          // 渡った直後、画面を送る間だけ描く「元の葉」（ひとつ飛ばしなら、飛び越えた葉も）
+  let ghostTipY = 0, clearAt = 0, bridgeBase = { x: 0, y: 0 }, heroBaseY = 0, dropFromY = 0;
   let ghostTipX = null, perfectAt = null, splashAt = null, skipAt = null, skipX = null;
   let perfectX = null, splashX = null;
   let peeked = false;
@@ -163,8 +173,15 @@
   const hearts = (n) => "♥".repeat(Math.max(0, n)) + "♡".repeat(Math.max(0, L.LIVES - Math.max(0, n)));
   function hud() {
     const h = L.hud(run);
-    setNum(el.score, h.score);
-    setNum(el.best, best);
+    const st = run.mode === "stage";
+    // ステージ：「わたった 3/5」「ステージ 4」。いのちは使わない（落ちたらそのステージの最初から）
+    const sl = st ? "わたった" : "いま", bl = st ? "ステージ" : "ベスト";
+    if (el.scoreLabel.textContent !== sl) el.scoreLabel.textContent = sl;
+    if (el.bestLabel.textContent !== bl) el.bestLabel.textContent = bl;
+    el.livesBox.hidden = st;
+    el.playView.dataset.mode = run.mode;
+    setNum(el.score, st ? `${h.crossed}/${run.goal}` : h.score);
+    setNum(el.best, st ? run.stage : best);
     el.lives.textContent = String(h.lives);
     if (el.hearts) el.hearts.textContent = hearts(h.lives);
     el.streak.textContent = String(h.streak);
@@ -176,7 +193,17 @@
     ? window.HashiRender.create(el.canvas) : { resize() {}, draw() {} };
   if (!window.HashiRender) console.error("ハシわたり: HashiRender が読み込まれていません（render.js）。絵は出ません");
   function viewPlatforms() {
+    // ステージは全部の葉（ゴールまで）を描く。画面の外の葉は描画が省く
+    if (run.mode === "stage" && C && typeof C.stageCourse === "function") return C.stageCourse(run.stage);
     return prevLeaves.concat(run.platforms);
+  }
+  const yOf = (p) => (p && Number.isFinite(p.y) ? p.y : 0);
+  const curY = () => yOf(run.platforms[0]);
+  // ガイドの点線：渡る先の高さに倒したときの先（届かなければ水平）
+  function guideTip() {
+    const bx = curRight(), target = run.platforms[1];
+    const x = target ? L.reachX(bx, curY(), bridgeLen, yOf(target)) : null;
+    return x === null ? bx + bridgeLen : x;
   }
   function draw() {
     const fxAge = (at, sec) => (at === null ? null : (clock - at <= sec ? clock - at : null));
@@ -185,13 +212,14 @@
         platforms: viewPlatforms(),
         cameraX,
         hero: { x: heroX, y: heroY, pose: heroPose },
-        bridge: prevLeaves.length ? { len: bridgeLen, angle: bridgeAngle, x: prevLeaves[0].x + prevLeaves[0].w } : { len: bridgeLen, angle: bridgeAngle },
+        bridge: { len: bridgeLen, angle: bridgeAngle, x: bridgeBase.x, y: bridgeBase.y },
+        clearFx: phase === "clear" || phase === "cleared" ? { sec: clock - clearAt, calm: reduceMotion.matches, x: heroX } : null,
         perfectFx: fxAge(perfectAt, PERFECT_FX_SEC),
         perfectX,
         skipFx: fxAge(skipAt, SKIP_FX_SEC),
         skipX,
-        ghostTipX,
-        guideTipX: guide && phase === "growing" ? curRight() + bridgeLen : null,
+        ghostTipX, ghostTipY,
+        guideTipX: guide && phase === "growing" ? guideTip() : null,
         splash: fxAge(splashAt, SPLASH_SEC),
         splashX,
         lives: run.lives,
@@ -238,6 +266,7 @@
     else lastFrame = 0;
   }
 
+  let restartPending = false, clearPending = false, clearStep = 0;
   let skipping = false;   // HashiGame.skip の間だけ true（浮動小数の誤差で終わり損ねないよう k を 1 にする）
   function tick() {
     const e = skipping ? Math.max(clock - phaseStart, phaseDur) : clock - phaseStart;
@@ -249,13 +278,19 @@
         break;
       }
       case "falling": {
-        bridgeAngle = k * Math.PI / 2;
+        const a1 = pending && Number.isFinite(pending.outcome.angle) ? pending.outcome.angle : Math.PI / 2;
+        bridgeAngle = k * a1;   // 斜めに倒れる（先の葉の高さに向けて）
         if (k >= 1) { sfx.play("tip"); startWalk(); }
         break;
       }
       case "walking": {
         heroX = walkFrom + (walkTo - walkFrom) * k;
         heroPose = "walk";
+        {
+          // 斜めの茎の上は高さも変わる。茎の先から先は着いた葉の高さ
+          const o = pending.outcome, tx = o.tipX, ty = Number.isFinite(o.tipY) ? o.tipY : 0;
+          heroY = heroX < tx && tx > walkFrom ? heroBaseY + (ty - heroBaseY) * ((heroX - walkFrom) / (tx - walkFrom)) : ty;
+        }
         if (e >= nextStep && k < 1) { sfx.play("walk"); nextStep += STEP_EVERY; }
         if (k >= 1) arrive();
         break;
@@ -264,14 +299,15 @@
         const s = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
         cameraX = camFrom + (camTo - camFrom) * s;
         const hop = reduceMotion.matches ? 1 : Math.min(1, e / HOP_DUR);
-        heroY = hop < 1 ? HOP_H * Math.sin(Math.PI * hop) : 0;
+        heroY = heroBaseY + (hop < 1 ? HOP_H * Math.sin(Math.PI * hop) : 0);
         heroPose = hop < 1 ? "hop" : "stand";
         if (k >= 1) finishCross();
         break;
       }
       case "dropping": {
-        bridgeAngle = Math.PI / 2 + k * Math.PI / 2;
-        heroY = -k * DROP_DEPTH;
+        const a0 = pending && Number.isFinite(pending.outcome.angle) ? pending.outcome.angle : Math.PI / 2;
+        bridgeAngle = a0 + k * (Math.PI - a0);
+        heroY = dropFromY - k * (dropFromY + DROP_DEPTH);
         heroPose = "fall";
         if (k >= 1) splashDown();
         break;
@@ -282,8 +318,29 @@
         if (!peeked && e >= Math.min(0.3, phaseDur / 2)) { peeked = true; sfx.play("peek"); }
         if (k >= 1) {
           if (!peeked) { peeked = true; sfx.play("peek"); }
-          toReady();
+          if (restartPending) {
+            // ステージ：はじめの葉へ戻って、画面もそこへ送る
+            restartPending = false;
+            ghostTipX = null;
+            heroX = curRight(); heroBaseY = curY(); heroY = heroBaseY; heroPose = "hop";
+            bridgeLen = 0; bridgeAngle = 0;
+            camFrom = cameraX; camTo = curRight() - L.CAMERA_LEFT;
+            setPhase("scrolling", D(0.5));
+          } else {
+            toReady();
+          }
         }
+        break;
+      }
+      case "clear": {
+        // ケロが跳ねて喜ぶ → 花火 → 蓮の花が咲く（描くのは render.js の clearFx）。動きを減らす設定では跳ねない
+        const calm = reduceMotion.matches;
+        heroPose = calm || e > 1.0 ? "stand" : "hop";
+        heroY = heroBaseY + (calm || e > 1.0 ? 0 : HOP_H * 1.6 * Math.abs(Math.sin(e * Math.PI * 3)));
+        if (clearStep === 0 && (calm || e >= 0.35)) { clearStep = 1; if (!calm) sfx.play("firework", 1); }
+        if (clearStep === 1 && (calm || e >= 0.8)) { clearStep = 2; if (!calm) sfx.play("firework", 2); }
+        if (clearStep === 2 && (calm || e >= 1.2)) { clearStep = 3; sfx.play("bloom"); }
+        if (k >= 1) finishClear();
         break;
       }
       default: break;
@@ -293,7 +350,9 @@
   // ===== 状態の流れ =====
   function toReady() {
     bridgeLen = 0; bridgeAngle = 0;
-    heroX = curRight(); heroY = 0; heroPose = "stand";
+    heroBaseY = curY();
+    bridgeBase = { x: curRight(), y: heroBaseY };
+    heroX = curRight(); heroY = heroBaseY; heroPose = "stand";
     prevLeaves = [];
     pending = null;
     setHolding(false);
@@ -313,6 +372,7 @@
       run = pending.state;
       lastOutcome = o;
       heroX = o.landX;
+      heroBaseY = curY(); heroY = heroBaseY;
       sfx.play("land");
       if (o.skip) {
         sfx.play("skip");
@@ -320,32 +380,60 @@
         skipX = run.platforms[0].x + run.platforms[0].w / 2;
       }
       const skipWord = o.skip ? "とばし！ " : "";
+      // ステージは点ではなく「わたった本数」を見せるので、案内に点は出さない
+      const gainWord = run.mode === "stage" ? "" : ` +${o.gain}`;
       if (o.perfect) {
         sfx.play("perfect", Math.min(Math.max(o.streak, 1), 5));
         perfectAt = clock;
         perfectX = run.platforms[0].x + run.platforms[0].w / 2;
-        setHint(`${skipWord}ぴったり！ +${o.gain}`);
+        setHint(`${skipWord}ぴったり！${gainWord}`);
         announce(`${o.skip ? "とばし。" : ""}ぴったり。${o.gain}てん。ごうけい ${run.score}てん。のこり ${run.lives}`);
       } else if (o.skip) {
-        setHint(`とばし！ +${o.gain}`);
+        setHint(`とばし！${gainWord}`);
         announce(`とばし。${o.gain}てん。ごうけい ${run.score}てん。のこり ${run.lives}`);
       } else {
         setHint("わたれた！");
         announce(`わたれた。${o.gain}てん。ごうけい ${run.score}てん。のこり ${run.lives}`);
       }
-      hintTimer = later(() => { hintTimer = 0; setHint(hintReady()); }, 1500);
-      updateBest();
+      if (o.cleared) {
+        // ステージクリア：到達をすぐ保存（演出の途中で閉じても消えない）
+        clearPending = true;
+        const r = L.recordStage(stageReach, run.stage);
+        if (r.improved) { stageReach = r.stage; writeKey(KEY_STAGE, String(stageReach)); }
+        setHint(`ステージ ${run.stage} クリア！`);
+        announce(`ステージ ${run.stage} クリア。`);
+      } else {
+        hintTimer = later(() => { hintTimer = 0; setHint(hintReady()); }, 1500);
+      }
+      if (run.mode !== "stage") updateBest();
       hud();
       camFrom = cameraX;
       camTo = o.landX - L.CAMERA_LEFT;
       setPhase("scrolling", D(0.3));
     } else {
+      dropFromY = Number.isFinite(o.tipY) ? o.tipY : 0;
       setPhase("dropping", D(0.5));
     }
   }
   function finishCross() {
     cameraX = camTo;
+    if (clearPending) { clearPending = false; startClear(); return; }
     toReady();
+  }
+  function startClear() {
+    clearAt = clock;
+    clearStep = 0;
+    heroBaseY = curY();
+    sfx.play("clear");
+    setPhase("clear", D(reduceMotion.matches ? CLEAR_SEC_CALM : CLEAR_SEC));
+  }
+  // 演出の終わり（またはタップで早送り）：「ステージ N クリア！」のカード
+  function finishClear() {
+    if (phase !== "clear") return;
+    clock = Math.max(clock, phaseStart + phaseDur);   // 花はすべて咲いた姿で残す
+    heroY = heroBaseY; heroPose = "stand";
+    setPhase("cleared", 0);
+    showResult(true);
   }
   function splashDown() {
     const o = pending.outcome;
@@ -355,6 +443,7 @@
     splashAt = clock;
     splashX = o.tipX;
     ghostTipX = target.x + target.w / 2;   // 「ここまで要った」の影（案10）
+    ghostTipY = yOf(target);
     sfx.play("splash");
     sfx.buzz([40]);
     const why = o.reason === "short" ? "みじかすぎ" : "ながすぎ";
@@ -365,6 +454,13 @@
       heroPose = "fall";
       setPhase("over", 0);
       showResult(true);
+    } else if (o.restart) {
+      setHint(`${o.near ? "おしい！ " : ""}${why}。ステージ ${o.stage} の さいしょから`);
+      announce(`${o.near ? "おしい。" : ""}${why}。ステージ ${o.stage} の さいしょから`);
+      restartPending = true;
+      heroX = o.tipX;
+      peeked = false;
+      setPhase("respawn", D(0.8));
     } else {
       setHint(`${o.near ? "おしい！ " : ""}${why}。あと ${o.lives}かい`);
       announce(`${o.near ? "おしい。" : ""}${why}。のこり ${o.lives}`);
@@ -393,8 +489,9 @@
     stopLoop();
     runId += 1;
     if (input) input.reset();
-    run = L.createRun({ random: makeRandom() });
+    run = L.createRun({ random: makeRandom(), mode, stage: curStage });
     pending = null;
+    restartPending = false; clearPending = false;
     lastOutcome = null;
     improvedThisRun = false;
     paused = false;
@@ -412,6 +509,7 @@
     return phase === "ready" && !paused && !overlayKind && (viaTest || now() >= blockUntil);
   }
   function onHoldStart(info) {
+    if (phase === "clear" && !paused && !overlayKind) { finishClear(); return false; }   // タップで早送り
     if (!canStartHold()) return false;
     holdStartAt = info && Number.isFinite(info.at) ? info.at : now();
     bridgeLen = 0; bridgeAngle = 0;
@@ -506,6 +604,7 @@
     return o.reason === "short" ? "くきが みじかかった。あと すこし ながく！" : "くきが ながすぎた。あと すこし みじかく！";
   }
   function showResult(withSound) {
+    if (run.cleared) { showClearCard(withSound); return; }
     const h = L.hud(run);
     showCard(`
       <h2 id="cardTitle" data-f="h"></h2>
@@ -515,6 +614,7 @@
       <p class="best-new" data-f="best"></p>
       <div class="btns">
         <button class="cta primary" type="button" data-cmd="again">もう一度</button>
+        <button class="cta" type="button" data-cmd="modes">ステージ・どこまでも</button>
         <button class="cta" type="button" data-cmd="menu">メニューへ</button>
       </div>`, {
       h: `${h.crossed} わたった！`,
@@ -531,6 +631,53 @@
       if (improvedThisRun) later(() => sfx.play("best"), 1100);
     }
   }
+  // ステージクリアのカード（演出の後）。出した直後 400ms は押せない（結果カードと同じ）
+  function showClearCard(withSound) {
+    const n = run.stage;
+    showCard(`
+      <h2 id="cardTitle" data-f="h"></h2>
+      <p class="res" data-f="sub"></p>
+      <div class="btns">
+        <button class="cta primary" type="button" data-cmd="next" data-f="next"></button>
+        <button class="cta" type="button" data-cmd="modes">ステージ・どこまでも</button>
+        <button class="cta" type="button" data-cmd="menu">メニューへ</button>
+      </div>`, {
+      h: `ステージ ${n} クリア！`,
+      sub: `はっぱ ${run.goal}まい わたりきった！ ぴったり ${run.perfects}かい`,
+      next: `つぎへ（ステージ ${Math.min(n + 1, L.STAGE_MAX)}）`
+    }, "result");
+    cardShownAt = now();
+    lockCard();
+    if (withSound) later(() => sfx.play("best"), 300);
+  }
+  // さいしょの「どっちで あそぶ？」。さいごに選んだほうにフォーカスを置く（Enter・Space でそのまま始められる）
+  function showModeCard() {
+    if (overlayKind === "mode") return;
+    suspend();
+    showCard(`
+      <h2 id="cardTitle">どっちで あそぶ？</h2>
+      <div class="btns modes">
+        <button class="cta" type="button" data-cmd="stage"><span data-f="st"></span><small data-f="stSub"></small></button>
+        <button class="cta" type="button" data-cmd="endless"><span>どこまでも</span><small data-f="enSub"></small></button>
+        <button class="cta" type="button" data-cmd="menu">メニューへ</button>
+      </div>`, {
+      st: `ステージ ${stageReach}`,
+      stSub: `つづきから・はっぱ ${C && C.stageGoal ? C.stageGoal(stageReach) : 5}まい`,
+      enSub: `いのち 3つ・ベスト ${best}`
+    }, "mode");
+    const focus = el.card.querySelector(`[data-cmd="${mode}"]`);
+    if (focus) { try { focus.focus({ preventScroll: true }); } catch (e) { focus.focus(); } }
+  }
+  function chooseMode(m, stageNo) {
+    sfx.unlock();
+    mode = m === "stage" ? "stage" : "endless";
+    writeKey(KEY_MODE, mode);
+    curStage = mode === "stage" ? L.validateStage(stageNo === undefined ? stageReach : stageNo) : curStage;
+    hideOverlay();
+    startRun();
+    sfx.play("start");
+    if (!helpSeen()) showHelp();
+  }
   // 結果カードを出してから 400ms は押せない。見た目は aria-disabled（disabled にするとフォーカスを置けないため）
   function lockCard() {
     el.card.querySelectorAll(".btns button").forEach((btn) => btn.setAttribute("aria-disabled", "true"));
@@ -546,6 +693,7 @@
       <div class="btns">
         <button class="cta primary" type="button" data-cmd="resume">つづける</button>
         <button class="cta" type="button" data-cmd="again">もう一度</button>
+        <button class="cta" type="button" data-cmd="modes">ステージ・どこまでも</button>
         <button class="cta" type="button" data-cmd="menu">メニューへ</button>
       </div>`, {}, "pause");
   }
@@ -564,14 +712,15 @@
     const prev = overlayKind;
     const wasPaused = paused;
     suspend();
-    helpReturn = prev === "result" ? "result" : prev === "pause" ? "pause"
+    helpReturn = prev === "mode" ? "mode" : prev === "result" ? "result" : prev === "pause" ? "pause"
       : (paused && !wasPaused) ? "resume" : "none";
     showCard(`
       <h2 id="cardTitle">あそびかた</h2>
       <p>がめんを ながく おすと、くきが のびるよ。はなすと たおれる。</p>
       <p>くきの さきが つぎの はっぱに のれば わたれる。まんなかの ◆ に のると「ぴったり」で ボーナス！</p>
       <p>うんと のばして 2つ さきの はっぱに とどいたら「とばし」。2つぶん＋おまけの てん！（むりに ねらわなくて だいじょうぶ）</p>
-      <p>みずに おちると いのち ♥ が 1つ へるよ。0に なったら おしまい。おちても、おなじ ところから もう一度。</p>
+      <p>「どこまでも」：みずに おちると いのち ♥ が 1つ へるよ。0に なったら おしまい。おちても、おなじ ところから もう一度。</p>
+      <p>「ステージ」：ゴールの はたの はっぱまで わたれば クリア。おちたら その ステージの さいしょから。たかい はっぱには ながい くきが いるよ。</p>
       <p>キーボードの スペース・エンターでも あそべます。M で おと。</p>
       <p>おしつづけるのが むずかしいときは「タップしき」：1かい タップで のびはじめ、もう1かいで たおれる。</p>
       <div class="sets">
@@ -587,6 +736,7 @@
     writeKey(KEY_HELP, "1");
     const back = helpReturn; helpReturn = null;
     if (back === "pause") { showPauseCard(); return; }
+    if (back === "mode") { showModeCard(); return; }
     if (back === "result" || phase === "over") { showResult(false); return; }
     hideOverlay();
     if (back === "resume") resume();
@@ -625,6 +775,10 @@
     unlockCard();
     const cmd = cmdBtn.dataset.cmd;
     if (cmd === "again") again();
+    else if (cmd === "next") chooseMode("stage", Math.min(run.stage + 1, L.STAGE_MAX));
+    else if (cmd === "stage") chooseMode("stage");
+    else if (cmd === "endless") chooseMode("endless");
+    else if (cmd === "modes") showModeCard();
     else if (cmd === "menu") goMenu();
     else if (cmd === "resume") resume();
     else if (cmd === "close") closeHelp();
@@ -680,7 +834,8 @@
         platforms: run.platforms.map((p) => ({ x: p.x, w: p.w })),
         overlay: overlayKind, paused, runId,
         lastOutcome: lastOutcome ? Object.assign({}, lastOutcome) : null,
-        timers: timers.size, slow, guide, tap, cameraX
+        timers: timers.size, slow, guide, tap, cameraX,
+        mode: run.mode, stage: run.stage, goal: run.goal, cleared: run.cleared, stageReach
       };
     },
     holdFor(ms) {
@@ -707,14 +862,16 @@
         viaTest = false;
       }
     },
+    // 渡る先の中心までの長さ（高さの差があれば斜めの距離）
     lenToCross() {
       const target = run.platforms[1];
-      return target.x + target.w / 2 - curRight();
+      if (!target) return null;
+      return Math.hypot(target.x + target.w / 2 - curRight(), yOf(target) - curY());
     },
     // ひとつ飛ばし：2つ先の葉の中心までの長さ（2つ先が無いときは null）
     lenToSkip() {
       const after = run.platforms[2];
-      return after ? after.x + after.w / 2 - curRight() : null;
+      return after ? Math.hypot(after.x + after.w / 2 - curRight(), yOf(after) - curY()) : null;
     },
     setRandom(seq) {
       if (seq === null) { randomSeq = null; return true; }
@@ -756,7 +913,7 @@
     throw new Error("ハシわたり: 回を始められませんでした（" + (e && e.message) + "）");
   }
   resize();
-  if (!helpSeen()) showHelp();
+  showModeCard();   // さいしょに「ステージ」「どこまでも」を選ぶ（遊び方は選んだ後、初回だけ）
 })();
 
 // オフラインでも遊べるようにする（https か localhost のときだけ有効）

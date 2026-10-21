@@ -11,7 +11,10 @@
  *   ghostTipX, guideTipX,
  *   splash, splashX?,           // ぽちゃんの経過秒。splashX は落ちた所（省略時は hero.x）
  *   skipFx, skipX?,             // ひとつ飛ばしの「とばし！」の経過秒。skipX は着いた葉の中心
+ *   clearFx,                    // ステージクリアの演出 { sec, calm, x }（花火と蓮の花。null なら描かない）
  *   lives, t                    // t は秒
+ * 葉は { x, w, y?, goal? }。y は水面からの高さ（上が正、省略は 0）。goal の葉には旗を立てる。
+ * 茎（bridge）は { len, angle, x?, y? }。y は根もとの高さ（省略は 0）。
  * }
  * 縮尺は縦横同じ（角度が正しく見える）。ふだんは論理単位 VIEW_W(1000) を canvas の横幅いっぱいに描くが、
  * 背の低い画面では、上向きの茎（最大 MAX_LEN）が canvas の上にはみ出さないよう縮める（横に見える幅が広がるだけ）。
@@ -196,7 +199,16 @@
       return { cx: X(p.x + p.w / 2), cy: deckY + ry * 0.45, rx: rx, ry: ry };
     }
 
-    function drawPad(p, X, deckY, s, glow) {
+    function padY(p) { return typeof p.y === "number" && isFinite(p.y) && p.y > 0 ? p.y : 0; }
+    function drawPad(p, X, deckY0, s, glow) {
+      var lift = padY(p) * s;
+      var deckY = deckY0 - lift;
+      if (lift > 0.5) {
+        // 高い葉：水面から伸びる茎で支える
+        var sx = X(p.x + p.w / 2);
+        ctx.fillStyle = C.leafDark;
+        ctx.fillRect(sx - Math.max(1.5, 3 * s), deckY, Math.max(3, 6 * s), lift + 4);
+      }
       var g = padGeom(p, X, deckY, s);
       // 水に落ちる影
       ctx.fillStyle = "rgba(0,0,0,0.28)";
@@ -250,6 +262,20 @@
       ctx.strokeStyle = C.perfectEdge;
       ctx.lineWidth = 1.5;
       ctx.stroke();
+
+      if (p.goal) {
+        // ゴールの旗（葉の右寄り。色だけでなく形でも分かる）
+        var fx = g.cx + g.rx * 0.55, ph = clamp(70 * s, 22, 44);
+        ctx.fillStyle = C.ink;
+        ctx.fillRect(fx - 1, deckY - ph, 2, ph);
+        ctx.fillStyle = C.blush;
+        ctx.beginPath();
+        ctx.moveTo(fx + 1, deckY - ph);
+        ctx.lineTo(fx + 1 + ph * 0.6, deckY - ph * 0.78);
+        ctx.lineTo(fx + 1, deckY - ph * 0.56);
+        ctx.closePath();
+        ctx.fill();
+      }
     }
 
     /* ---------- 茎 ---------- */
@@ -276,13 +302,14 @@
     }
 
     /* ---------- 影と点線 ---------- */
-    function drawGhost(baseX, tipX, deckY, s) {
+    function drawGhost(baseX, tipX, deckY, s, baseY) {
       var th = clamp(9 * s, 3, 7);
+      var by = num(baseY, deckY);
       ctx.save();
       ctx.globalAlpha = 0.32;
-      ctx.fillStyle = C.ink;
-      var x0 = Math.min(baseX, tipX), x1 = Math.max(baseX, tipX);
-      ctx.fillRect(x0, deckY - th / 2, x1 - x0, th);
+      ctx.strokeStyle = C.ink;
+      ctx.lineWidth = th;
+      ctx.beginPath(); ctx.moveTo(baseX, by); ctx.lineTo(tipX, deckY); ctx.stroke();
       ctx.globalAlpha = 0.6;
       ctx.strokeStyle = C.ink;
       ctx.lineWidth = 1.5;
@@ -489,6 +516,70 @@
       ctx.restore();
     }
 
+    /* ---------- ステージクリア：花火と蓮の花 ---------- */
+    var FW = [ // 花火：上がりきる時刻（秒）と、画面の中の位置（割合）
+      { t: 0.35, x: 0.3, y: 0.32, c: "perfect" }, { t: 0.8, x: 0.72, y: 0.22, c: "blush" }, { t: 1.15, x: 0.52, y: 0.42, c: "hero" }
+    ];
+    var FW_N = 22;          // 1つの花火の粒（iPhone SE でも軽い数）
+    var LOTUS_N = 9;        // 咲く蓮の花の数
+    function drawClear(fx, deckY, waterY) {
+      var sec = Math.max(0, num(fx.sec, 0));
+      var still = !!fx.calm || calm;
+      if (!still) {
+        for (var i = 0; i < FW.length; i++) {
+          var f = FW[i], bx = W * f.x, byy = Math.max(16, deckY * f.y);
+          var rise = sec - (f.t - 0.28);
+          if (rise > 0 && sec < f.t) {
+            // 上がっていく光
+            var ry = deckY - (deckY - byy) * (rise / 0.28);
+            ctx.fillStyle = C.ink;
+            ctx.globalAlpha = 0.9;
+            ctx.fillRect(bx - 1.5, ry - 3, 3, 6);
+          }
+          var q = (sec - f.t) / 1.1;
+          if (q < 0 || q >= 1) continue;
+          var R = clamp(Math.min(W, deckY) * 0.28, 30, 120) * (1 - (1 - q) * (1 - q));
+          ctx.globalAlpha = 1 - q;
+          ctx.fillStyle = C[f.c] || C.perfect;
+          for (var k = 0; k < FW_N; k++) {
+            var a = (k / FW_N) * Math.PI * 2 + i;
+            var px = bx + Math.cos(a) * R, py = byy + Math.sin(a) * R + q * q * 18;
+            var sz = 3.2 - q * 1.6;
+            ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+      // 蓮の花：池いっぱいに、少しずつ咲く
+      var r0 = clamp(W * 0.035, 8, 20);
+      for (var j = 0; j < LOTUS_N; j++) {
+        var start = still ? 0.1 + j * 0.05 : 1.1 + j * 0.09;
+        var g = clamp((sec - start) / 0.5, 0, 1);
+        if (g <= 0) continue;
+        var e = still ? 1 : 1 - (1 - g) * (1 - g) * (1 - g);
+        var lx = W * (j + 0.5) / LOTUS_N + (hash(j + 30) - 0.5) * W * 0.06;
+        var ly = waterY + (H - waterY) * (0.3 + 0.45 * hash(j + 60));
+        var r = r0 * (0.8 + 0.4 * hash(j + 90)) * e;
+        ctx.globalAlpha = still ? g : 1;
+        // 浮き葉
+        ctx.fillStyle = C.leafDark;
+        ctx.beginPath(); ctx.ellipse(lx, ly + r * 0.35, r * 1.5, r * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+        // 花びら（6枚）
+        ctx.fillStyle = C.blush;
+        ctx.strokeStyle = C.eye;
+        ctx.lineWidth = 1;
+        for (var m = 0; m < 6; m++) {
+          var pa = -Math.PI / 2 + (m - 2.5) * 0.42;
+          ctx.beginPath();
+          ctx.ellipse(lx + Math.cos(pa) * r * 0.5, ly + Math.sin(pa) * r * 0.55, r * 0.32, r * 0.62, pa + Math.PI / 2, 0, Math.PI * 2);
+          ctx.fill(); ctx.stroke();
+        }
+        ctx.fillStyle = C.perfect;
+        ctx.beginPath(); ctx.arc(lx, ly - r * 0.15, r * 0.22, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
     /* ---------- 全体 ---------- */
     function draw(view) {
       if (!view || typeof view !== "object") return;
@@ -527,9 +618,10 @@
       var br = view.bridge && typeof view.bridge === "object" ? view.bridge : null;
       var baseWX = br && isFinite(num(br.x, NaN)) ? br.x : (pads.length ? pads[0].x + pads[0].w : 0);
       var baseX = X(baseWX);
+      var baseY = deckY - Math.max(0, br ? num(br.y, 0) : 0) * s;   // 茎の根もとの高さ（高い葉の上）
 
       var guideX = view.guideTipX === null || view.guideTipX === undefined ? NaN : num(view.guideTipX, NaN);
-      if (isFinite(guideX)) drawGuide(baseX, X(guideX), deckY, waterY);
+      if (isFinite(guideX)) drawGuide(baseX, X(guideX), baseY, waterY);
 
       for (var j = 0; j < pads.length; j++) {
         var p = pads[j];
@@ -541,19 +633,20 @@
       }
 
       if (fxPad) {
-        var g = padGeom(fxPad, X, deckY, s);
-        drawPerfectFx(g.cx, deckY, fxSec, g.rx);
+        var fxDeck = deckY - padY(fxPad) * s;
+        var g = padGeom(fxPad, X, fxDeck, s);
+        drawPerfectFx(g.cx, fxDeck, fxSec, g.rx);
       }
 
       var ghostX = view.ghostTipX === null || view.ghostTipX === undefined ? NaN : num(view.ghostTipX, NaN);
-      if (isFinite(ghostX)) drawGhost(baseX, X(ghostX), deckY, s);
+      if (isFinite(ghostX)) drawGhost(baseX, X(ghostX), deckY - Math.max(0, num(view.ghostTipY, 0)) * s, s, baseY);
 
       var heroR = clamp(30 * s, 11, 28);
 
       if (br) {
         var lenPx = clamp(num(br.len, 0), 0, 100000) * s;
         var ang = clamp(num(br.angle, 0), 0, Math.PI);
-        drawBridge(baseX, deckY, lenPx, ang, s);
+        drawBridge(baseX, baseY, lenPx, ang, s);
       }
 
       if (hero && isFinite(heroX)) {
@@ -564,6 +657,8 @@
         if (pose === "peek") footY = Math.max(footY, waterY + heroR * 0.3);
         drawHero(X(heroX), footY, heroR, pose, t, waterY);
       }
+
+      if (view.clearFx && typeof view.clearFx === "object") drawClear(view.clearFx, deckY, waterY);
 
       var skSec = view.skipFx === null || view.skipFx === undefined ? null : num(view.skipFx, null);
       var skX = num(view.skipX, NaN);

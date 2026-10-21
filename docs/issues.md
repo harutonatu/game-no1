@@ -77,6 +77,8 @@
 | HS-10 | 低 | 性能（実害なし）：毎フレームの grow 呼び出し、resize の重複、グラデーションの毎フレーム生成 | games/hashi/main.js:233,696, render.js:103 | 未着手 | |
 | HS-11 | 中 | 文書の追記漏れ：修正で HW14・hashi.tap・#sr・HashiRender.layout・createCore の取り消しの決まりを足したが、tests/README.md・tests/design.md・docs/hashi-contract.md に未反映 | tests/, docs/hashi-contract.md | 未着手 | |
 | HS-12 | 中 | 改善要望（ユーザー 2026-10-21「ひとつ飛ばしできるようにして」）：茎が次の葉を越えて2つ先の葉に届いたら渡れる（2つ分＋おまけ1、ぴったりと重なる）。「とばし！」の字と skip の音 | games/hashi/logic.js, main.js, render.js, common/sfx.js | 済 | feature/hashi-skip。HL9・HW15、変異 MH7〜MH9 |
+| HS-13 | 中 | 改善要望（ユーザー 2026-10-21「ステージ制にして」「ステージクリアしたら何かの演出」「わたる先の葉っぱは上下の差」）：はじめに「ステージ」「どこまでも」を選ぶ。ステージ N は K 枚（5〜10）渡ればクリア、落ちたら最初から、到達を hashi.stage に保存。葉の高さの差（茎は斜めに倒れ、斜めの距離が要る。ステージだけ、どこまでもは平ら）。クリアの演出（ケロが跳ねる→花火→蓮の花、タップで早送り） | games/hashi/*, common/sfx.js | 済 | feature/hashi-skip。HL10・HL11・HW16・HW17、変異 MH10〜MH16。メニューのカードにステージの到達は出していない（GAMES の行を変える必要があり、別ブランチの seizai と衝突しうるため） |
+| HS-14 | 低 | テストの不安定：HW14（タップ式）が CPU に負荷が高いとき（full の並列・ほかの処理と同時）にまれに落ちる。1回目のタップが受け付けられない／伸び始めが遅れる。origin/master でも同じ負荷で再現（6 回中 2 回）、単独で流すと合格。テストの待ち（実時間と page.clock の混在）を見直す | tests/cases/hashi-ui.mjs（HW14） | 未着手 | 2026-10-21 feature/hashi-skip の作業中に発見 |
 
 ## いろびん（games/irobin/、ブランチ feature/irobin）
 

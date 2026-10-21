@@ -79,7 +79,7 @@ const M = [
   ['MP8 ピカッと：ひとりで れんしゅうも 3回せいこうで終わる（5回まで測れない）', 'ルール', 'games/pikatto/logic.js', 'if (mode !== "solo" && max >= WIN_SCORE) {', 'if (max >= WIN_SCORE) {'],
   ['MP9 ピカッと：よーいの終わり際の押下が受付の窓に残り、よーいの後に届いてフライングになる', 'ルール', 'games/pikatto/index.html', 'if (input) input.discard();', ''],
   // ---- ハシわたり（games/hashi/）。判定・点数・いのち・保存・中断・タイマーの仕組みを変えたときだけ流す ----
-  ['MH1 ハシわたり：判定の端を開区間にする（茎の先が葉の端ちょうどで落ちる）', 'ルール', 'games/hashi/logic.js', 'if (tipX >= left && tipX <= right) {', 'if (tipX > left && tipX < right) {'],
+  ['MH1 ハシわたり：判定の端を開区間にする（茎の先が葉の端ちょうどで落ちる）', 'ルール', 'games/hashi/logic.js', 'const onTarget = tipT !== null && tipT >= left && tipT <= right;', 'const onTarget = tipT !== null && tipT > left && tipT < right;'],
   ['MH2 ハシわたり：recordBest で同点もベスト更新にする', '保存データ', 'games/hashi/logic.js', 'const improved = s > prev;', 'const improved = s >= prev;'],
   ['MH3 ハシわたり：ぴったりボーナスの上限 16 を外す', '計算', 'games/hashi/logic.js', 'return Math.min(Math.pow(2, Math.floor(s) - 1), BONUS_CAP);', 'return Math.pow(2, Math.floor(s) - 1);'],
   ['MH4 ハシわたり：落ちてもいのちを減らさない（終わらない）', '遊べること', 'games/hashi/logic.js', 'const lives = Math.max(state.lives - 1, 0);', 'const lives = state.lives;'],
@@ -88,6 +88,13 @@ const M = [
   ['MH7 ハシわたり：ひとつ飛ばしの点を1つ分にする（2つ分＋おまけ → 1つ分＋おまけ）', '計算', 'games/hashi/logic.js', 'const gain = (onAfter ? 2 : 1) + skipBonus + bonus;', 'const gain = 1 + skipBonus + bonus;'],
   ['MH8 ハシわたり：2つ先の葉に届いても渡れない（今までどおり落ちる）', 'ルール', 'games/hashi/logic.js', 'const onAfter = !onTarget && !!after && tipX >= after.x && tipX <= after.x + after.w;', 'const onAfter = false;'],
   ['MH9 ハシわたり：ひとつ飛ばしで渡った数を1つしか数えない', '計算', 'games/hashi/logic.js', 'const crossed = state.crossed + (onAfter ? 2 : 1);', 'const crossed = state.crossed + 1;'],
+  ['MH10 ハシわたり：高さの差を無視する（茎の先＝根もと＋長さ。斜めの距離にしない）', 'ルール', 'games/hashi/logic.js', 'if (dy === 0) return bx + L;', 'return bx + L;'],
+  ['MH11 ハシわたり：ステージで落ちても最初に戻らない（その場からやり直し）', 'ルール', 'games/hashi/logic.js', 'platforms: stageWindow(stageCourse(state.stage), 0),\n        score: 0, crossed: 0,', 'platforms: state.platforms,\n        score: 0, crossed: state.crossed,'],
+  ['MH12 ハシわたり：ゴールの1枚手前でクリアにする', 'ルール', 'games/hashi/logic.js', 'const cleared = stageMode && crossed >= state.goal;', 'const cleared = stageMode && crossed >= state.goal - 1;'],
+  ['MH13 ハシわたり：hashi.stage の 0 を通す（壊れた値を 1 に戻さない）', '保存データ', 'games/hashi/logic.js', 'return Number.isSafeInteger(n) && n >= 1 && n <= STAGE_MAX ? n : 1;', 'return Number.isSafeInteger(n) && n >= 0 && n <= STAGE_MAX ? n : 1;'],
+  ['MH14 ハシわたり：ステージをクリアしても到達を保存しない', '保存データ', 'games/hashi/main.js', 'if (r.improved) { stageReach = r.stage; writeKey(KEY_STAGE, String(stageReach)); }', 'if (r.improved) { stageReach = r.stage; }'],
+  ['MH15 ハシわたり：クリアの演出中に隠れても止めない', '中断', 'games/hashi/main.js', 'const ANIM_PHASES = ["falling", "walking", "scrolling", "dropping", "respawn", "clear"];', 'const ANIM_PHASES = ["falling", "walking", "scrolling", "dropping", "respawn"];'],
+  ['MH16 ハシわたり：クリアの演出をタップで早送りできない', '操作', 'games/hashi/main.js', 'if (phase === "clear" && !paused && !overlayKind) { finishClear(); return false; }', ''],
   // ---- 版の表示（メニュー）。版を上げる手順が崩れたときの検出 ----
   // MV1・MV3 は正規表現で今の版・日付を読み、1つずらす（版を上げるたびに直さなくてよい）
   ['MV1 版の数字だけ上げ忘れる（version.js が1つ前の版のまま。sw.js は今の版）', '更新', 'common/version.js', /version: "v(\d+)"/, (_, n) => `version: "v${Number(n) - 1}"`],
