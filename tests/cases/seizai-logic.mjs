@@ -536,6 +536,99 @@ export const tests = [
     },
   },
   {
+    id: 'WL12', tier: 'smoke', node: true, title: 'もくもくこうば：工程（§19.1）かんそう（こうじょう から）・かんな（みなと から）の並びと使える段・いた は かわいた かくざい を使う・みなと は いた → かんな → つるつるいた・広げると 1台・つまりになりうる・もうかる 最大 9・目標の文・v25 の形の保存を読んで止まらない',
+    run({ check, root }) {
+      const L = load(root);
+      const order = L.DEPTS.map((d) => d.id);
+      check('DEPTS の並び：かくざい → かんそう → いた → かんな → おみせ、dry は 3 から・plane は 4 から（台）', J(order) === J(IDS) && L.DEPTS.find((d) => d.id === 'dry').stage === 3 && L.DEPTS.find((d) => d.id === 'plane').stage === 4 && L.DEPTS.filter((d) => d.id === 'dry' || d.id === 'plane').every((d) => d.kind === 'line'), order);
+      check('品の表：smooth の値段・名前・単位、dried の名前・単位、productOf(3) は planks・productOf(4) は smooth', L.PRICE.smooth > L.PRICE.planks && L.PRODUCT_NAME.smooth === 'つるつるいた' && L.PRODUCT_UNIT.smooth === 'まい' && L.PRODUCT_NAME.dried === 'かわいた かくざい' && L.PRODUCT_UNIT.dried === 'ぽん' && L.productOf(3) === 'planks' && L.productOf(4) === 'smooth', { price: L.PRICE });
+      // 使えない段
+      const s2 = mk(L, 2, { money: 1e9 });
+      const lk = ['line', 'level', 'mgr'].map((w) => [L.buy(s2, 'dry', w).reason, L.costOf(s2, 'dry', w), L.buy(mk(L, 3, { money: 1e9 }), 'plane', w).reason, L.costOf(mk(L, 3, { money: 1e9 }), 'plane', w)]);
+      check("こうば で かんそう、こうじょう で かんな は buy が 'locked'・costOf が null（台・きかい・マネージャー）", lk.every((x) => x[0] === 'locked' && x[1] === null && x[2] === 'locked' && x[3] === null), lk);
+      check('こうば・こうじょう の state では かんそう／かんな は 0台（loadSave で欄があっても）', s2.depts.dry.lines === 0 && s2.depts.plane.lines === 0 && mk(L, 3).depts.plane.lines === 0 && mk(L, 3).depts.dry.lines === 1, [s2.depts.dry, s2.depts.plane]);
+      // こうじょう：いた は dried を使う
+      const fast3 = { cut: { staff: 6, level: 30 }, plant: { staff: 3, level: 30 }, carry: { staff: 6, level: 30 }, peel: { lines: 4, level: 30 }, beam: { lines: 4, level: 30 }, plank: { lines: 4, level: 30 }, shop: { staff: 3, level: 30 } };
+      const b3 = mk(L, 3, { buf: { beams: 30 }, depts: fast3 });
+      const noDry = { ...b3, depts: { ...b3.depts, dry: { ...b3.depts.dry, lines: 0 } } };
+      const xa = run(L, noDry, 60).s, xb = run(L, b3, 60).s;
+      check('こうじょう：かんそう が 0台なら いた は角材を使わない（板 0・角材はたまったまま）', xa.totals.planks === 0 && xa.buf.beams >= 30 && xa.totals.dried === 0, { planks: xa.totals.planks, beams: xa.buf.beams });
+      check('こうじょう：かんそう が 角材 → かわいた かくざい（totals.dried）、いた が それを 2まいに、売り物は板（つるつるいた は作らない）', xb.totals.dried > 0 && xb.totals.planks > 0 && xb.totals.planks <= xb.totals.dried * L.PLANKS_PER_BEAM && xb.totals.smooth === 0 && xb.totals.sold > 0 && xb.buf.planks === 0, { dried: xb.totals.dried, planks: xb.totals.planks, smooth: xb.totals.smooth });
+      // みなと：いた → planks、かんな → goods
+      const m4 = maxed(L, 4);
+      const noPlane = { ...m4, depts: { ...m4.depts, plane: { ...m4.depts.plane, lines: 0 } } };
+      const ya = run(L, noPlane, 60).s, yb = run(L, m4, 60).s;
+      check('みなと：かんな が 0台なら いた は売り物の山へ出さない（goods 0・planks がたまる・売れない）', ya.buf.goods === 0 && ya.buf.planks > 0 && ya.totals.sold === 0 && ya.totals.planks > 0, { goods: ya.buf.goods, planks: ya.buf.planks, sold: ya.totals.sold });
+      check('みなと：かんな が いた 1まい → つるつるいた 1まい（totals.smooth）、売れて船に積む', yb.totals.smooth > 0 && yb.totals.smooth <= yb.totals.planks && yb.totals.sold > 0 && yb.ship.got === yb.totals.sold, { smooth: yb.totals.smooth, planks: yb.totals.planks, sold: yb.totals.sold });
+      check("made の出来事に dry・plane（done と一致）", (() => { const x = run(L, m4, 30); const n = (id) => ofKind(x.evs, 'made').filter((e) => e.dept === id).reduce((t, e) => t + e.n, 0); return n('dry') > 0 && n('plane') > 0 && n('dry') === x.s.done.dry && n('plane') === x.s.done.plane; })(), null);
+      // 広げると 1台・START_LEVEL
+      const e3 = L.expand(mk(L, 2, { money: L.STAGES[1].cost, goal: { done: L.STAGES[1].goal } })).state;
+      const e4 = L.expand(mk(L, 3, { money: L.STAGES[2].cost, goal: { done: L.STAGES[2].goal } })).state;
+      check('こうじょう に広げると かんそう 1台（Lv START_LEVEL.dry）、みなと に広げると かんな 1台（Lv START_LEVEL.plane）', e3.depts.dry.lines === 1 && e3.depts.dry.level === L.START_LEVEL.dry && e3.depts.plane.lines === 0 && e4.depts.plane.lines === 1 && e4.depts.plane.level === L.START_LEVEL.plane, [e3.depts.dry, e4.depts.plane]);
+      check('START_LEVEL は 1〜LEVEL_MAX の整数', ['dry', 'plane'].every((k) => intIn(L.START_LEVEL[k], 1, L.LEVEL_MAX)), L.START_LEVEL);
+      // つまり
+      const jam3 = mk(L, 3, { depts: { ...fast3, dry: { lines: 1, level: 1 } } });
+      const jam4 = { ...m4, depts: { ...m4.depts, plane: { lines: 1, level: 1, mgr: null, boostUntil: 0, cooldownUntil: 0 } } };
+      check('bottleneck が dry（こうじょう・かんそう 1台 Lv1）・plane（みなと・かんな 1台 Lv1）になりうる', L.bottleneck(jam3) === 'dry' && L.bottleneck(jam4) === 'plane', [L.bottleneck(jam3), L.bottleneck(jam4)]);
+      // もうかる 最大 9
+      const all = {}; for (const id of IDS) all[id] = { mgr: 'gain' };
+      const p4 = L.priceOf(mk(L, 4, { depts: all }));
+      check('みなと で 9 部署が もうかる：売値 = floor(PRICE.smooth × 6 × 3.25)（新しい部署も数える）', p4 === Math.floor(L.PRICE.smooth * L.STAGE_MUL[3] * (1 + 0.25 * 9) + 1e-9), p4);
+      const p3 = L.priceOf(mk(L, 3, { depts: all }));
+      check('こうじょう では かんな の もうかる は数えない（8 部署）', p3 === Math.floor(L.PRICE.planks * L.STAGE_MUL[2] * (1 + 0.25 * 8) + 1e-9), p3);
+      // 目標の文
+      const gl = L.goalOf(mk(L, 4, { ships: 9999, cleared: true, ship: { got: 1e12 } }));
+      check('みなと の目標の文：いちばん長い「つぎの ふね：つるつるいたを つもう（9,999,899/9,999,900）」', gl.text === 'つぎの ふね：つるつるいたを つもう（9,999,899/9,999,900）' && L.goalOf(mk(L, 4)).text === 'おおきな ふねに つるつるいたを つもう（0/30,000）', gl.text);
+      // v25 の形の保存（dry・plane・dried・smooth が無い）
+      const v25 = (stage, extra) => {
+        const depts = {}; for (const id of ['cut', 'plant', 'carry', 'peel', 'beam', 'plank', 'shop']) depts[id] = LINE[id] ? { lines: stage >= ({ peel: 1, beam: 2, plank: 3 })[id] ? 2 : 0, level: 12, mgr: stage >= 2 ? 'gain' : null } : { staff: 2, level: 12, mgr: stage >= 2 ? 'gain' : null };
+        return JSON.stringify({ v: 1, savedAt: 1792000000000, stage, cleared: false, money: 5000, t: 9000, forest: { trees: 15, saplings: 2 }, buf: { yard: 5, logs: 5, peeled: 5, beams: 30, planks: 0, goods: 0 }, depts, goal: { done: 123 }, order: null, orderSeq: 2, soldSinceOrder: 10, ships: 0, ship: { got: 0 }, totals: { logs: 999, peeled: 999, beams: 999, planks: 999, sold: 999, earned: 99999 }, seed: 3, rng: 4242, ...extra });
+      };
+      const o3 = L.loadSave(v25(3)), o4 = L.loadSave(v25(4, { buf: { yard: 5, logs: 5, peeled: 5, beams: 30, planks: 0, goods: 120 }, ship: { got: 4567 }, order: { id: 2, who: 'x', need: 200, got: 50, reward: 999, accepted: true } }));
+      check('v25 の こうじょう の保存：かんそう 1台・Lv START_LEVEL・mgr null、かんな 0台、dried 0、totals.dried・smooth 0、ほかは残る', o3 && o3.state.depts.dry.lines === 1 && o3.state.depts.dry.level === L.START_LEVEL.dry && o3.state.depts.dry.mgr === null && o3.state.depts.plane.lines === 0 && o3.state.buf.dried === 0 && o3.state.totals.dried === 0 && o3.state.totals.smooth === 0 && o3.state.buf.beams === 30 && o3.state.depts.plank.lines === 2 && o3.state.money === 5000, o3 && [o3.state.depts.dry, o3.state.depts.plane]);
+      check('v25 の みなと の保存：かんそう・かんな 1台・START_LEVEL、売り物の山 120・ship.got 4567・受けた注文が残る', o4 && o4.state.depts.dry.lines === 1 && o4.state.depts.plane.lines === 1 && o4.state.depts.plane.level === L.START_LEVEL.plane && o4.state.buf.goods === 120 && o4.state.ship.got === 4567 && o4.state.order && o4.state.order.got === 50 && o4.state.order.accepted === true, o4 && { plane: o4.state.depts.plane, goods: o4.state.buf.goods, ship: o4.state.ship });
+      const w3 = run(L, o3.state, 60).s, w4 = run(L, { ...o4.state, order: null }, 60).s;
+      check('v25 の保存を読んで 60 秒：こうじょう は かんそう が動いて板が売れる、みなと は つるつるいた ができて売れる（止まらない）', w3.totals.dried > 0 && w3.totals.sold > o3.state.totals.sold && w4.totals.smooth > 0 && w4.totals.sold > o4.state.totals.sold && w4.ship.got > 4567, { d3: w3.totals.dried, s3: w3.totals.sold - 999, sm4: w4.totals.smooth, s4: w4.totals.sold - 999 });
+      const ld = L.loadSave(JSON.stringify({ v: 1, stage: 4, depts: { dry: { lines: 'x', level: -3, mgr: 'boss' }, plane: { lines: 99, level: 1e9, mgr: 'gain' } } })).state;
+      check('欄はあるが壊れている かんそう・かんな は今までどおり丸める（lines 1〜上限・level 1〜50・mgr）', ld.depts.dry.lines === 1 && ld.depts.dry.level === 1 && ld.depts.dry.mgr === null && ld.depts.plane.lines === 4 && ld.depts.plane.level === 50 && ld.depts.plane.mgr === 'gain', [ld.depts.dry, ld.depts.plane]);
+      // 保存に新しい欄
+      const sv = run(L, maxed(L, 4), 60).s;
+      const txt = L.makeSave(sv, 1), o = JSON.parse(txt), back = L.loadSave(txt).state;
+      check('makeSave に depts.dry・depts.plane（lines・level・mgr）・buf.dried・totals.dried・totals.smooth、loadSave で同じ値', J(Object.keys(o.depts.dry)) === J(['lines', 'level', 'mgr']) && J(Object.keys(o.depts.plane)) === J(['lines', 'level', 'mgr']) && 'dried' in o.buf && 'dried' in o.totals && 'smooth' in o.totals && J(back.depts.plane.lines) === J(sv.depts.plane.lines) && back.depts.dry.level === sv.depts.dry.level && back.totals.smooth === sv.totals.smooth && back.totals.dried === sv.totals.dried && back.buf.dried === Math.floor(sv.buf.dried), { buf: o.buf, totals: o.totals });
+    },
+  },
+  {
+    id: 'WL13', tier: 'smoke', node: true, title: 'もくもくこうば：道具の段階（§19.2）TOOL_LV・TOOLS の名前・toolTier の境目と壊れた値・toolOf の next・buy の toolUp は段が上がったきかいの買い物だけ',
+    run({ check, root }) {
+      const L = load(root);
+      check('TOOL_LV は [1, 5, 15, 30]、凍結', J(L.TOOL_LV) === J([1, 5, 15, 30]) && Object.isFrozen(L.TOOL_LV) && Object.isFrozen(L.TOOLS), L.TOOL_LV);
+      const names = IDS.map((id) => [id, L.TOOLS[id]]);
+      check('全部署に 4 つの名前（空でない・12 文字以内・重ならない）', names.every(([, t]) => Array.isArray(t) && t.length === 4 && t.every((n) => typeof n === 'string' && n.length > 0 && n.length <= 12) && new Set(t).size === 4) && Object.keys(L.TOOLS).length === IDS.length, names);
+      check('きこりは おの → のこぎり → チェーンソー、はこぶは てで → ておしぐるま → … → トラック（§19.0 の例）', J(L.TOOLS.cut.slice(0, 3)) === J(['おの', 'のこぎり', 'チェーンソー']) && L.TOOLS.carry[0] === 'てで' && L.TOOLS.carry[1] === 'ておしぐるま' && L.TOOLS.carry[3] === 'トラック', [L.TOOLS.cut, L.TOOLS.carry]);
+      const tb = [[1, 0], [4, 0], [5, 1], [14, 1], [15, 2], [29, 2], [30, 3], [50, 3], [4.9, 0], [NaN, 0], ['x', 0], [null, 0], [undefined, 0], [-5, 0], [0, 0], [Infinity, 0], ['30', 0], [{}, 0]];
+      const tbad = tb.filter(([v, w]) => L.toolTier(v) !== w).map(([v, w]) => ({ v: String(v), want: w, got: L.toolTier(v) }));
+      check('toolTier の境目（4→0・5→1・14→1・15→2・29→2・30→3・50→3）、壊れた値は 0', tbad.length === 0, tbad);
+      const s1 = L.newGame(1);
+      const t1 = L.toolOf(s1, 'cut');
+      check("toolOf(Lv1 の きこり) = { tier:0, name:'おの', next:{ name:'のこぎり', lv:5 } }", J(t1) === J({ tier: 0, name: 'おの', next: { name: 'のこぎり', lv: 5 } }), t1);
+      const at = (lv) => L.toolOf(mk(L, 2, { depts: { cut: { level: lv } } }), 'cut');
+      check('toolOf の next：Lv14 → チェーンソー（Lv15）、Lv15 → きんの チェーンソー（Lv30）、Lv30・Lv50 → null', J(at(14).next) === J({ name: 'チェーンソー', lv: 15 }) && at(15).tier === 2 && J(at(15).next) === J({ name: L.TOOLS.cut[3], lv: 30 }) && at(30).next === null && at(50).next === null && at(30).name === L.TOOLS.cut[3], [at(14), at(15), at(30)]);
+      const nulls = [L.toolOf(s1, 'beam'), L.toolOf(s1, 'dry'), L.toolOf(mk(L, 3), 'plane'), L.toolOf(s1, 'nope'), L.toolOf(s1, null), L.toolOf(null, 'cut'), L.toolOf('x', 'cut'), L.toolOf(s1, 'goods')];
+      check('まだ使えない部署・無い部署・おかしな引数の toolOf は null', nulls.every((x) => x === null), nulls);
+      check('toolOf は全部の使える部署で TOOLS と同じ名前', [4].every((st) => { const m = maxed(L, st); return IDS.every((id) => { const t = L.toolOf(m, id); return t && t.tier === 3 && t.name === L.TOOLS[id][3] && t.next === null; }); }), null);
+      // buy の toolUp
+      const s4 = mk(L, 2, { money: 1e9, depts: { cut: { level: 4 }, peel: { lines: 1, level: 14 } } });
+      const u1 = L.buy(s4, 'cut', 'level');
+      check("buy(きこり,'level') で Lv4→5：toolUp = { dept:'cut', tier:1, name:'のこぎり' }", u1.ok && J(u1.toolUp) === J({ dept: 'cut', tier: 1, name: 'のこぎり' }) && u1.state.depts.cut.level === 5, u1.toolUp);
+      const u2 = L.buy(u1.state, 'cut', 'level'), u3 = L.buy(s4, 'cut', 'staff'), u4 = L.buy(s4, 'peel', 'line'), u5 = L.buy(s4, 'cut', 'mgr'), u6 = L.buy(s4, 'peel', 'level');
+      check('Lv5→6・人を増やす・ラインを増やす・マネージャーでは toolUp は null、Lv14→15 は tier 2', u2.ok && u2.toolUp === null && u3.ok && u3.toolUp === null && u4.ok && u4.toolUp === null && u5.ok && u5.toolUp === null && u6.ok && J(u6.toolUp) === J({ dept: 'peel', tier: 2, name: L.TOOLS.peel[2] }), [u2.toolUp, u3.toolUp, u4.toolUp, u5.toolUp, u6.toolUp]);
+      const f1 = L.buy({ ...s4, money: 0 }, 'cut', 'level'), f2 = L.buy(mk(L, 2, { money: 1e9, depts: { cut: { level: 50 } } }), 'cut', 'level');
+      check('買えなかったとき（お金・上限）は toolUp なし（null）', !f1.ok && !f1.toolUp && !f2.ok && !f2.toolUp, [f1, f2].map((x) => [x.reason, x.toolUp]));
+      const one = L.loadSave(L.makeSave(u1.state, 1)).state;
+      check('toolUp は state に残らない（保存・読み込み・step に出ない）', !('toolUp' in u1.state) && !('toolUp' in one) && L.step(u1.state, 0.1).events.every((e) => e.kind !== 'tool'), null);
+    },
+  },
+  {
     id: 'WL11', tier: 'full', node: true, title: 'もくもくこうば：自動プレイ（§3.8・§3.9 の目安）greedy の節目とエンディングの時間・最初の買い物・買い物の間隔・2時間の るす・tapper との差・エンディング後の船 10 せき・idle 10 時間・daily3',
     run({ check, root }) {
       const L = load(root);

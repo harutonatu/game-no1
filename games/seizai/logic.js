@@ -945,7 +945,7 @@
       const rep = {
         policy: pol, away, seed: s.seed, reached: { 2: null, 3: null, 4: null, end: null }, days: { 2: null, 3: null, 4: null, end: null },
         buys: 0, buysByStage: { 1: 0, 2: 0, 3: 0, 4: 0 }, timeByStage: { 1: 0, 2: 0, 3: 0, 4: 0 }, maxGapByStage: { 1: 0, 2: 0, 3: 0, 4: 0 }, maxGapAtByStage: { 1: null, 2: null, 3: null, 4: null },
-        firstBuy: null, moneyMax: 0, awayCheck: {}, ships: [], orders: 0, delivered: 0, t: 0, wall: 0, stuck: false, error: null, minTrees: Infinity
+        firstBuy: null, moneyMax: 0, expandEarn: {}, awayCheck: {}, ships: [], orders: 0, delivered: 0, t: 0, wall: 0, stuck: false, error: null, minTrees: Infinity
       };
       const ev = [];
       let lastBuy = 0;
@@ -957,6 +957,9 @@
       let checkedHalf = { 1: false, 2: false, 3: false, 4: false };
       let i = 0;
       const stepsPerSec = Math.round(1 / STEP);
+      // 節目の直後の稼ぎ（§19.1.4）：1 秒ごとの totals.earned を残し、広げる直前・直後の 10 分（えん/分）を比べる
+      const earnAt = [];
+      const expMark = {};
       while (s.t < maxSec) {
         ev.length = 0;
         stepMut(s, STEP, ev);
@@ -971,11 +974,14 @@
         if (s.forest.trees < rep.minTrees) rep.minTrees = s.forest.trees;
         if (!s.cleared) rep.timeByStage[s.stage] += STEP;   // 買い物の間隔はエンディングまでで測る
         if (typeof opts.trace === "function" && i % (stepsPerSec * 300) === 0) opts.trace(clone(s), bottleneckS(s));
+        if (i % stepsPerSec === 0) earnAt.push(s.totals.earned);
         if (i % stepsPerSec === 0 && pol !== "idle") {
           // 1秒ごとの判断
           if (s.order && !s.order.accepted) s.order.accepted = true;
           if (canExpandS(s)) {
+            const eb = s.totals.earned, sec0 = earnAt.length - 1;
             expandMut(s);
+            expMark[s.stage] = { sec: sec0, before: eb, after: s.totals.earned };
             setMgrModes(s);
             rep.reached[s.stage] = s.t;
             rep.days[s.stage] = wall / 86400;
@@ -1021,6 +1027,10 @@
             if (s.ships >= 1 + extraShips) break;
           }
         }
+      }
+      for (const k in expMark) {
+        const m = expMark[k];
+        if (m.sec >= 600 && m.sec + 600 < earnAt.length) rep.expandEarn[k] = { before: (m.before - earnAt[m.sec - 600]) / 10, after: (earnAt[m.sec + 600] - m.after) / 10 };
       }
       rep.t = s.t;
       rep.wall = wall;
