@@ -486,6 +486,30 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | MW48 もくもくこうば：fastForward が 2 倍の速さで進む | 検出（WL9） | 検出（WL9, WW18） |
 | MW49 もくもくこうば：とくべつな注文の旗が保存で消える | 検出（WL8） | 検出（WL8, WW7） |
 | MW50 もくもくこうば：とくべつな注文が出ない | 検出（WL6） | 検出（WL6, WL11） |
+| MK1 ほしくだき：2択の間も場が進む（choose でも step が進み、fly に戻る） | 検出（KL7, KW2） | 検出（KL7, KW2, KW12, KW14） |
+| MK2 ほしくだき：とどいたら かけら・武器を消す | 検出（KL5, KW3） | 検出（KL5, KL11, KW3） |
+| MK3 ほしくだき：とどいたとき星を最初からにしない（残りのまま続く） | 検出（KL5, KW3） | 検出（KL5, KL11, KW3） |
+| MK4 ほしくだき：エンディングを2回出す（星 ENDING_STAR より先のクリアでも出す） | 検出（KL6, KW5） | 検出（KL6, KW5） |
+| MK5 ほしくだき：場を押すと進む（#field のクリックで step を進める。#fieldCanvas は pointer-events: none なので親の #field に付ける） | 検出（KW4） | 検出（KW4, KW17） |
+| MK6 ほしくだき：壊れた保存を bak に写さず上書き | 検出（KW6） | 検出（KW6） |
+| MK7 ほしくだき：bak が既にあっても上書き（最初の壊れた保存が消える） | 検出（KW6） | 検出（KW6） |
+| MK8 ほしくだき：hidden でも進む（visibilitychange の hidden で sleep を呼ばない） | 見逃し | 検出（KW11） |
+| MK9 ほしくだき：logic.js を APP_FILES から外す | 見逃し | 検出（KW16） |
+| MK10 ほしくだき：render.js を APP_FILES から外す | 見逃し | 検出（KW16） |
+| MK11 ほしくだき：2択のカードの 400ms のロックなし（出た直後に押せる） | 検出（KW2, KW5） | 検出（KW2, KW5, KW12） |
+| MK12 ほしくだき：#kakera が 1 ずれる（表示の1ずれ） | 検出（KW1） | 検出（KW1） |
+| MK13 ほしくだき：行の値段が upCostOf と 1 割ずれる（表示の1ずれ） | 検出（KW1） | 検出（KW1） |
+| MK14 ほしくだき：#starBar がこわした割合とずれる | 検出（KW1） | 検出（KW1） |
+| MK15 ほしくだき：はね返しの「あと N%」をこわした割合で出す | 検出（KW3） | 検出（KW3） |
+| MK16 ほしくだき：クリアしても asteroid.best を書かない | 検出（KW5） | 検出（KW5） |
+| MK17 ほしくだき：かけらが足りないとき音 deny もヒントも出さない | 検出（KW1） | 検出（KW1, KW11, KW14） |
+| MK18 ほしくだき：開き直すと かけらが 0 になる（保存を読んでも かけらを捨てる） | 検出（KW6） | 検出（KW6） |
+| MK19 ほしくだき：pagehide でタイマーを片付けない | 見逃し | 検出（KW11） |
+| MK20 ほしくだき：遊び方を開いている間も止めない | 見逃し | 検出（KW11） |
+| MK21 ほしくだき：動きを減らす設定を見ない | 見逃し | 検出（KW13） |
+| MK22 ほしくだき：2択が開き直しで変わる（保存の offer を入れ替えて読む） | 検出（KL7, KL9, KW2） | 検出（KL7, KL9, KW2） |
+
+ちきゅうを守れ！ほしくだき（2026-10-21、feature/asteroid-test。Chromium・`PORT=9650 WORKERS=2`、`ONLY=KL1〜KL12,KW1〜KW17`、10 個ずつ 3 回）：MK1〜MK22 を smoke 16/22・full 22/22 で検出。smoke の見逃し MK8・MK19・MK20（中断）・MK9・MK10（オフライン）・MK21（動きを減らす）は full の KW11・KW16・KW13 で見つける設計。MK5（場を押すと進む）は最初 #fieldCanvas に付けたが、canvas は `pointer-events: none` で押しても届かない（同じ動きの変異）ので、親の #field に付け直して KW4 で検出。ロジックの数値は調整中（契約 §17）なので、数値を変えたら KL・KW と MK1〜MK4・MK22 を流し直す。
 
 もくもくこうば v26（2026-10-21、画面とロジックの仕上げ 0ebc6ec を組み合わせた後。Chromium・`PORT=9640 WORKERS=2`、`ONLY=WL1〜WL13,WW1〜WW23`）：画面を変える既存の変異 MW3・MW9・MW20・MW21・MW28・MW30〜MW44 と MW56 の 21 個を smoke 14/21・full 21/21 で検出（見逃しなし）。smoke の見逃しは MW28・MW30・MW31・MW34・MW41〜MW43 で、前回と同じく full の WW8・WW16・WW11・WW18 で見つける設計。新しく MW3 は WW10・WW18、MW36 は WW21、MW43 は WW23、MW56 は WW22（Lv5→6 で tool を鳴らさない）でも見つかる。
 
