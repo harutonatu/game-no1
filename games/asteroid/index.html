@@ -336,7 +336,8 @@
     opacity: 0;
   }
   .wrow .plus:empty { display: none; }
-  .wrow .plus.show { animation: plusUp 0.8s ease-out; }
+  /* 動きを減らす設定では animation が止まるので、.show の間はそのまま見せる（main.js が 0.8 秒で .show を外す） */
+  .wrow .plus.show { opacity: 1; animation: plusUp 0.8s ease-out forwards; }
   @keyframes plusUp { 0% { opacity: 0; transform: translateY(-30%); } 15% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-110%); } }
   .good { display: inline-flex; align-items: center; gap: 2px; font: 700 12px/1 var(--font-text); color: var(--good); }
   .good:empty { display: none; }
@@ -534,7 +535,7 @@
   @media (orientation: landscape) and (max-height: 500px) {
     .app {
       max-width: none;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
+      grid-template-columns: minmax(0, 1fr) minmax(0, 312px);
       grid-template-rows: auto minmax(0, 1fr);
       grid-template-areas: "field hud" "field weapons";
       gap: var(--app-gap) 8px;
