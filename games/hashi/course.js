@@ -90,12 +90,15 @@
   //   K = min(5 + floor((N - 1) / 3), 10)   … 1〜3 は 5 枚、4〜6 は 6 枚、… 16 以降は 10 枚
   //   難しさ d = (min(N, STAGE_CAP) - 1) / (STAGE_CAP - 1)（0..1。STAGE_CAP=50 以降は同じ難しさ）
   //   間の距離 gap ∈ [80 + 140d, 200 + 300d]、葉の幅 w ∈ [110 - 65d, 160 - 70d]
-  //   葉の高さ y ∈ [0, H]、H = round(STAGE_YMAX × √(max(0, N - 2) / 48))（1〜2 は平ら、50 で 160）
+  //   葉の高さ y ∈ [0, H]、H = round(STAGE_YMIN + (STAGE_YMAX - STAGE_YMIN) × √((N - 1) / 49))（1 で 20、50 で 160）
+  //   旗：はじめの葉から数えて FLAG_EVERY（5）枚目ごとの葉（ゴールを除く）に flag: true。落ちたら最後の旗の葉から
   // 公平さの約束（読み込み時に N=1〜STAGE_CAP で確かめる）：
   //   gap + w <= 760（画面を送ると次の葉が必ず見える）、√((gap + w)² + H²) <= MAX_LEN（どの葉にも届く）、
   //   H < gap の下限（高すぎて届かない茎は、次の葉の手前に倒れる＝「みじかすぎ」と分かる）、w >= 40
   const STAGE_CAP = 50;
   const STAGE_YMAX = 160;
+  const STAGE_YMIN = 20;      // ステージ 1 から少しだけ高さの差（どこまでもは平らのまま）
+  const FLAG_EVERY = 5;       // 旗の間隔（渡った枚数）
   const FIRST_W = 160;
   function stageNo(n) {
     const v = Math.floor(Number(n));
@@ -105,7 +108,7 @@
   function stageParams(n) {
     const N = stageNo(n);
     const d = (Math.min(N, STAGE_CAP) - 1) / (STAGE_CAP - 1);
-    const lift = Math.round(STAGE_YMAX * Math.sqrt(Math.max(0, Math.min(N, STAGE_CAP) - 2) / (STAGE_CAP - 2)));
+    const lift = Math.round(STAGE_YMIN + (STAGE_YMAX - STAGE_YMIN) * Math.sqrt((Math.min(N, STAGE_CAP) - 1) / (STAGE_CAP - 1)));
     return Object.freeze({
       goal: stageGoal(N),
       gap: Object.freeze([Math.round(80 + 140 * d), Math.round(200 + 300 * d)]),
@@ -129,7 +132,15 @@
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
   }
-  // ステージ N の葉の並び（凍結した K+1 枚。[0] がはじめの葉、[K] がゴールで goal: true）
+  // 渡った枚数 crossed のときの「最後の旗」（旗の葉の番号＝そこまでに渡った枚数。旗がまだ無ければ 0）。
+  // ひとつ飛ばしで旗の葉を飛び越えても、その旗を取ったことにする（渡った枚数で数える）。ゴールは旗にしない
+  function lastFlag(crossed, goal) {
+    const c = Math.floor(Number(crossed)), g = Math.floor(Number(goal));
+    if (!(c > 0) || !(g > 0)) return 0;
+    const f = Math.floor(Math.min(c, g - 1) / FLAG_EVERY) * FLAG_EVERY;
+    return f > 0 ? f : 0;
+  }
+  // ステージ N の葉の並び（凍結した K+1 枚。[0] がはじめの葉、[K] がゴールで goal: true、旗の葉は flag: true）
   function stageCourse(n) {
     const N = stageNo(n);
     const t = stageParams(N);
@@ -142,12 +153,13 @@
       const y = pickInt(0, t.lift, rand());
       const leaf = { x: prev.x + prev.w + gap, w, y };
       if (i === t.goal) leaf.goal = true;
+      else if (i % FLAG_EVERY === 0) leaf.flag = true;
       out.push(Object.freeze(leaf));
     }
     return Object.freeze(out);
   }
 
-  const api = Object.freeze({ TIERS, tierFor, makeNext, STAGE_CAP, STAGE_YMAX, stageGoal, stageParams, stageCourse });
+  const api = Object.freeze({ TIERS, tierFor, makeNext, STAGE_CAP, STAGE_YMAX, STAGE_YMIN, FLAG_EVERY, stageGoal, stageParams, stageCourse, lastFlag });
   root.HashiCourse = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

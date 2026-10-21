@@ -8,6 +8,8 @@
  *   落ちたら いのち -1・streak 0。葉の並びは変えない（同じ間にもう一度）。いのち 0 で回が終わる。
  *   ひとつ飛ばし：渡る先の葉に乗らず、2つ先の葉 after に after.x <= tipX <= after.x + after.w なら、
  *   2つ先へ渡れる（crossed +2、点は 2 + SKIP_BONUS、ぴったりなら perfectBonus も足す）。
+ *   ステージ：5 枚ごとの葉に旗（course.js の lastFlag）。旗を越えると checkpoint になり、落ちたらそこから（並びは同じ）。
+ *   旗は保存しない（開き直すとステージの最初から）。「さいしょから」は createRun で作り直す。
  *   茎は最大 MAX_LEN（800）で、画面は今の葉の右端から右へ少なくとも VIEW_W - CAMERA_LEFT（800）見えるので、
  *   茎の先が届く所はいつも画面の中（見えない葉には乗れない）。
  *
@@ -114,6 +116,7 @@
       mode: fields.mode === "stage" ? "stage" : "endless",
       stage: fields.mode === "stage" ? fields.stage : 0,
       goal: fields.mode === "stage" ? fields.goal : 0,
+      checkpoint: fields.mode === "stage" && fields.checkpoint > 0 ? fields.checkpoint : 0,
       cleared: fields.cleared === true
     };
     Object.defineProperty(s, "random", { value: random, enumerable: false });
@@ -134,6 +137,11 @@
   }
   // ステージで crossed 枚渡った時点の葉の窓（今の葉・渡る先・2つ先。ゴールの先は無いので短くなる）
   const stageWindow = (course, crossed) => course.slice(crossed, crossed + 3);
+  // 最後の旗（course.js。旗は FLAG_EVERY 枚ごと、ひとつ飛ばしで飛び越えても取ったことにする）
+  function lastFlag(crossed, goal) {
+    const c = getCourse();
+    return typeof c.lastFlag === "function" ? c.lastFlag(crossed, goal) : 0;
+  }
 
   // opts.mode: "endless"（既定、今までどおり平らで続く）| "stage"（opts.stage 番のステージ）
   function createRun(opts) {
@@ -199,9 +207,12 @@
       const score = addScore(state.score, gain);
       const crossed = state.crossed + (onAfter ? 2 : 1);
       const cleared = stageMode && crossed >= state.goal;
+      // 旗：新しい旗を越えたら、落ちたときの戻り先にする（ゴールに着いたときは旗にしない）
+      const checkpoint = stageMode ? Math.max(state.checkpoint, lastFlag(crossed, state.goal)) : 0;
+      const flag = stageMode && !cleared && checkpoint > state.checkpoint;
       const outcome = Object.freeze({
         kind: "cross", tipX, tipY, angle, perfect, gain, bonus, skip: onAfter, skipBonus, landX: land.x + land.w, score, streak,
-        cleared, stage: state.stage
+        cleared, stage: state.stage, flag, checkpoint
       });
       let platforms;
       if (stageMode) {
@@ -220,7 +231,7 @@
         streak,
         bestStreak: Math.max(state.bestStreak, streak),
         lives: state.lives, over: false, lastOutcome: outcome,
-        mode: state.mode, stage: state.stage, goal: state.goal, cleared
+        mode: state.mode, stage: state.stage, goal: state.goal, cleared, checkpoint
       }, random);
       return { state: next, outcome };
     }
@@ -231,24 +242,34 @@
     const angle = tipT !== null ? Math.atan2(tipX - bx, tipY - by) : Math.PI / 2;
     const reason = tipT === null || tipX < left ? "short" : "long";
     const missBy = reason === "short" ? Math.max(0, left - tipX) : tipX - right;
+    // 落ちた所（案内の言葉を選ぶため）：short＝次の葉の手前、long＝次の葉の少し先（NEAR 以内）か2つ先が無い、between＝次と2つ先の間（2つ先から遠い）、
+    // aim＝2つ先の少し手前（間の 1/3 か 2×NEAR 以内）、over＝2つ先も越えた
+    let zone = reason;
+    if (reason === "long" && after && missBy > NEAR) {   // 次の葉の少し先（おしい）は ただの「ながすぎ」
+      const ax = tipA !== null ? tipA : tipX;
+      const room = after.x - right;   // 次の葉と2つ先の間の距離
+      if (ax > after.x + after.w) zone = "over";
+      else zone = after.x - ax <= Math.max(2 * NEAR, room / 3) ? "aim" : "between";
+    }
     if (stageMode) {
-      // ステージ：いのちは減らさず、そのステージの最初から（同じ並び）
+      // ステージ：いのちは減らさず、最後の旗の葉から（旗がまだ無ければ、そのステージの最初から。並びは同じ）
+      const from = state.checkpoint > 0 ? state.checkpoint : 0;
       const outcome = Object.freeze({
-        kind: "fall", reason, tipX, tipY, angle, missBy, near: missBy <= NEAR,
-        score: 0, lives: state.lives, over: false, goalX, restart: true, stage: state.stage
+        kind: "fall", reason, zone, tipX, tipY, angle, missBy, near: missBy <= NEAR,
+        score: from ? state.score : 0, lives: state.lives, over: false, goalX, restart: true, from, stage: state.stage
       });
       const next = makeState({
-        platforms: stageWindow(stageCourse(state.stage), 0),
-        score: 0, crossed: 0, perfects: 0, streak: 0, bestStreak: state.bestStreak,
+        platforms: stageWindow(stageCourse(state.stage), from),
+        score: from ? state.score : 0, crossed: from, perfects: from ? state.perfects : 0, streak: 0, bestStreak: state.bestStreak,
         lives: state.lives, over: false, lastOutcome: outcome,
-        mode: "stage", stage: state.stage, goal: state.goal, cleared: false
+        mode: "stage", stage: state.stage, goal: state.goal, cleared: false, checkpoint: from
       }, random);
       return { state: next, outcome };
     }
     const lives = Math.max(state.lives - 1, 0);
     const over = lives === 0;
     const outcome = Object.freeze({
-      kind: "fall", reason, tipX, tipY, angle, missBy, near: missBy <= NEAR,
+      kind: "fall", reason, zone, tipX, tipY, angle, missBy, near: missBy <= NEAR,
       score: state.score, lives, over, goalX
     });
     const next = makeState({

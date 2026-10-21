@@ -404,14 +404,14 @@ export const tests = [
       const KG = [[1, 5], [3, 5], [4, 6], [7, 7], [10, 8], [13, 9], [16, 10], [50, 10], [999, 10], [0, 5], ['x', 5]];
       const kBad = KG.filter(([n, k]) => C.stageGoal(n) !== k).map(([n, k]) => ({ n, want: k, got: C.stageGoal(n) }));
       check('K（ゴールまでの枚数）：1〜3 は 5、3 つごとに 1 増え、16 以降は 10（壊れた番号は 1 扱い）', kBad.length === 0, kBad);
-      check('STAGE_CAP 50・STAGE_YMAX 160', C.STAGE_CAP === 50 && C.STAGE_YMAX === 160, { cap: C.STAGE_CAP, y: C.STAGE_YMAX });
+      check('STAGE_CAP 50・STAGE_YMAX 160・STAGE_YMIN 20', C.STAGE_CAP === 50 && C.STAGE_YMAX === 160 && C.STAGE_YMIN === 20, { cap: C.STAGE_CAP, y: C.STAGE_YMAX, ymin: C.STAGE_YMIN });
       const mono = [];
       for (let n = 2; n <= 60; n++) {
         const a = C.stageParams(n - 1), b = C.stageParams(n);
         if (!(b.gap[0] >= a.gap[0] && b.gap[1] >= a.gap[1] && b.w[0] <= a.w[0] && b.w[1] <= a.w[1] && b.lift >= a.lift)) mono.push(n);
       }
       check('先のステージほど遠く・細く・高低差が大きい（減らない）', mono.length === 0, mono);
-      check('ステージ 1・2 は平ら（lift 0）、3 から高低差、50 以降は同じ難しさ', C.stageParams(1).lift === 0 && C.stageParams(2).lift === 0 && C.stageParams(3).lift > 0
+      check('ステージ 1 から少し高低差（lift 20）、2 から増え、50 以降は同じ難しさ', C.stageParams(1).lift === 20 && C.stageParams(2).lift > 20 && C.stageCourse(1).some((p) => p.y > 0)
         && JSON.stringify(C.stageParams(50)) === JSON.stringify(C.stageParams(51)) && JSON.stringify(C.stageParams(50)) === JSON.stringify(C.stageParams(500)), [C.stageParams(1), C.stageParams(3), C.stageParams(50)]);
       const LIM = L.VIEW_W - L.CAMERA_LEFT - 40;
       const bad = [];
@@ -450,7 +450,7 @@ export const tests = [
       let g = s0; for (let i = 0; i < 5; i++) g = L.resolve(g, need(g)).state;
       const [ga, gb] = g.platforms;
       const past = L.resolve(g, Math.hypot(right(gb) - right(ga) + 120, (gb.y || 0) - (ga.y || 0)));
-      check('ゴールの手前で行き過ぎると落ちて最初から（ゴールの先に葉は無い）', g.platforms.length === 2 && past.outcome.kind === 'fall' && past.outcome.reason === 'long' && past.state.crossed === 0, past.outcome);
+      check('ゴールの手前で行き過ぎると落ちて、旗（5 枚目）から（ゴールの先に葉は無い）', g.platforms.length === 2 && past.outcome.kind === 'fall' && past.outcome.reason === 'long' && past.outcome.zone === 'long' && past.state.crossed === 5 && past.outcome.from === 5, past.outcome);
       // ゴールの 2 つ手前から、ひとつ飛ばしでゴールへ（2 本分）
       let k = s0; for (let i = 0; i < 4; i++) k = L.resolve(k, need(k)).state;
       const [ka, , kc] = k.platforms;
@@ -465,6 +465,69 @@ export const tests = [
       const rBad = RS.filter(([p, c, st, imp]) => { const r = L.recordStage(p, c); return !(r.stage === st && r.improved === imp); }).map(([p, c, st, imp]) => ({ p, c, want: [st, imp], got: L.recordStage(p, c) }));
       check('recordStage：クリアしたステージの次へ進む。前より先のときだけ improved、低いステージのクリアでは下げない、上限 9999', rBad.length === 0, rBad);
       check('保存キーは hashi.stage', L.SAVE_KEY_STAGE === 'hashi.stage', L.SAVE_KEY_STAGE);
+    },
+  },
+  {
+    id: 'HL12', tier: 'smoke', node: true, title: 'ハシわたり：旗（5 枚ごと・ゴールは旗にしない・落ちたら最後の旗から同じ並び・ひとつ飛ばしで旗を越えても取る・最初からは createRun）と、落ちた所の言葉（zone）',
+    run({ check, root }) {
+      const { L, C } = load(root);
+      check('FLAG_EVERY は 5', C.FLAG_EVERY === 5, C.FLAG_EVERY);
+      const marks = (n) => C.stageCourse(n).map((p) => (p.goal ? 'G' : p.flag ? 'F' : '.')).join('');
+      const M = { 1: '.....G', 4: '.....FG', 13: '.....F...G', 16: '.....F....G', 50: '.....F....G' };
+      const mBad = Object.entries(M).filter(([n, m]) => marks(Number(n)) !== m).map(([n, m]) => ({ n, want: m, got: marks(Number(n)) }));
+      check('旗は 5 枚目ごと（ゴールは旗にしない）：5 枚のステージは旗なし（今と同じ）、6〜10 枚は 5 枚目に旗', mBad.length === 0, mBad);
+      const LF = [[0, 10, 0], [4, 10, 0], [5, 10, 5], [6, 10, 5], [9, 10, 5], [10, 10, 5], [5, 5, 0], [5, 6, 5], [NaN, 10, 0], [-1, 10, 0], [7, 'x', 0]];
+      const lBad = LF.filter(([c, g, e]) => C.lastFlag(c, g) !== e).map(([c, g, e]) => ({ c, g, want: e, got: C.lastFlag(c, g) }));
+      check('lastFlag（渡った枚数 → 最後の旗）：5 未満は 0、5〜は 5、ゴールの番号は旗にしない、壊れた値は 0', lBad.length === 0, lBad);
+      const need = (st, i = 1) => { const a = st.platforms[0], b = st.platforms[i]; return Math.hypot(center(b) - right(a), (b.y || 0) - (a.y || 0)); };
+      const course = C.stageCourse(16);
+      // 1 枚ずつ渡って旗へ
+      let s = L.createRun({ mode: 'stage', stage: 16 });
+      check('はじめは checkpoint 0', s.checkpoint === 0 && s.goal === 10, s);
+      const got = [];
+      for (let i = 0; i < 5; i++) { const r = L.resolve(s, need(s)); got.push(r.outcome.flag); s = r.state; }
+      check('5 枚目に着くと outcome.flag・checkpoint 5（その前の 4 枚は flag false）', got.join() === 'false,false,false,false,true' && s.checkpoint === 5 && s.crossed === 5, got);
+      const r6 = L.resolve(s, need(s)); s = r6.state;
+      check('旗の先へ進んでも flag はもう出ない、checkpoint 5 のまま', r6.outcome.flag === false && s.checkpoint === 5 && s.crossed === 6, r6.outcome);
+      const f = L.resolve(s, 0);
+      check('落ちると最後の旗から：crossed 5・platforms は旗の葉からの 3 枚（同じ並び）・outcome.from 5・restart・いのちそのまま・checkpoint 5',
+        f.outcome.kind === 'fall' && f.outcome.restart === true && f.outcome.from === 5 && f.state.crossed === 5 && f.state.checkpoint === 5 && f.state.lives === s.lives
+        && JSON.stringify(f.state.platforms) === JSON.stringify(course.slice(5, 8)) && f.state.platforms[0].flag === true, f.outcome);
+      const f2 = L.resolve(f.state, 0);
+      check('旗の葉ですぐ落ちても、また旗から（最初には戻らない）', f2.state.crossed === 5 && f2.outcome.from === 5, f2.outcome);
+      // 旗の前で落ちたら最初から
+      let b = L.createRun({ mode: 'stage', stage: 16 });
+      for (let i = 0; i < 3; i++) b = L.resolve(b, need(b)).state;
+      const fb = L.resolve(b, 0);
+      check('旗の前で落ちると最初から（from 0・crossed 0・checkpoint 0）', fb.outcome.from === 0 && fb.state.crossed === 0 && fb.state.checkpoint === 0 && JSON.stringify(fb.state.platforms) === JSON.stringify(course.slice(0, 3)), fb.outcome);
+      // ひとつ飛ばしで旗の葉を越える（4 → 6）
+      let k = L.createRun({ mode: 'stage', stage: 16 });
+      for (let i = 0; i < 4; i++) k = L.resolve(k, need(k)).state;
+      const sk = L.resolve(k, need(k, 2));
+      check('ひとつ飛ばしで旗の葉（5 枚目）を飛び越えても旗を取る：skip・flag・checkpoint 5・crossed 6', sk.outcome.skip === true && sk.outcome.flag === true && sk.outcome.checkpoint === 5 && sk.state.checkpoint === 5 && sk.state.crossed === 6, sk.outcome);
+      const skf = L.resolve(sk.state, 0);
+      check('飛び越えた後に落ちたら、旗の葉（5 枚目）から', skf.state.crossed === 5 && skf.outcome.from === 5 && skf.state.platforms[0].flag === true, skf.outcome);
+      // 「さいしょから」は createRun で作り直す
+      const fresh = L.createRun({ mode: 'stage', stage: 16 });
+      check('「さいしょから」（createRun）は checkpoint 0・crossed 0', fresh.checkpoint === 0 && fresh.crossed === 0);
+      // 5 枚のステージは今と同じ（旗なし、落ちたら最初から）
+      let t = L.createRun({ mode: 'stage', stage: 1 });
+      for (let i = 0; i < 4; i++) t = L.resolve(t, need(t)).state;
+      const tf = L.resolve(t, 0);
+      check('5 枚のステージ：4 枚目で落ちても最初から（旗なし）', t.checkpoint === 0 && tf.state.crossed === 0 && tf.outcome.from === 0, tf.outcome);
+      // どこまでもには旗が無い
+      let e = L.createRun({ random: seeded(5) });
+      for (let i = 0; i < 12; i++) e = L.resolve(e, need(e)).state;
+      check('どこまでもは旗なし（checkpoint 0、outcome.flag false）', e.checkpoint === 0 && e.lastOutcome.flag === false, e.lastOutcome);
+      // 落ちた所の言葉：今の葉の右端 100、次 300〜400、2つ先 500〜600
+      const st = rigged(L);
+      const z = (len) => L.resolve(st, len).outcome.zone;
+      // 長さ len の茎の先は 100 + len。次の葉 300〜400、2つ先 500〜600、間 100 → aim は 2つ先の 40 手前（460）から
+      const ZS = [[150, 'short'], [310, 'long'], [320, 'long'], [321, 'between'], [350, 'between'], [359, 'between'], [360, 'aim'], [399, 'aim'], [501, 'over'], [800, 'over']];
+      const zBad = ZS.filter(([len, w]) => z(len) !== w).map(([len, w]) => ({ len, want: w, got: z(len) }));
+      check('zone：次の手前 short、次の少し先（missBy ≦ NEAR）long、間 between、2つ先の手前（間の 1/3 か 40 以内）aim、2つ先も越えた over', zBad.length === 0, zBad);
+      const noAfter = L.resolve(rigged(L, { platforms: [PL[0], PL[1]] }), 400).outcome;
+      check('2つ先が無いときの行き過ぎは long', noAfter.zone === 'long', noAfter);
     },
   },
 ];
