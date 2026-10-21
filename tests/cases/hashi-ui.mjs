@@ -7,7 +7,7 @@
 //   smoke：HW1〜HW4。full：HW5〜HW13（HW11 は CDP のタッチ操作なので Chromium だけ）。
 import fs from 'node:fs';
 import path from 'node:path';
-import { BASE, view, custom, newPage, seed, wait, frozen, layoutProbe, swInfo, sleep, touch, SFX_SPY, plays } from '../lib.mjs';
+import { BASE, view, custom, newPage, seed, wait, frozen, layoutProbe, swInfo, sleep, touch, SFX_SPY, plays, IS_CHROMIUM } from '../lib.mjs';
 
 const HU = BASE + 'games/hashi/';
 const SMOKE_V = () => view('SE', 'p', 'app');
@@ -182,6 +182,32 @@ const RENDER_SPY = () => {
     v = x;
   } });
 };
+
+// 語（空白で区切った かたまり）の途中で行が折れている所（root の中の文字を1字ずつ測る）。空白・句読点の後と「（」の前で折れるのは良い
+const midBreaks = (p, sel) => p.evaluate((sel) => {
+  const out = [];
+  for (const root of document.querySelectorAll(sel)) {
+    if (root.closest('[hidden]')) continue;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = walker.nextNode())) {
+      const t = n.textContent; if (!t.trim()) continue;
+      let prevTop = null;
+      for (let i = 0; i < t.length; i++) {
+        if (/\s/.test(t[i])) continue;
+        const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 1);
+        const rects = r.getClientRects(); if (!rects.length) continue;
+        const top = Math.round(rects[0].top);
+        if (prevTop !== null && top > prevTop + 2) {
+          const ok = /[\s。、！？）」：・]/.test(t[i - 1]) || /[（「]/.test(t[i]);
+          if (!ok) out.push(t.slice(Math.max(0, i - 6), i) + '｜' + t.slice(i, i + 6));
+        }
+        prevTop = top;
+      }
+    }
+  }
+  return out;
+}, sel);
 
 export const tests = [
   // ================= smoke =================
@@ -1101,10 +1127,10 @@ export const tests = [
         await pickMode(c4.page, 'stage');
         const fit = await c4.page.evaluate(() => {
           const r = document.querySelector('#stage').getBoundingClientRect();
-          const o = window.HashiRender.layout(Math.round(r.width), Math.round(r.height));
           const s = window.HashiGame.getState();
           const course = window.HashiCourse.stageCourse(s.stage);
           const top = Math.max(...course.map((p) => p.y || 0));
+          const o = window.HashiRender.layout(Math.round(r.width), Math.round(r.height), undefined, undefined, top);
           const heroR = Math.min(28, Math.max(11, 30 * o.s));
           return { h: Math.round(r.height), deckY: o.deckY, top, ymax: window.HashiCourse.STAGE_YMAX, heroTop: o.deckY - window.HashiCourse.STAGE_YMAX * o.s - heroR * 2.4, lowPad: o.deckY + 12 };
         });
@@ -1114,6 +1140,158 @@ export const tests = [
         const cp = await overlayProbe(c4.page, v.safe);
         check(`${v.label}：クリアカードの見出しが切れず、全ボタンに届き 44px 以上`, overlayOk(cp) && cp.btns.some((b) => b.cmd === 'next'), cp);
         await c4.ctx.close();
+      }
+    },
+  },
+  {
+    id: 'HW19', tier: 'full', title: 'ハシわたり レビュー後の直し：SE 縦横でカード・ボタン・案内の文が語の途中で折れない（クリアカードは「ステージ 40」「クリア！」の2行）、ボタンの文（あそぶ（つづき）・あそびかたを えらぶ）、短い遊び方はスクロールなしで「わかった」まで見える、落ちた所の言葉、花火（同時に3発以上・1発ごとに音・蓮は枚数ぶん・CPU 4倍遅くでも描画 34ms 以内）、高さの差はステージ 1 から・茎を最大に伸ばしても上端に 8px 余白',
+    async run({ browser, check }) {
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app')]) {
+        const head = v.label;
+        // はじめのカード（ステージ 40・ベスト 16 桁）と短い遊び方
+        const { ctx, page } = await openH(browser, 'HW19 ' + v.label, { v, mode: null, help: false, extra: { 'hashi.stage': '40', 'hashi.best': MAX16 } });
+        const mt = await page.evaluate(() => [...document.querySelectorAll('#overlay [data-cmd="stage"] > span, #overlay [data-cmd="endless"] > span')].map((e) => e.textContent.trim()));
+        const mb = await midBreaks(page, '#card');
+        check(`${head}｜はじめのカードのボタンの文「${mt.join('」「')}」、語の途中で折れない（${mb.join(' / ')}）`, mt[0] === 'ステージ 40 を あそぶ（つづき）' && mt[1] === `どこまでも あそぶ（ベスト ${MAX16}）` && mb.length === 0, { mt, mb });
+        await pickMode(page, 'stage');
+        const sh = await page.evaluate(() => {
+          const ov = document.querySelector('#overlay'), b = document.querySelector('#overlay [data-cmd="close"]');
+          const r = b.getBoundingClientRect();
+          return { kind: document.querySelector('#card').dataset.help, ps: [...document.querySelectorAll('#card p')].map((e) => e.textContent.trim()), noScroll: ov.scrollHeight <= ov.clientHeight + 1, btnBottom: Math.round(r.bottom), ih: innerHeight };
+        });
+        const hb = await midBreaks(page, '#card');
+        check(`${head}｜初回の短い遊び方：3 行（${sh.ps.length}）・スクロールなしで「わかった」まで見える（下端 ${sh.btnBottom} ≦ ${sh.ih}）・語の途中で折れない（${hb.join(' / ')}）`,
+          sh.kind === 'short' && sh.ps.length === 3 && /おちたら さいごの はたから/.test(sh.ps[2]) && sh.noScroll && sh.btnBottom <= sh.ih && hb.length === 0, { sh, hb });
+        await clickCmd(page, 'close'); await wait(page, 400);
+        await page.click('#helpBtn'); await wait(page, 200);
+        const fh = await page.evaluate(() => ({ kind: document.querySelector('#card').dataset.help, sets: document.querySelectorAll('#card [data-set]').length, text: document.querySelector('#card').textContent }));
+        const fb = await midBreaks(page, '#card');
+        check(`${head}｜「？」からは詳しい遊び方と設定（${fh.sets} 個）・旗の説明、語の途中で折れない（${fb.join(' / ')}）`, fh.kind === 'full' && fh.sets === 3 && /はた/.test(fh.text) && fb.length === 0, { fh, fb });
+        await clickCmd(page, 'close'); await wait(page, 400);
+        // クリアカード（ステージ 40）
+        await toLastLeaf(page); await crossOnce(page); await settleStage(page);
+        const cc = await page.evaluate(() => {
+          const lines = (e) => { const r = document.createRange(); r.selectNodeContents(e); return new Set([...r.getClientRects()].map((q) => Math.round(q.top))).size; };
+          const h = document.querySelector('#cardTitle');
+          return { spans: [...h.querySelectorAll('.line')].map((e) => [e.textContent, lines(e)]), ps: [...document.querySelectorAll('#card p')].map((e) => [e.textContent, lines(e)]), cmds: [...document.querySelectorAll('#card [data-cmd]')].map((b) => b.textContent.trim()) };
+        });
+        const cb = await midBreaks(page, '#card');
+        check(`${head}｜クリアカード：見出し「${cc.spans.map((x) => x[0]).join('」「')}」が1行ずつ、本文「${cc.ps.map((x) => x[0]).join('」「')}」も1行ずつ、語の途中で折れない（${cb.join(' / ')}）`,
+          cc.spans.length === 2 && cc.spans[0][0] === 'ステージ 40' && cc.spans[1][0] === 'クリア！' && cc.spans.every((x) => x[1] === 1) && cc.ps.length === 2 && /^はっぱ 10まい わたりきった！$/.test(cc.ps[0][0]) && /^ぴったり \d+かい$/.test(cc.ps[1][0]) && cc.ps.every((x) => x[1] === 1) && cb.length === 0, { cc, cb });
+        check(`${head}｜クリアカードのボタン「${cc.cmds.join('」「')}」：「あそびかたを えらぶ」（「ステージ・どこまでも」は無い）`, cc.cmds.includes('あそびかたを えらぶ') && !cc.cmds.some((t) => /ステージ・どこまでも/.test(t)), cc.cmds);
+        // 旗の後に落ちたカード（ステージ 16）
+        await wait(page, 450);
+        await gotoH(page, { 'hashi.stage': '16' }, { mode: 'stage' });
+        for (let i = 0; i < 6; i++) { await crossOnce(page); await settleStage(page); }
+        const L1 = await lens(page);
+        await holdLen(page, Math.max(35, L1.edgeL - 60)); await settleStage(page);
+        const rb = await midBreaks(page, '#card');
+        const rp = await overlayProbe(page, v.safe);
+        check(`${head}｜「どこから やりなおす？」のカード：全ボタンに届き 44px 以上、語の途中で折れない（${rb.join(' / ')}）`, overlayOk(rp) && rp.btns.some((b) => b.cmd === 'flag') && rb.length === 0, { rp, rb });
+        // 結果・ひとやすみのカード（どこまでも）
+        await gotoH(page, { 'hashi.best': MAX16 });
+        await loseRun(page);
+        const rc = await page.evaluate(() => [...document.querySelectorAll('#card [data-cmd]')].map((b) => b.textContent.trim()));
+        const rcb = await midBreaks(page, '#card');
+        check(`${head}｜結果カード「${rc.join('」「')}」：「あそびかたを えらぶ」、語の途中で折れない（${rcb.join(' / ')}）`, rc.includes('あそびかたを えらぶ') && rcb.length === 0, { rc, rcb });
+        await wait(page, 450); await clickCmd(page, 'again'); await wait(page, 350);
+        const L2 = await lens(page);
+        await holdLen(page, L2.perfect); await waitPhase(page, ['walking', 'scrolling']);
+        await setHidden(page, true); await setHidden(page, false); await wait(page, 100);
+        const pc = await page.evaluate(() => [...document.querySelectorAll('#card [data-cmd]')].map((b) => b.textContent.trim()));
+        const pcb = await midBreaks(page, '#card');
+        check(`${head}｜ひとやすみのカード「${pc.join('」「')}」：「あそびかたを えらぶ」、語の途中で折れない（${pcb.join(' / ')}）`, pc.includes('あそびかたを えらぶ') && pcb.length === 0, { pc, pcb });
+        await clickCmd(page, 'resume'); await settle(page);
+        // 落ちた所の言葉（どこまでも）：次の葉と2つ先の間、2つ先の少し手前。案内は2行に収まり、語の途中で折れない
+        const zones = [];
+        for (const [name, frac] of [['between', 0.35], ['aim', 0.93]]) {
+          await gotoH(page);
+          const z = await page.evaluate((f) => { const s = window.HashiGame.getState(); const [a, b, c] = s.platforms; const r = a.x + a.w; return (b.x + b.w - r) + ((c.x - (b.x + b.w)) * f); }, frac);
+          await holdLen(page, z); await waitPhase(page, ['respawn', 'ready', 'over'], 4000);
+          const st = await gs(page);
+          const hint = await page.evaluate(() => { const e = document.querySelector('#hint'); return { t: e.textContent.trim(), fit: e.scrollHeight <= e.clientHeight + 1 }; });
+          const hbk = await midBreaks(page, '#hint');
+          zones.push({ name, zone: st.lastOutcome?.zone, hint, hbk });
+          await settle(page);
+        }
+        check(`${head}｜落ちた所の言葉：間は「2つ さきの はっぱにも とどかなかった」、2つ先の手前は「2つ さきを ねらったけど ちょっと みじかかった」、案内は2行に収まり語の途中で折れない（${zones.map((z) => z.hint.t).join(' / ')}）`,
+          zones[0].zone === 'between' && /ながすぎ。2つ さきの はっぱにも とどかなかった/.test(zones[0].hint.t) && zones[1].zone === 'aim' && /2つ さきを ねらったけど ちょっと みじかかった/.test(zones[1].hint.t) && zones.every((z) => z.hint.fit && z.hbk.length === 0), zones);
+        // 茎の上の余白：ステージ 50 のいちばん高い葉から MAX_LEN 伸ばしても canvas の上端から 8px 以上（先の小さな葉 8px を除いて）
+        await gotoH(page, { 'hashi.stage': '50' }, { mode: 'stage' });
+        const top = await page.evaluate(() => {
+          const r = document.querySelector('#stage').getBoundingClientRect();
+          const lift = Math.max(...window.HashiCourse.stageCourse(50).map((p) => p.y || 0));
+          const o = window.HashiRender.layout(Math.round(r.width), Math.round(r.height), undefined, undefined, lift);
+          return { lift, tip: o.deckY - (lift + window.HashiLogic.MAX_LEN) * o.s - 8, flatTip: (() => { const f = window.HashiRender.layout(Math.round(r.width), Math.round(r.height)); return f.deckY - window.HashiLogic.MAX_LEN * f.s - 8; })(), viewW: r.width / o.s };
+        });
+        check(`${head}｜いちばん高い葉（${top.lift}）から最大に伸ばした茎の先の葉の上端 ${top.tip.toFixed(1)}px ≧ 8（どこまでも ${top.flatTip.toFixed(1)}px ≧ 8）、横に見える幅 ${top.viewW.toFixed(0)} ≧ 1000`, top.tip >= 8 && top.flatTip >= 8 && top.viewW >= 999.5, top);
+        await ctx.close();
+      }
+
+      // 高さの差はステージ 1 から、描画に liftMax を渡す。どこまでもは平ら
+      {
+        const { ctx, page } = await newPage(browser, STD_V(), 'HW19 lift', { clock: true });
+        await ctx.addInitScript(RENDER_SPY);
+        await gotoH(page, { 'hashi.stage': '1' }, { mode: 'stage' });
+        await wait(page, 100);
+        const a = await page.evaluate(() => ({ lm: window.__hrView?.liftMax, ys: window.HashiCourse.stageCourse(1).map((p) => p.y) }));
+        check(`ステージ 1 から葉に高さの差（${a.ys.join(',')}）、描画の liftMax ${a.lm}`, a.ys.some((y) => y > 0) && a.lm === Math.max(...a.ys), a);
+        await gotoH(page);
+        await wait(page, 100);
+        const e = await page.evaluate(() => ({ lm: window.__hrView?.liftMax, ys: window.HashiGame.getState().platforms.map((p) => p.y) }));
+        check(`どこまでもは平ら（liftMax ${e.lm}）`, e.lm === 0, e);
+        await ctx.close();
+      }
+
+      // 花火：同時に3発以上・画面全体・3〜4色・1発ごとに音・蓮はステージの枚数ぶん。動きを減らす設定では花火なし
+      {
+        const { ctx, page } = await newPage(browser, SMOKE_V(), 'HW19 fw', { clock: true, initScript: SFX_SPY });
+        await ctx.addInitScript(RENDER_SPY);
+        await gotoH(page, { 'hashi.stage': '16' }, { mode: 'stage' });
+        const tbl = await page.evaluate(() => window.HashiRender.FIREWORKS.map((f) => ({ t: f.t, x: f.x, c: f.c, c2: f.c2 })));
+        let most = 0;
+        for (let t = 0; t <= 3; t += 0.05) most = Math.max(most, tbl.filter((f) => t >= f.t && t < f.t + 1.1).length);
+        const xs = tbl.map((f) => f.x), colors = new Set(tbl.flatMap((f) => [f.c, f.c2]));
+        check(`花火の表：${tbl.length} 発・同時に最大 ${most} 発（3 以上）・横の広がり ${Math.min(...xs)}〜${Math.max(...xs)}・色 ${colors.size}（3 以上）`, tbl.length >= 6 && most >= 3 && Math.min(...xs) <= 0.2 && Math.max(...xs) >= 0.8 && colors.size >= 3, tbl);
+        await toLastLeaf(page);
+        await page.evaluate(() => { window.__plays = []; });
+        await crossOnce(page);
+        await waitPhaseIs(page, 'clear');
+        await wait(page, 1500);
+        const n = await page.evaluate(() => window.__hrView?.clearFx?.n);
+        await waitOverlay(page, 4000);
+        const fw = (await plays(page)).filter((x) => x.n === 'firework').length;
+        check(`1発ごとに音（firework ${fw} 回 = ${tbl.length}）、蓮の花はステージの枚数ぶん（clearFx.n ${n} = 10）`, fw === tbl.length && n === 10, { fw, n });
+        await ctx.close();
+        const c2 = await newPage(browser, SMOKE_V(), 'HW19 calm', { clock: true, initScript: SFX_SPY, reducedMotion: 'reduce' });
+        await gotoH(c2.page, { 'hashi.stage': '16' }, { mode: 'stage' });
+        await toLastLeaf(c2.page);
+        await c2.page.evaluate(() => { window.__plays = []; });
+        await crossOnce(c2.page); await waitPhaseIs(c2.page, 'clear'); await waitOverlay(c2.page, 3000);
+        const cfw = (await plays(c2.page)).filter((x) => x.n === 'firework').length;
+        check(`動きを減らす設定では花火を出さない（firework ${cfw} 回）`, cfw === 0, cfw);
+        await c2.ctx.close();
+      }
+
+      // 性能：iPhone SE 相当（CPU 4倍遅く）で、クリアの演出の1コマの描画が 34ms 以内（Chromium の CDP だけ）
+      if (IS_CHROMIUM) {
+        for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app')]) {
+          const { ctx, page } = await newPage(browser, v, 'HW19 perf ' + v.label, { initScript: () => {
+            let hv; window.__dt = [];
+            Object.defineProperty(window, 'HashiRender', { configurable: true, get: () => hv, set(x) { const oc = x.create; x.create = function (...a) { const r = oc.apply(this, a); const od = r.draw; r.draw = function (vw) { const t0 = performance.now(); const res = od.apply(this, arguments); if (vw && vw.clearFx) window.__dt.push(performance.now() - t0); return res; }; return r; }; hv = x; } });
+          } });
+          await gotoH(page, { 'hashi.stage': '16' }, { mode: 'stage' });
+          await toLastLeaf(page);
+          const cdp = await ctx.newCDPSession(page);
+          await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+          await crossOnce(page);
+          await waitOverlay(page, 8000);
+          await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+          const dt = await page.evaluate(() => window.__dt);
+          const mx = Math.max(...dt);
+          check(`${v.label}｜CPU 4倍遅くでクリアの演出 ${dt.length} コマの描画：最大 ${mx.toFixed(1)}ms ≦ 34ms`, dt.length > 30 && mx <= 34, { n: dt.length, mx, avg: dt.reduce((a, b) => a + b, 0) / dt.length });
+          await ctx.close();
+        }
       }
     },
   },

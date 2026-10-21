@@ -88,7 +88,8 @@
   function layout(W, H, vw, ml, lift) {
     var w = num(W, 320), h = num(H, 240);
     var VW = num(vw, viewW()), M = num(ml, maxLen()), up = Math.max(0, num(lift, 0));
-    var deckY = Math.round(h * (w > h ? 0.8 : 0.66));
+    // 縦長でステージ（高い葉がある）なら、葉を少し下げて上に茎の伸びる場所を取る（縮みすぎないように）
+    var deckY = Math.round(h * (w > h ? 0.8 : up > 0 ? 0.76 : 0.66));
     var s = Math.min(w / VW, Math.max(0.01, deckY - TOP_MARGIN) / (M + up));
     return { s: s, deckY: deckY, top: TOP_MARGIN };
   }
@@ -589,16 +590,21 @@
       var R = Rmax * ease(q), R0 = Rmax * ease(Math.max(0, q - 0.12));
       var fall = q * q * 26, fall0 = Math.max(0, q - 0.12) * Math.max(0, q - 0.12) * 26;
       var fade = q < 0.55 ? 1 : 1 - (q - 0.55) / 0.45;
-      // 中心の光る塊（はじめの 0.4 だけ）
-      if (q < 0.4) {
-        var cr = Rmax * (0.18 + q * 0.5);
+      // 中心の光る塊（はじめの半分。加算で明るく、白い芯と粒の色のにじみ）
+      if (q < 0.5) {
+        var u = 1 - q / 0.5;
+        var cr = Rmax * (0.2 + q * 0.4);
         var gr = ctx.createRadialGradient(bx, byy, 0, bx, byy, cr);
-        gr.addColorStop(0, "rgba(255,255,240," + (0.95 * (1 - q / 0.4)).toFixed(3) + ")");
-        gr.addColorStop(0.35, "rgba(255,230,150," + (0.6 * (1 - q / 0.4)).toFixed(3) + ")");
-        gr.addColorStop(1, "rgba(255,200,120,0)");
+        gr.addColorStop(0, "rgba(255,255,255," + u.toFixed(3) + ")");
+        gr.addColorStop(0.25, "rgba(255,244,190," + (0.9 * u).toFixed(3) + ")");
+        gr.addColorStop(0.6, "rgba(255,190,90," + (0.35 * u).toFixed(3) + ")");
+        gr.addColorStop(1, "rgba(255,160,60,0)");
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
         ctx.globalAlpha = 1;
         ctx.fillStyle = gr;
         ctx.beginPath(); ctx.arc(bx, byy, cr, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
       }
       // 粒（2色を交互に）：尾は太く、先は明るい
       ctx.lineCap = "round";
