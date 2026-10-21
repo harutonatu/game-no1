@@ -12,7 +12,7 @@
 //   るすの あいだ（§4.3・§7.1）は、ページの時計を clockTime で決まった瞬間に固定して確かめる（日本・ロサンゼルスの2つのタイムゾーン）。
 //   期待値は Node で読んだ logic.js（同じ root）から作る。半分の速さの 45 秒・上限の 7200 秒は決め打ちの値で比べる（logic が変わっても見逃さない）。
 //   無いときに合格にしない（空振りの合格を作らない）：SeizaiGame・YubiDebug が無ければ例外で不合格にする。
-//   smoke：WW1〜WW6。full：WW7〜WW20（WW18 はレビュー後の直し §17.1、WW19 は §17.3 の B、WW20 は §18 待つ理由（SZ-03）。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
+//   smoke：WW1〜WW6。full：WW7〜WW23（WW18 はレビュー後の直し §17.1、WW19 は §17.3 の B、WW20 は §18 待つ理由（SZ-03）、WW21〜23 は §19（新しい工程・道具・画面を広く）。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -542,7 +542,7 @@ export const tests = [
     },
   },
   {
-    id: 'WW10', tier: 'full', cdp: 'CDP の CPU 低速化', title: 'もくもくこうば 性能：みなとで全部最大（人 55 前後）にして、CPU 4 倍遅く（CDP）で 6 秒、人の数 60 以下、34ms を超えるコマが 5% 以下',
+    id: 'WW10', tier: 'full', cdp: 'CDP の CPU 低速化', title: 'もくもくこうば 性能：みなとで全部最大（人 60 前後）にして、CPU 4 倍遅く（CDP）で 6 秒、人の数 66 以下、34ms を超えるコマが 5% 以下',
     async run({ browser, check }) {
       const { ctx, page } = await newPage(browser, view('SE', 'p', 'app'), 'WW10');
       await seed(page, { 'seizai.help': '1' });
@@ -1080,6 +1080,230 @@ export const tests = [
           return { stumpAtCut, d0, planted, d1: Math.abs(p1.x - sl[idx].x), why: A.waitOf(s).plant };
         });
         check(`切られた所は切り株のまま（${r.stumpAtCut}・なえぎの人まで ${Math.round(r.d0)}）、なえぎの人が歩いて着いてから植わる（${r.planted} コマ目・そのときの距離 ${Math.round(r.d1)}）`, r.stumpAtCut && r.planted > 0 && r.d1 <= 14 && (r.d0 < 14 || r.planted >= 3), r);
+        await ctx.close();
+      }
+      check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
+    },
+  },
+  {
+    id: 'WW21', tier: 'full', title: 'もくもくこうば 新しい工程（§19.1・§19.4）：こうじょう で かんそう、みなと で かんな の場所が見えて押せ（44px 以上・シートの値段が costOf）、使えない段では隠れる。つまりの札（data-jam）、節目カードの「ふえたもの」、みなと の #goalText が goalOf（つるつるいた・SE 縦で崩れない）、v25 の形の保存（dry・plane・dried が無い）を入れても落ちず、かんそう が 1 台で動き、売れる',
+    async run({ browser, check, root, errors }) {
+      const L = logicOf(root);
+      const e0 = errors.length;
+      const { ctx, page } = await openW(browser, 'WW21', { v: SMOKE_V(), debug: true });
+      for (const [st, want, hide] of [[3, ['dry'], ['plane']], [4, ['dry', 'plane'], []]]) {
+        await goStage(page, st);
+        await setL(page, 'l.money = 1e9;');
+        const z = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.zone[data-dept]')].map((b) => { const r = b.getBoundingClientRect(); return [b.dataset.dept, { hidden: b.hidden, w: Math.round(r.width), h: Math.round(r.height) }]; })));
+        check(`段 ${st}：${want.join('・')} の場所が見えて 44px 以上、${hide.join('・') || 'なし'} は隠れる`, want.every((d) => z[d] && !z[d].hidden && z[d].w >= 44 && z[d].h >= 44) && hide.every((d) => z[d] && z[d].hidden), z);
+        for (const d of want) {
+          await page.evaluate((d) => document.querySelector(`.zone[data-dept="${d}"]`).click(), d); await wait(page, 150);
+          const l = await lg(page);
+          const pr = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#sheet [data-buy]')].filter((b) => !b.hidden).map((b) => [b.dataset.buy, b.querySelector('[data-part=price]').textContent.trim()])));
+          const okP = ['line', 'level'].every((w) => pr[w] === L.formatYen(L.costOf(l, d, w)));
+          const title = await txt(page, '#sheetTitle');
+          check(`段 ${st}：${d} を押すとシート（${title}）、値段 ${JSON.stringify(pr)} が formatYen(costOf)`, (await gs(page)).sheet === d && okP && !pr.staff, { pr, title });
+          await page.click('#sheetClose'); await wait(page, 60);
+        }
+      }
+      // みなと の #goalText（SE 縦で崩れない）
+      const g4 = L.goalOf(await lg(page)), gt = await txt(page, '#goalText'), fg = await fits(page, '#goalText');
+      check(`みなと の #goalText「${gt}」が goalOf の文（つるつるいた）で、はみ出さない`, gt === g4.text && /つるつるいた/.test(gt) && fg.ok, { gt, g4, fg });
+      // つまりの札：かんそう だけを遅くする
+      await setL(page, 'for (const [k, d] of Object.entries(l.depts)) { d.level = 50; if ("lines" in d && d.lines > 0) d.lines = SeizaiLogic.CAPS[3][k]; else if ("staff" in d) d.staff = SeizaiLogic.CAPS[3][k]; } l.depts.dry.lines = 1; l.depts.dry.level = 1;');
+      await wait(page, 400);
+      const bn = (await gs(page)).bottleneck, jam = await page.evaluate(() => document.querySelector('.zone[data-dept="dry"]').dataset.jam);
+      check(`かんそう だけ遅いと つまり は ${bn}、場所に data-jam="${jam}"`, bn === 'dry' && jam === '1', { bn, jam });
+      await ctx.close();
+      // 節目カードの「ふえたもの」
+      for (const [from, re] of [[2, /かんそう[\s\S]*きを かわかすよ/], [3, /かんな[\s\S]*つるつるに するよ/]]) {
+        const st = mkState(L, from, { goal: { done: L.STAGES[from - 1].goal }, money: L.STAGES[from - 1].cost + 10 });
+        const o = await openW(browser, 'WW21', { v: SMOKE_V(), items: { 'seizai.save': saveOf(L, st, T0) }, opts: { clockTime: new Date(T0 + 1000), reducedMotion: 'reduce' } });
+        await o.page.click('#expandBtn'); await waitOverlay(o.page, 'stage', 2500);
+        const list = await txt(o.page, '#stageList');
+        check(`段 ${from + 1} の節目カードの「ふえたもの」：${list}`, re.test(list) && (await o.page.evaluate(() => document.querySelectorAll('#stageList li').length)) === 3, list);
+        await o.ctx.close();
+      }
+      // v25 の形の保存（dry・plane・dried が無い）：段 3 と 段 4
+      for (const stage of [3, 4]) {
+        const st = mkState(L, stage, { goal: { done: 0 } });
+        const raw = JSON.parse(saveOf(L, st, T0));
+        delete raw.depts.dry; delete raw.depts.plane; delete raw.buf.dried; if (raw.totals) { delete raw.totals.dried; delete raw.totals.smooth; }
+        const o = await openW(browser, 'WW21', { v: SMOKE_V(), items: { 'seizai.save': JSON.stringify(raw) }, opts: { clockTime: new Date(T0 + 1000) } });
+        await closeCards(o.page);
+        const a = await lg(o.page);
+        await adv(o.page, 60);
+        const b = await lg(o.page);
+        const shown = await o.page.evaluate(() => !document.querySelector('.zone[data-dept="dry"]').hidden);
+        check(`v25 の形の保存（段 ${stage}）：落ちずに開き、かんそう ${a.depts.dry && a.depts.dry.lines} 台・場所が見え、60 秒で かんそう が動き（done ${a.done.dry || 0} → ${b.done.dry}）、売れる（お金 ${a.money} → ${b.money}）`, a.stage === stage && a.depts.dry && a.depts.dry.lines >= 1 && shown && b.done.dry > (a.done.dry || 0) && b.money > a.money, { a: a.depts.dry, done: [a.done, b.done] });
+        await o.ctx.close();
+      }
+      check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
+    },
+  },
+  {
+    id: 'WW22', tier: 'full', title: 'もくもくこうば 道具（§19.2）：Lv4→5 で #hint「のこぎりに なった！」・音 tool・getState().lastTool、シートの「どうぐを よくする」に「つぎで のこぎりに なる！」→「つぎ：チェーンソー（Lv15）」、Lv5→6 は tool を鳴らさない、Lv30 で次の道具は空（隠れる）、全部署の道具の名前（場所の読み上げ）が logic の TOOLS と同じ、Lv 1・5・15・30 で台の上の絵が変わる',
+    async run({ browser, check, root, errors }) {
+      const L = logicOf(root);
+      const e0 = errors.length;
+      const st = mkState(L, 1, { money: 1e7, depts: { cut: { staff: 2, level: 4 } } });
+      const { ctx, page } = await openW(browser, 'WW22', { v: SMOKE_V(), items: { 'seizai.save': saveOf(L, st, T0) }, opts: { clockTime: new Date(T0 + 1000), initScript: SFX_SPY } });
+      const nx = () => page.evaluate(() => { const e = document.querySelector('#sheet [data-buy="level"] [data-part="next"]'); return e ? { t: e.textContent.trim(), w: e.getBoundingClientRect().height } : null; });
+      await page.click('.zone[data-dept="cut"]'); await wait(page, 120);
+      const lab0 = await txt(page, '#sheet [data-buy="level"] [data-part="label"]'), n0 = await nx();
+      check(`シートのボタン「${lab0}」（どうぐを よくする）に「${n0 && n0.t}」`, /^どうぐを よくする Lv4→5$/.test(lab0) && n0 && n0.t === 'つぎで のこぎりに なる！', { lab0, n0 });
+      const p0 = (await plays(page)).length;
+      await page.click('#sheet [data-buy="level"]'); await wait(page, 150);
+      const s1 = await gs(page), ps1 = (await plays(page)).slice(p0).map((x) => x.n), n1 = await nx();
+      const za = await page.evaluate(() => document.querySelector('.zone[data-dept="cut"]').getAttribute('aria-label'));
+      check(`Lv4→5 で #hint「${s1.hint}」・音 ${ps1.join(',')}・lastTool ${JSON.stringify(s1.lastTool)}`, s1.hint === 'のこぎりに なった！' && ps1.includes('tool') && s1.lastTool && s1.lastTool.dept === 'cut' && s1.lastTool.tier === 1 && s1.lastTool.name === 'のこぎり', { s1: s1.lastTool, ps1 });
+      check(`次の道具は「${n1 && n1.t}」、場所の読み上げ「${za}」に のこぎり`, n1 && n1.t === 'つぎ：チェーンソー（Lv15）' && /きこり：2にん・のこぎり。/.test(za), { n1, za });
+      const p1 = (await plays(page)).length;
+      await page.click('#sheet [data-buy="level"]'); await wait(page, 150);
+      const ps2 = (await plays(page)).slice(p1).map((x) => x.n);
+      check(`Lv5→6 は tool を鳴らさず buy（${ps2.join(',')}）`, ps2.includes('buy') && !ps2.includes('tool'), ps2);
+      await setL(page, 'l.depts.cut.level = 30;'); await wait(page, 100);
+      const n3 = await nx();
+      check(`Lv30（いちばん上の段）で次の道具は空で隠れる（「${n3 && n3.t}」・高さ ${n3 && n3.w}）`, n3 && n3.t === '' && n3.w === 0, n3);
+      const has = await page.evaluate(() => window.YubiSfx.create('seizai', { ignoreSetting: true }).names.includes('tool'));
+      check('効果音 tool が "seizai" の音の表にある', has, has);
+      await ctx.close();
+      // 全部署の道具の名前（場所の読み上げ）が logic の TOOLS と同じ
+      const o = await openW(browser, 'WW22', { v: SMOKE_V(), debug: true });
+      await goStage(o.page, 4);
+      const bad = [];
+      for (let i = 0; i < L.TOOL_LV.length; i++) {
+        const lv = L.TOOL_LV[i];
+        await setL(o.page, `for (const d of Object.values(l.depts)) d.level = ${lv};`); await wait(o.page, 50);
+        const labs = await o.page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.zone[data-dept]')].filter((b) => !b.hidden && b.dataset.dept !== 'goods').map((b) => [b.dataset.dept, b.getAttribute('aria-label')])));
+        for (const [d, lab] of Object.entries(labs)) if (!lab.includes('・' + L.TOOLS[d][i] + '。')) bad.push(`${d} Lv${lv}: ${lab}`);
+        if (Object.keys(labs).length !== 9) bad.push('場所の数 ' + Object.keys(labs).length);
+      }
+      check(`みなと の 9 部署 × Lv 1・5・15・30 の読み上げの道具の名前が TOOLS と同じ（違う所 ${bad.length}）`, bad.length === 0, bad.slice(0, 6));
+      await o.ctx.close();
+      // 台の上の絵が段ごとに変わる（動きを減らす設定で、かわむき・いた・かんな の 1 台目の機械の画素）
+      const c = await openW(browser, 'WW22', { v: SMOKE_V(), debug: true, opts: { reducedMotion: 'reduce' } });
+      await goStage(c.page, 4);
+      const hashes = {};
+      for (const lv of [1, 5, 15, 30, 30]) {
+        await setL(c.page, `for (const d of Object.values(l.depts)) d.level = ${lv};`);
+        await wait(c.page, 900);
+        // スクロールしてから 1 コマ待って読む
+        const res = {};
+        for (const d of ['peel', 'plank', 'plane']) {
+          await c.page.evaluate((d) => { const A = window.SeizaiActors, g = A.geometry(4), st = A.station(g, d, 0), sc = document.querySelector('#scene'); const s = sc.clientWidth / 360; sc.scrollTop = Math.max(0, st.ty * s - 150); }, d);
+          await wait(c.page, 120);
+          res[d] = await c.page.evaluate((d) => {
+            const A = window.SeizaiActors, g = A.geometry(4), st = A.station(g, d, 0), cv = document.querySelector('#sceneCanvas'), sc = document.querySelector('#scene');
+            const cr = cv.getBoundingClientRect(), k = cv.width / cr.width, s = sc.clientWidth / 360;
+            const x0 = Math.floor((st.tx + 1) * s * k), y0 = Math.floor((st.ty * s - sc.scrollTop - 42 * s) * k), w = Math.floor(24 * s * k), hh = Math.floor(28 * s * k);
+            const px = cv.getContext('2d').getImageData(x0, y0, w, hh).data;
+            let a = 0; for (let i = 0; i < px.length; i += 4) a = (a * 31 + (px[i] >> 3) * 7 + (px[i + 1] >> 3) * 3 + (px[i + 2] >> 3)) >>> 0;
+            return a;
+          }, d);
+        }
+        (hashes[lv] = hashes[lv] || []).push(res);
+      }
+      const same = JSON.stringify(hashes[30][0]) === JSON.stringify(hashes[30][1]);
+      const diff = ['peel', 'plank', 'plane'].every((d) => new Set([1, 5, 15, 30].map((lv) => hashes[lv][0][d])).size === 4);
+      check(`台の上の絵が Lv 1・5・15・30 で 4 通りに変わる（同じ Lv では同じ ${same}）`, same && diff, hashes);
+      await c.ctx.close();
+      check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
+    },
+  },
+  {
+    id: 'WW23', tier: 'full', title: 'もくもくこうば 画面を広く（§19.3）：SE 縦で #hud＋#goal 104px 以下・#scene が画面の高さの 6 割以上、シートを開くと開いた場所の上 44px が #sheet の上に見える（みなとの全部署、SE 縦横・iPad）、シートのボタンが画面内・44px 以上、#scrollCue の文・押すとスクロール・シートの間は出ない・全部入るときは出ない・節目のあとの「あたらしい」、横向きはシートを右の列に',
+    async run({ browser, check, root, errors }) {
+      const L = logicOf(root);
+      const e0 = errors.length;
+      // --- SE 縦：上の帯の高さ ---
+      {
+        const { ctx, page } = await openW(browser, 'WW23', { v: SMOKE_V(), debug: true });
+        const rows = [];
+        for (const st of [1, 3, 4]) {
+          if (st > 1) await goStage(page, st);
+          if (st === 4) await dbg(page, 'ships', { n: 9999, got: 0 });
+          await wait(page, 100);
+          rows.push(await page.evaluate(() => { const h = document.querySelector('#hud').getBoundingClientRect(), g = document.querySelector('#goal').getBoundingClientRect(), s = document.querySelector('#scene').getBoundingClientRect(); return { goal: document.querySelector('#goalText').textContent, top: Math.round(g.bottom - h.top), scene: +(s.height / innerHeight).toFixed(3), money: document.querySelector('#money').getBoundingClientRect().height > 0 }; }));
+        }
+        check(`SE 縦：#hud＋#goal の高さ ${rows.map((r) => r.top).join('・')}px（104 以下）、#scene は画面の ${rows.map((r) => Math.round(r.scene * 100)).join('・')}%（6 割以上）。いちばん長い めあて「${rows[2].goal}」でも`, rows.every((r) => r.top <= 104 && r.scene >= 0.6 && r.money), rows);
+        await ctx.close();
+      }
+      // --- シートを開くと、開いた場所の上 44px が見える（SE 縦横・iPad、みなと の全部署） ---
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app'), view('iPad', 'p', 'app')]) {
+        const { ctx, page } = await openW(browser, `WW23 ${v.label}`, { v, debug: true });
+        await goStage(page, 4);
+        await setL(page, 'l.money = 1e9;');
+        // うりもの（goods）は押すと お客さんを呼ぶだけでシートは開かないので、シートを開く 9 部署
+        const depts = await page.evaluate(() => [...document.querySelectorAll('.zone[data-dept]')].filter((b) => !b.hidden && b.dataset.dept !== 'goods').map((b) => b.dataset.dept));
+        const bad = [];
+        for (const d of depts) {
+          for (const end of ['top', 'bottom']) {
+            await page.evaluate(([d, end]) => { const sc = document.querySelector('#scene'); if (window.SeizaiGame.getState().sheet) document.querySelector('#sheetClose').click(); sc.scrollTop = end === 'top' ? 0 : sc.scrollHeight; document.querySelector(`.zone[data-dept="${d}"]`).click(); }, [d, end]);
+            await wait(page, 120);
+            const r = await page.evaluate((d) => {
+              const sr = document.querySelector('#scene').getBoundingClientRect(), zr = document.querySelector(`.zone[data-dept="${d}"]`).getBoundingClientRect(), hr = document.querySelector('#sheet').getBoundingClientRect();
+              const over = hr.left < sr.right - 1 && hr.right > sr.left + 1 && hr.top < sr.bottom - 1;
+              const lim = over ? hr.top : sr.bottom;
+              const btns = [...document.querySelectorAll('#sheet [data-buy], #sheetClose')].filter((b) => !b.hidden && b.getBoundingClientRect().width > 0).map((b) => b.getBoundingClientRect());
+              return { top: Math.round(zr.top - sr.top), seen: Math.round(lim - Math.max(zr.top, sr.top)), topIn: zr.top >= sr.top - 1, over, btn: btns.every((q) => q.top >= -0.5 && q.bottom <= innerHeight + 0.5 && q.left >= -0.5 && q.right <= innerWidth + 0.5 && q.height >= 43.5 && q.width >= 43.5), sheet: window.SeizaiGame.getState().sheet };
+            }, d);
+            if (!(r.sheet === d && r.topIn && r.seen >= 44 && r.btn)) bad.push({ d, end, ...r });
+          }
+        }
+        check(`${v.label}：みなと の ${depts.length} か所を上・下からスクロールして押しても、開いた場所の上 44px が見え（シートは${v.w > v.h && v.h <= 500 ? '右の列' : '絵に重ねる'}）、シートのボタンが画面内・44px 以上（だめ ${bad.length}）`, depts.length === 9 && bad.length === 0, bad.slice(0, 8));
+        if (v.w > v.h && v.h <= 500) {
+          const lay = await page.evaluate(() => { const s = document.querySelector('#scene').getBoundingClientRect(), h = document.querySelector('#sheet').getBoundingClientRect(); return { sheetLeft: h.left, sceneRight: s.right, sh: getComputedStyle(document.querySelector('#scene')).getPropertyValue('--sheet-h').trim() }; });
+          check(`${v.label}：横向きはシートを右の列に（絵に重ねない・--sheet-h ${lay.sh}）`, lay.sheetLeft >= lay.sceneRight - 0.5 && (lay.sh === '' || lay.sh === '0px'), lay);
+        }
+        await ctx.close();
+      }
+      // --- スクロールの案内 #scrollCue ---
+      {
+        const { ctx, page } = await openW(browser, 'WW23', { v: SMOKE_V(), debug: true, opts: { reducedMotion: 'reduce' } });
+        await goStage(page, 3);
+        await page.evaluate(() => { document.querySelector('#scene').scrollTop = 0; }); await wait(page, 150);
+        const c0 = (await gs(page)).scrollCue;
+        const cr = await page.evaluate(() => { const b = document.querySelector('#scrollCue'), r = b.getBoundingClientRect(), g = document.querySelector('#goal').getBoundingClientRect(), h = document.querySelector('#hud').getBoundingClientRect(); return { hidden: b.hidden, text: b.textContent, label: b.getAttribute('aria-label'), dir: b.dataset.dir, w: r.width, h: r.height, in: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight, apart: r.top >= g.bottom && r.top >= h.bottom }; });
+        check(`こうじょう の上の端で #scrollCue「${cr.text}」（getState ${c0 && c0.text}・data-dir ${cr.dir}）が見えて 44px 以上・画面内・上の帯と重ならない`, c0 && !cr.hidden && cr.text === c0.text && cr.label === c0.text && /^↓ したに /.test(cr.text) && cr.dir === 'down' && cr.w >= 44 && cr.h >= 44 && cr.in && cr.apart, { c0, cr });
+        const t0 = await page.evaluate(() => document.querySelector('#scene').scrollTop);
+        await page.click('#scrollCue'); await wait(page, 200);
+        const after = await page.evaluate((d) => { const sc = document.querySelector('#scene'), s = sc.getBoundingClientRect(), z = document.querySelector(`.zone[data-dept="${d}"]`).getBoundingClientRect(); return { top: sc.scrollTop, vis: Math.min(z.bottom, s.bottom) - Math.max(z.top, s.top), h: z.height }; }, c0.dept);
+        const c1 = (await gs(page)).scrollCue;
+        check(`押すと（動きを減らす設定で一瞬）スクロールして（${t0} → ${Math.round(after.top)}）${c0.dept} が見え、案内は次へ（${c1 ? c1.text : 'なし'}）`, after.top > t0 && after.vis >= Math.min(after.h, 100) / 2 && (!c1 || c1.text !== c0.text), { after, c1 });
+        await page.click('.zone[data-dept="cut"]').catch(() => {});
+        await page.evaluate(() => { if (!window.SeizaiGame.getState().sheet) window.SeizaiGame.tapZone('carry'); }); await wait(page, 150);
+        const cs = await page.evaluate(() => ({ sheet: window.SeizaiGame.getState().sheet, cue: window.SeizaiGame.getState().scrollCue, hidden: document.querySelector('#scrollCue').hidden }));
+        check(`シートが開いている間は出ない（${JSON.stringify(cs)}）`, !!cs.sheet && cs.cue === null && cs.hidden, cs);
+        await page.click('#sheetClose'); await wait(page, 100);
+        await page.evaluate(() => { const sc = document.querySelector('#scene'); sc.scrollTop = sc.scrollHeight; }); await wait(page, 150);
+        const cu = (await gs(page)).scrollCue;
+        check(`いちばん下までスクロールすると「${cu && cu.text}」`, cu && cu.text === '↑ うえに もり' && cu.dir === 'up', cu);
+        await page.click('#scrollCue'); await wait(page, 150);
+        check('押すと上の端へ', (await page.evaluate(() => document.querySelector('#scene').scrollTop)) === 0, null);
+        await ctx.close();
+      }
+      // --- 節目のあとの「あたらしい」---
+      {
+        const st = mkState(L, 2, { goal: { done: L.STAGES[1].goal }, money: L.STAGES[1].cost + 10 });
+        const { ctx, page } = await openW(browser, 'WW23', { v: SMOKE_V(), items: { 'seizai.save': saveOf(L, st, T0) }, opts: { clockTime: new Date(T0 + 1000), reducedMotion: 'reduce' } });
+        await page.click('#expandBtn'); await waitOverlay(page, 'stage', 2500);
+        check('節目カードの間は案内を出さない', (await gs(page)).scrollCue === null && (await page.evaluate(() => document.querySelector('#scrollCue').hidden)), null);
+        await pressCard(page, '#stageOk');
+        await page.evaluate(() => { document.querySelector('#scene').scrollTop = 0; }); await wait(page, 150);
+        const cn = (await gs(page)).scrollCue, isNew = await page.evaluate(() => document.querySelector('#scrollCue').dataset.new);
+        check(`こうじょう に広げたあと「${cn && cn.text}」（data-new ${isNew}）`, cn && cn.text === '↓ あたらしい かんそう' && isNew === '1', { cn, isNew });
+        await page.click('#scrollCue'); await wait(page, 200);
+        const cm = (await gs(page)).scrollCue;
+        check(`押して かんそう が見えたら「あたらしい かんそう」は消える（いまは ${cm ? cm.text : 'なし'}）`, !cm || cm.text !== '↓ あたらしい かんそう', cm);
+        await ctx.close();
+      }
+      // --- 全部入るときは出ない（背の高い画面・こや） ---
+      {
+        const { ctx, page } = await openW(browser, 'WW23', { v: custom(400, 1400, null, '400×1400') });
+        await wait(page, 200);
+        const r = await page.evaluate(() => ({ cue: window.SeizaiGame.getState().scrollCue, hidden: document.querySelector('#scrollCue').hidden, fit: document.querySelector('#scene').scrollHeight <= document.querySelector('#scene').clientHeight + 1 }));
+        check(`絵が全部入る画面（400×1400・こや）では案内を出さない（${JSON.stringify(r)}）`, r.fit && r.cue === null && r.hidden, r);
         await ctx.close();
       }
       check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));

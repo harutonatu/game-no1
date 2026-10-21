@@ -131,7 +131,7 @@
   /* いちばん長い桁のときは跳ねない（となりのボタンに重ならない） */
   #money[data-long="1"].bump { animation: none; }
   @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.12); } 100% { transform: scale(1); } }
-  #shipCount { flex: 0 0 auto; font: 700 12px/1.3 var(--font-text); color: var(--ink); white-space: nowrap; display: inline-block; }
+  #shipCount { flex: 0 0 auto; font: 700 12px/12px var(--font-text); color: var(--ink); white-space: nowrap; display: inline-block; }
   #shipCount.bump { animation: bump 0.4s ease-out; }
 
   /* ===== #goal ===== */
@@ -145,9 +145,9 @@
     box-shadow: 0 0 0 1px var(--line);
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
   }
-  #goalText { margin: 0; font: 700 13px/1.32 var(--font-text); word-break: keep-all; overflow-wrap: anywhere; }
+  #goalText { margin: 0; font: 700 13px/1.25 var(--font-text); word-break: keep-all; overflow-wrap: anywhere; }
   .goal-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
   #goalBar {
     flex: 1 1 auto;
@@ -284,6 +284,8 @@
   /* 買うボタンは横に 3 つまで（人／台・どうぐ・マネージャー）。見えているボタンの数で列を分ける */
   .buys { display: flex; flex-wrap: wrap; gap: 6px; }
   .buys > .buy { flex: 1 1 0; min-width: 0; }
+  /* どうぐ は文が長い（つぎ の道具）ので広く */
+  .buys > .buy[data-buy="level"] { flex-grow: 1.7; }
   .buys > .wide:not(.buy) { flex: 1 1 100%; }
   .buy {
     box-sizing: border-box;
@@ -294,12 +296,12 @@
     border: 1px solid #5c7a66;
     background: var(--panel2);
     color: #fff;
-    font: 700 14px/1.3 var(--font-text);
+    font: 700 14px/1.22 var(--font-text);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 1px;
+    gap: 0;
     text-align: center;
     word-break: keep-all;
     overflow-wrap: anywhere;
@@ -398,6 +400,8 @@
     #money[data-long="1"] { font-size: 15px; }
     #expandBtn { font-size: 14px; padding: 4px 8px; }
     .buy { font-size: 13px; padding: 4px 4px; }
+    .buys > .buy[data-buy="mgr"] { flex-grow: 1.15; }
+    .buys > .buy[data-buy="mgr"] .what { font-size: 12px; }
     .buys { gap: 4px; }
   }
   @media (orientation: portrait) and (max-height: 620px) {
@@ -431,7 +435,10 @@
     #sheetInfo .why { display: none; }
     .buys { gap: 4px; }
     .buys > .buy { flex: 1 1 calc(50% - 4px); }
-    .buys > .buy.wide { flex-basis: 100%; }
+    /* 横向きの右の列：人／台 と マネージャー を 1 行目、どうぐ（文が長い）を 2 行目に広く */
+    .buys > .buy[data-buy="level"] { order: 2; flex-basis: 100%; }
+    .buys > .buy.wide { order: 1; }
+    .buys > .mgr-switch, .buys > #mgrHelp { order: 3; }
     .buy { min-height: 46px; font-size: 13px; padding: 2px 4px; }
     .buy .cost { font-size: 13px; }
     .mgr-switch button { min-height: 44px; font-size: 13px; }
