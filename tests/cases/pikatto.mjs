@@ -696,7 +696,7 @@ export const tests = [
         // 対戦の途中で点（1P が 1点）が消えるので、確かめるカードが出る（PK-33）。「メニューへ」で戻る
         const cf = await overlayInfo(page);
         check('結果画面の「メニューへ」：点が消えるので確かめるカード（[data-cmd="menu-go"]・[data-cmd="menu-cancel"]）が出る（PK-33）', cf.cmds.includes('menu-go') && cf.cmds.includes('menu-cancel') && page.url() !== BASE, cf);
-        if (cf.cmds.includes('menu-go')) await page.click('.overlay [data-cmd="menu-go"]');
+        if (cf.cmds.includes('menu-go')) await cmd(page, 'menu-go');   // 出た直後の 400ms は押せない（2度押しで点が消えないように）
         await page.waitForURL(BASE, { timeout: 5000 }).catch(() => {});
         check('結果画面から [data-cmd="menu"] でメニューに戻る', page.url() === BASE, page.url());
       } else {
@@ -1002,7 +1002,7 @@ export const tests = [
 
   // ================= PK19 よーいの見た目・設定と遊び方の言葉 =================
   {
-    id: 'PK19', tier: 'full', title: 'ピカッと よーい・言葉：よーい中は中央に「よーい」（合図とは違う見た目）、押すとヒントで「まだ」と返しフライングにしない、設定の説明はモードで変わる、遊び方に「ms（1000分の1秒）」「4本・5本指」を使わない（PK-31・PK-32・PK-34）',
+    id: 'PK19', tier: 'full', title: 'ピカッと よーい・言葉：よーい中は中央に「よーい」（合図とは違う見た目）、押すとヒントで「いまは おさなくて いいよ」と返しフライングにしない、設定の説明はモードで変わる、遊び方に「ms（1000分の1秒）」「4本・5本指」を使わない（PK-31・PK-32・PK-34）',
     async run({ browser, check }) {
       const { ctx, page } = await openPK(browser, 'PK19');
       const setupText = () => page.evaluate(() => ({ lead: (document.querySelector('.setup .lead')?.textContent || '').trim(), rule: (document.querySelector('.setup .rule')?.textContent || '').trim() }));
@@ -1030,8 +1030,8 @@ export const tests = [
       const pr = await pressFor(page, 0);
       await page.locator('.corner[data-player="2"]').tap(); await wait(page, 100);
       const s1 = await getState(page), ov1 = await overlayInfo(page), m1 = await msg();
-      check(`よーい中に押す：フライングにせず（pressFor=false・点 0,0・カードなし・よーいのまま）、ヒントが「まだ」と返す（「${m1}」）`,
-        pr === false && eq(s1.scores, [0, 0]) && !s1.lastOutcome && !ov1.shown && s1.ready === true && /まだ/.test(m1), { pr, s1, ov1, m1 });
+      check(`よーい中に押す：フライングにせず（pressFor=false・点 0,0・カードなし・よーいのまま）、ヒントが「いまは おさなくて いいよ。まってね」と返す（「${m1}」。遊び方の「まだ」と紛らわしい言葉は使わない）`,
+        pr === false && eq(s1.scores, [0, 0]) && !s1.lastOutcome && !ov1.shown && s1.ready === true && m1 === 'いまは おさなくて いいよ。まってね', { pr, s1, ov1, m1 });
       await wait(page, READY_MS);
       const w0 = await sig(), m2 = await msg();
       check(`よーいの後（waiting）：中央の「よーい」は消え、ヒントは「${m2}」`, (await fieldPhase(page)) === 'waiting' && w0.phase === null && w0.text === '' && /ひかったら/.test(m2), { w0, m2 });
@@ -1044,20 +1044,30 @@ export const tests = [
 
   // ================= PK20 メニューへの確認 =================
   {
-    id: 'PK20', tier: 'full', title: 'ピカッと メニューへ：対戦の途中で点が消えるときだけ確かめる（やめる／メニューへ）、やめるで元のカードに戻る、プレイ中の「？」のカードにも「メニューへ」、点が無い・れんしゅう・最終結果では確かめずに戻る（PK-33）',
+    id: 'PK20', tier: 'full', title: 'ピカッと メニューへ：対戦の途中で点が消えるときだけ確かめる（つづける／メニューへ もどる）、出た直後の「メニューへ もどる」は押せない（「メニューへ」の2度押しで点が消えない）、つづけるで元のカードに戻る、プレイ中の「？」のカードにも「メニューへ」、点が無い・れんしゅう・最終結果では確かめずに戻る（PK-33）',
     async run({ browser, check }) {
       const { ctx, page } = await openPK(browser, 'PK20');
       await startVs(page, 4);
       await playRounds(page, [0]);
       await cmd(page, 'menu');
       const c1 = await overlayInfo(page);
-      check('4人・1P が 1点の結果カードで「メニューへ」：確かめるカード（「きえ」・[menu-cancel]・[menu-go]）が出て、まだメニューへ行かない',
-        c1.shown && c1.cmds.includes('menu-cancel') && c1.cmds.includes('menu-go') && /きえ/.test(c1.text) && page.url() === PK_URL, { c1, url: page.url() });
+      const bl = await page.evaluate(() => Object.fromEntries(['menu-cancel', 'menu-go'].map((c) => [c, (document.querySelector(`.overlay [data-cmd="${c}"]`)?.textContent || '').trim()])));
+      check(`4人・1P が 1点の結果カードで「メニューへ」：確かめるカード（「${c1.text.replace(/\s+/g, ' ')}」）が出て、まだメニューへ行かない。ボタンは「${bl['menu-cancel']}」「${bl['menu-go']}」`,
+        c1.shown && c1.cmds.includes('menu-cancel') && c1.cmds.includes('menu-go') && /メニューへ もどると、いまの 点は きえます。/.test(c1.text) && bl['menu-cancel'] === 'つづける' && bl['menu-go'] === 'メニューへ もどる' && page.url() === PK_URL, { c1, bl, url: page.url() });
       const f1 = await page.evaluate(() => document.activeElement?.dataset?.cmd || document.activeElement?.tagName);
-      check(`確かめるカードでは安全な「やめる」（menu-cancel）にフォーカス（${f1}）`, f1 === 'menu-cancel', f1);
+      check(`確かめるカードでは安全な「つづける」（menu-cancel）にフォーカス（${f1}）`, f1 === 'menu-cancel', f1);
+      // R2：「メニューへ」を素早く2回押す（2回目が、出たばかりの「メニューへ もどる」の場所に届く）→ 戻らず点も消えない
+      const gb = await page.locator('.overlay [data-cmd="menu-go"]').boundingBox();
+      await page.mouse.click(gb.x + gb.width / 2, gb.y + gb.height / 2); await wait(page, 100);
+      const d1 = await overlayInfo(page), ds1 = await getState(page);
+      check(`R2：確かめるカードが出た直後（400ms 以内）の「メニューへ もどる」は効かない（URL ${page.url() === PK_URL ? 'そのまま' : page.url()}・点 ${ds1.scores}・確かめるカードのまま）`,
+        page.url() === PK_URL && eq(ds1.scores, [1, 0, 0, 0]) && d1.cmds.includes('menu-go'), { d1, url: page.url(), s: ds1.scores });
+      await wait(page, 400);
+      const en = await page.evaluate(() => !document.querySelector('.overlay [data-cmd="menu-go"]').disabled);
+      check(`R2：400ms たつと「メニューへ もどる」が押せるようになる（${en}）`, en === true, en);
       await page.click('.overlay [data-cmd="menu-cancel"]'); await wait(page, 100);
       const c2 = await overlayInfo(page), s2 = await getState(page);
-      check('「やめる」で結果カードに戻る（[data-cmd="next"] が押せる、点は [1,0,0,0] のまま）', c2.shown && c2.cmds.includes('next') && eq(s2.scores, [1, 0, 0, 0]) && !(await page.isDisabled('.overlay [data-cmd="next"]')), { c2, s2: s2.scores });
+      check('「つづける」で結果カードに戻る（[data-cmd="next"] が押せる、点は [1,0,0,0] のまま）', c2.shown && c2.cmds.includes('next') && eq(s2.scores, [1, 0, 0, 0]) && !(await page.isDisabled('.overlay [data-cmd="next"]')), { c2, s2: s2.scores });
       await page.click('.overlay [data-cmd="next"]'); await wait(page, 100);
       // プレイ中の「？」のカードに「メニューへ」
       await page.locator('#help-btn').tap(); await wait(page, 150);
@@ -1068,7 +1078,7 @@ export const tests = [
       check('「？」のカードの「メニューへ」も、点が消えるので確かめる', h2.cmds.includes('menu-go') && page.url() === PK_URL, h2);
       await page.click('.overlay [data-cmd="menu-cancel"]'); await wait(page, 100);
       const h3 = await overlayInfo(page);
-      check('「やめる」で遊び方のカード（つづける）に戻る', h3.cmds.includes('resume') && h3.cmds.includes('menu') && /遊び方/.test(h3.text), h3);
+      check('「つづける」で遊び方のカード（つづける）に戻る', h3.cmds.includes('resume') && h3.cmds.includes('menu') && /遊び方/.test(h3.text), h3);
       await page.click('.overlay [data-cmd="resume"]'); await wait(page, 100);
       check('「つづける」で同じ回のよーいから（round=2、点はそのまま）', (await getState(page)).ready === true && (await getState(page)).round === 2 && eq((await getState(page)).scores, [1, 0, 0, 0]));
       // 一時停止のカード → 確かめる → メニューへ
@@ -1077,9 +1087,10 @@ export const tests = [
       await page.click('.overlay [data-cmd="menu"]'); await wait(page, 100);
       const p1 = await overlayInfo(page);
       check('一時停止のカードの「メニューへ」も確かめる', p1.cmds.includes('menu-go'), p1);
+      await wait(page, 450);   // 出た直後の 400ms の鍵の後
       await page.click('.overlay [data-cmd="menu-go"]');
       await page.waitForURL(BASE, { timeout: 5000 }).catch(() => {});
-      check('確かめるカードの「メニューへ」でメニューに戻る', page.url() === BASE, page.url());
+      check('鍵の後なら、確かめるカードの「メニューへ もどる」でメニューに戻る', page.url() === BASE, page.url());
       // 点が無いときは確かめない
       await page.goto(PK_URL); await wait(page, 300);
       await startVs(page, 2);
@@ -1134,14 +1145,15 @@ export const tests = [
       check(`Enter を押したまま 600ms たっても（repeat の keydown が「つぎへ」に届いても）「つぎへ」は押されない（round=${ks1.round}、フォーカス ${focusNext}）`, k1.shown && k1.cmds.includes('next') && ks1.round === 1 && focusNext === 'next', { k1, round: ks1.round });
       await page.keyboard.press('Enter'); await wait(page, 150);
       check('押し直した Enter では「つぎへ」が押される（round=2）', (await getState(page)).round === 2 && !(await overlayInfo(page)).shown);
-      // Space の押しっぱなし（Space は離したときに押されるので、離すのが「つぎへ」の上でも押さない）
+      // Space の押しっぱなし（repeat の keydown でもボタンが押された状態になり、離したときに押される。Enter と同じく repeat を止める）
       await arm(page);
       await page.evaluate(() => document.querySelector('.corner[data-player="1"]').focus());
       await page.keyboard.down(' '); await wait(page, 100);
       await wait(page, CARD_LOCK_MS + 50);
+      for (let i = 0; i < 4; i++) { await page.keyboard.down(' '); await wait(page, 40); }   // 2回目からは repeat=true（フォーカスは「つぎへ」）
       await page.keyboard.up(' '); await wait(page, 100);
       const k2 = await overlayInfo(page), ks2 = await getState(page);
-      check(`隅で押した Space を「つぎへ」にフォーカスが移ってから離しても押されない（round=${ks2.round}、点 ${ks2.scores}）`, k2.shown && k2.cmds.includes('next') && ks2.round === 2 && ks2.scores[0] === 2, { k2, round: ks2.round });
+      check(`隅で押した Space を押したまま、「つぎへ」にフォーカスが移って repeat の keydown が届いてから離しても押されない（round=${ks2.round}、点 ${ks2.scores}）`, k2.shown && k2.cmds.includes('next') && ks2.round === 2 && ks2.scores[0] === 2, { k2, round: ks2.round });
       await page.keyboard.press(' '); await wait(page, 150);
       check('押し直した Space では「つぎへ」が押される（round=3）', (await getState(page)).round === 3);
       // 最終カードを待つ 400ms の間に「？」

@@ -639,6 +639,8 @@
   function cancelHold() {
     if (phase !== "growing") return;
     toReady();
+    // 最大のまま取り消したとき「いちばん ながい！ はなしてね」を ready に残さない
+    if (maxed) { maxed = false; setHint(hintReady()); }
   }
   function onHoldEnd(info) {
     if (phase !== "growing") return;
@@ -864,14 +866,15 @@
   const hasFinePointer = () => { try { return !!(window.matchMedia && window.matchMedia("(any-pointer: fine)").matches); } catch (e) { return false; } };
   const SET_LABELS = { slow: "ゆっくりモード", guide: "ガイドの てんせん", tap: "タップしき" };
   const setValue = (name) => (name === "slow" ? slow : name === "guide" ? guide : name === "tap" ? tap : false);
-  const setLabel = (name) => `${SET_LABELS[name] || name}：${setValue(name) ? "オン" : "オフ"}`;
   function renderSetButtons() {
     el.card.querySelectorAll("[data-set]").forEach((b) => {
       const name = b.dataset.set;
       b.setAttribute("aria-pressed", String(setValue(name)));
-      // 名前と説明（<small>）を分けて持つ。名前の span だけ書き換える（HS-05）
-      const l = b.querySelector("[data-l]");
-      if (l) l.textContent = setLabel(name); else b.textContent = setLabel(name);
+      // 名前と説明（<small>）を分けて持つ（HS-05）。読み上げの名前は「ゆっくりモード」などだけにし、
+      // 見た目の「：オン／オフ」は aria-hidden の span に分ける（状態は aria-pressed で読まれる。二重に読ませない）
+      const l = b.querySelector("[data-l]"), v = b.querySelector("[data-v]");
+      if (l) l.textContent = SET_LABELS[name] || name;
+      if (v) v.textContent = `：${setValue(name) ? "オン" : "オフ"}`;
     });
   }
   // short：はじめての1回だけ自動で出す3行（SE 縦横でスクロールせずに「わかった」まで見える）。詳しい説明と設定は「？」から
@@ -900,15 +903,15 @@
       <h2 id="cardTitle">あそびかた</h2>
       <p>がめんを ながく おすと、くきが のびるよ。はなすと たおれる。</p>
       <p>くきの さきが つぎの はっぱに のれば わたれる。まんなかの ◆ に のると「ぴったり」で ボーナス！</p>
-      <p>うんと のばして 2つ さきの はっぱに とどいたら「とばし」。2つぶん＋おまけの てん！（むりに ねらわなくて だいじょうぶ）</p>
+      <p>うんと のばして 2つ さきの はっぱに とどいたら「とばし」。2つぶん ＋ おまけの てん！（むりに ねらわなくて だいじょうぶ）</p>
       <p>「どこまでも」：みずに おちると いのち ♥ が 1つ へるよ。0に なったら おしまい。おちても、おなじ ところから もう一度。</p>
       <p>「ステージ」：ゴールの はたの はっぱまで わたれば クリア。5まい わたるごとに きいろい はたが あるよ。おちたら さいごの はたから（「さいしょから」も えらべる）。はたは とじると きえて、つぎは ステージの さいしょから。たかい はっぱには ながい くきが いるよ。</p>
       ${hasFinePointer() ? "<p>キーボードの スペース・エンターでも あそべます。M で おと。</p>" : ""}
       <p>おしつづけるのが むずかしいときは「タップしき」：1かい タップで のびはじめ、もう1かいで たおれる。</p>
       <div class="sets">
-        <button class="cta set" type="button" data-set="slow" aria-pressed="false"><span class="set-t"><span data-l></span><small>くきが のびる はやさが はんぶん</small></span></button>
-        <button class="cta set" type="button" data-set="guide" aria-pressed="false"><span class="set-t"><span data-l></span><small>たおれる さきを てんせんで みせる</small></span></button>
-        <button class="cta set" type="button" data-set="tap" aria-pressed="false"><span class="set-t"><span data-l></span><small>おしつづけなくて いい（2かい タップ）</small></span></button>
+        <button class="cta set" type="button" data-set="slow" aria-pressed="false"><span class="set-t"><span class="set-n"><span data-l></span><span data-v aria-hidden="true"></span></span><small>くきが のびる はやさが はんぶん</small></span></button>
+        <button class="cta set" type="button" data-set="guide" aria-pressed="false"><span class="set-t"><span class="set-n"><span data-l></span><span data-v aria-hidden="true"></span></span><small>たおれる さきを てんせんで みせる</small></span></button>
+        <button class="cta set" type="button" data-set="tap" aria-pressed="false"><span class="set-t"><span class="set-n"><span data-l></span><span data-v aria-hidden="true"></span></span><small>おしつづけなくて いい（2かい タップ）</small></span></button>
       </div>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");
     el.card.dataset.help = "full";

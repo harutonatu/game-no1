@@ -88,6 +88,8 @@ const M = [
   ['MP10 ピカッとのとても低い横画面ですき間を詰めない（SE Safari 横で 4 人の隅が重なる、X-17）', 'ボタン重なり', 'games/pikatto/index.html', '@media (orientation: landscape) and (max-height: 300px) {', '@media (orientation: landscape) and (max-height: 260px) {'],
   ['MP11 ピカッと：対戦の途中で点があっても「メニューへ」を確かめない（PK-33）', 'データ消失', 'games/pikatto/index.html', '&& (gameState.scores || []).some((n) => n > 0);', '&& false;'],
   ['MP12 ピカッと：最終結果（試合が終わった後）でも「メニューへ」を確かめてしまう（PK-33）', 'ルール', 'games/pikatto/index.html', 'gameState.mode !== "solo" && gameState.phase !== "done"', 'gameState.mode !== "solo"'],
+  ['MP13 ピカッと：メニューへの確認カードに鍵をかけない（「メニューへ」の2度押しで点が消える。R2）', 'データ消失', 'games/pikatto/index.html', '{ soft: true, kind: "confirm", guard: CONFIRM_LOCK_MS }', '{ soft: true, kind: "confirm" }'],
+  ['MP14 ピカッと：Space の押しっぱなし（repeat）を止めない（隅で押したままの Space で「つぎへ」が押される。R3）', '操作', 'games/pikatto/index.html', 'e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar"', 'e.key !== "Enter" && e.key !== "Spacebar"'],
   // ---- ハシわたり（games/hashi/）。判定・点数・いのち・保存・中断・タイマーの仕組みを変えたときだけ流す ----
   ['MH1 ハシわたり：判定の端を開区間にする（茎の先が葉の端ちょうどで落ちる）', 'ルール', 'games/hashi/logic.js', 'const onTarget = tipT !== null && tipT >= left && tipT <= right;', 'const onTarget = tipT !== null && tipT > left && tipT < right;'],
   ['MH2 ハシわたり：recordBest で同点もベスト更新にする', '保存データ', 'games/hashi/logic.js', 'const improved = s > prev;', 'const improved = s >= prev;'],
@@ -116,6 +118,7 @@ const M = [
   ['MH25 ハシわたり：最後のいのちで落ちたら、ぽちゃんを待たずに結果カード（HS-03）', '進行', 'games/hashi/main.js', 'setPhase("sinking", D(SPLASH_SEC));', 'setPhase("over", 0); showResult(true);'],
   ['MH26 ハシわたり：茎が最大になっても知らせない（grow が鳴り続ける。HS-02）', '操作', 'games/hashi/main.js', 'if (bridgeLen >= L.MAX_LEN) {', 'if (false) {'],
   ['MH27 ハシわたり：カードの間、うしろのプレイ画面を inert にしない（HS-07）', '操作', 'games/hashi/main.js', 'el.playView.setAttribute("inert", "");', ''],
+  ['MH28 ハシわたり：茎が最大のまま押下が取り消されても案内を戻さない（隠すと「いちばん ながい！ はなしてね」が残る。R1）', '表示', 'games/hashi/main.js', '    if (maxed) { maxed = false; setHint(hintReady()); }\n', ''],
   // ---- 版の表示（メニュー）。版を上げる手順が崩れたときの検出 ----
   // MV1・MV3 は正規表現で今の版・日付を読み、1つずらす（版を上げるたびに直さなくてよい）
   ['MV1 版の数字だけ上げ忘れる（version.js が1つ前の版のまま。sw.js は今の版）', '更新', 'common/version.js', /version: "v(\d+)"/, (_, n) => `version: "v${Number(n) - 1}"`],

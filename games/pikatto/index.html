@@ -569,6 +569,7 @@
   const MAX_ROUNDS = 5;
   const READY_MS = 1000;        // よーい（PK-05）
   const CARD_LOCK_MS = 600;     // 結果カードのボタンを押せない時間（PK-11）
+  const CONFIRM_LOCK_MS = 400;  // 「メニューへ もどる？」の「メニューへ もどる」を押せない時間（「メニューへ」の2度押しで点が消えないように）
   const PLAYER_ICONS = ["●", "■", "▲", "◆"];
 
   const $ = (id) => document.getElementById(id);
@@ -619,7 +620,7 @@
   let returnCard = null;         // 遊び方を閉じたときに戻すカード
   let bestUpdated = false;       // このラウンドでベストを更新した（PK-15）
   let focusBeforeCard = null;    // カードを開く前にフォーカスがあった要素（閉じたら戻す）
-  let confirmBack = null;        // 「メニューへ もどる？」で「やめる」を押したときに戻すカード（PK-33）
+  let confirmBack = null;        // 「メニューへ もどる？」で「つづける」を押したときに戻すカード（PK-33）
   let bestSolo = loadBestSolo();
   let bestAvgSolo = loadBestAvgSolo();
   let prevBestSolo = 0;          // このラウンドの前のベスト（ベストまでの差の表示用）
@@ -870,8 +871,8 @@
     const L = window.PikattoLogic;
     if (!L || !gameState || screen !== "play") return false;
     // よーい・一時停止中は無視（フライングにしない）。判断は押下が届いた時点で行う
-    // よーい中に押したら、ヒントで「まだ」と返す（反応がなくて「壊れた？」と思わないように、PK-31）
-    if (ready && !paused) { setHint("まだ ひかってないよ。まってね"); return false; }
+    // よーい中に押したら、ヒントで「いまは おさなくて いい」と返す（反応がなくて「壊れた？」と思わないように、PK-31）
+    if (ready && !paused) { setHint("いまは おさなくて いいよ。まってね"); return false; }
     if (ready || paused) return false;
     if (gameState.phase !== "waiting" && gameState.phase !== "armed") return false;
     const { state: next, outcome } = L.applyPress(gameState, { playerIdx, pressedAt });
@@ -1067,8 +1068,8 @@
         <dt>ひかる</dt><dd>「よーい」の あと、すこし まつと がめんが ピカッと ひかります。</dd>
         <dt>勝ち</dt><dd>ひかったら じぶんの色を タップ。いちばん はやい人に 1点。さきに 3点とったら 勝ち。5回で おわり、おなじ点なら ひきわけ。</dd>
         <dt>まだ</dt><dd>ひかるまえに おすと、ほかの みんなに 1点。</dd>
-        <dt>れんしゅう</dt><dd>ひかってから おすまでの はやさを はかります。かずが 小さいほど はやい！（230 ms は 0.23びょう）</dd>
-        <dt>iPad</dt><dd>手のひらや たくさんの ゆびで さわると、ホームに もどる ことが あります。おとなの人が iPad の「せってい」で ジェスチャを オフに すると あんしんです。</dd>
+        <dt>れんしゅう</dt><dd>ひかってから おすまでの はやさを はかります。かずが ちいさいほど はやい！（230 ms は 0.23びょう）</dd>
+        <dt>iPad</dt><dd>手のひらや たくさんの ゆびで さわると、ホームに もどる ことが あります。</dd><dd>おとなの人が iPad の「せってい」で ジェスチャを オフに すると あんしんです。</dd>
       </dl>
       <div class="btns"><div class="row">${btn}</div></div>
     `, { kind: "help" });
@@ -1085,17 +1086,18 @@
     confirmBack = currentCard;
     showCard(`
       <h2>メニューへ もどる？</h2>
-      <p class="res">いまの 点は きえます。</p>
+      <p class="res">メニューへ もどると、いまの 点は きえます。</p>
       <div class="btns">
-        <div class="row"><button class="cta primary" type="button" data-cmd="menu-cancel">やめる</button></div>
-        <div class="row"><button class="cta" type="button" data-cmd="menu-go">メニューへ</button></div>
+        <div class="row"><button class="cta primary" type="button" data-cmd="menu-cancel">つづける</button></div>
+        <div class="row"><button class="cta" type="button" data-cmd="menu-go">メニューへ もどる</button></div>
       </div>
-    `, { soft: true, kind: "confirm" });
+    `, { soft: true, kind: "confirm", guard: CONFIRM_LOCK_MS });
   }
 
-  // opts: soft（背景を薄く）、lock（600ms ボタンを押せない）、final（data-final）、best（data-best）
+  // opts: soft（背景を薄く）、lock（600ms ボタンを押せない）、final（data-final）、best（data-best）、
+  // guard（ms。主ボタン以外をその間だけ押せない。フォーカスは主ボタンに置く）
   function showCard(html, opts = {}) {
-    const { soft = false, lock = false, final = false, best = false } = opts;
+    const { soft = false, lock = false, final = false, best = false, guard = 0 } = opts;
     clearTimeout(lockTimer); lockTimer = 0;
     currentCard = { html, opts };
     el.card.innerHTML = html;
@@ -1131,6 +1133,14 @@
         btns.forEach((b) => { b.disabled = false; });
         focusPrimary();
       }, CARD_LOCK_MS);
+    } else if (guard > 0) {
+      const others = btns.filter((b) => !b.classList.contains("primary"));
+      others.forEach((b) => { b.disabled = true; });
+      focusPrimary();
+      lockTimer = setTimeout(() => {
+        lockTimer = 0;
+        others.forEach((b) => { b.disabled = false; });
+      }, guard);
     } else {
       focusPrimary();
     }
@@ -1188,7 +1198,7 @@
   });
   // キーの押しっぱなし（repeat）でカードのボタンを押さない（PK-35）。
   // 隅で Enter を押したまま 600ms たつと「つぎへ」にフォーカスが移り、repeat の keydown で押されてしまうため。
-  // （Space は離したときに押され、そのボタンの上で押し始めていなければ押されないので、ここでは止めなくてよい）
+  // Space も止める。repeat の keydown でもボタンが押された状態（:active）になり、離したときに押されてしまうため
   document.addEventListener("keydown", (e) => {
     if (!e.repeat || (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar")) return;
     if (el.overlay.contains(e.target)) e.preventDefault();

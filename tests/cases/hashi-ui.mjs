@@ -1345,7 +1345,7 @@ export const tests = [
     },
   },
   {
-    id: 'HW21', tier: 'full', title: 'ハシわたり v31 の直し（HS-01〜05・07・08）：隠す・遊び方で「ぴったり！」の案内が残らない、茎が最大で音が止まり光って知らせる・短すぎる押下を案内、最後のいのちはぽちゃんが終わってからカード、data-holding は main.js だけ、結果の見出しに「まい」・0 回の見出し・設定の説明・iPhone ではキーボードの行なし、カードの間は背景が inert・閉じたら池へフォーカス・♪の名前は1つ、影とぴったり印が 3:1 以上',
+    id: 'HW21', tier: 'full', title: 'ハシわたり v31 の直し（HS-01〜05・07・08）：隠す・遊び方で「ぴったり！」の案内が残らない、茎が最大で音が止まり光って知らせる・短すぎる押下を案内・最大のまま隠しても案内が戻る（R1）、最後のいのちはぽちゃんが終わってからカード、data-holding は main.js だけ、結果の見出しに「まい」・0 回の見出し・設定の説明（読み上げの名前にオン／オフなし・状態は aria-pressed、R4）・iPhone ではキーボードの行なし、カードの間は背景が inert・閉じたら池へフォーカス・♪の名前は1つ、影とぴったり印が 3:1 以上',
     async run({ browser, check, root }) {
       const READY = 'ながく おして、はなしてね';
       const { ctx, page } = await newPage(browser, STD_V(), 'HW21', { clock: true, initScript: SFX_SPY });
@@ -1398,6 +1398,17 @@ export const tests = [
       const sh2 = await hintText(page), s2 = await gs(page);
       check(`HS-02：短すぎる押下は落ちず（${s1.phase}・lives ${s0.lives}→${s1.lives}）案内「${sh1}」、1.5 秒で「${sh2}」に戻る（timers ${s2.timers}）`,
         okShort === true && s1.phase === 'ready' && s1.lives === s0.lives && /もうすこし ながく/.test(sh1 || '') && sh2 === READY && s2.timers === 0, { s1, sh1, sh2, s2 });
+      // R1：茎が最大のまま押下が取り消される（隠す）と、「いちばん ながい！」を ready に残さず案内を戻す
+      await blurAll(page);
+      await page.keyboard.down('Space'); await wait(page, K.ms + 200);
+      const x0 = await gs(page), xh0 = await hintText(page);
+      await setHidden(page, true); await wait(page, 50);
+      const xh1 = await hintText(page), x1 = await gs(page);
+      await setHidden(page, false); await wait(page, 100);
+      await page.keyboard.up('Space'); await wait(page, 100);
+      const xh2 = await hintText(page), x2 = await gs(page);
+      check(`R1：最大（maxed ${x0.maxed}・「${xh0}」）のまま隠すと ${x1.phase}・案内「${xh1}」、戻っても「${xh2}」（${x2.phase}・lives ${s2.lives}→${x2.lives}）`,
+        x0.phase === 'growing' && x0.maxed === true && /いちばん ながい/.test(xh0 || '') && x1.phase === 'ready' && xh1 === READY && x2.phase === 'ready' && xh2 === READY && x2.lives === s2.lives, { x0, xh0, x1, xh1, x2, xh2 });
 
       // HS-03：最後のいのちで落ちると、ぽちゃんが終わるまで（sinking）カードを出さない
       await gotoH(page);
@@ -1436,9 +1447,22 @@ export const tests = [
       // HS-05：設定ボタンに説明、iPhone（指だけ）ではキーボードの行を出さない
       await wait(page, 450); await clickCmd(page, 'again'); await wait(page, 350);
       await page.click('#helpBtn'); await wait(page, 100);
-      const hp = await page.evaluate(() => ({ sets: [...document.querySelectorAll('#card [data-set]')].map((b) => [b.dataset.set, b.querySelector('[data-l]')?.textContent.trim() || '', b.querySelector('small')?.textContent.trim() || '']), kb: /キーボード/.test(document.querySelector('#card').textContent) }));
-      check(`HS-05：設定 ${hp.sets.length} 個に名前と説明（${hp.sets.map((x) => `${x[1]}｜${x[2]}`).join(' / ')}）、iPhone ではキーボードの行なし（${!hp.kb}）`,
-        hp.sets.length === 3 && hp.sets.every((x) => /：(オン|オフ)$/.test(x[1]) && x[2].length >= 4) && !hp.kb, hp);
+      const setsNow = () => page.evaluate(() => [...document.querySelectorAll('#card [data-set]')].map((b) => {
+        const v = b.querySelector('[data-v]');
+        return [b.dataset.set, b.querySelector('[data-l]')?.textContent.trim() || '', b.querySelector('small')?.textContent.trim() || '', v?.textContent.trim() || '', v?.getAttribute('aria-hidden') || '', b.getAttribute('aria-pressed')];
+      }));
+      const hp = { sets: await setsNow(), kb: await page.evaluate(() => /キーボード/.test(document.querySelector('#card').textContent)) };
+      check(`HS-05：設定 ${hp.sets.length} 個に名前と説明（${hp.sets.map((x) => `${x[1]}${x[3]}｜${x[2]}`).join(' / ')}）、見た目の「：オン／オフ」は aria-hidden の span、iPhone ではキーボードの行なし（${!hp.kb}）`,
+        hp.sets.length === 3 && hp.sets.every((x) => x[1].length >= 4 && !/オン|オフ/.test(x[1]) && x[2].length >= 4 && x[3] === (x[5] === 'true' ? '：オン' : '：オフ') && x[4] === 'true') && !hp.kb, hp);
+      // R4：読み上げの名前（accessible name）に「オン／オフ」を入れない。状態は aria-pressed だけで伝える（二重に読ませない）
+      const axSets = async () => { const out = []; for (const b of await page.locator('#card [data-set]').all()) out.push(await b.ariaSnapshot()); return out; };
+      const ax0 = await axSets();
+      await page.click('#card [data-set="slow"]'); await wait(page, 100);
+      const ax1 = await axSets(), hp1 = await setsNow();
+      await page.click('#card [data-set="slow"]'); await wait(page, 100);
+      const axOk = (ax, sets) => ax.length === 3 && ax.every((a, i) => /^- button "/.test(a) && !/オン|オフ|[○●]/.test(a) && a.includes(sets[i][1]) && (/\[pressed\]/.test(a) === (sets[i][5] === 'true')));
+      check(`R4：設定ボタンの読み上げの名前にオン／オフ・○●なし、状態は aria-pressed（${ax0.map((a) => a.replace(/\s+/g, ' ')).join(' / ')} → ゆっくりを押すと ${ax1[0]?.replace(/\s+/g, ' ')}）`,
+        axOk(ax0, hp.sets) && axOk(ax1, hp1) && hp1[0][5] === 'true' && hp.sets[0][5] === 'false' && hp1[0][3] === '：オン', { ax0, ax1, hp1 });
       await ctx.close();
       // マウス（パソコン）ではキーボードの行を出す
       const d = await openH(browser, 'HW21 マウス', { opts: { touch: false } });

@@ -267,7 +267,7 @@ HashiRender.COLORS・GHOST_ALPHA・GHOST_EDGE_ALPHA・PERFECT_RING（見えや�
 | `#hint` | 1行の案内（落ちたときの「おしい！ みじかすぎ」もここ）。2行分の高さに固定し、文言が変わっても配置が動かない |
 | `#overlay`・`#card` | 結果・遊び方と設定・一時停止のカード |
 | `.overlay [data-cmd="again"/"menu"/"close"/"resume"]` | もう一度・メニューへ・閉じる・つづける |
-| `.overlay [data-set="slow"/"guide"/"tap"]` | 設定の切り替えボタン（`aria-pressed`、44px 以上）。中は名前 `[data-l]`（「ゆっくりモード：オフ」など）と、何が変わるかの説明 `<small>` |
+| `.overlay [data-set="slow"/"guide"/"tap"]` | 設定の切り替えボタン（`aria-pressed`、44px 以上）。中は名前 `[data-l]`（「ゆっくりモード」など。読み上げの名前はこれと説明だけ）、見た目の状態 `[data-v][aria-hidden="true"]`（「：オン」「：オフ」。読ませない）、何が変わるかの説明 `<small>`。状態は `aria-pressed` で伝え、名前にオン／オフを入れない（二重に読ませない。v31 のレビュー後の直し R4）。前の ○● も `content: "○" / ""` で読み上げに入れない |
 
 **CSS の約束**（E）：
 - 既存のトークン、フォント、safe-area、ダブルタップ抑止の作りはゼンマイさんぽに準じる。`[hidden] { display: none !important; }`
@@ -288,7 +288,7 @@ HashiRender.COLORS・GHOST_ALPHA・GHOST_EDGE_ALPHA・PERFECT_RING（見えや�
 
 `holdMs < MIN_HOLD_MS` のとき、またはキャンセルのときは、茎を 0 に戻して `ready` に戻る（落ちない）。`ready` 以外で押しても伸びない。
 短すぎる押下（`MIN_HOLD_MS` 未満）は黙って捨てず、案内「もうすこし ながく おしてね」（タップ式は「すこし まってから もう一度 タップ」）を出して 1.5 秒で戻す。
-茎が `MAX_LEN` に届いたら、`grow` の音を止め、1回だけ共通の `tap` を鳴らし、案内「いちばん ながい！ はなしてね」（タップ式は「… もう一度 タップ」）と、茎の先の光（`bridge.maxed`）で知らせる。
+茎が `MAX_LEN` に届いたら、`grow` の音を止め、1回だけ共通の `tap` を鳴らし、案内「いちばん ながい！ はなしてね」（タップ式は「… もう一度 タップ」）と、茎の先の光（`bridge.maxed`）で知らせる。最大のまま押下が取り消されたとき（hidden・「？」・blur → `abortHold` → `cancelHold`）は、`maxed` を false に戻し、案内を `hintReady()`（「ながく おして、はなしてね」など）に戻す（ready に「いちばん ながい！」を残さない。R1）。
 
 ### アニメーション
 - `requestAnimationFrame` の1本だけで動かす。1フレームの経過時間は最大 50ms に丸める。
@@ -408,7 +408,7 @@ full（smoke に加えて）：
 - HW13（Wave 4 の後）：`APP_FILES` に `games/hashi/*` がすべて入り、オフラインで開ける。APP_FILES に無ければ**不合格**（skip で合格にしない）
 - HW14：タップ式（`hashi.tap`）。1回目のタップで伸び、2回目で倒れる（指・click だけ（VoiceOver）・キーボード）。演出中のタップが次を食べない。結果を `#sr`（aria-live）に1文で読み、`#hint` は読ませない
 - HW15〜HW20：ひとつ飛ばし・ステージ・クリアの演出・旗・レビュー後の直し・古いページから書き戻さない（§17）
-- HW21（v31）：§18 の直し（HS-01〜05・07・08）
+- HW21（v31）：§18 の直し（HS-01〜05・07・08）。レビュー後の直し R1（最大のまま隠しても案内が戻る）・R4（設定ボタンの読み上げの名前にオン／オフなし、状態は aria-pressed）も見る
 
 テストは「保存が無い」「要素が無い」ときに合格扱いにしない（空振りの合格を作らない。ピカッと早押しの PK3・PK8 の反省）。
 
@@ -420,6 +420,7 @@ full（smoke に加えて）：
 - MH5 hidden で押下を取り消さない → HW6
 - MH6 `again` で `clearLater()` を呼ばない → HW8
 - MH24〜MH27（v31、§18）：clearLater で案内を戻さない／最後のいのちで sinking を飛ばす／最大の長さを知らせない／カードの間 inert にしない → HW21
+- MH28（v31 のレビュー後）：`cancelHold` で最大のときの案内を戻さない → HW21（R1）
 
 ## 13. ピカッと早押しの教訓（最初から入れておく約束）
 
@@ -475,8 +476,8 @@ full（smoke に加えて）：
 | HS-02 最大の長さ・短すぎる押下 | 茎が `MAX_LEN` に届いたら `grow` を止め、共通の `tap` を1回、案内「いちばん ながい！ …」、`bridge.maxed`（先が黄色に光る）。`getState().maxed`。`MIN_HOLD_MS` 未満は落ちずに案内「もうすこし ながく おしてね」を 1.5 秒（音の名前は増やさない。common/sfx.js は変えない） |
 | HS-03 最後のいのち | `dropping` の後 `sinking`（`SPLASH_SEC`、動きを減らす設定では 0.05 秒以下）でぽちゃんを動かしきってから `over` と結果カード。`sinking` は演出の phase（隠す・遊び方で止まる、`skip()` で進む） |
 | HS-04 data-holding | main.js の `syncPhaseAttr()` だけが書く（`growing` かつ止めていないとき `"1"`）。input.js は書かない |
-| HS-05 言葉 | 結果の見出し「Nまい わたった！」、0 枚は「つぎは わたろう！」。設定ボタンに説明の `<small>`。キーボードの行は `(any-pointer: fine)` のときだけ |
+| HS-05 言葉 | 結果の見出し「Nまい わたった！」、0 枚は「つぎは わたろう！」。設定ボタンに説明の `<small>`（読み上げの名前にオン／オフを入れず `aria-pressed` で状態。R4）。キーボードの行は `(any-pointer: fine)` のときだけ |
 | HS-07 フォーカス | カードの間 `#playView` は `inert`。`#sr` はその外。閉じてフォーカスが body なら `#stageWrap` へ。`#soundBtn` の `aria-label` は「効果音」のまま（状態は `aria-pressed`） |
 | HS-08 見えやすさ | 「ここまで要った」影は、暗いふち（`well`、濃さ 0.7）の上に明るい影（`ink`、濃さ 0.5）：水の上 3.7:1 以上、葉の上はふちが 3.6:1。ぴったり印（黄）は外側 3px の暗いふち（`perfectEdge`。葉と 3.7:1、黄と 9.6:1）で囲む |
 
-テスト：HW21（full）。直す前のコードでは 11 個の確認のうち 10 個が不合格になることを確かめた。変異 MH24〜MH27 は HW21 が検出する。
+テスト：HW21（full）。直す前のコードでは 11 個の確認のうち 10 個が不合格になることを確かめた。変異 MH24〜MH27 は HW21 が検出する。レビュー後の直し R1・R4 も HW21 で確かめ、変異 MH28（R1）を HW21 が検出する。
