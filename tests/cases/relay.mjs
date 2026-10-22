@@ -1,0 +1,468 @@
+// RL: iPhone の遠隔テスト（中継）。tests/relay/relay.mjs（中継サーバー）・tests/relay/ask.mjs（命令の道具）・
+// common/debug-relay.js（運び役）を、本物の iPhone の代わりに Playwright のページをつないで確かめる（約束は docs/debug.md の 5 章）。
+// 中継は子のプロセスとして「合言葉を固定（--key）・空いているポート（--port 0）・127.0.0.1 だけで待つ」形で起動し、
+// テストが終わったら（失敗しても）必ず止める。PC 向けの窓口（/run・/status・/logs・/wait）は fetch で呼ぶ。
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import http from 'node:http';
+import net from 'node:net';
+import { spawn } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
+import { BASE, custom, newPage, sleep, swInfo, pageErrors } from '../lib.mjs';
+
+const KEY = '4321';
+const V = (w = 390, h = 844) => custom(w, h, null, `${w}×${h}`);
+
+// ---------- 中継（子のプロセス） ----------
+const children = new Set();
+// 念のため：テストの子プロセス（run.mjs の worker）が終わるときに、残った中継を止める
+process.on('exit', () => { for (const c of children) { try { c.kill(); } catch { /* 無視 */ } } });
+
+// 起動の行から実際のポートを読む（relay.mjs は最初に「RELAY_READY port=<ポート> key=<合言葉>」を出す）
+const PORT_RE = /RELAY_READY port=(\d+)/;
+function startRelay(root, { key = KEY, port = 0, host = '127.0.0.1', relRoot } = {}) {
+  const file = path.join(root, 'tests/relay/relay.mjs');
+  const args = [file, '--port', String(port), '--key', key, '--host', host];
+  if (relRoot) args.push('--root', relRoot);
+  const child = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, RELAY_PORT: '' } });
+  children.add(child);
+  let out = '';
+  const r = {
+    child, key, get out() { return out; }, port: null,
+    url: (p = '') => `http://127.0.0.1:${r.port}/${p}`,
+    async stop() {
+      if (child.exitCode !== null || child.signalCode) { children.delete(child); return; }
+      const done = new Promise((res) => child.once('exit', res));
+      child.kill();
+      await Promise.race([done, sleep(3000)]);
+      if (child.exitCode === null && !child.signalCode) { child.kill('SIGKILL'); await Promise.race([done, sleep(2000)]); }
+      children.delete(child);
+    },
+  };
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { r.stop(); reject(new Error('中継が 10 秒以内に起動の行を出さない\n' + out.slice(-800))); }, 10000);
+    const on = (d) => {
+      out += d;
+      const m = out.match(PORT_RE);
+      if (m && !r.port) { r.port = Number(m[1]); clearTimeout(timer); resolve(r); }
+    };
+    child.stdout.on('data', on); child.stderr.on('data', on);
+    child.once('exit', (code) => { if (!r.port) { clearTimeout(timer); reject(new Error(`中継が起動の途中で終了（code ${code}）\n${out.slice(-800)}`)); } });
+  });
+}
+// 1 項目の中で起動した中継をすべて止める（失敗しても）
+async function withRelays(fn) {
+  const mine = [];
+  const start = async (root, o) => { const r = await startRelay(root, o); mine.push(r); return r; };
+  try { return await fn(start); } finally { for (const r of mine) await r.stop().catch(() => {}); }
+}
+const api = async (r, p, body) => {
+  const res = await fetch(r.url(p.replace(/^\//, '')), body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const text = await res.text();
+  try { return { status: res.status, ...JSON.parse(text) }; } catch { return { status: res.status, text }; }
+};
+const run = (r, command, args, timeoutMs) => api(r, '/run', { command, args, ...(timeoutMs ? { timeoutMs } : {}) });
+// 条件がそろうまで待つ（fn が真を返すまで。だめなら最後の値）
+async function until(fn, ms = 10000, step = 100) {
+  const t0 = Date.now(); let v;
+  while (Date.now() - t0 < ms) { v = await fn(); if (v) return v; await sleep(step); }
+  return v;
+}
+// 生の HTTP 要求（fetch は /../ を先に正規化してしまうので、パスをそのまま送る）
+const rawGet = (port, p, host = '127.0.0.1') => new Promise((resolve) => {
+  const req = http.request({ host, port, path: p, method: 'GET' }, (res) => {
+    let b = ''; res.setEncoding('utf8'); res.on('data', (d) => { b += d; }); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: b }));
+  });
+  req.on('error', (e) => resolve({ status: 0, error: e.message, body: '' }));
+  req.end();
+});
+// 空いているポート（何も待っていないポート。ask.mjs の「中継が無い」確認用）
+const freePort = () => new Promise((resolve) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); }); });
+
+// ---------- ask.mjs（子のプロセス） ----------
+function ask(root, args) {
+  return new Promise((resolve) => {
+    const c = spawn(process.execPath, [path.join(root, 'tests/relay/ask.mjs'), ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+    children.add(c);
+    let out = '', err = '';
+    c.stdout.on('data', (d) => { out += d; }); c.stderr.on('data', (d) => { err += d; });
+    const t = setTimeout(() => c.kill(), 20000);
+    c.on('close', (code) => { clearTimeout(t); children.delete(c); let json = null; try { json = JSON.parse(out); } catch { /* JSON でない */ } resolve({ code, out, err, json }); });
+  });
+}
+
+// ---------- iPhone の代わりのページ ----------
+// WebSocket を包んで、つないだ回数と閉じたときのコードを window.__rl に記録する（運び役の動きは変えない）
+const wsSpy = () => {
+  const W = window.WebSocket;
+  if (!W || W.__rlSpy) return;
+  window.__rl = { opens: 0, urls: [], closes: [] };
+  const S = function (u, p) {
+    const ws = p === undefined ? new W(u) : new W(u, p);
+    window.__rl.opens++; window.__rl.urls.push(String(u));
+    ws.addEventListener('close', (e) => window.__rl.closes.push(e.code));
+    return ws;
+  };
+  S.prototype = W.prototype; S.__rlSpy = true;
+  for (const k of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) S[k] = W[k];
+  window.WebSocket = S;
+};
+// 中継を止めている間の「WebSocket につながらない」は、ブラウザが console に出すことがある（RL4 でわざと起こす）。
+// これだけは X1 の集計に入れない（ほかのエラーは今までどおり数える）
+const WS_NOISE = /WebSocket connection to .*\/relay.* failed|WebSocket .*\/relay|ws:\/\/127\.0\.0\.1:\d+\/relay/;
+function allowWsNoise(page, label) {
+  page.removeAllListeners('console'); page.removeAllListeners('pageerror');
+  page.on('console', (m) => { if (m.type() === 'error' && !WS_NOISE.test(m.text())) pageErrors.push(`${label}: [console] ${m.text()}`); });
+  page.on('pageerror', (e) => { if (!WS_NOISE.test(String(e.message))) pageErrors.push(`${label}: [pageerror] ${e.message}`); });
+}
+async function phone(browser, label, { w, h } = {}) {
+  const { ctx, page } = await newPage(browser, V(w, h), label, { initScript: wsSpy });
+  allowWsNoise(page, label);
+  const sockets = [];
+  page.on('websocket', (ws) => { if (/\/relay$/.test(ws.url())) sockets.push(ws.url()); });
+  const relayJs = [];
+  page.on('request', (q) => { if (q.url().includes('/common/debug-relay.js')) relayJs.push(q.url()); });
+  return { ctx, page, sockets, relayJs };
+}
+const relayStatus = (page) => page.evaluate(() => (window.YubiDebugRelay ? window.YubiDebugRelay.status() : 'none')).catch((e) => 'err:' + e.message);
+const spy = (page) => page.evaluate(() => window.__rl || null).catch(() => null);
+const openPhone = (r, page, p = '', key = r.key) => page.goto(r.url(`${p}?debug=1&relay=1&key=${key}`));
+
+export const tests = [
+  {
+    id: 'RL1', tier: 'smoke', title: '中継：起動 → ?debug=1&relay=1&key=… で開く → /status が connected、info・layout・state・logs が /run で返る',
+    async run({ browser, check, root }) {
+      await withRelays(async (start) => {
+        const r = await start(root);
+        check('中継が子のプロセスとして起動し、起動の行から実際のポートが読める（--port 0）', r.port > 0, r.out.slice(0, 400));
+        const st0 = await api(r, '/status');
+        check('/status（つなぐ前）：ok・connected:false・key・port・device:null', st0.ok === true && st0.connected === false && st0.key === KEY && st0.port === r.port && st0.device === null, st0);
+        const none = await run(r, 'info');
+        check('/run（つなぐ前）：{ ok:false, error:"iPhone が つながっていません" }', none.ok === false && none.error === 'iPhone が つながっていません', none);
+        const { ctx, page, relayJs } = await phone(browser, 'RL1');
+        try {
+          await openPhone(r, page);
+          const w = await api(r, '/wait?timeoutMs=10000');
+          check('/wait：つながるまで待って { ok:true, connected:true, device } を返す', w.ok === true && w.connected === true && !!w.device, w);
+          const st = await api(r, '/status');
+          const d = st.device || {};
+          check('/status：connected:true、device に userAgent・page・screen{w,h}・connectedAt・lastSeen', st.ok && st.connected === true && typeof d.userAgent === 'string' && d.userAgent.length > 0 && typeof d.page === 'string' && d.page.startsWith('/') && d.screen && d.screen.w > 0 && d.screen.h > 0 && d.connectedAt != null && d.lastSeen != null, st);
+          check('ページ側：debug-relay.js を読み込み、YubiDebugRelay.status() が open、sessionStorage yubi.relay に合言葉', relayJs.length === 1 && (await relayStatus(page)) === 'open' && (await page.evaluate(() => sessionStorage.getItem('yubi.relay'))) === KEY, { relayJs, s: await relayStatus(page) });
+          const info = await run(r, 'info');
+          check('info：{ ok:true, result, command:"info", ms }（type・id は外す）、result の画面の幅が 390', info.ok === true && info.command === 'info' && typeof info.ms === 'number' && !('type' in info) && !('id' in info) && info.result && info.result.window && info.result.window.innerWidth === 390 && typeof info.result.userAgent === 'string', info);
+          const lay = await run(r, 'layout', { selector: 'a.game', limit: 3 });
+          check('layout：メニューのカード（a.game）の位置と大きさが返る', lay.ok === true && lay.result && lay.result.count > 0 && Array.isArray(lay.result.items) && lay.result.items.length > 0 && lay.result.items[0].w > 0, lay.ok ? { count: lay.result.count } : lay);
+          const state = await run(r, 'state');
+          check('state：ok で、games の配列が返る', state.ok === true && state.result && Array.isArray(state.result.games), state);
+          await page.evaluate(() => { console.log('RLTEST ログが 中継へ届く'); console.warn('RLTEST 注意'); });
+          const lg = await until(async () => { const x = await api(r, '/logs?since=0'); return x.ok && (x.entries || []).some((e) => JSON.stringify(e.entry).includes('RLTEST ログが')) ? x : null; }, 5000) || await api(r, '/logs?since=0');
+          const hit = (lg.entries || []).filter((e) => JSON.stringify(e.entry).includes('RLTEST'));
+          check('/logs：ページの console.log・warn が { seq, at, page, entry } で届く（last がある）', lg.ok === true && typeof lg.last === 'number' && hit.length >= 2 && hit.every((e) => typeof e.seq === 'number' && e.at != null && typeof e.page === 'string'), lg.entries ? lg.entries.slice(-5) : lg);
+          const lg2 = await api(r, `/logs?since=${lg.last}`);
+          check('/logs?since=last：それより新しいものだけ（0 件）', lg2.ok === true && Array.isArray(lg2.entries) && lg2.entries.length === 0, lg2);
+          const logs = await run(r, 'logs');
+          check('/run logs：エラー件数とログの配列', logs.ok === true && typeof logs.result.errors === 'number' && Array.isArray(logs.result.entries) && logs.result.entries.some((e) => JSON.stringify(e).includes('RLTEST')), logs.ok ? { n: logs.result.entries.length } : logs);
+          const bad = await run(r, 'nosuch');
+          check('ない命令：/run が ok:false とエラー文を返す（中継・運び役は落ちない）', bad.ok === false && typeof bad.error === 'string', bad);
+          const slow = await page.evaluate(() => { window.YubiDebug.command('rlslow', () => new Promise((res) => setTimeout(() => res(1), 3000))); return true; });
+          const to = await run(r, 'rlslow', {}, 500);
+          check('答えが timeoutMs を過ぎると { ok:false, error:"時間切れ" }', slow && to.ok === false && to.error === '時間切れ', to);
+        } finally { await ctx.close(); }
+      });
+    },
+  },
+  {
+    id: 'RL2', tier: 'full', title: '中継：合言葉が違うとつながらない（4001・status() が rejected・つなぎ直さない）、形の悪い key は読み込まない',
+    async run({ browser, check, root }) {
+      await withRelays(async (start) => {
+        const r = await start(root);
+        const { ctx, page, sockets, relayJs } = await phone(browser, 'RL2');
+        try {
+          await openPhone(r, page, '', '9999');
+          const s = await until(async () => ((await relayStatus(page)) === 'rejected' ? 'rejected' : null), 6000) || await relayStatus(page);
+          check('合言葉ちがい：YubiDebugRelay.status() が rejected', s === 'rejected', s);
+          await sleep(3500);   // つなぎ直すなら 1・2 秒後に試すはず
+          const sp = await spy(page);
+          check('閉じるコードは 4001、そのあと 3.5 秒待ってもつなぎ直さない（WebSocket は 1 回だけ）', sp && sp.closes.includes(4001) && sp.opens === 1 && sockets.length === 1, { sp, sockets });
+          const st = await api(r, '/status');
+          check('中継側：connected:false のまま、/run は「つながっていません」', st.connected === false && (await run(r, 'info')).error === 'iPhone が つながっていません', st);
+          const warn = await page.evaluate(() => JSON.stringify(window.YubiDebug.logs()));
+          check('ページのログに「中継：合言葉が ちがいます」（warn）が出る', /合言葉が ちがいます/.test(warn), warn.slice(0, 400));
+          // key の形が悪い（英数字 1〜16 文字以外）：覚えず、debug-relay.js も読まない
+          const { ctx: c2, page: p2, relayJs: j2, sockets: s2 } = await phone(browser, 'RL2b');
+          try {
+            for (const k of ['ab-cd', '12345678901234567', '', '%3Cx%3E']) await p2.goto(r.url(`?debug=1&relay=1&key=${k}`)).then(() => sleep(300));
+            const ss = await p2.evaluate(() => sessionStorage.getItem('yubi.relay'));
+            check('形の悪い key（記号・17 文字・空・<x>）：yubi.relay を覚えず、debug-relay.js を読まず、つながない', ss === null && j2.length === 0 && s2.length === 0, { ss, j2, s2 });
+            // 正しい key を覚えたあとで、形の悪い key を付けて開くと、覚えた yubi.relay も消す
+            await p2.goto(r.url(`?debug=1&relay=1&key=${KEY}`)); await sleep(300);
+            const had = await p2.evaluate(() => sessionStorage.getItem('yubi.relay'));
+            await p2.goto(r.url('games/hashi/?relay=1&key=ab-cd')); await sleep(300);
+            const after = { ss: await p2.evaluate(() => sessionStorage.getItem('yubi.relay')), api: await p2.evaluate(() => typeof window.YubiDebugRelay) };
+            check('覚えた合言葉があっても、relay=1 で形の悪い key なら yubi.relay を消し、つながない', had === KEY && after.ss === null && after.api === 'undefined', { had, after });
+          } finally { await c2.close(); }
+          check('（参考）合言葉ちがいのページは debug-relay.js を 1 回だけ読む', relayJs.length === 1, relayJs);
+        } finally { await ctx.close(); }
+      });
+    },
+  },
+  {
+    id: 'RL3', tier: 'full', title: '中継：open でメニュー→ゲームへ移っても、/wait のあと命令が通る（sessionStorage で続く）、open は同じサイトの / 始まりだけ',
+    async run({ browser, check, root }) {
+      await withRelays(async (start) => {
+        const r = await start(root);
+        const { ctx, page } = await phone(browser, 'RL3');
+        try {
+          await openPhone(r, page);
+          await api(r, '/wait?timeoutMs=10000');
+          for (const p of ['//example.com/', 'http://example.com/', 'games/hashi/', 'javascript:alert(1)', '/\\example.com/', '/games/ha shi/', '/games/\nhashi/', '']) {
+            const x = await run(r, 'open', { path: p });
+            check(`open { path: ${JSON.stringify(p)} } は ok:false（移らない）`, x.ok === false, x);
+          }
+          await sleep(300);
+          check('悪い path では移っていない（メニューのまま）', new URL(page.url()).pathname === '/', page.url());
+          const before = (await api(r, '/status')).device.connectedAt;
+          const o = await run(r, 'open', { path: '/games/hashi/' });
+          check('open { path:"/games/hashi/" } は ok:true を返してから移る', o.ok === true, o);
+          await page.waitForURL(/\/games\/hashi\/$/, { timeout: 5000 }).catch(() => {});
+          await sleep(300);
+          const w = await api(r, `/wait?timeoutMs=15000&after=${encodeURIComponent(before)}`);
+          const st = await until(async () => { const x = await api(r, '/status'); return x.connected && x.device && /^\/games\/hashi\//.test(x.device.page) ? x : null; }, 15000) || await api(r, '/status');
+          check('移った先（?debug なしの /games/hashi/）でつなぎ直し、/wait?after=<直前の connectedAt> が新しい接続を返し、/status の page が /games/hashi/', w.ok === true && w.device && /^\/games\/hashi\//.test(w.device.page) && st.connected === true && /^\/games\/hashi\//.test(st.device.page), { w, st });
+          check('ページの URL に ?debug・?relay は付いていない（sessionStorage で続いている）', new URL(page.url()).search === '' && (await page.evaluate(() => sessionStorage.getItem('yubi.relay'))) === KEY, page.url());
+          const info = await run(r, 'info');
+          const state = await run(r, 'state');
+          check('移った先でも info・state が通る', info.ok === true && state.ok === true && Array.isArray(state.result.games), { info: info.ok, state });
+          const before2 = (await api(r, '/status')).device.connectedAt;
+          await page.evaluate(() => { window.__rlMark = 'よみなおす前'; });
+          const rl = await run(r, 'reload');
+          const w2 = await api(r, `/wait?timeoutMs=15000&after=${encodeURIComponent(before2)}`);
+          const info2 = await run(r, 'info');
+          check('reload は ok:true を返し、読み直した（印が消えた）あと /wait?after= で新しい接続になり、命令が通る', rl.ok === true && w2.ok === true && w2.device && w2.device.connectedAt !== before2 && info2.ok === true && (await page.evaluate(() => window.__rlMark)) === undefined, { rl, w2, info2: info2.ok });
+        } finally { await ctx.close(); }
+      });
+    },
+  },
+  {
+    id: 'RL4', tier: 'full', title: '中継：止めて起動し直すと、運び役が自動でつなぎ直す（ページは読み直さない）',
+    async run({ browser, check, root }) {
+      await withRelays(async (start) => {
+        const r1 = await start(root);
+        const { ctx, page } = await phone(browser, 'RL4');
+        try {
+          await openPhone(r1, page);
+          await api(r1, '/wait?timeoutMs=10000');
+          await page.evaluate(() => { window.__rlMark = 'まだ同じページ'; });
+          const port = r1.port;
+          await r1.stop();
+          const s = await until(async () => { const x = await relayStatus(page); return x !== 'open' ? x : null; }, 5000);
+          check('中継を止めると、運び役の status() が open でなくなる（connecting か closed。rejected ではない）', ['connecting', 'closed'].includes(s), s);
+          await sleep(1500);
+          const r2 = await start(root, { port });
+          check('同じポートで起動し直せる', r2.port === port, r2.out.slice(0, 300));
+          const t0 = Date.now();
+          const w = await api(r2, '/wait?timeoutMs=20000');
+          const sec = (Date.now() - t0) / 1000;
+          check(`起動し直した中継に自動でつなぎ直す（${sec.toFixed(1)} 秒。間隔は最大 10 秒）`, w.ok === true && w.connected === true && sec <= 12, w);
+          const info = await run(r2, 'info');
+          check('つなぎ直したあと info が通り、ページは読み直していない（印が残る）', info.ok === true && (await page.evaluate(() => window.__rlMark)) === 'まだ同じページ' && (await relayStatus(page)) === 'open', info.ok ? 'ok' : info);
+        } finally { await ctx.close(); }
+      });
+    },
+  },
+  {
+    id: 'RL5', tier: 'smoke', title: '中継：relay を付けない（?debug=1 だけ・?debug なし・debug なしの relay=1）ときは debug-relay.js を読み込まない、?relay=0 と「デバッグを終わる」で消える、APP_FILES に入れない',
+    async run({ browser, check, root }) {
+      check('common/debug-relay.js は sw.js の APP_FILES に入れない（http でしか使わない）', !swInfo(root).files.includes('./common/debug-relay.js'), swInfo(root).files.filter((f) => f.includes('common')));
+      // ふだんのテスト用サーバー（/game-no1/）で、relay を付けない開き方
+      const { ctx, page, relayJs, sockets } = await phone(browser, 'RL5');
+      try {
+        const got = [];
+        // デバッグが無効のうち（sessionStorage にまだ覚えていない）に relay=1 を試し、そのあと ?debug=1 だけで開く
+        for (const q of ['', 'games/irobin/', '?relay=1&key=1234', 'games/hashi/?relay=1&key=1234', '?debug=1', 'games/irobin/?debug=1', 'games/hashi/']) {
+          const n = relayJs.length;
+          await page.goto(BASE + q); await sleep(250);
+          got.push({ q, loaded: relayJs.length - n, api: await page.evaluate(() => typeof window.YubiDebugRelay), ss: await page.evaluate(() => sessionStorage.getItem('yubi.relay')) });
+        }
+        check('?debug=1 だけ・何も付けない・debug なしの relay=1（メニューとゲーム）：debug-relay.js を読まず、YubiDebugRelay も yubi.relay もない', got.every((g) => g.loaded === 0 && g.api === 'undefined' && g.ss === null) && sockets.length === 0, got);
+      } finally { await ctx.close(); }
+      // 中継で：?relay=0 で消える・「デバッグを終わる」で消えて切れる
+      await withRelays(async (start) => {
+        const r = await start(root);
+        const { ctx: c2, page: p2, relayJs: j2 } = await phone(browser, 'RL5b');
+        try {
+          await openPhone(r, p2);
+          await api(r, '/wait?timeoutMs=10000');
+          await p2.goto(r.url('games/irobin/?relay=0')); await sleep(400);
+          const n0 = j2.length;
+          await p2.goto(r.url('')); await sleep(400);
+          const off = { ss: await p2.evaluate(() => sessionStorage.getItem('yubi.relay')), api: await p2.evaluate(() => typeof window.YubiDebugRelay), dbg: await p2.evaluate(() => typeof window.YubiDebug), loaded: j2.length - n0 };
+          const st = await until(async () => { const x = await api(r, '/status'); return x.connected === false ? x : null; }, 5000) || await api(r, '/status');
+          check('?relay=0：yubi.relay を消し、そのあとメニューへ移っても debug-relay.js を読まない（デバッグ表示は有効のまま）・中継は connected:false', off.ss === null && off.api === 'undefined' && off.dbg === 'object' && off.loaded === 0 && st.connected === false, { off, st });
+          await openPhone(r, p2);
+          await api(r, '/wait?timeoutMs=10000');
+          await p2.evaluate(() => window.YubiDebug.stop()); await sleep(300);
+          const st2 = await until(async () => { const x = await api(r, '/status'); return x.connected === false ? x : null; }, 5000) || await api(r, '/status');
+          const ss2 = await p2.evaluate(() => sessionStorage.getItem('yubi.relay'));
+          await sleep(2500);
+          const st3 = await api(r, '/status');
+          check('「デバッグを終わる」（YubiDebug.stop）：yubi.relay を消し、接続を閉じ、つなぎ直さない', ss2 === null && st2.connected === false && st3.connected === false, { ss2, st2, st3 });
+        } finally { await c2.close(); }
+      });
+    },
+  },
+  {
+    id: 'RL6', tier: 'full', title: '中継：ask.mjs（storage の set・remove は --yes が無いと送らない・中継が無いと終了コード 2・名前=値 の読み方・status／logs／wait）',
+    async run({ browser, check, root }) {
+      const dead = await freePort();
+      const a0 = await ask(root, ['status', '--port', String(dead)]);
+      check('中継が動いていない：終了コード 2 と「中継が 動いていません」', a0.code === 2 && /中継が 動いていません/.test(a0.out + a0.err), a0);
+      await withRelays(async (start) => {
+        const r = await start(root);
+        const P = ['--port', String(r.port)];
+        const a1 = await ask(root, ['info', ...P]);
+        check('つながっていない：/run の ok:false をそのまま出し、終了コード 1', a1.code === 1 && a1.json && a1.json.ok === false && a1.json.error === 'iPhone が つながっていません', a1);
+        const { ctx, page } = await phone(browser, 'RL6');
+        try {
+          await openPhone(r, page);
+          const aw = await ask(root, ['wait', ...P]);
+          check('ask wait：つながるまで待ち、終了コード 0', aw.code === 0 && aw.json && aw.json.connected === true, aw);
+          const as = await ask(root, ['status', ...P]);
+          check('ask status：整形した JSON（connected:true・key）と終了コード 0', as.code === 0 && as.json && as.json.connected === true && as.json.key === KEY && /\n {2}"/.test(as.out), as.out.slice(0, 300));
+          // 引数の読み方は、受け取った args をそのまま返す命令（rlecho）をページに足して確かめる
+          await page.evaluate(() => {
+            window.__rlSeen = [];
+            window.YubiDebug.command('rlecho', (a) => { window.__rlSeen.push(a); return a; });
+          });
+          const e1 = await ask(root, ['rlecho', 'n=3', 'f=1.5', 'b=true', 'z=null', 's=abc', 'sel=#board .x', 'j={"a":[1,2]}', 'e=', ...P]);
+          check('名前=値：JSON として読めれば数・true・null・オブジェクト、だめなら文字列（"#board .x"・空）', e1.code === 0 && e1.json && e1.json.ok === true && JSON.stringify(e1.json.result) === JSON.stringify({ n: 3, f: 1.5, b: true, z: null, s: 'abc', sel: '#board .x', j: { a: [1, 2] }, e: '' }), e1.json || e1);
+          const e2 = await ask(root, ['rlecho', '{"x":1,"y":"two"}', ...P]);
+          check('引数が 1 つで { で始まるなら JSON の本文として使う', e2.code === 0 && JSON.stringify(e2.json && e2.json.result) === '{"x":1,"y":"two"}', e2.json || e2);
+          const e3 = await ask(root, ['rlecho', '#board', ...P]);
+          check('名前= の形でない引数 1 つは、そのまま args（"#board"）', e3.code === 0 && e3.json && e3.json.result === '#board', e3.json || e3);
+          const lay = await ask(root, ['layout', 'selector=a.game', 'limit=2', ...P]);
+          check('ask layout selector=a.game limit=2：ok で終了コード 0', lay.code === 0 && lay.json && lay.json.ok === true && lay.json.result.count > 0, lay.json || lay);
+          // storage の書き換えは --yes が無いと送らない
+          const before = (await page.evaluate(() => window.__rlSeen.length));
+          await page.evaluate(() => { localStorage.setItem('rl.keep', 'のこす'); window.__rlCmds = []; window.YubiDebug.subscribe((ev) => { if (ev.type === 'command') window.__rlCmds.push(ev.name); }); });
+          const s1 = await ask(root, ['storage', 'op=set', 'key=rl.test', 'value=1', ...P]);
+          const s2 = await ask(root, ['storage', 'op=remove', 'key=rl.keep', ...P]);
+          await sleep(300);
+          const ls = await page.evaluate(() => ({ t: localStorage.getItem('rl.test'), k: localStorage.getItem('rl.keep'), cmds: window.__rlCmds.slice() }));
+          check('storage op=set・op=remove（--yes なし）：終了コード 0 以外で理由を出し、ページへ命令が届かない（保存データは変わらない）', s1.code !== 0 && s2.code !== 0 && /--yes/.test(s1.out + s1.err) && ls.t === null && ls.k === 'のこす' && !ls.cmds.includes('storage'), { s1: [s1.code, (s1.out + s1.err).slice(0, 200)], s2: s2.code, ls });
+          const g = await ask(root, ['storage', 'op=get', 'key=rl.keep', ...P]);
+          check('storage op=get（読むだけ）は --yes なしで送る', g.code === 0 && g.json && g.json.ok === true && g.json.result.value === 'のこす', g.json || g);
+          const s3 = await ask(root, ['storage', 'op=set', 'key=rl.test', 'value=1', '--yes', ...P]);
+          const s4 = await ask(root, ['storage', 'op=remove', 'key=rl.keep', '--yes', ...P]);
+          const ls2 = await page.evaluate(() => ({ t: localStorage.getItem('rl.test'), k: localStorage.getItem('rl.keep') }));
+          check('--yes を付けると set・remove が届く', s3.code === 0 && s4.code === 0 && ls2.t === '1' && ls2.k === null, { s3: s3.json, s4: s4.json, ls2 });
+          await page.evaluate(() => { localStorage.removeItem('rl.test'); console.log('RLTEST ask の logs'); });
+          const lg = await until(async () => { const x = await ask(root, ['logs', '--since', '0', ...P]); return x.json && JSON.stringify(x.json.entries || []).includes('RLTEST ask') ? x : null; }, 5000);
+          check('ask logs --since 0：ページのログが届く', !!lg && lg.code === 0 && lg.json.ok === true, lg && lg.json ? lg.json.last : lg);
+          check('（参考）rlecho は 3 回だけ呼ばれた', before === 3, before);
+          const ca = as.json.device.connectedAt;
+          const aw2 = await ask(root, ['wait', `after=${ca}`, '--timeout', '800', ...P]);
+          check('ask wait after=<今の connectedAt>：新しい接続が来なければ時間切れ（終了コード 1）', aw2.code === 1 && aw2.json && aw2.json.ok === false && aw2.json.error === '時間切れ', aw2.json || aw2);
+          const u1 = await ask(root, ['info', '--port', 'abc']);
+          const u2 = await ask(root, ['info', '--nosuch', ...P]);
+          check('使い方の誤り（--port に数でない・知らないオプション）は終了コード 1', u1.code === 1 && u2.code === 1, { u1: [u1.code, u1.err.slice(0, 80)], u2: [u2.code, u2.err.slice(0, 80)] });
+        } finally { await ctx.close(); }
+      });
+    },
+  },
+  {
+    id: 'RL7', tier: 'full', title: '中継：静的配信（root の外は読めない・/game-no1/ でも開ける・Content-Type・no-store・404）、PC 向けの窓口はループバック以外 403',
+    async run({ check, root }) {
+      await withRelays(async (start) => {
+        // root を games/ にして起動し、1 つ上（リポジトリの sw.js・index.html）が読めないことを確かめる
+        const r = await start(root, { relRoot: path.join(root, 'games') });
+        const outside = ['/../sw.js', '/%2e%2e/sw.js', '/%2E%2E/sw.js', '/..%2fsw.js', '/%2e%2e%2fsw.js', '/hashi/../../sw.js', '/hashi/%2e%2e/%2e%2e/sw.js', '/game-no1/../sw.js', '/game-no1/%2e%2e/sw.js', '/..%5csw.js', '/hashi/..%5c..%5csw.js', '//etc/passwd', '/%2fetc%2fpasswd'];
+        const leaks = [];
+        for (const p of outside) { const x = await rawGet(r.port, p); if (x.status === 200 && (x.body.includes('CACHE_VERSION') || x.body.includes('root:'))) leaks.push({ p, status: x.status }); }
+        check(`root の外（/../・%2e%2e・%2f・\\・絶対パス、${outside.length} 通り）は読めない`, leaks.length === 0, leaks);
+        check('（前提）root の中（/hashi/）は読める', (await rawGet(r.port, '/hashi/')).status === 200);
+      });
+      await withRelays(async (start) => {
+        const r = await start(root);
+        const top = await rawGet(r.port, '/');
+        const sub = await rawGet(r.port, '/game-no1/');
+        const idx = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+        check('/ と /game-no1/ はどちらもメニュー（index.html）を返す', top.status === 200 && sub.status === 200 && top.body === idx && sub.body === idx, { top: top.status, sub: sub.status });
+        const types = {};
+        for (const [p, re] of [['/', /text\/html/], ['/common/debug.js', /javascript/], ['/tests/run.mjs', /javascript/], ['/manifest.webmanifest', /manifest\+json|json/], ['/icons/apple-touch-icon.png', /image\/png/], ['/game-no1/games/hashi/', /text\/html/]]) {
+          const x = await rawGet(r.port, p); types[p] = [x.status, x.headers['content-type'], x.headers['cache-control']];
+          if (!(x.status === 200 && re.test(x.headers['content-type'] || '') && /no-store/.test(x.headers['cache-control'] || ''))) types[p].push('NG');
+        }
+        check('拡張子に合った Content-Type（html・js・mjs・webmanifest・png）と Cache-Control: no-store', Object.values(types).every((t) => !t.includes('NG')), types);
+        const nf = await rawGet(r.port, '/no-such-file.js');
+        check('無いファイルは 404', nf.status === 404, nf.status);
+        const hid = {};
+        for (const p of ['/.git/HEAD', '/.git/config', '/games/.hidden', '/%2egit/HEAD', '/index.html:stream', '/C:/Windows/win.ini']) hid[p] = (await rawGet(r.port, p)).status;
+        check('. で始まる名前（.git など）・: を含む部分は 404', Object.values(hid).every((x) => x === 404), hid);
+        const dir = await rawGet(r.port, '/games/hashi?x=1');
+        check('フォルダに / が無いと 301 で / 付きへ', dir.status === 301 && /\/games\/hashi\/(\?x=1)?$/.test(dir.headers.location || ''), { status: dir.status, location: dir.headers.location });
+        const post = await new Promise((resolve) => { const q = http.request({ host: '127.0.0.1', port: r.port, path: '/index.html', method: 'POST' }, (x) => { x.resume(); x.on('end', () => resolve(x.statusCode)); }); q.on('error', () => resolve(0)); q.end('x'); });
+        check('ページへの POST は 405', post === 405, post);
+        // PC 向けの窓口：ループバック（127.0.0.1）からは使える
+        const ok = await rawGet(r.port, '/status');
+        check('ループバックからの /status は 200', ok.status === 200, ok.status);
+      });
+      // ループバックの判定の関数（relay.mjs が export する。import しても中継は起動しない）
+      const m = await import(pathToFileURL(path.join(root, 'tests/relay/relay.mjs')).href);
+      const H = { host: '127.0.0.1:8790' };
+      const cases = [
+        ['127.0.0.1', H, true], ['::1', { host: '[::1]:8790' }, true], ['::ffff:127.0.0.1', H, true], ['127.5.6.7', { host: 'localhost:8790' }, true],
+        ['192.168.1.5', H, false], ['::ffff:192.168.1.5', H, false], ['10.0.0.2', H, false], ['', H, false], [undefined, H, false],
+        ['127.0.0.1', { host: '192.168.1.5:8790' }, false], ['127.0.0.1', { host: 'evil.example:8790' }, false],
+        ['127.0.0.1', { ...H, origin: 'http://evil.example' }, false], ['127.0.0.1', { ...H, origin: 'http://127.0.0.1:8790' }, true],
+      ];
+      const wrong = cases.filter(([a, h, want]) => m.isPcRequest(a, h) !== want);
+      const rs = { ok: m.resolveStatic(root, '/games/hashi/'), sub: m.resolveStatic(root, '/game-no1/sw.js'), up: m.resolveStatic(root, '/../sw.js'), enc: m.resolveStatic(root, '/%2e%2e/sw.js'), bs: m.resolveStatic(root, '/..%5csw.js'), dot: m.resolveStatic(root, '/.git/HEAD'), bad: m.resolveStatic(root, '/%E0%A4%A') };
+      check('判定の関数 resolveStatic：root の中は場所を返し（/game-no1/ も）、外・.git・壊れたエンコードは null', rs.ok && rs.ok.file === path.join(root, 'games', 'hashi') && rs.sub && rs.sub.file === path.join(root, 'sw.js') && rs.up === null && rs.enc === null && rs.bs === null && rs.dot === null && rs.bad === null, rs);
+      check('判定の関数 isPcRequest：接続元・Host・Origin がすべてループバックのときだけ通す（13 通り）', typeof m.isPcRequest === 'function' && wrong.length === 0, wrong);
+      // ループバック以外からの要求：この機械の LAN の IPv4 があれば、0.0.0.0 で待つ中継へそのアドレスからつなぐ
+      const lan = Object.values(os.networkInterfaces()).flat().find((i) => i && (i.family === 'IPv4' || i.family === 4) && !i.internal);
+      if (!lan) { check('（この機械に LAN の IPv4 が無いので、ループバック以外からの 403 は確かめられない）', true); return; }
+      await withRelays(async (start) => {
+        const r = await start(root, { host: '0.0.0.0' });
+        const res = {};
+        for (const p of ['/status', '/logs?since=0', '/wait?timeoutMs=100']) res[p] = (await rawGet(r.port, p, lan.address)).status;
+        const post = await new Promise((resolve) => {
+          const req = http.request({ host: lan.address, port: r.port, path: '/run', method: 'POST', headers: { 'content-type': 'application/json' } }, (x) => { x.resume(); x.on('end', () => resolve(x.statusCode)); });
+          req.on('error', (e) => resolve('err ' + e.message)); req.end('{"command":"info"}');
+        });
+        res['POST /run'] = post;
+        const page = (await rawGet(r.port, '/', lan.address)).status;
+        check(`ループバック以外（${lan.address}）からの PC 向けの窓口（/status・/logs・/wait・/run）は 403、ページの配信は 200`, Object.values(res).every((s) => s === 403) && page === 200, { res, page });
+      });
+    },
+  },
+  {
+    id: 'RL8', tier: 'full', title: '中継：2 台目がつなぐと 1 台目が 4002 で閉じられ、つなぎ直さない（命令は 2 台目へ）',
+    async run({ browser, check, root }) {
+      await withRelays(async (start) => {
+        const r = await start(root);
+        const a = await phone(browser, 'RL8 1台目', { w: 390, h: 844 });
+        const b = await phone(browser, 'RL8 2台目', { w: 320, h: 568 });
+        try {
+          await openPhone(r, a.page);
+          await api(r, '/wait?timeoutMs=10000');
+          check('1 台目がつながる（info の幅 390）', (await run(r, 'info')).result?.window?.innerWidth === 390);
+          await openPhone(r, b.page, 'games/irobin/');
+          const st = await until(async () => { const x = await api(r, '/status'); return x.connected && x.device && /^\/games\/irobin\//.test(x.device.page) ? x : null; }, 10000) || await api(r, '/status');
+          check('2 台目が正しく hello すると、/status の device が 2 台目（/games/irobin/）になる', st.connected === true && /^\/games\/irobin\//.test(st.device.page), st);
+          const sa = await until(async () => { const x = await spy(a.page); return x && x.closes.includes(4002) ? x : null; }, 5000) || await spy(a.page);
+          await sleep(3500);
+          const sa2 = await spy(a.page);
+          const s1 = await relayStatus(a.page);
+          check('1 台目は閉じるコード 4002 で閉じられ、3.5 秒待ってもつなぎ直さない（status は closed か rejected）', sa && sa.closes.includes(4002) && sa2.opens === 1 && a.sockets.length === 1 && ['closed', 'rejected'].includes(s1), { sa2, s1, sockets: a.sockets });
+          const w4002 = await a.page.evaluate(() => JSON.stringify(window.YubiDebug.logs())).catch(() => '');
+          check('1 台目のログに、追い出されたことの warn が残る', /中継/.test(w4002) && /"warn"/.test(w4002), w4002.slice(0, 300));
+          const info = await run(r, 'info');
+          check('命令は 2 台目へ届く（info の幅 320）・2 台目は open のまま', info.ok === true && info.result.window.innerWidth === 320 && (await relayStatus(b.page)) === 'open', info.ok ? info.result.window : info);
+        } finally { await a.ctx.close(); await b.ctx.close(); }
+      });
+    },
+  },
+];

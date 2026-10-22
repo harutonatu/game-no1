@@ -7,8 +7,9 @@
 // 中は2つに分かれている（詳しくは docs/debug.md）。
 //   1. コア window.YubiDebug … ログの記録・購読（subscribe）・命令（command 名 → 関数）の登録と実行
 //   2. 表示（オーバーレイ）   … コアの公開している関数だけを使う「運び役」の1つ
-// 将来の遠隔操作は、もう1つの運び役（transport：WebSocket など）が YubiDebug.run(命令, 引数) を呼び、
-// YubiDebug.subscribe でログを受け取るだけで足せる。命令は登録済みの関数だけを呼ぶ（文字列を eval しない）。
+//   3. 遠隔操作の運び役       … ?debug=1&relay=1&key=合言葉 のときだけ common/debug-relay.js を読み込む（docs/debug.md の 5 章）。
+//      中継サーバー（tests/relay/relay.mjs）と WebSocket でつなぎ、YubiDebug.run(命令, 引数) を呼び、YubiDebug.subscribe でログを送る。
+// 命令は登録済みの関数だけを呼ぶ（文字列を eval しない）。
 (function () {
   "use strict";
   var KEY = "yubi.debug";
@@ -27,6 +28,28 @@
     registerCommands(core.api);
     startOverlay(core.api);
   } catch (e) { /* デバッグ表示が壊れても、ゲームは止めない */ }
+  try { startRelay(window.YubiDebug); } catch (e) { /* 遠隔操作が使えなくても、ゲームとデバッグ表示は止めない */ }
+
+  // ================================================================
+  // 3. 遠隔操作（中継）：relay と key を読み、有効なら debug-relay.js を読み込む（デバッグが有効のときだけ来る）
+  //   ?relay=1&key=英数字1〜16文字 … sessionStorage（yubi.relay）に合言葉を覚えて読み込む
+  //   ?relay=0                     … 覚えた合言葉を消す（つながない）
+  //   何も付けない                  … 覚えていれば読み込む（メニュー→ゲームと移っても続く）
+  // ================================================================
+  function startRelay(D) {
+    var RKEY = "yubi.relay", OK = /^[A-Za-z0-9]{1,16}$/, key = null;
+    if (!D || !D.scriptURL) return;
+    var r = /[?&]relay=([^&#]*)/.exec(location.search), k = /[?&]key=([^&#]*)/.exec(location.search);
+    if (r && r[1] === "1") {
+      if (k && OK.test(k[1])) { key = k[1]; sessionStorage.setItem(RKEY, key); }
+      else { sessionStorage.removeItem(RKEY); D.log("warn", "中継：key（英数字 1〜16 文字）が正しくないので つなぎません"); }
+    } else if (r && r[1] === "0") sessionStorage.removeItem(RKEY);
+    else key = sessionStorage.getItem(RKEY);
+    if (!key || !OK.test(key) || window.YubiDebugRelay) return;
+    var s = document.createElement("script");
+    s.src = new URL("debug-relay.js", D.scriptURL).href;     // debug.js と同じ場所（ページの深さに関係なく正しい）
+    (document.head || document.documentElement).appendChild(s);
+  }
 
   // ================================================================
   // 1. コア
@@ -160,7 +183,7 @@
     function clear() { entries.length = 0; errorCount = 0; dropped = 0; emit({ type: "clear", errors: 0 }); }
     // デバッグをやめる：console を元に戻し、イベントを外し、覚えた印を消す（表示は "stop" を受けて自分で消える）
     function stop() {
-      try { sessionStorage.removeItem(KEY); } catch (e) { /* 無視 */ }
+      try { sessionStorage.removeItem(KEY); sessionStorage.removeItem("yubi.relay"); } catch (e) { /* 無視 */ }
       Object.keys(origConsole).forEach(function (m) { console[m] = origConsole[m]; });
       cleanups.splice(0).forEach(function (f) { try { f(); } catch (e) { /* 無視 */ } });
       emit({ type: "stop" });

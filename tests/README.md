@@ -89,6 +89,7 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 | ミチビキ空港（games/michibiki/）の変更 | smoke ＋ `ONLY=FW6,FW7,FW8,FW9,FW10,FW11,FW12,FW13,FW14,FW15,FW16,FW17,FW18,FW19,FW22,FW23 node tests/run.mjs full`（ロジックだけなら `ONLY=FL1,FL2,FL3,FL4,FL5,FL6,FL7,FL8,FL9,FL10,FL11,FL12 node tests/run.mjs full`、約 20 秒。ルール・保存・出現を変えたら `ONLY=FL1,…,FL12,FW1,…,FW23 M=MF1,…,MF29 node tests/mutants/mutate.mjs both`） |
 | もくもくこうば（games/seizai/）の変更 | smoke ＋ `ONLY=WW7,WW8,WW9,WW10,WW11,WW12,WW13,WW14,WW15,WW16,WW17,WW18,WW19,WW20,WW21,WW22,WW23 node tests/run.mjs full`（ロジックだけなら `ONLY=WL1,WL2,WL3,WL4,WL5,WL6,WL7,WL8,WL9,WL10,WL11,WL12,WL13 node tests/run.mjs full`。経済・保存・閉じた間・船・注文を変えたら `ONLY=WL1,…,WL11,WW1,…,WW19 M=MW1,…,MW50 PORT=9640 WORKERS=2 node tests/mutants/mutate.mjs both`。10 個ずつ M を区切って流す） |
 | ちきゅうを守れ！ほしくだき（games/asteroid/）の変更 | smoke ＋ `ONLY=KW8,KW9,KW10,KW11,KW12,KW13,KW14,KW15,KW16,KW17,KW20 node tests/run.mjs full`（ロジックだけなら `ONLY=KL1,KL2,KL3,KL4,KL5,KL6,KL7,KL8,KL9,KL10,KL11,KL12,KL13,KL14,KL15 node tests/run.mjs full`。ルール・保存・中断・画面の流れを変えたら `PORT=9650 ONLY=KL1,…,KL15,KW1,…,KW20 M=MK1,…,MK37 node tests/mutants/mutate.mjs both`（10 個ずつ）。ロジックの数値を変えたら main.js の gostar の表 `ARMS_LV` も測り直す（design.md §10.68）） |
+| 遠隔テストの中継（tests/relay/・common/debug-relay.js・common/debug.js の relay の部分） | smoke ＋ `ONLY=RL1,RL2,RL3,RL4,RL5,RL6,RL7,RL8 node tests/run.mjs full` を Chromium と WebKit（`BROWSER=webkit WORKERS=1`）の両方で。ONLY は番号を並べる形（`ONLY=RL` では絞れない）。約 30〜50 秒 |
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
 | テストを変えたとき・中身の仕組み（点数計算・保存・日付・ルール）を変えたとき | `node tests/mutants/mutate.mjs both`（そのゲームの分だけ。テストがわざと入れた不具合を見つけられるか） |
 
@@ -125,6 +126,7 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 | KL | ちきゅうを守れ！ほしくだき 計算ロジック（Node） | `games/asteroid/logic.js` を直接呼ぶ（担当A・数値の調整担当が持つ）：式・星の形・当たり・はなれたかたまり・近づく・クリア・2択・保存・決定的・自動プレイの目安・不変条件 |
 | KW | ちきゅうを守れ！ほしくだき 画面 | DOM と `window.AsteroidGame`（getState・logic・advance・upgrade・unlock・choose・setState・save）、`?debug=1` の命令（win・lose）で：遊べる・表示の一致（formatKakera・upCostOf・dpsOf・progressOf）（KW1）、2択（400ms・止まる・再読み込みで同じ候補）（KW2）、はね返し（「あと N%」・残る・自動で次）（KW3）、場を押しても何も起きない（fly・bounce・clear）（KW4）、クリアとエンディング（KW5）、保存・壊れた保存・bak（KW6）、戻る（KW7）／full：画面内（最大の桁・SE 横）（KW8）、長い名前の折り返し・遊び方（KW9）、性能（CDP）（KW10）、中断（KW11）、キーボード（KW12）、動きを減らす（KW13）、効果音（KW14）、メニュー・NAME の一致（KW15）、オフライン（KW16）、タッチ（CDP）（KW17）、§18 で足したもの：区切りの帯・もらい直せない・ms の保存（KW18）、クリアの帯の時間・ベスト・ちきゅうまで・bestT の保存と壊れた値（KW19）、◎ と 2択の案内・gostar（KW20、full） |
 | DG | デバッグ表示（common/debug.js） | 無効なら DOM・console に触れない（全ページ）、?debug=1 でボタン・エラーの件数・パネル・コピー用の文字、メニュー→ゲームでも有効、?debug=0 と「デバッグを終わる」で消える、命令（help・info・layout・state・storage・tap・logs）の形と安全なエラー、ボタンが全ページ（SE 縦横・最初の画面とプレイ中）で押せる要素に重ならない、パネルの文字 12px・ボタン 44px・touch-action、オフライン（DG1〜DG6、debug.mjs）。わざと起こすエラーには印 DGTEST を付け、X1 の集計から外す |
+| RL | iPhone の遠隔テスト（中継） | `tests/relay/relay.mjs` を子のプロセスとして `--key` 固定・`--port 0`（空いているポート）・`--host 127.0.0.1` で起動し、Playwright のページを iPhone の代わりにつなぐ。PC 向けの窓口は fetch、`ask.mjs` は子のプロセスで呼ぶ。終わったら（失敗しても）中継を止める：起動 → `/status`・`/wait`・`/run`（info・layout・state・logs・時間切れ）・`/logs`（RL1）、合言葉ちがいは 4001・rejected・つなぎ直さない・形の悪い key は覚えない（RL2）、`open` でメニュー→ゲーム・`/wait?after=` で新しい接続を待つ・悪い path は断る・`reload`（RL3）、中継を止めて起動し直すと自動でつなぎ直す（RL4）、relay を付けないときは debug-relay.js を読まない・`?relay=0` と「デバッグを終わる」・APP_FILES に入れない（RL5）、ask.mjs の `--yes`・終了コード 2・`名前=値`（RL6）、静的配信の安全（root の外・.git・301・405・Content-Type・no-store）とループバック以外 403（RL7）、2 台目で 1 台目が 4002（RL8）。smoke は RL1・RL5（relay.mjs）。中継を止めている間の「WebSocket につながらない」console だけは X1 に数えない |
 | X1 | 共通 | 全ページでコンソールエラー 0（最後に 1 回） |
 
 ## 構成
@@ -136,6 +138,7 @@ tests/
                    画面の共通確認（layoutProbe）、合否の記録、既知の不具合（KNOWN_ISSUES）
   cases/           グループごとのテスト（logic, data, escape, sw, layout, play, sound, touch, irocode, zenmai-logic, zenmai-ui）
   mutants/         変異テスト（mutate.mjs）
+  relay/           iPhone の遠隔テストの中継（relay.mjs＝中継サーバー、ask.mjs＝命令の道具。下の「iPhone の遠隔テスト（中継）の使い方」）
   design.md        設計と対応表
 ```
 
@@ -257,6 +260,41 @@ iPhone の Safari で「ボタンが押せない」「表示がずれる」「�
 5. 終わったら **「デバッグを終わる」**（または `?debug=0` を付けて開く）。タブを閉じても消える（sessionStorage に覚えているだけ）。
 
 注意：コピーした文字には、保存データの**キーの名前と長さ**（中身ではない）・端末の情報（User-Agent など）が入ります。メールアドレスなどの個人情報は入りませんが、送る前に目で確かめてください。ゲームの状態（点数・面など）は入ります。
+
+### iPhone の遠隔テスト（中継）の使い方
+
+自宅の PC を「中継役」にして、**本物の iPhone の Safari** の中のようすを、PC の Claude Code から読んだり動かしたりする道具です（例えるなら、iPhone に小さな「リモート デスクトップの受け口」を付けるようなもの）。計画は [docs/iphone-relay-plan.md](../docs/iphone-relay-plan.md)、やりとりの約束は [docs/debug.md](../docs/debug.md) の 5 章。
+
+**使ってよい所**：自宅の PC と、自宅の Wi-Fi だけ。**会社の PC では使いません**（監視ソフトがあるため）。公共の Wi-Fi（カフェ・駅など）でも使いません。
+
+1. **PC で中継を起動する**（リポジトリの一番上のフォルダで。PowerShell でも同じ）：
+
+   ```sh
+   node tests/relay/relay.mjs
+   ```
+
+   画面に、合言葉（毎回変わる 4 けたの数字）と「iPhone の Safari で開く URL」が出ます。例：`http://192.168.1.23:8790/?debug=1&relay=1&key=4821`。止めるときは **Ctrl+C**。
+2. **Windows で初めて起動したとき**は、ファイアウォールの確認の画面が出ます。**「プライベート ネットワーク」だけにチェック**を入れて許可します（「パブリック ネットワーク」には入れない）。
+3. **iPhone で開く**：PC と**同じ Wi-Fi** につないだ iPhone の **Safari** で、1 で出た URL をそのまま入れて開きます（`https` ではなく `http`。ホーム画面のアプリではなく Safari で）。画面の隅に「🐞」が出て、PC の画面に「つながりました」と出れば準備完了です。開けないときは、PC の IP アドレス（URL の数字）とファイアウォールを先に疑います。
+4. **PC から命令を送る**（Claude Code が使います。人が打っても同じ。答えは JSON で出ます）：
+
+   ```sh
+   node tests/relay/ask.mjs status                     # つながっている iPhone（画面の大きさ・開いているページ）
+   node tests/relay/ask.mjs info                       # 画面・safe-area・版・保存データのキーなど
+   node tests/relay/ask.mjs layout selector=a.game     # ボタンの位置・大きさ・重なり・44px 未満か
+   node tests/relay/ask.mjs state                      # ゲームの中の数（例：もくもくこうばの置き場の数）
+   node tests/relay/ask.mjs open path=/games/seizai/   # iPhone の画面をそのゲームへ移す
+   node tests/relay/ask.mjs wait after=2026-10-22T10:00:00.000Z   # open のあと、新しくつながるまで待つ（after は直前の status の device.connectedAt）
+   node tests/relay/ask.mjs logs --since 0             # iPhone で出たエラー・ログ
+   ```
+
+   - 引数は `名前=値` を並べます（PowerShell でも引用符に困らない形）。
+   - 保存データを書き換える `storage op=set`・`op=remove` は、`--yes` を付けたときだけ送ります（付けないと送らずに終わります。データを消さないため）。
+   - 中継のポートを変えたときは `--port 番号` を付けます。終了コード：0＝うまくいった、1＝iPhone 側で失敗・使い方の誤り、2＝中継が動いていない。
+5. **iPhone の自動ロック**で画面が消えると、つながりが切れます。画面を点ければ 10 秒以内につなぎ直しますが、点検の間は「設定 → 画面表示と明るさ → 自動ロック」を長め（例：5 分）にしておくと楽です。終わったら元に戻します。
+6. **中継では確かめられないこと**：PC から `http` で配信しているので、Service Worker が動きません。**オフラインで開けるか・更新で新しい版になるかは、今までどおり公開版（`https://harutonatu.github.io/game-no1/`）で人が確かめます**（下の実機確認リストの 5・6）。本物の指の感触・効果音・ダブルタップ拡大・画面の写真も、人が確かめます。
+
+この仕組みが正しく動くことは、テスト RL1〜RL8（`tests/cases/relay.mjs`）が Chromium と WebKit で確かめています。
 
 ### 公開時の実機確認リスト（iPhone 1 台＋あれば iPad。5 分程度）
 

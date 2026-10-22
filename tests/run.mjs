@@ -35,6 +35,7 @@ export const GROUPS = [
   { key: 'HW', title: 'HW ハシわたり 画面（データ・戻る・画面内・横向き・中断・キーボード・音・オフライン）', file: 'hashi-ui.mjs', weight: { smoke: 8, full: 40 } },
   { key: 'BL', title: 'BL いろびん 計算ロジック(Node)', file: 'irobin-logic.mjs', weight: { smoke: 0, full: 0 } },
   { key: 'DG', title: 'DG デバッグ表示（?debug=1：無効なら何もしない・エラーの件数・命令・ボタンをふさがない・オフライン）', file: 'debug.mjs', weight: { smoke: 5, full: 25 } },
+  { key: 'RL', title: 'RL iPhone の遠隔テスト（中継：relay.mjs・ask.mjs・debug-relay.js。合言葉・つなぎ直し・open・読み込まない・配信の安全・1 台だけ）', file: 'relay.mjs', weight: { smoke: 4, full: 40 } },
   { key: 'BW', title: 'BW いろびん 画面（遊べる・保存・戻る・画面内・横向き・中断・キーボード・音・色覚・オフライン）', file: 'irobin-ui.mjs', weight: { smoke: 8, full: 40 } },
   { key: 'QL', title: 'QL まとめてポン 計算ロジック(Node)', file: 'matomete-logic.mjs', weight: { smoke: 0, full: 0 } },
   { key: 'QW', title: 'QW まとめてポン 画面（2回タップ・保存・戻る・全部消し・終わり・お助け・見た目・画面内・キーボード・音・オフライン・タッチ・メニュー）', file: 'matomete-ui.mjs', weight: { smoke: 8, full: 45 } },
