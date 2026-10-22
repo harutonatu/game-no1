@@ -79,23 +79,102 @@ iPhone の Safari で不具合が出たとき、PC なしで原因の手がか�
 - パネル：エラーとログ（新しい順）・環境（info）・「コピー」「閉じる」「デバッグを終わる」。文字は 12px 以上、ボタンは 44px 以上、safe-area の内側に 8px あける。ボタンは `touch-action: manipulation`、ログ欄は `pan-x pan-y`（ダブルタップ拡大を起こさない）。パネルの中の操作はゲームの document・window へ伝えない（ゲームが反応したりスクロールを止めたりしないように）。
 - 「コピー」は `navigator.clipboard.writeText`、だめなら `execCommand("copy")`、それもだめなら選択済みの枠を出して手でコピーしてもらう。
 
-## 5. 将来の遠隔操作（設計メモ。今回は作っていない）
+## 5. 遠隔操作（中継）の約束
 
-ねらい：PC の Claude Code から、iPhone の本物の Safari で「タップの再現・配置の測定・エラーの回収・ゲームの状態の読み書き」をする。
+計画は [docs/iphone-relay-plan.md](iphone-relay-plan.md)。ユーザー決定「はい、Aで進めましょう。まずは計画を立案して」「はい、段0〜3を進めて」。
+この章が、作る担当（中継サーバー・運び役・テスト）どうしの**約束**です。ここに無いことを勝手に決めたときは、報告に書く。
 
 ```
- PC（Claude Code） ──HTTP──▶ 中継サーバー（同じ Wi-Fi の PC 上の Node） ◀──WebSocket── iPhone の Safari（debug.js ＋ 運び役）
+ PC（Claude Code） ──HTTP（127.0.0.1 だけ）──▶ 中継サーバー tests/relay/relay.mjs ◀──WebSocket /relay── iPhone の Safari
+   node tests/relay/ask.mjs                       （ゲームのファイルも配信する）            debug.js ＋ common/debug-relay.js
 ```
 
-1. **運び役（transport）を1つ足す**：`?debug=1&relay=ws://192.168.x.x:8790` のように中継先を受け取り、WebSocket でつなぐ。受け取った `{ id, command, args }` を `YubiDebug.run(command, args)` に渡し、結果を `{ id, ...結果 }` で返す。`YubiDebug.subscribe` でログを流す。コアは変えない。
-2. **中継サーバー**：Node 標準＋ws（または Node 22 の WebSocket）で数十行。PC 側には HTTP（`POST /run { command, args }` → 結果）を出し、Claude Code は curl で呼ぶ。
-3. **段階**：(1) 読むだけ（info・layout・state・logs）→ (2) tap・storage → (3) 画面の撮影（必要なら）。
+### 5.1 ファイルと担当
 
-制限・注意：
+| ファイル | 中身 | Node の標準だけ |
+|---|---|---|
+| `tests/relay/relay.mjs`（新規） | 中継サーバー：静的ファイルの配信・WebSocket・PC 向けの HTTP の窓口 | はい（`ws` などのパッケージは使わない。WebSocket は自分で書く） |
+| `tests/relay/ask.mjs`（新規） | Claude が命令を送る道具（Windows の PowerShell でも使える） | はい（`fetch` を使う） |
+| `common/debug-relay.js`（新規） | 運び役：iPhone の Safari の中で中継につなぎ、命令を `YubiDebug.run` に渡す | ブラウザ（ES5 寄りで書く。debug.js と同じ書き方） |
+| `common/debug.js`（数行だけ） | `relay` の URL を読み、有効なら debug-relay.js を読み込む | |
+| `tests/cases/relay.mjs`（新規） | テスト RL 系 | |
 
-- **https のページから ws://（暗号化なし）へはつなげない**（混在コンテンツ）。GitHub Pages は https なので、中継は wss://（証明書が要る）にするか、PC で http 配信したページを使う。
-- **http（PC の IP アドレス）で配信すると Service Worker は動かない**（安全な接続でないため）。オフラインや更新の確かめは https の公開版で。
-- 合成タップの制限（3 章）はそのまま。効果音の開始やダブルタップ拡大の抑止は、遠隔では確かめられない。
-- 画面を消す・別のアプリへ移ると、Safari は接続を切る。つなぎ直しを運び役に入れる。
-- だれでも命令を送れないよう、中継先の指定は `?debug=1` のときだけ・接続時に合言葉（毎回変える短い文字）を付ける。storage の set は保存データを書き換えるので、遠隔では確認してから使う。
-- 本物の iPhone を PC の Safari の Web インスペクタにつなぐ方法（Mac が要る）の代わりになるもので、Windows でも使える。
+- `common/debug-relay.js` は `sw.js` の `APP_FILES` に**入れない**（http でしか使わない）。
+- 中継は**テストの道具**で、公開版のゲームの動きは変えない。`?debug=1&relay=1` を付けないときは debug-relay.js を読み込まない。
+
+### 5.2 有効にする URL（debug.js が読む）
+
+| URL | 動き |
+|---|---|
+| `?debug=1&relay=1&key=1234` | sessionStorage `yubi.relay` に合言葉 `1234` を覚え、debug-relay.js を読み込む |
+| `?relay=0` | `yubi.relay` を消す（つながない） |
+| 何も付けない | `yubi.relay` があれば読み込む（メニュー→ゲームと移っても続く） |
+
+- `relay` を見るのは、デバッグが有効（`?debug=1` か覚えている）のときだけ。無効のときは今までどおり何もしない（DG2）。
+- `key` は英数字 1〜16 文字だけ受け付ける。ほかは無視（つながない）。
+- 読み込み方：debug.js 自身の `src` と同じ場所の `debug-relay.js` を `<script>` で足す（`document.currentScript` の src から作る。ページの深さ（メニュー・`games/<名前>/`）に関係なく正しい場所になる）。読めなくてもゲームは動く。
+- 「デバッグを終わる」（`YubiDebug.stop()`）では `yubi.relay` も消し、接続を閉じる。
+
+### 5.3 運び役（common/debug-relay.js）
+
+- つなぐ先：`(https なら wss: さもなければ ws:)//location.host/relay`。ページを配信している中継サーバーそのもの。
+- つないだらすぐ `{ type:"hello", key, page: location.pathname + location.search, info: (YubiDebug.run("info") の result) }` を送る。
+- 受け取るもの：
+  - `{ type:"welcome" }`：つながった。
+  - `{ type:"run", id, command, args }`：`YubiDebug.run(command, args)` の戻り値に `type:"result"` と `id` を足して送り返す：`{ type:"result", id, ok, result|error, command, ms }`。
+  - `{ type:"ping" }`：`{ type:"pong" }` を返す。
+- 送るもの（ほか）：`YubiDebug.subscribe` の `log` の出来事を `{ type:"log", entry }` で送る（つながる前のログは、hello の直後に `YubiDebug.logs()` から最大 100 件まとめて送る）。
+- **つなぎ直し**：切れたら 1・2・4・8・10・10…秒の間隔でつなぎ直す。`visibilitychange` で画面が見えたら、すぐつなぎ直す。
+- 中継が合言葉違いで閉じたとき（閉じるコード **4001**）は、つなぎ直さない。`YubiDebug.log("warn", "中継：合言葉が ちがいます")`。
+- 別の端末がつないで追い出されたとき（コード **4002**）も、つなぎ直さない。
+- 運び役だけの命令を `YubiDebug.command` で足す：
+  - `open`：引数 `{ path }`。同じサイトのページへ移る。`path` は `/` で始まり `//` で始まらないものだけ（`/games/hashi/` など。`?` 以降も可）。結果を返してから 100ms 後に移る。
+  - `reload`：結果を返してから 100ms 後に読み直す。
+- テスト用の窓口 `window.YubiDebugRelay = { status() → "connecting"|"open"|"closed"|"rejected", stop() }`。
+- 例外を外へ出さない。WebSocket が無い・つながらなくても、ゲームとデバッグ表示は動く。
+
+### 5.4 中継サーバー（tests/relay/relay.mjs）
+
+起動：`node tests/relay/relay.mjs [--port 8790] [--key 1234] [--root <リポジトリ>] [--host 0.0.0.0]`。
+
+- 既定：ポート 8790（環境変数 `RELAY_PORT` でも可）、合言葉は起動のたびに 4 けたの数字を作る（`--key` で固定。テスト用）、root はこのファイルの 2 つ上（リポジトリの一番上）、host は `0.0.0.0`（同じ Wi-Fi の iPhone から届く）。
+- 起動したら、PC の IPv4 アドレス（内部・ループバック以外）ごとに、iPhone で開く URL を出す：`http://192.168.x.x:8790/?debug=1&relay=1&key=1234`。合言葉と「止めるときは Ctrl+C」も出す。
+- 出来事を 1 行ずつ出す：つながった（端末の幅×高さ・ページ）、切れた、合言葉ちがい、命令（名前・ok・ms）。
+- **静的ファイルの配信**：root の下だけ（`..` や絶対パスで外へ出ない）。`/` で終わる URL は `index.html`。`/game-no1/` で始まる URL も同じものを返す（GitHub Pages と同じ形でも開ける）。拡張子に合った Content-Type（html・js・mjs・css・json・webmanifest・png・svg・ico・txt）。`Cache-Control: no-store`（直したらすぐ見える）。無ければ 404。
+- **WebSocket**：`/relay` の Upgrade だけ。RFC 6455 の最低限（握手・テキストの枠・マスク・分割の枠・ping/pong・close）。1 つの枠は 8MB まで（超えたら閉じる）。20 秒ごとに `{type:"ping"}` を送る。
+  - hello の `key` が違えば、コード 4001 で閉じる。hello の前の命令は受け付けない。10 秒以内に hello が無ければ閉じる。
+  - つなげるのは 1 台だけ。新しい端末が正しく hello したら、古い接続をコード 4002 で閉じる。
+- **PC 向けの窓口**（**ループバック（127.0.0.1・::1）からだけ**。ほかは 403。答えはすべて JSON）：
+
+| 窓口 | 答え |
+|---|---|
+| `POST /run` 本文 `{ command, args, timeoutMs }` | 運び役の result（`{ ok, result|error, command, ms }`。`type`・`id` は外す）。つながっていない：`{ ok:false, error:"iPhone が つながっていません" }`。待ちは既定 10 秒・最大 60 秒、過ぎたら `{ ok:false, error:"時間切れ" }`。途中で切れたら `{ ok:false, error:"とちゅうで きれました" }` |
+| `GET /status` | `{ ok:true, connected, key, port, device: { userAgent, page, screen:{w,h}, connectedAt, lastSeen } \| null }` |
+| `GET /logs?since=<番号>` | `{ ok:true, last, entries: [{ seq, at, page, entry }] }`。中継が受け取ったログ（最大 1000 件、古いものから捨てる）のうち、seq が since より大きいもの |
+| `GET /wait?timeoutMs=<ms>` | つながるまで待つ（既定 15 秒・最大 60 秒）。`{ ok:true, connected:true, device }` か `{ ok:false, error:"時間切れ" }`。`open`・`reload` のあとに使う |
+
+### 5.5 命令の道具（tests/relay/ask.mjs）
+
+```
+node tests/relay/ask.mjs <命令> [引数…] [--yes] [--port 8790] [--timeout 10000]
+```
+
+- 特別な命令：`status`・`logs [--since N]`・`wait`（それぞれ 5.4 の窓口）。ほかは `POST /run`。
+- 引数は `名前=値` を並べる（PowerShell で JSON の引用符に困らないように）：`ask.mjs layout selector=#board limit=20`、`ask.mjs tap x=100 y=200`。値は JSON として読めればその値（数・true・null）、だめなら文字列。引数が 1 つで `{` で始まるなら JSON の本文として使う。引数が `名前=` の形でない 1 つだけなら、そのまま args にする（`ask.mjs layout "#board"`）。
+- `storage` の `op=set` と `op=remove` は `--yes` が無いと送らず、理由を出して終わる（保存データを消さないため）。
+- 出力は整形した JSON（標準出力）。終了コード：0＝ok、1＝ok:false、2＝中継に届かない（「中継が 動いていません：node tests/relay/relay.mjs で起動してください」）。
+
+### 5.6 テスト（RL 系、tests/cases/relay.mjs）
+
+テストは relay.mjs を子のプロセスとして `--key` 固定・空いているポートで起動し、Playwright のページを iPhone の代わりにつなぐ。Chromium と WebKit の両方で合格すること。
+
+| 番号 | 確かめること |
+|---|---|
+| RL1（smoke） | 起動 → `?debug=1&relay=1&key=…` で開く → `/status` が connected、`info`・`layout`・`state`・`logs` が `/run` で返る |
+| RL2 | 合言葉が違うとつながらない（4001・`YubiDebugRelay.status()` が rejected・つなぎ直さない） |
+| RL3 | `open` でメニュー→ゲームへ移っても、`/wait` のあと命令が通る（sessionStorage で続く） |
+| RL4 | 中継を止めて起動し直すと、運び役が自動でつなぎ直す |
+| RL5 | `relay` を付けない（`?debug=1` だけ）・`?debug=1` も無いときは debug-relay.js を読み込まない |
+| RL6 | ask.mjs：`storage op=set` は `--yes` が無いと送らない、中継が無いと終了コード 2、`名前=値` の読み方 |
+| RL7 | 静的配信：root の外（`/../`・`%2e%2e`）は読めない、`/game-no1/` でも開ける、PC 向けの窓口はループバック以外 403（ループバック以外からの要求が作れないなら、判定の関数を直接確かめる） |
+| RL8 | 2 台目がつなぐと 1 台目が 4002 で閉じられ、つなぎ直さない |
