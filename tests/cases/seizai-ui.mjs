@@ -1312,7 +1312,7 @@ export const tests = [
     },
   },
   {
-    id: 'WW24', tier: 'full', title: 'もくもくこうば はこぶ人の往復と「まち」（§20・SZ-04・SZ-05）：録画と同じ局面（こうば・きこり 2にん Lv2・なえぎ 2にん Lv3・はこぶ 3にん Lv2・かわむき 2台 Lv2・かくざい 2台 Lv2）で、ゲームの時間 30 秒の間に はこぶの人が丸太を持って門まで 3 回以上行き（carryTrips）、はこぶ・かわむき・かくざい の「まち」（getState().waits の "in"）が出続けず、はこぶ のシートに待つ文が出ない。動きを減らす設定でも往復する（ゆっくり歩くので 2 回以上）。本当に前の品が来ないとき（なえぎ 0 人で森が空）は今までどおり「まち」',
+    id: 'WW24', tier: 'full', title: 'もくもくこうば はこぶ人の往復と「まち」（§20・SZ-04・SZ-05）：録画と同じ局面（こうば・きこり 2にん Lv2・なえぎ 2にん Lv3・はこぶ 3にん Lv2・かわむき 2台 Lv2・かくざい 2台 Lv2）で、ゲームの時間 30 秒の間に はこぶの人が丸太を持って門まで 3 回以上行き（carryTrips）、はこぶ・かわむき・かくざい の「まち」（getState().waits の "in"）が出続けず、はこぶ のシートに待つ文が出ない。動きを減らす設定でも往復する（ゆっくり歩くので 2 回以上）。本当に前の品が来ないとき（なえぎ 0 人で森が空）は今までどおり「まち」。きこりが つまって切り株が数秒おきにしか できない局面（こや・きこり 1にん Lv2・なえぎ 1にん Lv2）では、なえぎ（猶予 3 秒）に「まち」が出る',
     async run({ browser, check, root, errors }) {
       const L = logicOf(root);
       const e0 = errors.length;
@@ -1348,6 +1348,24 @@ export const tests = [
           const w2 = (await gs(page)).waits;
           check(`本当に前の品が来ないとき（なえぎ 0 人・森が空）は「まち」：はこぶ ${w2.carry}・かわむき ${w2.peel}・かくざい ${w2.beam}`, w2.carry === 'in' && w2.peel === 'in' && w2.beam === 'in', w2);
         }
+        await ctx.close();
+      }
+      // なえぎの猶予は 3 秒（§20 E2）：きこりが つまって切り株が数秒おきにしか できないとき、植え終わって次を待つ間は「きりかぶ まち」
+      {
+        const slow = { money: 50, forest: { trees: 10, saplings: 0 }, buf: { yard: 0, logs: 0, peeled: 0, goods: 0 }, depts: { cut: { staff: 1, level: 2 }, plant: { staff: 1, level: 2 }, carry: { staff: 2, level: 2 } } };
+        const { ctx, page } = await openW(browser, 'WW24', { v: SMOKE_V(), items: { 'seizai.save': saveOf(L, mkState(L, 1, slow), T0) }, opts: { clockTime: new Date(T0 + 1000) } });
+        await closeCards(page);
+        await wait(page, 10000);   // 最初の切り株を植え終わるまで
+        const l0 = await lg(page);
+        let np = 0;
+        const S = 30;
+        for (let i = 0; i < S; i++) {
+          await wait(page, 1000);
+          if ((await gs(page)).waits.plant === 'in') np++;
+        }
+        const g1 = await gs(page), l1 = await lg(page);
+        const planted = l1.done.plant - l0.done.plant;
+        check(`きこりが つまり（${g1.bottleneck}）・30 秒で なえぎは ${planted} 本植えた間に、なえぎの「まち」が ${np}/${S} 回（1 割以上・8 割以下）`, g1.bottleneck === 'cut' && planted >= 2 && np >= S * 0.1 && np <= S * 0.8, { np, planted, bn: g1.bottleneck });
         await ctx.close();
       }
       check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));

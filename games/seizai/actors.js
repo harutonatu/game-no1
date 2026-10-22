@@ -95,8 +95,11 @@
   // plant の "in" は「切り株が無い」＝ きこりを待っている。cut の "in" は「切れる木が無い」＝ なえぎ（森）を待っている
   // lastMade（{ 部署: その部署が最後に作った state.t }）を渡すと、"in" は「前の品が 1 未満 かつ 最近 何も作っていない」ときだけ（§20 E2）。
   //   最近＝ clamp(2 ÷ rates[部署], 3, 15) 秒以内（速さ 0 なら すぐ待ち。作った時刻を知らない・時計が戻ったときも待ち）。
+  //   ただし なえぎ（plant）は速さによらず PLANT_GRACE 秒（きこりが つまって 切り株が ときどきしか できないときも「きりかぶ まち」を出すため。UX レビュー）
   //   rates を渡さなければ logic の rates(state) を使う。lastMade を渡さなければ その瞬間の置き場だけで決める（§18 のまま）
+  const PLANT_GRACE = 3;
   function graceOf(rate) { return rate > 0 ? clamp(2 / rate, 3, 15) : 0; }
+  function graceFor(dept, rate) { return dept === "plant" ? (rate > 0 ? PLANT_GRACE : 0) : graceOf(rate); }
   function waitOf(state, lastMade, ratesIn) {
     const o = { cut: "", plant: "", carry: "", peel: "", beam: "", dry: "", plank: "", plane: "", shop: "" };
     if (!state || typeof state !== "object") return o;
@@ -109,7 +112,7 @@
       idle = (d) => {
         const r = num(rates[d], 0), last = lastMade[d];
         if (!(r > 0) || typeof last !== "number" || !Number.isFinite(last) || now < last) return true;
-        return now - last > graceOf(r);
+        return now - last > graceFor(d, r);
       };
     }
     const stage = clampStage(state.stage);
@@ -485,6 +488,7 @@
     function noteDone(state, events, replace, stage) {
       const done = state.done && typeof state.done === "object" ? state.done : null;
       const counts = {}, inc = {};
+      if (replace) tickets = 0; // 段が変わった・読み直したときは 券を 0 から（§20.1）
       if (done) {
         for (const d of DEPT_IDS) {
           const cur = num(done[d], 0);
@@ -809,7 +813,7 @@
       drain() { const e = effects; effects = []; return e; },
       setCalm(b) { calm = !!b; },
       geometry: () => geo,
-      reset() { first = true; prevDone = {}; actors = []; slots = []; effects = []; lastMade = {}; tickets = 0; },
+      reset() { first = true; prevDone = {}; actors = []; slots = []; effects = []; lastMade = {}; tickets = 0; carryTrips = 0; },
       clock: () => clk
     };
   }
