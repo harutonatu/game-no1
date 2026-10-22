@@ -67,6 +67,7 @@ const M = [
   ['M24 ばいばいタイル：表に戻ったとき保存がほかで変わっていても開き直さない（X-20）', '保存', 'games/2048/index.html', '    if (!stale && rawState() === seenState) return false;', '    return false;'],
   ['M25 ばいばいタイル：裏で別のタブが書いても保存を止めない（storage を見ない。X-20）', '保存', 'games/2048/index.html', 'if (document.hidden && (e.key === null || e.key === KEY_STATE)) stale = true;', 'if (false) stale = true;'],
   ['M26 ばいばいタイル：裏へ回る・閉じるときの保存で比べ直さない（storage イベントが届く前に古い盤を書き戻す。X-20）', '保存', 'games/2048/index.html', '    if (!stale && changedElsewhere()) stale = true;\n    return stale;', '    return stale;'],
+  ['M27 ブロック：低い横持ち（高さ 319 以下）でスコア欄を広げない（LEVEL・LINES 5 桁が「…」。X-18）', '表示の桁数', 'games/blocks/index.html', '.stats { padding-top: 48px; width: 162px; grid-template-columns: auto minmax(0, 1fr); gap: 0 4px; }', '.stats { padding-top: 48px; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 0 6px; }'],
   ['MZ1 ゼンマイの render.js を事前キャッシュから外す', 'オフライン', 'sw.js', '  "./games/zenmai/render.js",\n', ''],
   ['MZ2 ゼンマイの保存データで範囲外の★（9など）を受け入れる', '保存データ互換', 'games/zenmai/logic.js', 'if (!(Number.isInteger(s) && s >= 0 && s <= 3)) continue;', ''],
   ['MZ3 ゼンマイの結果カードから「メニューへ」が消える', '閉じ込め', 'games/zenmai/index.html', '<button class="cta" type="button" data-cmd="menu">メニューへ</button>', ''],
@@ -85,6 +86,8 @@ const M = [
   ['MP8 ピカッと：ひとりで れんしゅうも 3回せいこうで終わる（5回まで測れない）', 'ルール', 'games/pikatto/logic.js', 'if (mode !== "solo" && max >= WIN_SCORE) {', 'if (max >= WIN_SCORE) {'],
   ['MP9 ピカッと：よーいの終わり際の押下が受付の窓に残り、よーいの後に届いてフライングになる', 'ルール', 'games/pikatto/index.html', 'if (input) input.discard();', ''],
   ['MP10 ピカッとのとても低い横画面ですき間を詰めない（SE Safari 横で 4 人の隅が重なる、X-17）', 'ボタン重なり', 'games/pikatto/index.html', '@media (orientation: landscape) and (max-height: 300px) {', '@media (orientation: landscape) and (max-height: 260px) {'],
+  ['MP11 ピカッと：対戦の途中で点があっても「メニューへ」を確かめない（PK-33）', 'データ消失', 'games/pikatto/index.html', '&& (gameState.scores || []).some((n) => n > 0);', '&& false;'],
+  ['MP12 ピカッと：最終結果（試合が終わった後）でも「メニューへ」を確かめてしまう（PK-33）', 'ルール', 'games/pikatto/index.html', 'gameState.mode !== "solo" && gameState.phase !== "done"', 'gameState.mode !== "solo"'],
   // ---- ハシわたり（games/hashi/）。判定・点数・いのち・保存・中断・タイマーの仕組みを変えたときだけ流す ----
   ['MH1 ハシわたり：判定の端を開区間にする（茎の先が葉の端ちょうどで落ちる）', 'ルール', 'games/hashi/logic.js', 'const onTarget = tipT !== null && tipT >= left && tipT <= right;', 'const onTarget = tipT !== null && tipT > left && tipT < right;'],
   ['MH2 ハシわたり：recordBest で同点もベスト更新にする', '保存データ', 'games/hashi/logic.js', 'const improved = s > prev;', 'const improved = s >= prev;'],
@@ -109,16 +112,22 @@ const M = [
   ['MH21 ハシわたり：表に戻ったとき保存がほかで変わっていても開き直さない（契約 §17・X-20）', '保存', 'games/hashi/main.js', '    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;', '    return false;'],
   ['MH22 ハシわたり：開き直す前（stale）でもベストを書く（pagehide で下げる。契約 §17・X-20）', '保存', 'games/hashi/main.js', '  function writeKey(key, val) {\n    if (stale) return false;\n', '  function writeKey(key, val) {\n'],
   ['MH23 ハシわたり：閉じるときのベストの保存で比べ直さない（storage イベントが届く前に古いベストへ下げる。契約 §17・X-20）', '保存', 'games/hashi/main.js', '    if (!stale && changedElsewhere()) stale = true;\n    return stale;', '    return stale;'],
+  ['MH24 ハシわたり：タイマーを片付けたとき案内を戻さない（隠す・遊び方で「ぴったり！」が残る。HS-01）', 'タイマー', 'games/hashi/main.js', 'if (hintTimer) { hintTimer = 0; setHint(hintReady()); }', ''],
+  ['MH25 ハシわたり：最後のいのちで落ちたら、ぽちゃんを待たずに結果カード（HS-03）', '進行', 'games/hashi/main.js', 'setPhase("sinking", D(SPLASH_SEC));', 'setPhase("over", 0); showResult(true);'],
+  ['MH26 ハシわたり：茎が最大になっても知らせない（grow が鳴り続ける。HS-02）', '操作', 'games/hashi/main.js', 'if (bridgeLen >= L.MAX_LEN) {', 'if (false) {'],
+  ['MH27 ハシわたり：カードの間、うしろのプレイ画面を inert にしない（HS-07）', '操作', 'games/hashi/main.js', 'el.playView.setAttribute("inert", "");', ''],
   // ---- 版の表示（メニュー）。版を上げる手順が崩れたときの検出 ----
   // MV1・MV3 は正規表現で今の版・日付を読み、1つずらす（版を上げるたびに直さなくてよい）
   ['MV1 版の数字だけ上げ忘れる（version.js が1つ前の版のまま。sw.js は今の版）', '更新', 'common/version.js', /version: "v(\d+)"/, (_, n) => `version: "v${Number(n) - 1}"`],
   ['MV2 version.js を事前キャッシュから外す（オフラインで版が出ない）', 'オフライン', 'sw.js', '  "./common/version.js",\n', ''],
   ['MV3 更新日が YYYY-MM-DD でない（今の日付の - を / にする）', '表示', 'common/version.js', /date: "(\d{4})-(\d{2})-(\d{2})"/, (_, y, m, d) => `date: "${y}/${m}/${d}"`],
-  // ---- メニューの並び（index.html、X-21）。流すときは ONLY=E1,E7,E8,X1 ----
+  // ---- メニューの並び（index.html、X-21・X-23）。流すときは ONLY=E1,E7,E8,X1 ----
   ['MR1 最近遊んだゲームを先頭でなく後ろに足す', '並び順', 'index.html', 'return cleanRecent([url, ...recent.filter((u) => u !== url)]);', 'return cleanRecent([...recent.filter((u) => u !== url), url]);'],
   ['MR2 メニューを並べ替えない', '並び順', 'index.html', 'if (want.every((li, i) => now[i] === li)) return;', 'if (true) return;'],
   ['MR3 壊れた yubi.recent でメニューが落ちる', '保存データ互換', 'index.html', 'try { return cleanRecent(JSON.parse(localStorage.getItem(RECENT_KEY))); } catch (e) { return []; }', 'return cleanRecent(JSON.parse(localStorage.getItem(RECENT_KEY)));'],
-  ['MR4 押した瞬間に並べ替える（押し間違い）', '操作', 'index.html', 'a.addEventListener("click", () => saveRecent(game.url));', 'a.addEventListener("click", () => { saveRecent(game.url); placeRows(); });'],
+  ['MR4 押した瞬間に並べ替える（押し間違い）', '操作', 'index.html', '      saveRecent(game.url);\n    });', '      saveRecent(game.url); placeRows();\n    });'],
+  ['MR5 修飾キーつき・左ボタン以外のクリックでも最近遊んだ順に入れる（別タブで開いただけで先頭。X-23）', '並び順', 'index.html', '      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;\n', ''],
+  ['MR6 Cmd（Meta）+クリックだけ最近遊んだ順に入れてしまう（X-23）', '並び順', 'index.html', 'e.metaKey || e.ctrlKey', 'e.ctrlKey'],
   // ---- 日付・時刻（いろコード）。日付の処理を足したら、ここにも変異を足す（tests/README.md「日付・時計」）----
   ['MD1 いろコード：todayStr を UTC の日付にする（toISOString 由来。日本の0〜9時台に前日になる）', '日付', 'games/irocode/logic.js', 'return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());', 'return d.toISOString().slice(0, 10);'],
   ['MD2 いろコード：todayStr の月が 1 ずれる（getMonth() + 1 を外す）', '日付', 'games/irocode/logic.js', 'pad2(d.getMonth() + 1)', 'pad2(d.getMonth())'],
@@ -278,8 +287,8 @@ const M = [
   ['MW39 もくもくこうば：お金が足りないとき音 deny もヒントも出さない', '表示', 'games/seizai/main.js', '    sfx.play("deny");\n    setHint(reasonText(reason, what, d) || HINT_MONEY);\n', ''],
   // レビュー後の直し（契約 §17。2026-10-21）
   ['MW40 もくもくこうば：上限に着いても切る前の秒を渡さない（SZ-01 の戻り＝capped がいつも false）', '日付', 'games/seizai/main.js', '    if (sec >= OFFLINE_CAP_SEC) {', '    if (false) {'],
-  ['MW41 もくもくこうば：遊び方の間も止めない', 'ルール', 'games/seizai/main.js', '    if (overlay === "help") acc = 0;', '    if (false) acc = 0;'],
-  ['MW42 もくもくこうば：rAF だけが止まった間を足さない（捨てる）', '日付', 'games/seizai/main.js', '    if (w - wallLast > STALL_SEC * 1000 && overlay !== "help") {', '    if (false) {'],
+  ['MW41 もくもくこうば：遊び方の間も止めない', 'ルール', 'games/seizai/main.js', '    if (readingCard()) acc = 0;', '    if (overlay === "reset") acc = 0;'],
+  ['MW42 もくもくこうば：rAF だけが止まった間を足さない（捨てる）', '日付', 'games/seizai/main.js', '    if (w - wallLast > STALL_SEC * 1000 && !readingCard()) {', '    if (false) {'],
   ['MW43 もくもくこうば：シートを開いても押した部署を見える所へスクロールしない', '表示', 'games/seizai/main.js', '    revealZone(dept);\n', ''],
   ['MW44 もくもくこうば：新しい版の保存を seizai.save.v<n> に残さない', '保存', 'games/seizai/main.js', 'if (Number.isInteger(v) && v > (L.SAVE_VERSION || 1) && v < 1e6)', 'if (false)'],
   ['MW45 もくもくこうば：大口の注文が こうじょう から（こうば で来ない）', 'ルール', 'games/seizai/logic.js', 'const ORDER_FROM_STAGE = 2;', 'const ORDER_FROM_STAGE = 3;'],

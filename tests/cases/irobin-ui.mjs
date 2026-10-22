@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { BASE, view, custom, newPage, seed, wait, frozen, layoutProbe, swInfo, sleep, touch, SFX_SPY, plays } from '../lib.mjs';
+import { BASE, view, custom, newPage, seed, wait, frozen, layoutProbe, swInfo, sleep, touch, SFX_SPY, plays, x20Run, x20Text } from '../lib.mjs';
 
 const IR = BASE + 'games/irobin/';
 const SMOKE_V = () => view('SE', 'p', 'app');
@@ -123,80 +123,6 @@ const STUCK_STATE = () => ({
   bottles: [[0, 1], [0, 1], [2]].map((c) => ({ cells: c, hidden: c.map(() => false), sealed: false })),
   slots: [0, 1], queue: [2], served: 0, total: 3, moves: 0, won: false,
 });
-
-// ---------- X-20：古いページから書き戻さない（bfcache から戻ったとき・裏にいる間に別のタブが書いたとき） ----------
-// key：見張る保存のキー。newer：ほかのページが書いた新しい保存（生の文字）を2つ。fp(raw)：中身の印（同じ中身なら同じ文字）。
-// (a) 変わっていなければ pageshow persisted でも開き直さない。(b) bfcache（入る → ほかで書く → pageshow persisted → pagehide）で
-// 書き戻さず開き直し、開き直したページが新しい保存から続ける（もう一度 pagehide で書かせて印を比べる）。
-// (c) 裏にいる間に同じ context の別のページが書く（本物の storage イベント）→ pagehide で書き戻さず、表に戻ると開き直す。
-// (d) storage イベントが届かないまま閉じる（iOS は裏のタブを止めるので届くのが遅れる）：別のページが書いたのと同じことを、
-// このページの中から直接書いて再現する（同じページの書き換えは storage イベントが出ない）。d1：裏にしたあとに書かれて pagehide、
-// d2：見えている間に書かれて（イベントが届く前に）そのまま裏へ回る（hidden の保存）→ pagehide。どちらも書き戻さず、表に戻ると開き直す。
-// newer は4つ（[0] b、[1] c、[2] d1、[3] d2）。hiddenWrite(page)：(c) で裏にいる間に、このページ自身の保存を1回起こす（storage を見て止まるか）
-const x20Hidden = (p, h) => p.evaluate((h) => {
-  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
-  Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
-  document.dispatchEvent(new Event('visibilitychange'));
-}, h);
-async function x20Run(page, ctx, { key, newer, fp, hiddenWrite = null }) {
-  const loaded = () => page.waitForEvent('load', { timeout: 5000 }).then(() => true, () => false);
-  const hideNow = () => page.evaluate((k) => { window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false })); return localStorage.getItem(k); }, key);
-  let nav = loaded();
-  await page.evaluate(() => { window.__x20 = 1; window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })); window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); });
-  const a = { reload: await nav, same: await page.evaluate(() => window.__x20 === 1) };
-  nav = loaded();
-  const b = { kept: await page.evaluate(([k, raw]) => {
-    window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
-    localStorage.setItem(k, raw);
-    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
-    window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
-    return localStorage.getItem(k) === raw;
-  }, [key, newer[0]]) };
-  b.reload = await nav; await wait(page, 300);
-  b.fp = fp(await hideNow()); b.want = fp(newer[0]);
-  await x20Hidden(page, true); await wait(page, 50);
-  const p2 = await ctx.newPage();
-  await p2.goto(BASE + 'manifest.webmanifest');
-  await p2.evaluate(([k, raw]) => localStorage.setItem(k, raw), [key, newer[1]]);
-  await p2.close();
-  await page.waitForTimeout(200);
-  const c = {};
-  if (hiddenWrite) { await hiddenWrite(page); c.keptWrite = (await page.evaluate((k) => localStorage.getItem(k), key)) === newer[1]; }
-  c.kept = (await hideNow()) === newer[1];
-  nav = loaded();
-  await x20Hidden(page, false);
-  c.reload = await nav; await wait(page, 300);
-  c.fp = fp(await hideNow()); c.want = fp(newer[1]);
-  // (d1) 裏にしたあと書かれ、storage イベントが届かないまま pagehide
-  await x20Hidden(page, true); await wait(page, 50);
-  const d1 = { kept: await page.evaluate(([k, raw]) => {
-    localStorage.setItem(k, raw);
-    window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
-    return localStorage.getItem(k) === raw;
-  }, [key, newer[2]]) };
-  nav = loaded();
-  await x20Hidden(page, false);
-  d1.reload = await nav; await wait(page, 300);
-  d1.fp = fp(await hideNow()); d1.want = fp(newer[2]);
-  // (d2) 見えている間に書かれ、イベントが届く前に裏へ回る（hidden の保存）→ pagehide
-  const d2 = { kept: await page.evaluate(([k, raw]) => {
-    localStorage.setItem(k, raw);
-    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
-    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
-    document.dispatchEvent(new Event('visibilitychange'));
-    const hid = localStorage.getItem(k) === raw;
-    window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
-    return hid && localStorage.getItem(k) === raw;
-  }, [key, newer[3]]) };
-  nav = loaded();
-  await x20Hidden(page, false);
-  d2.reload = await nav; await wait(page, 300);
-  d2.fp = fp(await hideNow()); d2.want = fp(newer[3]);
-  const okD = (d) => d.kept && d.reload && d.fp === d.want;
-  const ok = !a.reload && a.same && b.kept && b.reload && b.fp === b.want && (!hiddenWrite || c.keptWrite) && c.kept && c.reload && c.fp === c.want && okD(d1) && okD(d2);
-  return { ok, a, b, c, d1, d2 };
-}
-const x20Text = (r) => `変わっていなければ開き直さない（${!r.a.reload && r.a.same}）・bfcache で書き戻さない（${r.b.kept}）・開き直す（${r.b.reload}）・新しい保存から続ける（${r.b.fp === r.b.want}）・裏で別のタブが書いたら閉じても書き戻さない（${r.c.kept}）${r.c.keptWrite === undefined ? '' : `・裏でこのページが保存しようとしても書かない（${r.c.keptWrite}）`}・表に戻ると開き直して（${r.c.reload}）続ける（${r.c.fp === r.c.want}）・storage イベントが届かないまま閉じても書き戻さない（裏のあと ${r.d1.kept}・hidden の保存 ${r.d2.kept}）・開き直して続ける（${r.d1.reload && r.d1.fp === r.d1.want}・${r.d2.reload && r.d2.fp === r.d2.want}）`;
 
 export const tests = [
   // ================= smoke =================
