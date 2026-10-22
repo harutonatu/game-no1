@@ -432,9 +432,33 @@
     try { const raw = localStorage.getItem(key); return raw === null ? undefined : JSON.parse(raw); } catch (e) { return null; }
   }
   function writeJSON(key, v) {
+    if (stale) return;
     try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) { /* 保存できなくても遊べる */ }
+    noteSaved(key);
   }
-  function removeKey(key) { try { localStorage.removeItem(key); } catch (e) { /* 使えない環境 */ } }
+  function removeKey(key) {
+    if (stale) return;
+    try { localStorage.removeItem(key); } catch (e) { /* 使えない環境 */ }
+    noteSaved(key);
+  }
+
+  // ===== 古いページから書き戻さない（X-20） =====
+  // bfcache（戻る・進む）で戻ったページや、裏にいる間にほかのタブが同じゲームを遊んだページは、メモリの古い状態を保存に書かず、
+  // 開き直して今の保存から続ける。見張るのは途中・記録・今日の1問の3つ。このページが最後に読んだ・書いた生の文字と比べる
+  const readRaw = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const WATCH_KEYS = [KEY_STATE, KEY_STATS, KEY_DAILY];
+  const seenRaw = new Map(WATCH_KEYS.map((k) => [k, readRaw(k)]));
+  let stale = false;                     // true：このページはもう保存しない（開き直す前）
+  function noteSaved(key) { if (seenRaw.has(key)) seenRaw.set(key, readRaw(key)); }
+  // 表に戻ったとき（visible・pageshow）：ほかで変わっていたら書かずに開き直す（true なら、ほかの処理はしない）
+  function reloadIfStale() {
+    if (!stale && WATCH_KEYS.every((k) => readRaw(k) === seenRaw.get(k))) return false;
+    stale = true;
+    try { location.reload(); } catch (e) { console.error("いろコード: 開き直せませんでした", e); }
+    return true;
+  }
+  // 裏にいる間にほかのタブが同じ保存を書いたら、このページの保存を止める（表に戻ったら開き直す。見えている間は今までどおり）
+  window.addEventListener("storage", (e) => { if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true; });
 
   const rawState = readJSON(KEY_STATE);
   const rawStats = readJSON(KEY_STATS);
@@ -901,9 +925,11 @@
   // アプリを隠す・閉じる直前にも保存しておく。戻ってきたとき日付が変わっていれば今日の1問を差し替える
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) { saveState(); return; }
+    if (reloadIfStale()) return;
     refreshDay();
   });
   window.addEventListener("pagehide", saveState);
+  window.addEventListener("pageshow", () => { reloadIfStale(); });
 
   // ===== キーボード（あれば） =====
   window.addEventListener("keydown", (e) => {

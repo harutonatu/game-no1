@@ -547,8 +547,26 @@
     } catch (e) { return initialProgress(); }
   }
   function saveProgress() {
+    if (stale) return;
     try { localStorage.setItem(KEY_PROGRESS, JSON.stringify(progress)); } catch (e) { /* 保存できなくても遊べる */ }
+    seenProgress = rawProgress();
   }
+
+  // ===== 古いページから書き戻さない（X-20） =====
+  // bfcache（戻る・進む）で戻ったページや、裏にいる間にほかのタブが同じゲームを遊んだページは、メモリの古い進み具合を保存に書かず、
+  // 開き直して今の保存から続ける。見張るのは進み具合（KEY_PROGRESS）だけ。このページが最後に読んだ・書いた生の文字と比べる
+  const rawProgress = () => { try { return localStorage.getItem(KEY_PROGRESS); } catch (e) { return null; } };
+  let seenProgress = rawProgress();
+  let stale = false;                     // true：このページはもう保存しない（開き直す前）
+  // 表に戻ったとき（visible・pageshow）：ほかで変わっていたら書かずに開き直す
+  function reloadIfStale() {
+    if (!stale && rawProgress() === seenProgress) return false;
+    stale = true;
+    try { location.reload(); } catch (e) { console.error("ゼンマイさんぽ: 開き直せませんでした", e); }
+    return true;
+  }
+  // 裏にいる間にほかのタブが同じ保存を書いたら、このページの保存を止める（表に戻ったら開き直す。見えている間は今までどおり）
+  window.addEventListener("storage", (e) => { if (document.hidden && (e.key === null || e.key === KEY_PROGRESS)) stale = true; });
   function helpSeen() { try { return localStorage.getItem(KEY_HELP) === "1"; } catch (e) { return false; } }
   function markHelpSeen() { try { localStorage.setItem(KEY_HELP, "1"); } catch (e) { /* 無視 */ } }
 
@@ -996,8 +1014,9 @@
   el.helpBtn.addEventListener("click", showHelp);
 
   // アプリを隠す・切り替えると一時停止（遊び方・結果カードはそのまま）
-  document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); else reloadIfStale(); });
   window.addEventListener("pagehide", () => { pause(); saveProgress(); });
+  window.addEventListener("pageshow", () => { reloadIfStale(); });
 
   // ===== キーボード =====
   window.addEventListener("keydown", (e) => {

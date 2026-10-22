@@ -86,8 +86,31 @@
   // ===== 保存（保存できなくても遊べる） =====
   function safeCall(fn, fallback) { try { return fn(); } catch (e) { console.error("まとめてポン:", e); return fallback; } }
   function readKey(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
-  function writeKey(key, val) { try { localStorage.setItem(key, val); return true; } catch (e) { return false; } }
-  function removeKey(key) { try { localStorage.removeItem(key); } catch (e) { /* 無視 */ } }
+  function writeKey(key, val) {
+    if (stale) return false;
+    try { localStorage.setItem(key, val); noteSaved(key); return true; } catch (e) { return false; }
+  }
+  function removeKey(key) {
+    if (stale) return;
+    try { localStorage.removeItem(key); noteSaved(key); } catch (e) { /* 無視 */ }
+  }
+
+  // ===== 古いページから書き戻さない（契約 §11・X-20） =====
+  // bfcache（戻る・進む）で戻ったページや、裏にいる間にほかのタブが同じゲームを遊んだページは、メモリの古い盤・手を保存に書かず、
+  // 開き直して今の保存から続ける。見張るのは途中の保存（matomete.save）だけ。このページが最後に読んだ・書いた生の文字と比べる
+  const WATCH_KEYS = [KEY_SAVE];
+  const seenRaw = new Map(WATCH_KEYS.map((k) => [k, readKey(k)]));
+  let stale = false;                     // true：このページはもう保存しない（開き直す前）
+  function noteSaved(key) { if (seenRaw.has(key)) seenRaw.set(key, readKey(key)); }
+  // 表に戻ったとき（visible・pageshow）：ほかで変わっていたら書かずに開き直す（true なら、ほかの処理はしない）
+  function reloadIfStale() {
+    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;
+    stale = true;
+    try { location.reload(); } catch (e) { console.error("まとめてポン: 開き直せませんでした", e); }
+    return true;
+  }
+  // 裏にいる間にほかのタブが同じ保存を書いたら、このページの保存を止める（表に戻ったら開き直す。見えている間は今までどおり）
+  window.addEventListener("storage", (e) => { if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true; });
   const bestOf = (mode) => safeCall(() => L.validateBest(readKey(KEY_BEST[mode] || KEY_BEST.normal)), 0) || 0;
   const leastOf = (mode) => safeCall(() => L.validateLeast(readKey(KEY_LEAST[mode] || KEY_LEAST.normal)), null);
 
@@ -608,11 +631,12 @@
   if (!input) console.error("まとめてポン: MatometeInput が読み込まれていません（input.js）。タップとキーボードが使えません");
 
   // ===== 中断 =====
-  document.addEventListener("visibilitychange", () => { if (document.hidden) { flush(); save(); } });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) { flush(); save(); } else reloadIfStale(); });
   window.addEventListener("pagehide", () => { save(); clearLater(); });
   // pagehide の clearLater で「押せない」を外すタイマーが消えると、ボタンがうすいまま残る。戻ったときに外す
   //（ミチビキ空港 §19 A3 の横展開。カードを出す続きは演出の時計なので消えない）
   window.addEventListener("pageshow", () => {
+    if (reloadIfStale()) return;
     if (overlayKind !== "over") return;
     const unlock = () => el.card.querySelectorAll(".btns button[aria-disabled]").forEach((btn) => btn.removeAttribute("aria-disabled"));
     const left = CARD_LOCK_MS - (now() - cardShownAt);

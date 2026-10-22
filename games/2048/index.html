@@ -577,13 +577,33 @@
     } catch (e) { return 0; }
   }
   function saveBest() {
+    if (stale) return;
     try { localStorage.setItem(KEY_BEST, String(best)); } catch (e) { /* 保存できない環境では無視 */ }
   }
   function saveState() {
+    if (stale) return;
     try {
       localStorage.setItem(KEY_STATE, JSON.stringify({ v: 1, grid, score, prev, keepPlaying, moves, seed, bestAtStart, bestFlashed, topTile }));
     } catch (e) { /* 保存できなくても遊べる */ }
+    noteSaved();
   }
+
+  // ===== 古いページから書き戻さない（X-20） =====
+  // bfcache（戻る・進む）で戻ったページや、裏にいる間にほかのタブが同じゲームを遊んだページは、メモリの古い盤を保存に書かず、
+  // 開き直して今の保存から続ける。見張るのは途中の保存（KEY_STATE）だけ。このページが最後に読んだ・書いた生の文字と比べる
+  const rawState = () => { try { return localStorage.getItem(KEY_STATE); } catch (e) { return null; } };
+  let seenState = rawState();
+  let stale = false;                     // true：このページはもう保存しない（開き直す前）
+  function noteSaved() { seenState = rawState(); }
+  // 表に戻ったとき（visible・pageshow）：ほかで変わっていたら書かずに開き直す
+  function reloadIfStale() {
+    if (!stale && rawState() === seenState) return false;
+    stale = true;
+    try { location.reload(); } catch (e) { console.error("ばいばいタイル: 開き直せませんでした", e); }
+    return true;
+  }
+  // 裏にいる間にほかのタブが同じ保存を書いたら、このページの保存を止める（表に戻ったら開き直す。見えている間は今までどおり）
+  window.addEventListener("storage", (e) => { if (document.hidden && (e.key === null || e.key === KEY_STATE)) stale = true; });
   // 保存データを読む。どこか1つでも不正なら全体を捨てる（新しいゲームになる）
   function loadState() {
     try {
@@ -966,8 +986,9 @@
   ui.undo.addEventListener("click", undo);
   ui.newGame.addEventListener("click", askNewGame);
   // アプリを閉じる・切り替える直前にも保存しておく
-  document.addEventListener("visibilitychange", () => { if (document.hidden) { finishPending(); saveState(); } });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) { finishPending(); saveState(); } else reloadIfStale(); });
   window.addEventListener("pagehide", () => { finishPending(); saveState(); });
+  window.addEventListener("pageshow", () => { reloadIfStale(); });
 
   // ===== キーボード =====
   const KEYMAP = {
@@ -1059,6 +1080,7 @@
   } else {
     // 保存データがない・不正なとき：不正なデータは消して新しいゲームにする
     try { if (localStorage.getItem(KEY_STATE) !== null) localStorage.removeItem(KEY_STATE); } catch (e) { /* 使えない環境 */ }
+    noteSaved();
     newGame();
   }
 })();

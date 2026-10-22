@@ -78,8 +78,27 @@
   // ===== 保存と設定（保存できなくても遊べる） =====
   function readKey(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
   function writeKey(key, val) {
-    try { localStorage.setItem(key, val); return true; } catch (e) { return false; /* 保存できなくても遊べる */ }
+    if (stale) return false;
+    try { localStorage.setItem(key, val); noteSaved(key); return true; } catch (e) { return false; /* 保存できなくても遊べる */ }
   }
+
+  // ===== 古いページから書き戻さない（契約 §17・X-20） =====
+  // bfcache（戻る・進む）で戻ったページや、裏にいる間にほかのタブが同じゲームを遊んだページは、メモリの古いベスト・到達を
+  // 保存に書かず（pagehide のベストの保存で下げない）、開き直して今の保存から続ける。
+  // 見張るのはベストとステージの到達。このページが最後に読んだ・書いた生の文字と比べる
+  const WATCH_KEYS = [KEY_BEST, KEY_STAGE];
+  const seenRaw = new Map(WATCH_KEYS.map((k) => [k, readKey(k)]));
+  let stale = false;                     // true：このページはもう保存しない（開き直す前）
+  function noteSaved(key) { if (seenRaw.has(key)) seenRaw.set(key, readKey(key)); }
+  // 表に戻ったとき（visible・pageshow）：ほかで変わっていたら書かずに開き直す（true なら、ほかの処理はしない）
+  function reloadIfStale() {
+    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;
+    stale = true;
+    try { location.reload(); } catch (e) { console.error("ハシわたり: 開き直せませんでした", e); }
+    return true;
+  }
+  // 裏にいる間にほかのタブが同じ保存を書いたら、このページの保存を止める（表に戻ったら開き直す。見えている間は今までどおり）
+  window.addEventListener("storage", (e) => { if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true; });
   let best = L.validateBest(readKey(KEY_BEST));
   let slow = L.validateFlag(readKey(KEY_SLOW));
   let guide = L.validateFlag(readKey(KEY_GUIDE));
@@ -637,10 +656,12 @@
   }
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) { suspend(); return; }
+    if (reloadIfStale()) return;
     if (paused && !overlayKind) showPauseCard();
     else { unlockCard(); dirty = true; startLoop(); }
   });
   window.addEventListener("pagehide", () => { suspend(); saveBest(); });
+  window.addEventListener("pageshow", () => { reloadIfStale(); });
 
   // ===== カード =====
   // 骨組みだけ HTML で書き、文言は data-f の要素に textContent で入れる

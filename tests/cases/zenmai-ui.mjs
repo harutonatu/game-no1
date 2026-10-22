@@ -138,6 +138,48 @@ async function screensAt(browser, check, v, tag) {
   await ctx.close();
 }
 
+// ---------- X-20：古いページから書き戻さない（bfcache から戻ったとき・裏にいる間に別のタブが書いたとき） ----------
+// key：見張る保存のキー。newer：ほかのページが書いた新しい保存（生の文字）を2つ。fp(raw)：中身の印（同じ中身なら同じ文字）。
+// (a) 変わっていなければ pageshow persisted でも開き直さない。(b) bfcache（入る → ほかで書く → pageshow persisted → pagehide）で
+// 書き戻さず開き直し、開き直したページが新しい保存から続ける（もう一度 pagehide で書かせて印を比べる）。
+// (c) 裏にいる間に同じ context の別のページが書く（本物の storage イベント）→ pagehide で書き戻さず、表に戻ると開き直す。
+const x20Hidden = (p, h) => p.evaluate((h) => {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+  document.dispatchEvent(new Event('visibilitychange'));
+}, h);
+async function x20Run(page, ctx, { key, newer, fp }) {
+  const loaded = () => page.waitForEvent('load', { timeout: 5000 }).then(() => true, () => false);
+  const hideNow = () => page.evaluate((k) => { window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false })); return localStorage.getItem(k); }, key);
+  let nav = loaded();
+  await page.evaluate(() => { window.__x20 = 1; window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })); window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); });
+  const a = { reload: await nav, same: await page.evaluate(() => window.__x20 === 1) };
+  nav = loaded();
+  const b = { kept: await page.evaluate(([k, raw]) => {
+    window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+    localStorage.setItem(k, raw);
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
+    return localStorage.getItem(k) === raw;
+  }, [key, newer[0]]) };
+  b.reload = await nav; await wait(page, 300);
+  b.fp = fp(await hideNow()); b.want = fp(newer[0]);
+  await x20Hidden(page, true); await wait(page, 50);
+  const p2 = await ctx.newPage();
+  await p2.goto(BASE + 'manifest.webmanifest');
+  await p2.evaluate(([k, raw]) => localStorage.setItem(k, raw), [key, newer[1]]);
+  await p2.close();
+  await page.waitForTimeout(200);
+  const c = { kept: (await hideNow()) === newer[1] };
+  nav = loaded();
+  await x20Hidden(page, false);
+  c.reload = await nav; await wait(page, 300);
+  c.fp = fp(await hideNow()); c.want = fp(newer[1]);
+  const ok = !a.reload && a.same && b.kept && b.reload && b.fp === b.want && c.kept && c.reload && c.fp === c.want;
+  return { ok, a, b, c };
+}
+const x20Text = (r) => `変わっていなければ開き直さない（${!r.a.reload && r.a.same}）・bfcache で書き戻さない（${r.b.kept}）・開き直す（${r.b.reload}）・新しい保存から続ける（${r.b.fp === r.b.want}）・裏で別のタブが書いたら閉じても書き戻さない（${r.c.kept}）・表に戻ると開き直して（${r.c.reload}）続ける（${r.c.fp === r.c.want}）`;
+
 export const tests = [
   {
     id: 'ZU0', tier: 'smoke', node: true, title: 'ゼンマイ 静的：index.html が契約の DOM と4つの部品・sfx.js を読み、sw.js が事前キャッシュし、sfx.play の音名が "zenmai" にある',
@@ -705,6 +747,17 @@ export const tests = [
         if (!(sh && ee.stars === 3 && ss?.stars?.[id] === 3)) bad.push({ id, ee, stored: ss?.stars?.[id], cmds: oo.cmds });
       }
       check('15ステージすべて、★3の巻き数（範囲の中央）で歩かせると★3で保存される', !bad.length, bad);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'ZU16', tier: 'full', title: 'ゼンマイさんぽ 古いページから書き戻さない（X-20）：bfcache から戻ったとき・裏にいる間に別のタブが zenmai.progress を書いたとき、古い進み具合を書き戻さず開き直して今の保存から続ける。変わっていなければ開き直さない',
+    async run({ browser, check }) {
+      const { ctx, page } = await newPage(browser, SMOKE_V(), 'ZU16', { clock: true });
+      await openZ(page, { [PK]: JSON.stringify(prog({ z01: 1 }, 2)) });
+      const fp = (raw) => { try { const s = JSON.parse(raw); return `${s.unlocked}:${JSON.stringify(s.stars)}`; } catch { return 'ERR'; } };
+      const r = await x20Run(page, ctx, { key: PK, newer: [JSON.stringify(prog({ z01: 3, z02: 2 }, 3)), JSON.stringify(prog({ z01: 3, z02: 3, z03: 1 }, 4))], fp });
+      check(`ゼンマイさんぽ：${x20Text(r)}`, r.ok, r);
       await ctx.close();
     },
   },

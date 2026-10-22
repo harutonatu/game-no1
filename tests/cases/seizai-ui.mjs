@@ -12,7 +12,7 @@
 //   るすの あいだ（§4.3・§7.1）は、ページの時計を clockTime で決まった瞬間に固定して確かめる（日本・ロサンゼルスの2つのタイムゾーン）。
 //   期待値は Node で読んだ logic.js（同じ root）から作る。半分の速さの 45 秒・上限の 7200 秒は決め打ちの値で比べる（logic が変わっても見逃さない）。
 //   無いときに合格にしない（空振りの合格を作らない）：SeizaiGame・YubiDebug が無ければ例外で不合格にする。
-//   smoke：WW1〜WW6。full：WW7〜WW25（WW18 はレビュー後の直し §17.1、WW19 は §17.3 の B、WW20 は §18 待つ理由（SZ-03）、WW21〜23 は §19（新しい工程・道具・画面を広く）、WW24 は §20 はこぶ人の往復と「まち」（SZ-04・SZ-05）、WW25 は §21 さいしょから（SZ-07）。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
+//   smoke：WW1〜WW6。full：WW7〜WW26（WW18 はレビュー後の直し §17.1、WW19 は §17.3 の B、WW20 は §18 待つ理由（SZ-03）、WW21〜23 は §19（新しい工程・道具・画面を広く）、WW24 は §20 はこぶ人の往復と「まち」（SZ-04・SZ-05）、WW25 は §21 さいしょから（SZ-07）、WW26 は §22 古いページから書き戻さない（X-20）。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -1472,6 +1472,72 @@ export const tests = [
       const errs = errors.slice(e1);
       check(`消せないとき：開き直さない（${same}）・段 ${l4.stage} のまま・カードを閉じる（${g4.overlay}）・#hint「${hint}」・保存は止めたままにしない（saveCount ${c4} → ${c5}）・bak も残る`, same && l4.stage === 2 && g4.overlay === null && /けせなかった/.test(hint || '') && c5 === c4 + 1 && (await stored(page, 'seizai.save.bak')) === 'old-bak' && errs.length >= 1 && errs.every((e) => /さいしょから/.test(e)), { same, stage: l4.stage, overlay: g4.overlay, hint, c4, c5, errs });
       errors.splice(e1);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'WW26', tier: 'full', title: 'もくもくこうば 古いページから書き戻さない（§22・X-20）：bfcache から戻ったとき（pageshow persisted が先・visibilitychange が先の2通り）に保存がほかで変わっていたら、古い状態を書き戻さず開き直して今の保存から続ける（カードが出ない）。裏にいる間に別のタブが保存を書いたら、閉じても書き戻さず、表に戻ると開き直す。保存が変わっていなければ開き直さない',
+    async run({ browser, check, root, errors }) {
+      const L = logicOf(root);
+      const e0 = errors.length;
+      const stA = mkState(L, 2, { money: 50000 });
+      const { ctx, page } = await openW(browser, 'WW26', { items: { 'seizai.save': saveOf(L, stA, T0) }, opts: { clockTime: new Date(T0 + 1000) } });
+      await closeCards(page);
+      // 新しい保存（別のページ・さいしょからが書いたもの）。savedAt はページの今（閉じた間 0 秒）
+      const newer = async (stage, money) => saveOf(L, mkState(L, stage, { money }), await page.evaluate(() => Date.now()));
+      const loaded = () => page.waitForEvent('load', { timeout: 5000 }).then(() => true, () => false);
+      const after = async () => { await wait(page, 300); const l = await lg(page), g = await gs(page); return { stage: l.stage, money: l.money, overlay: g.overlay }; };
+      // (a) 保存が変わっていなければ、pageshow persisted で開き直さない（今までどおり）
+      const nav0 = loaded();
+      await page.evaluate(() => { window.__ww26 = 1; window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })); window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); });
+      check('保存が変わっていなければ、pageshow persisted でも開き直さない', !(await nav0) && (await page.evaluate(() => window.__ww26 === 1)) && (await lg(page)).stage === 2);
+      // (b) bfcache：入る（pagehide persisted で保存）→ ほかで保存が変わる → pageshow persisted が先 → すぐ pagehide（書き戻すならここ）
+      const bRaw = await newer(3, 77777);
+      const nav1 = loaded();
+      const hideB = await page.evaluate((raw) => {
+        window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+        localStorage.setItem('seizai.save', raw);
+        window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+        window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
+        return localStorage.getItem('seizai.save') === raw;
+      }, bRaw);
+      const rB = await nav1;
+      const sB = await after();
+      check(`bfcache（pageshow が先）：古い状態（段 2）を書き戻さず（${hideB}）、開き直して（${rB}）今の保存から続ける（段 ${sB.stage}・お金 ${sB.money}・カード ${sB.overlay}）`, hideB && rB && sB.stage === 3 && sB.money >= 77777 && sB.money < 77777 + 2000 && sB.overlay === null, { hideB, rB, sB });
+      // (c) bfcache：visibilitychange（表）が pageshow より先に来ても、wake で保存を書かず開き直す
+      await closeCards(page);
+      const cRaw = await newer(4, 12345);
+      await setHidden(page, true); await wait(page, 50);
+      const nav2 = loaded();
+      const hideC = await page.evaluate((raw) => {
+        localStorage.setItem('seizai.save', raw);
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+        document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+        window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
+        return localStorage.getItem('seizai.save') === raw;
+      }, cRaw);
+      const rC = await nav2;
+      const sC = await after();
+      check(`bfcache（visibilitychange が先）：書き戻さず（${hideC}）、開き直して（${rC}）今の保存から（段 ${sC.stage}・お金 ${sC.money}・カード ${sC.overlay}）`, hideC && rC && sC.stage === 4 && sC.money >= 12345 && sC.money < 12345 + 2000 && sC.overlay === null, { hideC, rC, sC });
+      // (d) 別のタブ：このページが裏にいる間に、同じ context の2つ目のページが保存を書く（本物の storage イベント）
+      await closeCards(page);
+      await setHidden(page, true); await wait(page, 50);
+      const p2 = await ctx.newPage();
+      await p2.goto(SZ); await p2.waitForTimeout(300);
+      const dRaw = saveOf(L, mkState(L, 1, { money: 4321 }), await p2.evaluate(() => Date.now()));
+      await p2.evaluate((raw) => { window.SeizaiGame.setState(window.SeizaiLogic.loadSave(raw).state); window.SeizaiGame.save(); }, dRaw);
+      const p2raw = await p2.evaluate(() => localStorage.getItem('seizai.save'));
+      await page.waitForTimeout(200);
+      const hideD = await page.evaluate(() => { window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false })); return localStorage.getItem('seizai.save'); });
+      const nav3 = loaded();
+      await setHidden(page, false);
+      const rD = await nav3;
+      const sD = await after();
+      check(`別のタブ：裏にいる間に別のタブが書いた保存（段 1）を、閉じる（pagehide）ときに書き戻さず（${hideD === p2raw}）、表に戻ると開き直して（${rD}）続ける（段 ${sD.stage}・お金 ${sD.money}）`, hideD === p2raw && rD && sD.stage === 1 && sD.money >= 4321 && sD.money < 4321 + 2000, { hideD: hideD === p2raw, rD, sD });
+      await p2.close();
+      check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
       await ctx.close();
     },
   },

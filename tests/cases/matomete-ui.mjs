@@ -212,6 +212,48 @@ async function overlayProbe(page, safe, { noScroll = false } = {}) {
 }
 const overlayOk = (o) => o.head && o.btns.length > 0 && o.headTop >= 0 && !o.hscroll && o.btns.every((b) => b.inside && b.h >= 43.5 && b.w >= 43.5);
 
+// ---------- X-20：古いページから書き戻さない（bfcache から戻ったとき・裏にいる間に別のタブが書いたとき） ----------
+// key：見張る保存のキー。newer：ほかのページが書いた新しい保存（生の文字）を2つ。fp(raw)：中身の印（同じ中身なら同じ文字）。
+// (a) 変わっていなければ pageshow persisted でも開き直さない。(b) bfcache（入る → ほかで書く → pageshow persisted → pagehide）で
+// 書き戻さず開き直し、開き直したページが新しい保存から続ける（もう一度 pagehide で書かせて印を比べる）。
+// (c) 裏にいる間に同じ context の別のページが書く（本物の storage イベント）→ pagehide で書き戻さず、表に戻ると開き直す。
+const x20Hidden = (p, h) => p.evaluate((h) => {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+  document.dispatchEvent(new Event('visibilitychange'));
+}, h);
+async function x20Run(page, ctx, { key, newer, fp }) {
+  const loaded = () => page.waitForEvent('load', { timeout: 5000 }).then(() => true, () => false);
+  const hideNow = () => page.evaluate((k) => { window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false })); return localStorage.getItem(k); }, key);
+  let nav = loaded();
+  await page.evaluate(() => { window.__x20 = 1; window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })); window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); });
+  const a = { reload: await nav, same: await page.evaluate(() => window.__x20 === 1) };
+  nav = loaded();
+  const b = { kept: await page.evaluate(([k, raw]) => {
+    window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+    localStorage.setItem(k, raw);
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
+    return localStorage.getItem(k) === raw;
+  }, [key, newer[0]]) };
+  b.reload = await nav; await wait(page, 300);
+  b.fp = fp(await hideNow()); b.want = fp(newer[0]);
+  await x20Hidden(page, true); await wait(page, 50);
+  const p2 = await ctx.newPage();
+  await p2.goto(BASE + 'manifest.webmanifest');
+  await p2.evaluate(([k, raw]) => localStorage.setItem(k, raw), [key, newer[1]]);
+  await p2.close();
+  await page.waitForTimeout(200);
+  const c = { kept: (await hideNow()) === newer[1] };
+  nav = loaded();
+  await x20Hidden(page, false);
+  c.reload = await nav; await wait(page, 300);
+  c.fp = fp(await hideNow()); c.want = fp(newer[1]);
+  const ok = !a.reload && a.same && b.kept && b.reload && b.fp === b.want && c.kept && c.reload && c.fp === c.want;
+  return { ok, a, b, c };
+}
+const x20Text = (r) => `変わっていなければ開き直さない（${!r.a.reload && r.a.same}）・bfcache で書き戻さない（${r.b.kept}）・開き直す（${r.b.reload}）・新しい保存から続ける（${r.b.fp === r.b.want}）・裏で別のタブが書いたら閉じても書き戻さない（${r.c.kept}）・表に戻ると開き直して（${r.c.reload}）続ける（${r.c.fp === r.c.want}）`;
+
 export const tests = [
   // ================= smoke =================
   {
@@ -1290,6 +1332,17 @@ export const tests = [
       check(`終わりのカードが出た直後（押せない見た目 ${r.locked}）に pagehide → pageshow しても、0.6 秒後にボタンの aria-disabled が外れる（${after.join(',')}）`, shown && r.locked && after.length > 0 && after.every((x) => x === null), { shown, r, after });
       await page.evaluate(() => document.querySelector('#againBtn').click()); await wait(page, 300);
       check('「もう一度」が押せる（新しい回）', (await gs(page)).over === false && (await gs(page)).moves === 0, null);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'QW21', tier: 'full', title: 'まとめてポン 古いページから書き戻さない（契約 §11・X-20）：bfcache から戻ったとき・裏にいる間に別のタブが matomete.save を書いたとき、古い盤・手を書き戻さず開き直して今の保存から続ける。変わっていなければ開き直さない',
+    async run({ browser, check }) {
+      const { ctx, page } = await openG(browser, 'QW21');
+      const mk = (sd, m) => page.evaluate(([s, m]) => window.MatometeLogic.makeSave({ seed: s, mode: m }, []), [sd, m]);
+      const fp = (raw) => { try { const s = JSON.parse(raw); return `${s.seed}:${s.mode}:${(s.moves || []).length}`; } catch { return 'ERR'; } };
+      const r = await x20Run(page, ctx, { key: 'matomete.save', newer: [await mk(11, 'easy'), await mk(22, 'hard')], fp });
+      check(`まとめてポン：${x20Text(r)}`, r.ok, r);
       await ctx.close();
     },
   },

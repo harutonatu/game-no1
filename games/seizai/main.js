@@ -136,8 +136,35 @@
 
   // ===== 保存の読み書き（できなくても遊べる。§8.1） =====
   function readKey(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
-  function writeKey(key, val) { try { localStorage.setItem(key, val); return true; } catch (e) { return false; } }
-  function removeKey(key) { try { localStorage.removeItem(key); return true; } catch (e) { return false; } }
+  function writeKey(key, val) {
+    if (stale) return false;
+    try { localStorage.setItem(key, val); noteSaved(key); return true; } catch (e) { return false; }
+  }
+  function removeKey(key) {
+    if (stale) return false;
+    try { localStorage.removeItem(key); noteSaved(key); return true; } catch (e) { return false; }
+  }
+
+  // ===== 古いページから書き戻さない（§22・X-20） =====
+  // bfcache（戻る・進む）で戻ったページや、裏にいる間にほかのタブが同じ保存を書いたページは、メモリの古い状態を保存に書かず、
+  // 開き直して今の保存から続ける（閉じた間の稼ぎは、開き直したページが保存の savedAt から1回だけ足す）。
+  // 見張るのは途中の保存（seizai.save）だけ。このページが最後に読んだ・書いた生の文字と比べる
+  const WATCH_KEYS = [KEY_SAVE];
+  const seenRaw = new Map(WATCH_KEYS.map((k) => [k, readKey(k)]));
+  let stale = false;                     // true：このページはもう保存しない（開き直す前）
+  function noteSaved(key) { if (seenRaw.has(key)) seenRaw.set(key, readKey(key)); }
+  const changedElsewhere = () => WATCH_KEYS.some((k) => readKey(k) !== seenRaw.get(k));
+  // 表に戻ったとき（visible・pageshow）：ほかで変わっていたら書かずに開き直す（true なら、ほかの処理はしない）
+  function reloadIfStale() {
+    if (!stale && !changedElsewhere()) return false;
+    stale = true;
+    stopLoop();
+    clearLater();
+    try { location.reload(); } catch (e) { console.error("もくもくこうば: 開き直せませんでした", e); }
+    return true;
+  }
+  // 裏にいる間にほかのタブが同じ保存を書いたら、このページの保存を止める（表に戻ったら開き直す。見えている間は今までどおり）
+  window.addEventListener("storage", (e) => { if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true; });
 
   // ===== タイマー（later / clearLater。§7.1） =====
   const timers = new Set();
@@ -1325,9 +1352,9 @@
   if (!detachInput) console.error("もくもくこうば: SeizaiInput が読み込まれていません（input.js）");
 
   // ===== 中断と再開（§7.1） =====
-  document.addEventListener("visibilitychange", () => { if (document.hidden) sleep(); else wake(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) sleep(); else if (!reloadIfStale()) wake(); });
   window.addEventListener("pagehide", () => { sleep(); clearLater(); });
-  window.addEventListener("pageshow", (e) => { if (e.persisted || sleeping) wake(); });
+  window.addEventListener("pageshow", (e) => { if (reloadIfStale()) return; if (e.persisted || sleeping) wake(); });
 
   // ===== テスト用の公開 API（§7.3） =====
   function snapshot() {

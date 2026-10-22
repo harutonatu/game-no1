@@ -79,7 +79,27 @@
 
   // ===== 保存（保存できなくても遊べる） =====
   function readKey(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
-  function writeKey(key, val) { try { localStorage.setItem(key, val); return true; } catch (e) { return false; } }
+  function writeKey(key, val) {
+    if (stale) return false;
+    try { localStorage.setItem(key, val); noteSaved(key); return true; } catch (e) { return false; }
+  }
+
+  // ===== 古いページから書き戻さない（契約 §18・X-20） =====
+  // bfcache（戻る・進む）で戻ったページや、裏にいる間にほかのタブが同じゲームを遊んだページは、メモリの古い面・手を保存に書かず、
+  // 開き直して今の保存から続ける。見張るのは途中の保存（irobin.save）だけ。このページが最後に読んだ・書いた生の文字と比べる
+  const WATCH_KEYS = [KEY_SAVE];
+  const seenRaw = new Map(WATCH_KEYS.map((k) => [k, readKey(k)]));
+  let stale = false;                     // true：このページはもう保存しない（開き直す前）
+  function noteSaved(key) { if (seenRaw.has(key)) seenRaw.set(key, readKey(key)); }
+  // 表に戻ったとき（visible・pageshow）：ほかで変わっていたら書かずに開き直す（true なら、ほかの処理はしない）
+  function reloadIfStale() {
+    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;
+    stale = true;
+    try { location.reload(); } catch (e) { console.error("いろびん: 開き直せませんでした", e); }
+    return true;
+  }
+  // 裏にいる間にほかのタブが同じ保存を書いたら、このページの保存を止める（表に戻ったら開き直す。見えている間は今までどおり）
+  window.addEventListener("storage", (e) => { if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true; });
   let best = safeCall(() => L.validateBest(readKey(KEY_BEST)), 0) || 0;
   function safeCall(fn, fallback) { try { return fn(); } catch (e) { console.error("いろびん:", e); return fallback; } }
 
@@ -571,6 +591,7 @@
       syncPhase();
       save();
     } else {
+      if (reloadIfStale()) return;
       paused = false;
       if (overlayKind !== "help" && overlayKind !== "confirm") render.resume();
       syncPhase();
@@ -580,6 +601,7 @@
   // pagehide の clearLater で「押せない」を外すタイマーが消えると、ボタンがうすいまま残る。戻ったときに外す
   //（ミチビキ空港 §19 A3 の横展開。カードを出す続きは演出の時計なので消えない）
   window.addEventListener("pageshow", () => {
+    if (reloadIfStale()) return;
     if (overlayKind !== "clear") return;
     const unlock = () => el.card.querySelectorAll(".btns button[aria-disabled]").forEach((btn) => btn.removeAttribute("aria-disabled"));
     const left = CARD_LOCK_MS - (now() - cardShownAt);
