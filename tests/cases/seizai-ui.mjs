@@ -12,7 +12,7 @@
 //   るすの あいだ（§4.3・§7.1）は、ページの時計を clockTime で決まった瞬間に固定して確かめる（日本・ロサンゼルスの2つのタイムゾーン）。
 //   期待値は Node で読んだ logic.js（同じ root）から作る。半分の速さの 45 秒・上限の 7200 秒は決め打ちの値で比べる（logic が変わっても見逃さない）。
 //   無いときに合格にしない（空振りの合格を作らない）：SeizaiGame・YubiDebug が無ければ例外で不合格にする。
-//   smoke：WW1〜WW6。full：WW7〜WW24（WW18 はレビュー後の直し §17.1、WW19 は §17.3 の B、WW20 は §18 待つ理由（SZ-03）、WW21〜23 は §19（新しい工程・道具・画面を広く）、WW24 は §20 はこぶ人の往復と「まち」（SZ-04・SZ-05）。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
+//   smoke：WW1〜WW6。full：WW7〜WW25（WW18 はレビュー後の直し §17.1、WW19 は §17.3 の B、WW20 は §18 待つ理由（SZ-03）、WW21〜23 は §19（新しい工程・道具・画面を広く）、WW24 は §20 はこぶ人の往復と「まち」（SZ-04・SZ-05）、WW25 は §21 さいしょから（SZ-07）。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -1369,6 +1369,110 @@ export const tests = [
         await ctx.close();
       }
       check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
+    },
+  },
+  {
+    id: 'WW25', tier: 'full', title: 'もくもくこうば さいしょから（§21・SZ-07）：遊び方の「わかった」の下に #helpReset（44px 以上・SE 縦横で画面内・primary でない）、押すと確認カード #resetCard（文言・「やめる」が先で primary・遊び方と同じく止まる）、やめる・Esc で遊び方に戻り保存が変わらない、「さいしょから はじめる」で開き直して段 1・初めのお金から、seizai.best・seizai.help・seizai.save.v<n>・ほかのキーは残り、seizai.save は新しい状態・seizai.save.bak は無い。消している最中の pagehide・visibilitychange で古い保存を書き戻さず、開き直しても古い進み具合が戻らない。消せないときは開き直さずヒント',
+    async run({ browser, check, root, errors }) {
+      const L = logicOf(root);
+      const e0 = errors.length;
+      // (a) SE 縦・横で、遊び方の2つのボタンと確認カードの2つのボタンが画面内・44px 以上・スクロールなし
+      const fit = [];
+      for (const v of [SMOKE_V(), view('SE', 'l', 'app'), custom(568, 270, null, 'SE横 568×270')]) {
+        const { ctx, page } = await openW(browser, 'WW25 ' + v.label, { v });
+        const q = (sels) => page.evaluate((sels) => sels.map((s) => {
+          const b = document.querySelector(s); if (!b) return { s, ok: false, why: 'なし' };
+          const r = b.getBoundingClientRect(), box = b.closest('.overlay');
+          const ok = r.top >= -0.5 && r.bottom <= innerHeight + 0.5 && r.left >= -0.5 && r.right <= innerWidth + 0.5 && r.height >= 43.5 && document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === b && box.scrollHeight <= box.clientHeight + 1 && b.scrollWidth <= b.clientWidth + 1;
+          return { s, ok, r: [r.left, r.top, r.right, r.bottom].map(Math.round) };
+        }), sels);
+        await page.click('#helpBtn'); await wait(page, 100);
+        const h = await q(['#helpOk', '#helpReset']);
+        await pressCard(page, '#helpReset');
+        const r = await q(['#resetNo', '#resetYes']);
+        fit.push({ label: v.label, ok: [...h, ...r].every((x) => x.ok), rows: [...h, ...r] });
+        await ctx.close();
+      }
+      check('遊び方の #helpOk・#helpReset と確認の #resetNo・#resetYes が SE 縦・横（568×320・568×270）で画面内・44px 以上・押せる・スクロールなし', fit.every((f) => f.ok), fit);
+
+      const st = mkState(L, 2, { money: 50000 });
+      const items = { 'seizai.save': saveOf(L, st, T0), 'seizai.save.bak': 'old-bak', 'seizai.save.v2': 'newer', 'seizai.best': '3', 'blockpuzzle.sound': 'off', 'matomete.best': '123' };
+      const { ctx, page } = await openW(browser, 'WW25', { v: SMOKE_V(), items, opts: { clockTime: new Date(T0 + 1000) } });
+      await closeCards(page);
+      await page.click('#helpBtn'); await wait(page, 100);
+      const look = await page.evaluate(() => {
+        const ok = document.querySelector('#helpOk'), rs = document.querySelector('#helpReset');
+        return { after: !!ok && !!rs && ok.compareDocumentPosition(rs) === Node.DOCUMENT_POSITION_FOLLOWING && ok.parentElement === rs.parentElement, okPrimary: ok.classList.contains('primary'), rsPrimary: rs.classList.contains('primary'), text: rs.textContent.trim(), tag: rs.tagName };
+      });
+      check(`遊び方の「わかった」（primary）の下に「${look.text}」（button・primary でない）`, look.after && look.okPrimary && !look.rsPrimary && look.text === 'さいしょから あそぶ' && look.tag === 'BUTTON', look);
+      const save0 = await stored(page, 'seizai.save');
+      const t0 = (await lg(page)).t;
+      await pressCard(page, '#helpReset');
+      const card = await page.evaluate(() => {
+        const box = document.querySelector('#resetCard'), bs = [...box.querySelectorAll('.btns button')];
+        return { shown: !box.hidden, role: box.getAttribute('role'), title: document.querySelector('#resetTitle')?.textContent.trim(), text: document.querySelector('#resetText')?.textContent.trim(), ids: bs.map((b) => b.id), primary: bs.map((b) => b.classList.contains('primary')), texts: bs.map((b) => b.textContent.trim()), helpHidden: document.querySelector('#help').hidden };
+      });
+      const g1 = await gs(page);
+      check(`確認カード：「${card.title}」「${card.text}」・ボタン ${card.texts.join('／')}（やめる が先で primary）・overlay ${g1.overlay}`,
+        card.shown && card.helpHidden && card.role === 'dialog' && g1.overlay === 'reset' && card.title === 'さいしょから はじめる？' && card.text === 'いまの こうばは ぜんぶ きえるよ。ベストの きろくは のこるよ。' &&
+        JSON.stringify(card.ids) === '["resetNo","resetYes"]' && JSON.stringify(card.primary) === '[true,false]' && JSON.stringify(card.texts) === '["やめる","さいしょから はじめる"]', { card, overlay: g1.overlay });
+      await wait(page, 1500);
+      const t1 = (await lg(page)).t;
+      check(`確認カードの間はゲームが止まる（t ${t0} → ${t1}）`, t1 === t0, { t0, t1 });
+      // (b) やめる・Esc
+      await pressCard(page, '#resetNo');
+      const gNo = await gs(page);
+      const keepNo = { save: (await stored(page, 'seizai.save')) === save0, bak: await stored(page, 'seizai.save.bak') };
+      await pressCard(page, '#helpReset');
+      await unlocked(page, '#resetNo');
+      await page.keyboard.press('Escape'); await wait(page, 100);
+      const gEsc = await gs(page);
+      const keepEsc = { save: (await stored(page, 'seizai.save')) === save0, bak: await stored(page, 'seizai.save.bak') };
+      check(`やめる → ${gNo.overlay}・Esc → ${gEsc.overlay}（遊び方に戻る）、seizai.save と seizai.save.bak は変わらない`, gNo.overlay === 'help' && gEsc.overlay === 'help' && keepNo.save && keepEsc.save && keepNo.bak === 'old-bak' && keepEsc.bak === 'old-bak' && (await lg(page)).stage === 2, { gNo: gNo.overlay, gEsc: gEsc.overlay, keepNo, keepEsc });
+      // (c)(d) 実行：消している最中（開き直す前）の pagehide・visibilitychange のあとの保存を記録する（main.js より後に足すので、main.js の保存のあとに読む）
+      await pressCard(page, '#helpReset');
+      await page.evaluate(() => {
+        sessionStorage.removeItem('ww25');
+        const rec = (ev) => { const a = JSON.parse(sessionStorage.getItem('ww25') || '[]'); a.push({ ev, save: localStorage.getItem('seizai.save'), bak: localStorage.getItem('seizai.save.bak') }); sessionStorage.setItem('ww25', JSON.stringify(a)); };
+        window.addEventListener('pagehide', () => rec('pagehide'));
+        document.addEventListener('visibilitychange', () => rec('visibilitychange'));
+      });
+      if (!(await unlocked(page, '#resetYes'))) throw new Error('#resetYes の aria-disabled が外れない');
+      await Promise.all([page.waitForEvent('load', { timeout: 10000 }), page.click('#resetYes')]);
+      await wait(page, 300);
+      if (!(await page.evaluate(() => !!window.SeizaiGame))) throw new Error('開き直したあと SeizaiGame が無い');
+      const hide = await page.evaluate(() => JSON.parse(sessionStorage.getItem('ww25') || '[]'));
+      check(`開き直す前の pagehide（${hide.map((h) => h.ev).join(',')}）で古い保存を書き戻さない（save・bak ともに無い）`, hide.some((h) => h.ev === 'pagehide') && hide.every((h) => h.save === null && h.bak === null), hide);
+      const fresh = L.newGame(1);
+      const l2 = await lg(page), g2 = await gs(page);
+      const sv = JSON.parse((await stored(page, 'seizai.save')) || 'null');
+      const keys = await page.evaluate(() => Object.fromEntries(['seizai.save.bak', 'seizai.save.v2', 'seizai.best', 'seizai.help', 'blockpuzzle.sound', 'matomete.best'].map((k) => [k, localStorage.getItem(k)])));
+      check(`新しい状態で始まる（段 ${l2.stage}・お金 ${l2.money}（初め ${fresh.money}）・きこり ${l2.depts.cut.staff} 人 Lv${l2.depts.cut.level}）・カードなし・ヒントなし`, l2.stage === 1 && l2.money <= fresh.money + 50 && l2.depts.cut.staff === fresh.depts.cut.staff && l2.depts.cut.level === fresh.depts.cut.level && g2.overlay === null && !(await txt(page, '#hint')), { l2: { stage: l2.stage, money: l2.money, cut: l2.depts.cut }, overlay: g2.overlay });
+      check(`seizai.save は新しい状態（段 ${sv && sv.stage}・お金 ${sv && sv.money}）、seizai.save.bak は無い、seizai.best・seizai.help・seizai.save.v2・音の設定・ほかのゲームは残る`, !!sv && sv.stage === 1 && sv.money < 50000 && keys['seizai.save.bak'] === null && keys['seizai.save.v2'] === 'newer' && keys['seizai.best'] === '3' && keys['seizai.help'] === '1' && keys['blockpuzzle.sound'] === 'off' && keys['matomete.best'] === '123', { sv: sv && { stage: sv.stage, money: sv.money }, keys });
+      await setHidden(page, true); await wait(page, 100);
+      await page.reload(); await wait(page, 300);
+      const l3 = await lg(page);
+      check(`隠して開き直しても古い進み具合が戻らない（段 ${l3.stage}・お金 ${l3.money}）・bak も無い`, l3.stage === 1 && l3.money < 50000 && (await stored(page, 'seizai.save.bak')) === null, { stage: l3.stage, money: l3.money });
+      check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
+      // R6：消せないとき（removeItem が何もしない）は開き直さず、保存も止めたままにしない
+      await gotoW(page, { 'seizai.save': saveOf(L, st, T0), 'seizai.save.bak': 'old-bak' });
+      await closeCards(page);
+      const e1 = errors.length;
+      await page.evaluate(() => { window.__ww25 = 1; Storage.prototype.removeItem = function () {}; });
+      await page.click('#helpBtn'); await wait(page, 100);
+      await pressCard(page, '#helpReset');
+      await pressCard(page, '#resetYes');
+      await wait(page, 500);
+      const same = await page.evaluate(() => window.__ww25 === 1);
+      const g4 = await gs(page), l4 = await lg(page);
+      const c4 = g4.saveCount;
+      await page.evaluate(() => window.SeizaiGame.buy('cut', 'level'));
+      const c5 = (await gs(page)).saveCount;
+      const hint = await txt(page, '#hint');
+      const errs = errors.slice(e1);
+      check(`消せないとき：開き直さない（${same}）・段 ${l4.stage} のまま・カードを閉じる（${g4.overlay}）・#hint「${hint}」・保存は止めたままにしない（saveCount ${c4} → ${c5}）・bak も残る`, same && l4.stage === 2 && g4.overlay === null && /けせなかった/.test(hint || '') && c5 === c4 + 1 && (await stored(page, 'seizai.save.bak')) === 'old-bak' && errs.length >= 1 && errs.every((e) => /さいしょから/.test(e)), { same, stage: l4.stage, overlay: g4.overlay, hint, c4, c5, errs });
+      errors.splice(e1);
+      await ctx.close();
     },
   },
 ];

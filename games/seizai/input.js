@@ -28,7 +28,8 @@
     helpBtn: "help", soundBtn: "sound", expandBtn: "expand", orderTag: "orderTag",
     sheetClose: "sheetClose", mgrFast: "mgrFast", mgrGain: "mgrGain",
     awayOk: "awayOk", stageOk: "stageOk", orderAccept: "orderAccept", orderLater: "orderLater",
-    endOk: "endOk", helpOk: "helpOk", back: "back", scrollCue: "scrollCue"
+    endOk: "endOk", helpOk: "helpOk", back: "back", scrollCue: "scrollCue",
+    helpReset: "helpReset", resetNo: "resetNo", resetYes: "resetYes"
   });
 
   function attach(doc, h) {

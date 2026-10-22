@@ -36,7 +36,7 @@
   const FF_MAX_SEC = 36000;           // ff・advance の上限（§7.4）
   const STALL_SEC = 5;                // rAF がこれより長く止まっていたら（iOS で visibilitychange が来ない）閉じた間として足す（§17.1 A5）
   const OFFLINE_CAP_SEC = Number.isFinite(L.OFFLINE_CAP_SEC) ? L.OFFLINE_CAP_SEC : 7200;
-  const CARD_PRIORITY = ["help", "away", "end", "stage", "order"];
+  const CARD_PRIORITY = ["help", "reset", "away", "end", "stage", "order"];
 
   // 流れの順（§19.1.1）。かんそう は こうじょう から、かんな は みなと から
   const DEPT_IDS = ["cut", "plant", "carry", "peel", "beam", "dry", "plank", "plane", "shop"];
@@ -92,6 +92,7 @@
   const ORDER_MONEY_NOTE = "ちゅうもん ちゅう：おかねは おれいで まとめて";
   const HINT_STUCK_FOREST = "きこりが きを まっているよ。なえぎを おして ふやそう";
   const HINT_BROKEN = "ほぞんが よめなかったので さいしょから はじめるよ";
+  const HINT_RESET_FAIL = "けせなかったよ。もう いちど ためしてね";   // さいしょから で保存が消えなかった（§21 R6）
 
   const now = () => performance.now();
   const $ = (id) => document.getElementById(id);
@@ -105,7 +106,8 @@
     awayCard: $("awayCard"), awayText: $("awayText"), awayOk: $("awayOk"),
     stageCard: $("stageCard"), stageOk: $("stageOk"),
     orderCard: $("orderCard"), orderAccept: $("orderAccept"), orderLater: $("orderLater"),
-    endCard: $("endCard"), endOk: $("endOk"), help: $("help"), helpOk: $("helpOk"), hint: $("hint")
+    endCard: $("endCard"), endOk: $("endOk"), help: $("help"), helpOk: $("helpOk"), hint: $("hint"),
+    helpReset: $("helpReset"), resetCard: $("resetCard"), resetNo: $("resetNo"), resetYes: $("resetYes")
   };
   const missing = ["money", "goalText", "scene", "sheet"].filter((k) => !el[k]);
   if (missing.length) console.error("もくもくこうば: 画面の部品が見つかりません：" + missing.join(", "));
@@ -135,6 +137,7 @@
   // ===== 保存の読み書き（できなくても遊べる。§8.1） =====
   function readKey(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
   function writeKey(key, val) { try { localStorage.setItem(key, val); return true; } catch (e) { return false; } }
+  function removeKey(key) { try { localStorage.removeItem(key); return true; } catch (e) { return false; } }
 
   // ===== タイマー（later / clearLater。§7.1） =====
   const timers = new Set();
@@ -164,6 +167,7 @@
   let lastAway = null;         // 最後の catchUp の report
   let saveCount = 0;
   let saveSince = 0;           // 前の保存から遊んだ秒
+  let resetting = false;       // さいしょから：保存を消して開き直すまで、何も書かない（§21 R4・R7）
   let saveBlocked = false;     // 壊れた保存を bak に写せなかった（元を消さないため上書きしない）
   let rafId = 0, lastT = null, acc = 0;
   let hintTimer = 0;
@@ -291,7 +295,7 @@
 
   // ===== 保存（§8） =====
   function saveNow() {
-    if (!state) return false;
+    if (!state || resetting) return false;
     const at = Date.now();
     wallLast = at;
     saveSince = 0;
@@ -355,6 +359,7 @@
     saveSince += dt;
     return evs;
   }
+  const readingCard = () => overlay === "help" || overlay === "reset";
   function ensureLoop() {
     if (rafId || sleeping || !state) return;
     rafId = requestAnimationFrame(frame);
@@ -367,7 +372,7 @@
     lastT = t;
     const w = Date.now();
     // rAF だけが止まっていた（iOS で visibilitychange が来ない）：その間を閉じた間と同じ道で足す（足したあと wallLast は今。二重に足さない。§17.1 A5）
-    if (w - wallLast > STALL_SEC * 1000 && overlay !== "help") {
+    if (w - wallLast > STALL_SEC * 1000 && !readingCard()) {
       acc = 0;
       addAway(awayFor(wallLast, w));
       wallLast = Date.now();
@@ -375,7 +380,7 @@
       return;
     }
     const evs = [];
-    if (overlay === "help") acc = 0;      // 遊び方を読んでいる間は止める（描画だけ。ユーザー決定「遊び方の間だけ止める」§17.1 A10）
+    if (readingCard()) acc = 0;           // 遊び方を読んでいる間は止める（描画だけ。ユーザー決定「遊び方の間だけ止める」§17.1 A10。さいしょからの確認も §21 R1）
     else {
       acc += dt;
       let n = 0;
@@ -386,7 +391,7 @@
       }
       if (acc > STEP) acc = 0;              // 足りない分は捨てる（重い端末で早送りしない）
     }
-    if (w - wallLast >= WALL_EVERY_MS || w < wallLast || overlay === "help") wallLast = w;   // 毎秒覚える（時計が戻っても今の時刻にそろえる。遊び方の間は閉じた間にしない）
+    if (w - wallLast >= WALL_EVERY_MS || w < wallLast || readingCard()) wallLast = w;   // 毎秒覚える（時計が戻っても今の時刻にそろえる。遊び方の間は閉じた間にしない）
     if (saveSince >= SAVE_EVERY_SEC) saveNow();
     R_call("frame", state, evs, dt);
     updateUi();
@@ -523,6 +528,7 @@
   // ===== カード（§5.3） =====
   const CARDS = {
     help: { box: () => el.help, primary: () => el.helpOk },
+    reset: { box: () => el.resetCard, primary: () => el.resetNo },
     away: { box: () => el.awayCard, primary: () => el.awayOk },
     stage: { box: () => el.stageCard, primary: () => el.stageOk },
     order: { box: () => el.orderCard, primary: () => el.orderAccept },
@@ -662,6 +668,37 @@
     if (overlay !== "help") return false;
     writeKey(KEY_HELP, "1");
     return closeCard("help");
+  }
+  // 遊び方 ⇄ さいしょからの確認を入れ替える（待っているカードは出さない。戻る先のフォーカスは最初のまま）
+  function swapCard(from, to) {
+    if (overlay !== from) return false;
+    const box = CARDS[from].box();
+    if (box) box.hidden = true;
+    overlay = null;
+    cancel(cardUnlockTimer);
+    unlockCardButtons();
+    const fb = focusBack;
+    openCard(to);
+    focusBack = fb;
+    return overlay === to;
+  }
+  // さいしょから（§21）：保存を止める → save と bak を消す → 消えたか確かめる → 開き直す
+  function doReset() {
+    if (overlay !== "reset") return false;
+    resetting = true;
+    removeKey(KEY_SAVE);
+    removeKey(KEY_BAK);
+    if (readKey(KEY_SAVE) !== null || readKey(KEY_BAK) !== null) {
+      console.error("もくもくこうば: さいしょから で保存を消せませんでした");
+      resetting = false;
+      closeCard("reset");
+      setHint(HINT_RESET_FAIL, 5000);
+      return false;
+    }
+    stopLoop();
+    clearLater();
+    try { location.reload(); } catch (e) { console.error("もくもくこうば: 開き直せませんでした", e); }
+    return true;
   }
 
   // ===== シート（§5.2） =====
@@ -1243,11 +1280,14 @@
 
   // ===== 入力（input.js） =====
   function onCommand(cmd) {
-    const cardCmd = { awayOk: "away", stageOk: "stage", orderAccept: "order", orderLater: "order", endOk: "end", helpOk: "help" };
+    const cardCmd = { awayOk: "away", stageOk: "stage", orderAccept: "order", orderLater: "order", endOk: "end", helpOk: "help", helpReset: "help", resetNo: "reset", resetYes: "reset" };
     if (cardCmd[cmd]) {
       if (overlay !== cardCmd[cmd] || cardLocked()) return;    // 出た直後の連打で押し間違えない（§13-7）
       sfx.unlock();
       if (cmd === "helpOk") closeHelp();
+      else if (cmd === "helpReset") swapCard("help", "reset");
+      else if (cmd === "resetNo") swapCard("reset", "help");
+      else if (cmd === "resetYes") doReset();
       else if (cmd === "orderAccept") doAcceptOrder();
       else closeCard(cardCmd[cmd]);
       return;
@@ -1257,6 +1297,7 @@
         if (overlay) {
           if (cardLocked() || overlay === "end") return;        // エンディングのカードは Esc で閉じない
           if (overlay === "help") closeHelp();
+          else if (overlay === "reset") swapCard("reset", "help");   // Esc は「やめる」と同じ（§21 R3）
           else closeCard(overlay);                              // 注文は「あとで」と同じ（札は残る）
         } else closeSheet();
         break;

@@ -503,6 +503,8 @@
   .card .btns button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
   .card .btns button:active:not([aria-disabled="true"]) { filter: brightness(1.2); }
   .card .btns button[aria-disabled="true"] { opacity: 0.6; }
+  /* 目立たない文字ボタン（遊び方の「さいしょから あそぶ」§21 R1）。押せる高さは他と同じ */
+  .card .btns button.quiet { background: transparent; border-color: transparent; color: var(--muted); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
   .card .pic { display: block; margin: 0 auto; width: 120px; height: 56px; }
   @media (orientation: portrait) and (max-height: 620px) {
     .card { padding: 12px 14px; gap: 8px; }
@@ -606,7 +608,22 @@
       <li>ひかっている ばしょを おして、ひとを ふやしたり どうぐを よくしたり しよう。まずは なえぎ！</li>
       <li>とじていても はんぶんの はやさで 2じかん まで はたらくよ。めあてを たっせいすると おみせが おおきく なって、こうばからは ちゅうもんも くるよ。</li>
     </ol>
-    <div class="btns"><button type="button" id="helpOk" class="primary">わかった</button></div>
+    <div class="btns">
+      <button type="button" id="helpOk" class="primary">わかった</button>
+      <button type="button" id="helpReset" class="quiet">さいしょから あそぶ</button>
+    </div>
+  </div>
+</div>
+
+<!-- さいしょから（§21） -->
+<div class="overlay" id="resetCard" role="dialog" aria-modal="true" aria-labelledby="resetTitle" hidden>
+  <div class="card">
+    <h2 id="resetTitle">さいしょから はじめる？</h2>
+    <p id="resetText">いまの こうばは ぜんぶ きえるよ。ベストの きろくは のこるよ。</p>
+    <div class="btns">
+      <button type="button" id="resetNo" class="primary">やめる</button>
+      <button type="button" id="resetYes">さいしょから はじめる</button>
+    </div>
   </div>
 </div>
 
