@@ -152,16 +152,25 @@
   const WATCH_KEYS = [KEY_SAVE];
   const seenRaw = new Map(WATCH_KEYS.map((k) => [k, readKey(k)]));
   let stale = false;                     // true：このページはもう保存しない（開き直す前）
+  let reloading = false;                 // true：開き直しをもう頼んだ（pageshow と visibilitychange の両方から呼ばれても1回だけ）
   function noteSaved(key) { if (seenRaw.has(key)) seenRaw.set(key, readKey(key)); }
   const changedElsewhere = () => WATCH_KEYS.some((k) => readKey(k) !== seenRaw.get(k));
   // 表に戻ったとき（visible・pageshow）：ほかで変わっていたら書かずに開き直す（true なら、ほかの処理はしない）
   function reloadIfStale() {
     if (!stale && !changedElsewhere()) return false;
     stale = true;
+    if (reloading) return true;
+    reloading = true;
     stopLoop();
     clearLater();
     try { location.reload(); } catch (e) { console.error("もくもくこうば: 開き直せませんでした", e); }
     return true;
+  }
+  // 裏へ回る（hidden）・閉じる（pagehide）ときの保存の前に比べ直す：保存がほかで変わっていたら、storage イベントが届く前でも
+  // stale にする（このあとの保存は stale を見て静かに抜ける。表に戻れば開き直す）。見えている間の保存は今までどおり後勝ち
+  function staleOnHide() {
+    if (!stale && changedElsewhere()) stale = true;
+    return stale;
   }
   // 裏にいる間にほかのタブが同じ保存を書いたら、このページの保存を止める（表に戻ったら開き直す。見えている間は今までどおり）
   window.addEventListener("storage", (e) => { if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true; });
@@ -522,6 +531,7 @@
   // 裏に回す（hidden・pagehide）
   function sleep() {
     if (sleeping) return;
+    staleOnHide();                         // 保存がほかで変わっていたら stale にして、下の saveNow は書かない（X-20）
     if (state) saveNow();                  // wallLast もここで覚える
     sleeping = true;
     stopLoop();

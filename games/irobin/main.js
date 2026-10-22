@@ -90,13 +90,24 @@
   const WATCH_KEYS = [KEY_SAVE];
   const seenRaw = new Map(WATCH_KEYS.map((k) => [k, readKey(k)]));
   let stale = false;                     // true：このページはもう保存しない（開き直す前）
+  let reloading = false;                 // true：開き直しをもう頼んだ（pageshow と visibilitychange の両方から呼ばれても1回だけ）
   function noteSaved(key) { if (seenRaw.has(key)) seenRaw.set(key, readKey(key)); }
+  // 保存がこのページの覚えた文字と違う（ほかのページ・タブが書いた）
+  const changedElsewhere = () => WATCH_KEYS.some((k) => readKey(k) !== seenRaw.get(k));
   // 表に戻ったとき（visible・pageshow）：ほかで変わっていたら書かずに開き直す（true なら、ほかの処理はしない）
   function reloadIfStale() {
     if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;
     stale = true;
+    if (reloading) return true;
+    reloading = true;
     try { location.reload(); } catch (e) { console.error("いろびん: 開き直せませんでした", e); }
     return true;
+  }
+  // 裏へ回る（hidden）・閉じる（pagehide）ときの保存の前に比べ直す：保存がほかで変わっていたら、storage イベントが届く前でも
+  // stale にする（このあとの保存は stale を見て静かに抜ける。表に戻れば開き直す）。見えている間の保存は今までどおり後勝ち
+  function staleOnHide() {
+    if (!stale && changedElsewhere()) stale = true;
+    return stale;
   }
   // 裏にいる間にほかのタブが同じ保存を書いたら、このページの保存を止める（表に戻ったら開き直す。見えている間は今までどおり）
   window.addEventListener("storage", (e) => { if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true; });
@@ -589,6 +600,7 @@
       paused = true;
       render.pause();
       syncPhase();
+      staleOnHide();   // 裏へ回る前に、保存がほかで変わっていないか比べ直す（変わっていれば stale になり、save は書かない。X-20）
       save();
     } else {
       if (reloadIfStale()) return;
@@ -597,7 +609,7 @@
       syncPhase();
     }
   });
-  window.addEventListener("pagehide", () => { save(); clearLater(); });
+  window.addEventListener("pagehide", () => { staleOnHide(); save(); clearLater(); });
   // pagehide の clearLater で「押せない」を外すタイマーが消えると、ボタンがうすいまま残る。戻ったときに外す
   //（ミチビキ空港 §19 A3 の横展開。カードを出す続きは演出の時計なので消えない）
   window.addEventListener("pageshow", () => {

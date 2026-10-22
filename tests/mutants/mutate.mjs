@@ -64,10 +64,16 @@ const M = [
   ['M21 いろコード：logic.js を事前キャッシュから外す（オフラインで遊べない）', 'オフライン', 'sw.js', '  "./games/irocode/logic.js",\n', ''],
   ['M22 いろコード：成績を10億で止めない（次に開くと成績が初期化される）', 'データ消失', 'games/irocode/index.html', 'const room = stats.played < STATS_LIMIT;', 'const room = true;'],
   ['M23 いろコード：結果カードの「もう一度」の連続タップが下の色ボタンに届く', 'タッチ操作', 'games/irocode/index.html', 'if (prevCard) return;', ''],
+  ['M24 ばいばいタイル：表に戻ったとき保存がほかで変わっていても開き直さない（X-20）', '保存', 'games/2048/index.html', '    if (!stale && rawState() === seenState) return false;', '    return false;'],
+  ['M25 ばいばいタイル：裏で別のタブが書いても保存を止めない（storage を見ない。X-20）', '保存', 'games/2048/index.html', 'if (document.hidden && (e.key === null || e.key === KEY_STATE)) stale = true;', 'if (false) stale = true;'],
+  ['M26 ばいばいタイル：裏へ回る・閉じるときの保存で比べ直さない（storage イベントが届く前に古い盤を書き戻す。X-20）', '保存', 'games/2048/index.html', '    if (!stale && changedElsewhere()) stale = true;\n    return stale;', '    return stale;'],
   ['MZ1 ゼンマイの render.js を事前キャッシュから外す', 'オフライン', 'sw.js', '  "./games/zenmai/render.js",\n', ''],
   ['MZ2 ゼンマイの保存データで範囲外の★（9など）を受け入れる', '保存データ互換', 'games/zenmai/logic.js', 'if (!(Number.isInteger(s) && s >= 0 && s <= 3)) continue;', ''],
   ['MZ3 ゼンマイの結果カードから「メニューへ」が消える', '閉じ込め', 'games/zenmai/index.html', '<button class="cta" type="button" data-cmd="menu">メニューへ</button>', ''],
   ['MZ4 ゼンマイのネジで指を持ち替えても数え直さない（位置が飛んで余分に巻く）', 'タッチ操作', 'games/zenmai/input.js', 'core.reanchor();\n        feed(pos.x, pos.y);', 'feed(pos.x, pos.y);'],
+  ['MZ5 ゼンマイ：表に戻ったとき保存がほかで変わっていても開き直さない（X-20）', '保存', 'games/zenmai/index.html', '    if (!stale && rawProgress() === seenProgress) return false;', '    return false;'],
+  ['MZ6 ゼンマイ：開き直す前（stale）でも進み具合を書く（X-20）', '保存', 'games/zenmai/index.html', '  function saveProgress() {\n    if (stale) return;\n', '  function saveProgress() {\n'],
+  ['MZ7 ゼンマイ：閉じるときの保存で比べ直さない（storage イベントが届く前に古い進み具合を書き戻す。X-20）', '保存', 'games/zenmai/index.html', '    if (!stale && changedElsewhere()) stale = true;\n    return stale;', '    return stale;'],
   // ---- ピカッと早押し（games/pikatto/）。ルール・保存の仕組みを変えたときだけ流す ----
   ['MP1 ピカッと：waiting 中の押下がフライングにならない（armed と同じ勝ち扱い）', 'ルール', 'games/pikatto/logic.js', 'if (state.phase === "armed") {', 'if (true) {'],
   ['MP2 ピカッと：2点先取で試合が終わる（3点先取の条件を下げる）', 'ルール', 'games/pikatto/logic.js', 'if (mode !== "solo" && max >= WIN_SCORE) {', 'if (mode !== "solo" && max >= 2) {'],
@@ -78,6 +84,7 @@ const M = [
   ['MP7 ピカッと：ひとりで れんしゅうのベストを保存しない（saveBestSolo の呼び出しを消す）', 'データ消失', 'games/pikatto/index.html', 'saveBestSolo(bestSolo);', '/* removed */'],
   ['MP8 ピカッと：ひとりで れんしゅうも 3回せいこうで終わる（5回まで測れない）', 'ルール', 'games/pikatto/logic.js', 'if (mode !== "solo" && max >= WIN_SCORE) {', 'if (max >= WIN_SCORE) {'],
   ['MP9 ピカッと：よーいの終わり際の押下が受付の窓に残り、よーいの後に届いてフライングになる', 'ルール', 'games/pikatto/index.html', 'if (input) input.discard();', ''],
+  ['MP10 ピカッとのとても低い横画面ですき間を詰めない（SE Safari 横で 4 人の隅が重なる、X-17）', 'ボタン重なり', 'games/pikatto/index.html', '@media (orientation: landscape) and (max-height: 300px) {', '@media (orientation: landscape) and (max-height: 260px) {'],
   // ---- ハシわたり（games/hashi/）。判定・点数・いのち・保存・中断・タイマーの仕組みを変えたときだけ流す ----
   ['MH1 ハシわたり：判定の端を開区間にする（茎の先が葉の端ちょうどで落ちる）', 'ルール', 'games/hashi/logic.js', 'const onTarget = tipT !== null && tipT >= left && tipT <= right;', 'const onTarget = tipT !== null && tipT > left && tipT < right;'],
   ['MH2 ハシわたり：recordBest で同点もベスト更新にする', '保存データ', 'games/hashi/logic.js', 'const improved = s > prev;', 'const improved = s >= prev;'],
@@ -99,20 +106,31 @@ const M = [
   ['MH18 ハシわたり：ひとつ飛ばしで旗の葉を飛び越えたら旗を取らない', 'ルール', 'games/hashi/logic.js', 'const checkpoint = stageMode ? Math.max(state.checkpoint, lastFlag(crossed, state.goal)) : 0;', 'const checkpoint = stageMode ? Math.max(state.checkpoint, crossed % 5 === 0 ? lastFlag(crossed, state.goal) : 0) : 0;'],
   ['MH19 ハシわたり：「さいしょから」を押しても旗から再開する', '操作', 'games/hashi/main.js', 'else if (cmd === "restart") again();', 'else if (cmd === "restart") retryFromFlag();'],
   ['MH20 ハシわたり：落ちた所の言葉を分けない（次と2つ先の間でも ただの「ながすぎ」）', '表示', 'games/hashi/logic.js', 'if (reason === "long" && after && missBy > NEAR) {', 'if (false) {'],
+  ['MH21 ハシわたり：表に戻ったとき保存がほかで変わっていても開き直さない（契約 §17・X-20）', '保存', 'games/hashi/main.js', '    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;', '    return false;'],
+  ['MH22 ハシわたり：開き直す前（stale）でもベストを書く（pagehide で下げる。契約 §17・X-20）', '保存', 'games/hashi/main.js', '  function writeKey(key, val) {\n    if (stale) return false;\n', '  function writeKey(key, val) {\n'],
+  ['MH23 ハシわたり：閉じるときのベストの保存で比べ直さない（storage イベントが届く前に古いベストへ下げる。契約 §17・X-20）', '保存', 'games/hashi/main.js', '    if (!stale && changedElsewhere()) stale = true;\n    return stale;', '    return stale;'],
   // ---- 版の表示（メニュー）。版を上げる手順が崩れたときの検出 ----
   // MV1・MV3 は正規表現で今の版・日付を読み、1つずらす（版を上げるたびに直さなくてよい）
   ['MV1 版の数字だけ上げ忘れる（version.js が1つ前の版のまま。sw.js は今の版）', '更新', 'common/version.js', /version: "v(\d+)"/, (_, n) => `version: "v${Number(n) - 1}"`],
   ['MV2 version.js を事前キャッシュから外す（オフラインで版が出ない）', 'オフライン', 'sw.js', '  "./common/version.js",\n', ''],
   ['MV3 更新日が YYYY-MM-DD でない（今の日付の - を / にする）', '表示', 'common/version.js', /date: "(\d{4})-(\d{2})-(\d{2})"/, (_, y, m, d) => `date: "${y}/${m}/${d}"`],
+  // ---- メニューの並び（index.html、X-21）。流すときは ONLY=E1,E7,E8,X1 ----
+  ['MR1 最近遊んだゲームを先頭でなく後ろに足す', '並び順', 'index.html', 'return cleanRecent([url, ...recent.filter((u) => u !== url)]);', 'return cleanRecent([...recent.filter((u) => u !== url), url]);'],
+  ['MR2 メニューを並べ替えない', '並び順', 'index.html', 'if (want.every((li, i) => now[i] === li)) return;', 'if (true) return;'],
+  ['MR3 壊れた yubi.recent でメニューが落ちる', '保存データ互換', 'index.html', 'try { return cleanRecent(JSON.parse(localStorage.getItem(RECENT_KEY))); } catch (e) { return []; }', 'return cleanRecent(JSON.parse(localStorage.getItem(RECENT_KEY)));'],
+  ['MR4 押した瞬間に並べ替える（押し間違い）', '操作', 'index.html', 'a.addEventListener("click", () => saveRecent(game.url));', 'a.addEventListener("click", () => { saveRecent(game.url); placeRows(); });'],
   // ---- 日付・時刻（いろコード）。日付の処理を足したら、ここにも変異を足す（tests/README.md「日付・時計」）----
   ['MD1 いろコード：todayStr を UTC の日付にする（toISOString 由来。日本の0〜9時台に前日になる）', '日付', 'games/irocode/logic.js', 'return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());', 'return d.toISOString().slice(0, 10);'],
   ['MD2 いろコード：todayStr の月が 1 ずれる（getMonth() + 1 を外す）', '日付', 'games/irocode/logic.js', 'pad2(d.getMonth() + 1)', 'pad2(d.getMonth())'],
-  ['MD3 いろコード：隠して戻ったとき日付が変わっていても今日の問題に差し替えない（自動差し替えを無効にする）', '日付', 'games/irocode/index.html', 'if (document.hidden) { saveState(); return; }\n    refreshDay();', 'if (document.hidden) { saveState(); return; }'],
+  ['MD3 いろコード：隠して戻ったとき日付が変わっていても今日の問題に差し替えない（自動差し替えを無効にする）', '日付', 'games/irocode/index.html', '    if (reloadIfStale()) return;\n    refreshDay();', '    if (reloadIfStale()) return;'],
   ['MD4 いろコード：確認・遊び方カードを閉じたときに日付を見直さない', '日付', 'games/irocode/index.html', 'else if (cmd === "close") { hideOverlay(); renderInput(); refreshDay(); }', 'else if (cmd === "close") { hideOverlay(); renderInput(); }'],
   ['MD5 いろコード：未来の日付の daily 記録を受け付ける', '日付/保存データ互換', 'games/irocode/logic.js', 'if (isDateStr(today) && x.date > today) return null;', ''],
   ['MD6 いろコード：0時をまたいで確定した結果を、始めた日でなく確定時の日付で記録する', '日付', 'games/irocode/index.html', 'daily = { date: state.date, done: true, win, tries };', 'daily = { date: today(), done: true, win, tries };'],
   ['MD7 いろコード：結果カードが0時をまたいでも「次は明日」のまま', '日付', 'games/irocode/index.html', 'const sameDay = state.date === today();', 'const sameDay = true;'],
   ['MD8 いろコード：起動時に日付が違う途中の問題を捨てるとき、負けとして記録しない（れんしゅう切り替えと食い違う）', '日付/成績', 'games/irocode/index.html', '{ abandonDaily(state); state = null; }', '{ state = null; }'],
+  ['MD9 いろコード：表に戻ったとき保存がほかで変わっていても開き直さない（X-20）', '保存', 'games/irocode/index.html', '    if (!stale && WATCH_KEYS.every((k) => readRaw(k) === seenRaw.get(k))) return false;', '    return false;'],
+  ['MD10 いろコード：開き直す前（stale）でも保存を書く（X-20）', '保存', 'games/irocode/index.html', '  function writeJSON(key, v) {\n    if (stale) return;\n', '  function writeJSON(key, v) {\n'],
+  ['MD11 いろコード：裏へ回る・閉じるときの保存で比べ直さない（storage イベントが届く前に古い状態を書き戻す。X-20）', '保存', 'games/irocode/index.html', '    if (!stale && changedElsewhere()) stale = true;\n    return stale;', '    return stale;'],
   // ---- いろびん（games/irobin/）。注ぐ規則・そろい判定・届ける・隠れ・ソルバー・保存・中断の仕組みを変えたときだけ流す ----
   //      届けた瓶は消える（2026-10-19 のルール変更）。MB4＝消えない、MB13＝旧仕様（空き瓶に置き換わる）、MB14＝瓶の番号のずれ
   ['MB1 いろびん：色違いの瓶にも注げる（mismatch の判定を外す）', 'ルール', 'games/irobin/logic.js', 'if (dl > 0 && col(d, dl - 1) !== c) return R_MISMATCH;', ''],
@@ -208,8 +226,15 @@ const M = [
   ['MF27 ミチビキ空港：pageshow で終わりのカードを出し直さない（§19 A3）', '閉じ込め', 'games/michibiki/main.js', 'window.addEventListener("pageshow", () => {\n    if (hintTimer', 'window.addEventListener("pageshow-x", () => {\n    if (hintTimer'],
   ['MF28 ミチビキ空港：同じ機体を2本目の指でもなぞれる（§19 A7）', '操作', 'games/michibiki/main.js', 'for (const d of drawings.values()) if (d.id === id) return false;', ''],
   ['MF29 ミチビキ空港：「さいしょから」が確認なしで始め直す（§19 B2）', '誤タップ', 'games/michibiki/main.js', 'else if (cmd === "restart") showRestartConfirm();', 'else if (cmd === "restart") startGame(newSeed());'],
-  ['MB22 いろびん：pageshow でクリアのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/irobin/main.js', 'window.addEventListener("pageshow", () => {\n    if (overlayKind !== "clear") return;', 'window.addEventListener("pageshow-x", () => {\n    if (overlayKind !== "clear") return;'],
-  ['MQ41 まとめてポン：pageshow で終わりのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/matomete/main.js', 'window.addEventListener("pageshow", () => {\n    if (overlayKind !== "over") return;', 'window.addEventListener("pageshow-x", () => {\n    if (overlayKind !== "over") return;'],
+  ['MB22 いろびん：pageshow でクリアのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/irobin/main.js', '    if (overlayKind !== "clear") return;\n    const unlock', '    return;\n    const unlock'],
+  // 古いページから書き戻さない（X-20。いろびん §18・まとめてポン §11）。流すときは ONLY=BW20,QW21,X1
+  ['MB23 いろびん：表に戻ったとき保存がほかで変わっていても開き直さない（契約 §18・X-20）', '保存', 'games/irobin/main.js', '    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;', '    return false;'],
+  ['MB24 いろびん：開き直す前（stale）でも保存を書く（契約 §18・X-20）', '保存', 'games/irobin/main.js', '  function writeKey(key, val) {\n    if (stale) return false;\n', '  function writeKey(key, val) {\n'],
+  ['MB25 いろびん：裏へ回る・閉じるときの保存で比べ直さない（storage イベントが届く前に古い面・手を書き戻す。契約 §18・X-20）', '保存', 'games/irobin/main.js', '    if (!stale && changedElsewhere()) stale = true;\n    return stale;', '    return stale;'],
+  ['MQ41 まとめてポン：pageshow で終わりのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/matomete/main.js', '    if (overlayKind !== "over") return;\n    const unlock', '    return;\n    const unlock'],
+  ['MQ42 まとめてポン：表に戻ったとき保存がほかで変わっていても開き直さない（契約 §11・X-20）', '保存', 'games/matomete/main.js', '    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;', '    return false;'],
+  ['MQ43 まとめてポン：裏で別のタブが書いても保存を止めない（storage を見ない。契約 §11・X-20）', '保存', 'games/matomete/main.js', 'if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true;', 'if (false) stale = true;'],
+  ['MQ44 まとめてポン：裏へ回る・閉じるときの保存で比べ直さない（storage イベントが届く前に古い盤・手を書き戻す。契約 §11・X-20）', '保存', 'games/matomete/main.js', '    if (!stale && changedElsewhere()) stale = true;\n    return stale;', '    return stale;'],
   // もくもくこうば（契約 docs/seizai-contract.md §11.4。流すときは ONLY に WL・WW の全項目、M=MW1,…,MW50）
   ['MW1 もくもくこうば：閉じた間の上限を外す（awaySeconds も catchUp も 7200 を見ない）', '日付', 'games/seizai/logic.js', /return Math\.min\(Math\.floor\(d \/ 1000\), OFFLINE_CAP_SEC\);([\s\S]*?)clamp\(Math\.floor\(seconds\), 0, OFFLINE_CAP_SEC\)/, 'return Math.floor(d / 1000);$1Math.max(0, Math.floor(seconds))'],
   ['MW2 もくもくこうば：半分の係数を見ない（閉じた秒をそのまま進める）', '日付', 'games/seizai/logic.js', 'const effective = Math.floor(sec * AWAY_RATE);', 'const effective = Math.floor(sec);'],
@@ -244,7 +269,7 @@ const M = [
   ['MW31 もくもくこうば：actors.js を APP_FILES から外す', 'オフライン', 'sw.js', '  "./games/seizai/actors.js",\n', ''],
   // 契約 §11.4 の表の外（WW で見る画面・進行の仕組み）
   ['MW32 もくもくこうば：カードの 400ms のロックなし（出た直後に押せる）', '誤タップ', 'games/seizai/main.js', 'if (overlay !== cardCmd[cmd] || cardLocked()) return;', 'if (overlay !== cardCmd[cmd]) return;'],
-  ['MW33 もくもくこうば：hidden で止まらない（visibilitychange の hidden で sleep を呼ばない）', '中断', 'games/seizai/main.js', 'document.addEventListener("visibilitychange", () => { if (document.hidden) sleep(); else wake(); });', 'document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });'],
+  ['MW33 もくもくこうば：hidden で止まらない（visibilitychange の hidden で sleep を呼ばない）', '中断', 'games/seizai/main.js', 'document.addEventListener("visibilitychange", () => { if (document.hidden) sleep(); else if (!reloadIfStale()) wake(); });', 'document.addEventListener("visibilitychange", () => { if (!document.hidden && !reloadIfStale()) wake(); });'],
   ['MW34 もくもくこうば：pagehide でタイマーを片付けない', '中断', 'games/seizai/main.js', 'window.addEventListener("pagehide", () => { sleep(); clearLater(); });', 'window.addEventListener("pagehide", () => { sleep(); });'],
   ['MW35 もくもくこうば：10 秒ごとの自動保存をしない', '保存', 'games/seizai/main.js', '    if (saveSince >= SAVE_EVERY_SEC) saveNow();\n', ''],
   ['MW36 もくもくこうば：シートの値段が costOf と 1 割ずれる（表示の1ずれ）', '表示', 'games/seizai/main.js', 'else setBtn(b, labels[w], yen(t.cost), !t.ok, t.ok ? "" : HINT_MONEY);', 'else setBtn(b, labels[w], yen(Math.round(t.cost * 1.1)), !t.ok, t.ok ? "" : HINT_MONEY);'],
@@ -278,6 +303,10 @@ const M = [
   ['MW62 もくもくこうば：さいしょから で保存を止めずに消す（pagehide で古い状態を書き戻す）', '保存', 'games/seizai/main.js', 'resetting = true;', 'resetting = false;'],
   ['MW63 もくもくこうば：さいしょから で seizai.best も消す', '保存', 'games/seizai/main.js', 'removeKey(KEY_BAK);', 'removeKey(KEY_BAK); removeKey(KEY_BEST);'],
   ['MW64 もくもくこうば：さいしょからの「やめる」でも保存を消す', '保存', 'games/seizai/main.js', 'else if (cmd === "resetNo") swapCard("reset", "help");', 'else if (cmd === "resetNo") { removeKey(KEY_SAVE); swapCard("reset", "help"); }'],
+  // 古いページから書き戻さない（契約 §22・X-20）。流すときは ONLY=WW26,X1
+  ['MW65 もくもくこうば：表に戻ったとき保存がほかで変わっていても開き直さない（X-20）', '保存', 'games/seizai/main.js', '    if (!stale && !changedElsewhere()) return false;', '    return false;'],
+  ['MW66 もくもくこうば：開き直す前（stale）でも保存を書く（X-20）', '保存', 'games/seizai/main.js', '  function writeKey(key, val) {\n    if (stale) return false;\n', '  function writeKey(key, val) {\n'],
+  ['MW67 もくもくこうば：裏へ回る・閉じるときの保存で比べ直さない（storage イベントが届く前に古い状態を書き戻す。X-20）', '保存', 'games/seizai/main.js', '    if (!stale && changedElsewhere()) stale = true;\n    return stale;', '    return stale;'],
   // ---- ちきゅうを守れ！ほしくだき（games/asteroid/）。中身の仕組みを変えたときだけ、このゲームの分だけ流す（契約 §11.4）。----
   //      数値（星の時間・値段・体力）の調整中なので、数値を変える変異は KL に任せ、ここは画面・保存・中断・オフライン・場を押す・ルールの流れを中心にする
   ['MK1 ほしくだき：2択の間も場が進む（choose でも step が進み、fly に戻る）', 'ルール', 'games/asteroid/logic.js', 'if (s.phase === "choose" || s.phase === "end") return;', 'if (s.phase === "end") return;'],

@@ -1476,7 +1476,7 @@ export const tests = [
     },
   },
   {
-    id: 'WW26', tier: 'full', title: 'もくもくこうば 古いページから書き戻さない（§22・X-20）：bfcache から戻ったとき（pageshow persisted が先・visibilitychange が先の2通り）に保存がほかで変わっていたら、古い状態を書き戻さず開き直して今の保存から続ける（カードが出ない）。裏にいる間に別のタブが保存を書いたら、閉じても書き戻さず、表に戻ると開き直す。保存が変わっていなければ開き直さない',
+    id: 'WW26', tier: 'full', title: 'もくもくこうば 古いページから書き戻さない（§22・X-20）：bfcache から戻ったとき（pageshow persisted が先・visibilitychange が先の2通り）に保存がほかで変わっていたら、古い状態を書き戻さず開き直して今の保存から続ける（カードが出ない）。裏にいる間に別のタブが保存を書いたら、閉じても書き戻さず、表に戻ると開き直す。storage イベントが届かないまま閉じても（裏にしたあとに書かれて pagehide・見えている間に書かれてそのまま hidden の保存）書き戻さない。保存が変わっていなければ開き直さない',
     async run({ browser, check, root, errors }) {
       const L = logicOf(root);
       const e0 = errors.length;
@@ -1537,6 +1537,38 @@ export const tests = [
       const sD = await after();
       check(`別のタブ：裏にいる間に別のタブが書いた保存（段 1）を、閉じる（pagehide）ときに書き戻さず（${hideD === p2raw}）、表に戻ると開き直して（${rD}）続ける（段 ${sD.stage}・お金 ${sD.money}）`, hideD === p2raw && rD && sD.stage === 1 && sD.money >= 4321 && sD.money < 4321 + 2000, { hideD: hideD === p2raw, rD, sD });
       await p2.close();
+      // (e) storage イベントが届かないまま（iOS は裏のタブを止めるので遅れる）：別のページが書いたのと同じことを、このページの中から
+      // 直接書いて再現する（同じページの書き換えは storage イベントが出ない）。e1：裏にしたあとに書かれて pagehide。
+      // e2：見えている間に書かれ、イベントが届く前にそのまま裏へ回る（sleep の保存）→ pagehide。どちらも書き戻さず、表に戻ると開き直す
+      await closeCards(page);
+      await setHidden(page, true); await wait(page, 50);
+      const e1Raw = await newer(2, 24680);
+      const hideE1 = await page.evaluate((raw) => {
+        localStorage.setItem('seizai.save', raw);
+        window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+        return localStorage.getItem('seizai.save') === raw;
+      }, e1Raw);
+      const nav4 = loaded();
+      await setHidden(page, false);
+      const rE1 = await nav4;
+      const sE1 = await after();
+      check(`storage イベントが届かないまま（裏にしたあと書かれて pagehide）：書き戻さず（${hideE1}）、表に戻ると開き直して（${rE1}）続ける（段 ${sE1.stage}・お金 ${sE1.money}）`, hideE1 && rE1 && sE1.stage === 2 && sE1.money >= 24680 && sE1.money < 24680 + 2000, { hideE1, rE1, sE1 });
+      await closeCards(page);
+      const e2Raw = await newer(3, 13579);
+      const hideE2 = await page.evaluate((raw) => {
+        localStorage.setItem('seizai.save', raw);
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+        document.dispatchEvent(new Event('visibilitychange'));
+        const hid = localStorage.getItem('seizai.save') === raw;
+        window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+        return hid && localStorage.getItem('seizai.save') === raw;
+      }, e2Raw);
+      const nav5 = loaded();
+      await setHidden(page, false);
+      const rE2 = await nav5;
+      const sE2 = await after();
+      check(`storage イベントが届かないまま（見えている間に書かれて hidden の保存）：書き戻さず（${hideE2}）、表に戻ると開き直して（${rE2}）続ける（段 ${sE2.stage}・お金 ${sE2.money}）`, hideE2 && rE2 && sE2.stage === 3 && sE2.money >= 13579 && sE2.money < 13579 + 2000, { hideE2, rE2, sE2 });
       check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
       await ctx.close();
     },
