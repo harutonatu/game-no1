@@ -146,7 +146,7 @@ HashiCourse = {
 UMD で `window.HashiInput` と `module.exports`。
 
 ```js
-HashiInput.attach(surfaceEl, { onHoldStart, onHoldEnd, onHoldCancel }, { now }) → { detach(), reset() }
+HashiInput.attach(surfaceEl, { onHoldStart, onHoldEnd, onHoldCancel }, { now, tapMode }) → { detach(), reset(), core, get holding() }
   // now: () => number。既定は performance.now。**event.timeStamp は使わない**（§13-6）
   // pointerdown（マウスは左ボタンのみ）で onHoldStart({ at: now() })。setPointerCapture する
   // pointerup で onHoldEnd({ at: now(), holdMs: at - startAt })
@@ -162,13 +162,23 @@ HashiInput.attach(surfaceEl, { onHoldStart, onHoldEnd, onHoldCancel }, { now }) 
   //   オーバーレイ（#overlay）が開いているときは何もしない
   //   指とキーボードは、先に始めた方だけを数える
   // window の blur で、押している途中なら onHoldCancel({ reason: 'blur' })
+  // data-holding は書かない（main.js が phase から1か所で書く。§18 HS-04）
+  // tapMode: () => boolean（hashi.tap）。true の間は、1回目のタップ（pointerdown・click・Space/Enter の keydown）で onHoldStart、
+  //   2回目で onHoldEnd。離す（pointerup・keyup）は数えない。VoiceOver・スイッチコントロールの「有効化」は click だけが届くので
+  //   click も受ける（直前 700ms 以内に pointerdown があった click は同じタップの重複として数えない）
+  // 返り値の core は、HashiGame.holdFor が指・キーと同じ「押している」状態を共有して down/up するためのもの
 
 HashiInput.createCore(cbs, { now }) → { down(at), up(at), cancel(reason), reset(), get holding() }
-  // DOM に依存しない核。テストと HashiGame.holdFor で直接使う
+  // DOM に依存しない核。テストと HashiGame.holdFor で直接使う。at を省くと now()
+  // down/up/cancel は受け付けたら true、無視したら false を返す
+  // 取り消しの決まり：onHoldStart がちょうど false を返したら（演出中など、始められないとき）、押していないことにして
+  //   down も false を返す（タップ式で、受け付けなかった1回目のタップが「押している」扱いで残り、次のタップを食べないようにする）
+  // up の holdMs は負にしない（時計が戻っても 0）。reset() はコールバックを呼ばない
 ```
 
 - 例外は外へ出さない（ゼンマイの `safe()` に準じる）。
 - `holdMs` は必ず同じ `now()` で測った2つの時刻の差にする。
+- 押しっぱなしのまま `reset()` されたら、その指・キーは以後数えない（その指の pointerup・そのキーの keyup は無視）。
 
 ## 7. 描画の API（`games/hashi/render.js`、担当D）
 
@@ -185,7 +195,12 @@ HashiRender.create(canvas) → { resize(), draw(view) }
   //   guideTipX: number|null,        // ガイド点線（案18）：今の長さで倒したときの茎の先。null で描かない
   //   splash: number|null,           // 落ちた後の経過秒（ぽちゃん）
   //   lives, t                       // lives は描画しなくてよい（HUD が出す）
+  //   bridge.maxed: true なら茎が最大の長さ（先を黄色に光らせ、暗いふちの輪で囲む。§18 HS-02）
   // }
+HashiRender.layout(W, H, viewW?, maxLen?, lift?) → { s, deckY, top }
+  // 縮尺と葉の高さだけを返す純粋な関数（テストからも使う）。縦横同じ縮尺。背の低い画面では、上向きの茎（MAX_LEN。
+  // ステージなら いちばん高い葉 lift の上から）が canvas の上端に触れない（先の小さな葉 8px の上に TOP_GAP 8px）よう縮める
+HashiRender.COLORS・GHOST_ALPHA・GHOST_EDGE_ALPHA・PERFECT_RING（見えやすさの値。§18 HS-08）
   // DOM にはさわらず canvas だけを使う。devicePixelRatio は最大 2（iPhone SE 相当で重くしない）
   // prefers-reduced-motion: reduce なら、波・しぶき・ゆらぎ・跳ねる動きを止める（ゼンマイの calm に準じる）
 ```
@@ -215,7 +230,7 @@ HashiRender.create(canvas) → { resize(), draw(view) }
     <h1 class="title">ハシわたり</h1>
     <div class="head-tools">
       <button class="tool" id="helpBtn" type="button" aria-label="遊び方とせってい">？</button>
-      <button class="tool" id="soundBtn" type="button" aria-label="効果音" aria-pressed="true">♪</button>
+      <button class="tool" id="soundBtn" type="button" aria-label="効果音" aria-pressed="true">♪</button>  <!-- 名前は「効果音」のまま。オン・オフは aria-pressed だけ -->
     </div>
   </header>
 
@@ -230,9 +245,10 @@ HashiRender.create(canvas) → { resize(), draw(view) }
          aria-label="ながく おすと くきが のびる。はなすと たおれる" data-holding="0">
       <canvas id="stage" role="img" aria-label="池と はすの葉"></canvas>
     </div>
-    <p class="hint" id="hint" role="status">ながく おして、はなしてね</p>
+    <p class="hint" id="hint">ながく おして、はなしてね</p>  <!-- 読み上げない（role・aria-live なし） -->
   </section>
 </div>
+<p class="sr-only" id="sr" aria-live="polite" aria-atomic="true"></p>  <!-- 結果ごとに1文。#playView の外（カードの間 #playView は inert） -->
 
 <div class="overlay" id="overlay" hidden>
   <div class="card" id="card" role="dialog" aria-modal="true" aria-labelledby="cardTitle"><!-- 中身は main.js が作る。見出しに id="cardTitle" --></div>
@@ -243,14 +259,15 @@ HashiRender.create(canvas) → { resize(), draw(view) }
 |---|---|
 | `a#back` | メニューへ戻る。どの画面・どのカードからも見えて押せる |
 | `#helpBtn`・`#soundBtn` | 右上の？と♪（44×44 以上）。？は遊び方と設定（ゆっくり・ガイド）のカードを開く |
-| `#playView[data-phase]` | `ready`・`growing`・`falling`・`walking`・`scrolling`・`dropping`・`respawn`・`over`・`paused` |
+| `#playView[data-phase]` | `ready`・`growing`・`falling`・`walking`・`scrolling`・`dropping`・`respawn`・`sinking`（最後のいのちで落ちた後、ぽちゃんが終わるまで）・`over`・`retry`・`clear`・`cleared`・`paused`。カードを出している間は `inert` |
 | `#hud`・`#score`・`#best`・`#lives`・`#streak`・`#streakBox` | 表示。値は `HashiLogic.hud(state)` と保存値をそのまま出す |
-| `#stageWrap[data-holding="0/1"]` | 長押しを受ける面（キャンバス全体）。押している間は `"1"` |
+| `#stageWrap[data-holding="0/1"]` | 長押しを受ける面（キャンバス全体）。茎が伸びている間（`growing`）は `"1"`。書くのは main.js の1か所だけ（input.js は書かない） |
+| `#sr` | 読み上げ（`aria-live="polite"`）。結果ごとに1文だけ入れる。`#hint` は読ませない |
 | `canvas#stage` | 描画 |
 | `#hint` | 1行の案内（落ちたときの「おしい！ みじかすぎ」もここ）。2行分の高さに固定し、文言が変わっても配置が動かない |
 | `#overlay`・`#card` | 結果・遊び方と設定・一時停止のカード |
 | `.overlay [data-cmd="again"/"menu"/"close"/"resume"]` | もう一度・メニューへ・閉じる・つづける |
-| `.overlay [data-set="slow"/"guide"]` | 設定の切り替えボタン（`aria-pressed`、44px 以上） |
+| `.overlay [data-set="slow"/"guide"/"tap"]` | 設定の切り替えボタン（`aria-pressed`、44px 以上）。中は名前 `[data-l]`（「ゆっくりモード：オフ」など）と、何が変わるかの説明 `<small>` |
 
 **CSS の約束**（E）：
 - 既存のトークン、フォント、safe-area、ダブルタップ抑止の作りはゼンマイさんぽに準じる。`[hidden] { display: none !important; }`
@@ -267,9 +284,11 @@ HashiRender.create(canvas) → { resize(), draw(view) }
 `ready` →（押す）`growing` →（離す、`holdMs >= MIN_HOLD_MS`）`falling` → `resolve` の結果で
 - `cross`：`walking` → `scrolling` → `ready`（着地でケロが小さく跳ねる `hop`、案8。ぴったりなら `perfectFx`、案6）
 - `fall` で `over` でない：`walking`（茎の先まで）→ `dropping` → `respawn`（水から顔を出して照れ笑い `peek` → 今の葉に戻る、案4）→ `ready`
-- `fall` で `over`：`walking` → `dropping` → `over`（結果カード）
+- `fall` で `over`：`walking` → `dropping` → `sinking`（ぽちゃんの演出が終わるまで、`SPLASH_SEC`）→ `over`（結果カード）
 
 `holdMs < MIN_HOLD_MS` のとき、またはキャンセルのときは、茎を 0 に戻して `ready` に戻る（落ちない）。`ready` 以外で押しても伸びない。
+短すぎる押下（`MIN_HOLD_MS` 未満）は黙って捨てず、案内「もうすこし ながく おしてね」（タップ式は「すこし まってから もう一度 タップ」）を出して 1.5 秒で戻す。
+茎が `MAX_LEN` に届いたら、`grow` の音を止め、1回だけ共通の `tap` を鳴らし、案内「いちばん ながい！ はなしてね」（タップ式は「… もう一度 タップ」）と、茎の先の光（`bridge.maxed`）で知らせる。
 
 ### アニメーション
 - `requestAnimationFrame` の1本だけで動かす。1フレームの経過時間は最大 50ms に丸める。
@@ -283,6 +302,7 @@ HashiRender.create(canvas) → { resize(), draw(view) }
 - タイマーは `later(fn, ms)` だけで作る（`setTimeout` を直接呼ばない）。`later` は id を一覧に記録する。
 - `clearLater()` を、もう一度・メニューへ・遊び方を開く・隠れる（`visibilitychange` で hidden）・`pagehide` のときに必ず呼ぶ。
 - 回ごとに `runId` を +1 する。`later` のコールバックと rAF は、`runId` が一致するときだけ動く。
+- `clearLater()` で「案内を元に戻す」予約（`hintTimer`）も消えるので、そのとき案内をすぐ元（「ながく おして、はなしてね」）に戻し、`hintTimer` を 0 にする（隠す・遊び方を開くと「ぴったり！ +16」が残り続けた。HS-01）。
 
 ### 中断（§13-3）
 - `visibilitychange` で hidden、または遊び方カードを開いたとき
@@ -294,13 +314,15 @@ HashiRender.create(canvas) → { resize(), draw(view) }
 ### 保存と設定
 - 点が今のベストを超えた時点で、すぐ `hashi.best` に書く。読むときと書くときは `try/catch` で囲む（保存できなくても遊べる）。
 - `hashi.help`：遊び方を一度見たら `"1"`。初回だけ遊び方を自動で出す。
-- `hashi.slow`・`hashi.guide`：`"1"` か `"0"`。読むときは `L.validateFlag`。遊び方カードの中の切り替えボタンで変える。
+- `hashi.slow`・`hashi.guide`・`hashi.tap`（タップ式。押し続けなくてよい）：`"1"` か `"0"`。読むときは `L.validateFlag`。遊び方カード（「？」からの詳しい版）の中の切り替えボタンで変える。タップ式を切り替えたら、それまでの押下は数えない（`input.reset()`）。
+- 詳しい遊び方の「キーボードの スペース・エンター…」の行は、マウス・トラックパッドがあるとき（`(any-pointer: fine)`）だけ出す（iPhone では出さない）。
 - ゆっくりモードでもベストは同じ `hashi.best` に記録する。
 
 ### 結果カード
-- 文言の例：見出し「3 わたった！」、本文「ぴったり 2かい」「ベスト こうしん！」（ベスト更新の音は共通の `best`）。
+- 文言の例：見出し「3まい わたった！」（0 枚なら「つぎは わたろう！」）、本文「ぴったり 2かい」「ベスト こうしん！」（ベスト更新の音は共通の `best`）。
 - 1つ目のボタンは「もう一度」（`data-cmd="again"`）。フォーカスもここに置く。2つ目は「メニューへ」。
 - カードを出してから 400ms はボタンを押せない（落ちた直後の連打で押し間違えない）。カードを閉じた後 300ms は `#stageWrap` の押下を受けない。
+- カード（どの種類も）を出している間は `#playView` に `inert` を付ける（Tab・読み上げが うしろの池に行かない）。`a#back`・`#helpBtn`・`#soundBtn` は外さない（カードからも使う）。閉じてフォーカスが body に落ちたら `#stageWrap` に戻す（Space・Enter ですぐ遊べる）。
 
 ### キーボード（§13-4）
 - Space・Enter：長押しの代わり（C の input.js が担当）
@@ -347,8 +369,9 @@ const HASHI = {
 ### テスト用の公開 API（F が作る）
 ```js
 window.HashiGame = Object.freeze({
-  getState(),     // { phase, score, best, lives, streak, crossed, bridgeLen, platforms, overlay, paused, runId, lastOutcome, timers, slow, guide }
-                  //   timers = 生きている later の数（片付けの確認用）
+  getState(),     // { phase, score, best, lives, streak, crossed, bridgeLen, platforms, overlay, paused, runId, lastOutcome, timers, slow, guide,
+                  //   tap, cameraX, maxed, mode, stage, goal, cleared, stageReach, checkpoint }
+                  //   timers = 生きている later の数（片付けの確認用）。maxed = 伸びている途中で茎が MAX_LEN に届いた
   holdFor(ms),    // input の core で down → up を、注入した時刻で行う（ready のときだけ。成否を返す）
   lenToCross(),   // 今の葉で、ぴったりに乗るための長さ（期待値の計算機）
   setRandom(seq), // 次の「もう一度」から使う乱数の列（配列を順に返し、尽きたら最初へ）
@@ -383,6 +406,9 @@ full（smoke に加えて）：
 - HW11：`#stageWrap` でのダブルタップが拡大にならない。カードを閉じた直後の連打が下に届かない
 - HW12：設定。ゆっくり・ガイドの切り替えが保存され、開き直しても残る。壊れた値で落ちない
 - HW13（Wave 4 の後）：`APP_FILES` に `games/hashi/*` がすべて入り、オフラインで開ける。APP_FILES に無ければ**不合格**（skip で合格にしない）
+- HW14：タップ式（`hashi.tap`）。1回目のタップで伸び、2回目で倒れる（指・click だけ（VoiceOver）・キーボード）。演出中のタップが次を食べない。結果を `#sr`（aria-live）に1文で読み、`#hint` は読ませない
+- HW15〜HW20：ひとつ飛ばし・ステージ・クリアの演出・旗・レビュー後の直し・古いページから書き戻さない（§17）
+- HW21（v31）：§18 の直し（HS-01〜05・07・08）
 
 テストは「保存が無い」「要素が無い」ときに合格扱いにしない（空振りの合格を作らない。ピカッと早押しの PK3・PK8 の反省）。
 
@@ -393,6 +419,7 @@ full（smoke に加えて）：
 - MH4 落ちても lives を減らさない → HL・HW2
 - MH5 hidden で押下を取り消さない → HW6
 - MH6 `again` で `clearLater()` を呼ばない → HW8
+- MH24〜MH27（v31、§18）：clearLater で案内を戻さない／最後のいのちで sinking を飛ばす／最大の長さを知らせない／カードの間 inert にしない → HW21
 
 ## 13. ピカッと早押しの教訓（最初から入れておく約束）
 
@@ -437,3 +464,19 @@ full（smoke に加えて）：
 | G5 変えないもの | 効果音・デバッグ命令・遊び方カード（開き直しても、見たかどうかの保存で決まるので不自然に出ない）。同じページの中で（デバッグ命令 storage・テストで）見張るキーを書くと、次に表に戻ったとき「ほか」と見なして開き直す（その前にゲームが自分で保存すれば覚え直すので開き直さない） |
 
 テスト：HW20（full）。(a) 変わっていなければ pageshow persisted でも開き直さない (b) pagehide persisted → ほかで書く → pageshow persisted → pagehide で書き戻さず、開き直して新しい保存から続ける (c) 裏にいる間に同じ context の別のページが書く（本物の storage イベント）→ pagehide で書き戻さず、表に戻ると開き直す。直す前のコードでは不合格になることを確かめた。
+
+## 18. v31 の直し（2026-10-22、HS-01〜05・07・08）
+
+ユーザーの承認（2026-10-22。そのまま引用）：「v31 の計画を支持します」。遊びの中身・点数のルールは変えない。
+
+| 課題 | 決めごと |
+|---|---|
+| HS-01 案内が残る | `clearLater()` は「案内を元に戻す」予約（`hintTimer`）も消すので、そのとき案内をすぐ元に戻し `hintTimer` を 0 にする |
+| HS-02 最大の長さ・短すぎる押下 | 茎が `MAX_LEN` に届いたら `grow` を止め、共通の `tap` を1回、案内「いちばん ながい！ …」、`bridge.maxed`（先が黄色に光る）。`getState().maxed`。`MIN_HOLD_MS` 未満は落ちずに案内「もうすこし ながく おしてね」を 1.5 秒（音の名前は増やさない。common/sfx.js は変えない） |
+| HS-03 最後のいのち | `dropping` の後 `sinking`（`SPLASH_SEC`、動きを減らす設定では 0.05 秒以下）でぽちゃんを動かしきってから `over` と結果カード。`sinking` は演出の phase（隠す・遊び方で止まる、`skip()` で進む） |
+| HS-04 data-holding | main.js の `syncPhaseAttr()` だけが書く（`growing` かつ止めていないとき `"1"`）。input.js は書かない |
+| HS-05 言葉 | 結果の見出し「Nまい わたった！」、0 枚は「つぎは わたろう！」。設定ボタンに説明の `<small>`。キーボードの行は `(any-pointer: fine)` のときだけ |
+| HS-07 フォーカス | カードの間 `#playView` は `inert`。`#sr` はその外。閉じてフォーカスが body なら `#stageWrap` へ。`#soundBtn` の `aria-label` は「効果音」のまま（状態は `aria-pressed`） |
+| HS-08 見えやすさ | 「ここまで要った」影は、暗いふち（`well`、濃さ 0.7）の上に明るい影（`ink`、濃さ 0.5）：水の上 3.7:1 以上、葉の上はふちが 3.6:1。ぴったり印（黄）は外側 3px の暗いふち（`perfectEdge`。葉と 3.7:1、黄と 9.6:1）で囲む |
+
+テスト：HW21（full）。直す前のコードでは 11 個の確認のうち 10 個が不合格になることを確かめた。変異 MH24〜MH27 は HW21 が検出する。

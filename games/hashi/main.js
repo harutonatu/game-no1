@@ -29,6 +29,10 @@
   const HINT_TAP = "タップで のばして、もう一度 タップ";
   const STAGE_LABEL_HOLD = "ながく おすと くきが のびる。はなすと たおれる";
   const STAGE_LABEL_TAP = "タップすると くきが のびる。もう一度 タップすると たおれる";
+  const HINT_MAX_HOLD = "いちばん ながい！ はなしてね";              // 茎が最大の長さに届いた（HS-02）
+  const HINT_MAX_TAP = "いちばん ながい！ もう一度 タップ";
+  const HINT_SHORT_HOLD = "もうすこし ながく おしてね";              // 短すぎる押下（MIN_HOLD_MS 未満。落ちない）
+  const HINT_SHORT_TAP = "すこし まってから もう一度 タップ";
   const WALK_SPEED = 600;       // 歩く速さ（論理単位/秒、一定）
   const STEP_EVERY = 0.14;      // 足音の間隔（秒）
   const DROP_DEPTH = 140;       // 落ちる深さ（hero.y は上が正。水の中は負）
@@ -48,6 +52,8 @@
   const CLEAR_SEC = 2.9;         // ステージクリアの演出（跳ねる→花火→蓮の花）。タップで早送り
   const CLEAR_SEC_CALM = 1.2;    // 動きを減らす設定のとき（花が静かに咲くだけ）
     const ANIM_PHASES = ["falling", "walking", "scrolling", "dropping", "respawn", "clear"];
+  // sinking：最後のいのちで落ちた後、ぽちゃんの演出が終わるまで待ってから結果カード（HS-03）
+  ANIM_PHASES.push("sinking");
 
   const now = () => performance.now();
   const $ = (id) => document.getElementById(id);
@@ -68,8 +74,9 @@
   document.addEventListener("pointerdown", () => sfx.unlock(), { capture: true });
   document.addEventListener("touchend", () => sfx.unlock(), { capture: true });
   function renderSoundBtn() {
+    // オン・オフは aria-pressed だけで伝える（名前にも「オン」を入れると読み上げが二重になる。HS-07）
     el.soundBtn.setAttribute("aria-pressed", String(!!sfx.on));
-    el.soundBtn.setAttribute("aria-label", sfx.on ? "効果音：オン" : "効果音：オフ");
+    el.soundBtn.setAttribute("aria-label", "効果音");
   }
   function toggleSound() { sfx.unlock(); sfx.toggle(); renderSoundBtn(); }
   el.soundBtn.addEventListener("click", toggleSound);
@@ -146,6 +153,8 @@
   function clearLater() {
     timers.forEach((id) => clearTimeout(id));
     timers.clear();
+    // 「元に戻す」予約も消えたので、案内をすぐ戻す（隠す・遊び方を開くと「ぴったり！ +16」が残り続けた。HS-01）
+    if (hintTimer) { hintTimer = 0; setHint(hintReady()); }
   }
 
   // ===== 状態 =====
@@ -174,6 +183,7 @@
   let ghostTipX = null, perfectAt = null, splashAt = null, skipAt = null, skipX = null, flagAt = null, flagX = null;
   let perfectX = null, splashX = null;
   let peeked = false;
+  let maxed = false;            // この押下で茎が最大の長さに届いた（HS-02）
 
   const curRight = () => run.platforms[0].x + run.platforms[0].w;
   const shownPhase = () => (paused ? "paused" : phase);
@@ -181,12 +191,16 @@
     phase = p;
     phaseStart = clock;
     phaseDur = dur || 0;
-    el.playView.dataset.phase = shownPhase();
+    syncPhaseAttr();
     dirty = true;
     startLoop();
   }
-  function syncPhaseAttr() { el.playView.dataset.phase = shownPhase(); }
-  function setHolding(on) { el.stageWrap.dataset.holding = on ? "1" : "0"; }
+  // #stageWrap[data-holding] は、ここ1か所だけで書く（input.js は書かない。HS-04）。茎が伸びている間（growing）だけ "1"
+  function syncPhaseAttr() {
+    el.playView.dataset.phase = shownPhase();
+    const h = phase === "growing" && !paused ? "1" : "0";
+    if (el.stageWrap.dataset.holding !== h) el.stageWrap.dataset.holding = h;
+  }
   let hintTimer = 0;
   // 案内を変える。新しい案内を出したら、前の「元に戻す」予約は取り消す
   function setHint(text) {
@@ -257,7 +271,7 @@
         platforms: viewPlatforms(),
         cameraX,
         hero: { x: heroX, y: heroY, pose: heroPose },
-        bridge: { len: bridgeLen, angle: bridgeAngle, x: bridgeBase.x, y: bridgeBase.y },
+        bridge: { len: bridgeLen, angle: bridgeAngle, x: bridgeBase.x, y: bridgeBase.y, maxed: phase === "growing" && maxed },
         clearFx: phase === "clear" || phase === "cleared" ? { sec: clock - clearAt, calm: reduceMotion.matches, x: heroX, n: run.goal } : null,
         liftMax: liftMax(),
         flagGotX: flagGotX(),
@@ -324,7 +338,12 @@
     switch (phase) {
       case "growing": {
         bridgeLen = L.lengthFromHold(now() - holdStartAt, { slow });
-        sfx.play("grow", bridgeLen / L.MAX_LEN);
+        if (bridgeLen >= L.MAX_LEN) {
+          // いちばん長くなった：伸びる音を止め、1回だけ「こつ」と鳴らして、茎の先を光らせる・案内で知らせる（HS-02）
+          if (!maxed) { maxed = true; sfx.play("tap"); setHint(tap ? HINT_MAX_TAP : HINT_MAX_HOLD); }
+        } else {
+          sfx.play("grow", bridgeLen / L.MAX_LEN);
+        }
         break;
       }
       case "falling": {
@@ -352,6 +371,11 @@
         heroY = heroBaseY + (hop < 1 ? HOP_H * Math.sin(Math.PI * hop) : 0);
         heroPose = hop < 1 ? "hop" : "stand";
         if (k >= 1) finishCross();
+        break;
+      }
+      case "sinking": {
+        // 最後のいのちで落ちた：ぽちゃんが終わってから結果カード（HS-03）
+        if (k >= 1) { setPhase("over", 0); showResult(true); }
         break;
       }
       case "dropping": {
@@ -417,7 +441,6 @@
     heroX = curRight(); heroY = heroBaseY; heroPose = "stand";
     prevLeaves = [];
     pending = null;
-    setHolding(false);
     setPhase("ready", 0);
   }
   function startWalk() {
@@ -525,8 +548,7 @@
       setHint(`${o.near && o.zone !== "aim" ? "おしい！ " : ""}${why}`);
       announce(`${o.near ? "おしい。" : ""}${why}。おしまい。とくてん ${o.score}`);
       heroPose = "fall";
-      setPhase("over", 0);
-      showResult(true);
+      setPhase("sinking", D(SPLASH_SEC));
     } else if (o.restart) {
       const near = o.near && o.zone !== "aim" ? "おしい！ " : "";
       if (o.from > 0) {
@@ -609,8 +631,8 @@
     holdStartAt = info && Number.isFinite(info.at) ? info.at : now();
     bridgeLen = 0; bridgeAngle = 0;
     ghostTipX = null;
+    maxed = false;
     setHint(hintReady());
-    setHolding(true);
     setPhase("growing", 0);
     return true;
   }
@@ -621,8 +643,13 @@
   function onHoldEnd(info) {
     if (phase !== "growing") return;
     const holdMs = info && Number.isFinite(info.holdMs) ? info.holdMs : now() - holdStartAt;
-    setHolding(false);
-    if (holdMs < L.MIN_HOLD_MS) { toReady(); return; }   // うっかりタッチは無視（落ちない）
+    if (holdMs < L.MIN_HOLD_MS) {
+      // うっかりタッチは無視（落ちない）。黙って捨てず、案内で知らせて 1.5 秒で戻す（HS-02）
+      toReady();
+      setHint(tap ? HINT_SHORT_TAP : HINT_SHORT_HOLD);
+      hintTimer = later(() => { hintTimer = 0; setHint(hintReady()); }, 1500);
+      return;
+    }
     bridgeLen = L.lengthFromHold(holdMs, { slow });     // 見えていた長さと同じ関数で確定
     const res = L.resolve(run, bridgeLen);
     if (res.outcome.kind === "ignore") { toReady(); return; }
@@ -678,6 +705,8 @@
   // ===== カード =====
   // 骨組みだけ HTML で書き、文言は data-f の要素に textContent で入れる
   function showCard(html, fields, kind) {
+    // カードの間は、うしろのプレイ画面を Tab・読み上げの対象から外す（a#back・？・♪ はカードからも使えるので外さない。HS-07）
+    el.playView.setAttribute("inert", "");
     el.card.innerHTML = html;
     delete el.card.dataset.help;
     el.card.querySelectorAll("[data-f]").forEach((n) => { n.textContent = fields[n.dataset.f] ?? ""; });
@@ -692,6 +721,12 @@
     el.overlay.hidden = true;
     el.card.innerHTML = "";
     overlayKind = null;
+    el.playView.removeAttribute("inert");
+    // カードのボタンが消えてフォーカスが body に落ちたら、池（#stageWrap）へ戻す（Space・Enter ですぐ遊べる。HS-07）
+    const a = document.activeElement;
+    if (!a || a === document.body || a === document.documentElement) {
+      try { el.stageWrap.focus({ preventScroll: true }); } catch (e) { el.stageWrap.focus(); }
+    }
     blockUntil = now() + STAGE_BLOCK_MS;   // 閉じた直後の連打を下に通さない
     dirty = true;
     startLoop();
@@ -719,7 +754,7 @@
         <button class="cta" type="button" data-cmd="modes">あそびかたを えらぶ</button>
         <button class="cta" type="button" data-cmd="menu">メニューへ</button>
       </div>`, {
-      h: `${h.crossed} わたった！`,
+      h: h.crossed > 0 ? `${h.crossed}まい わたった！` : "つぎは わたろう！",
       score: `とくてん ${h.score}`,
       perf: `ぴったり ${run.perfects}かい・れんぞく さいこう ${run.bestStreak}`,
       why: whyText(),
@@ -825,14 +860,18 @@
         <button class="cta" type="button" data-cmd="menu">メニューへ</button>
       </div>`, {}, "pause");
   }
-  const SET_LABELS = { slow: "ゆっくりモード", guide: "ガイドの てんせん", tap: "タップしき（おしつづけなくて いい）" };
+  // キーボードの行は、マウス・トラックパッドがあるとき（パソコン・iPad にキーボード）だけ出す。iPhone では出さない（HS-05）
+  const hasFinePointer = () => { try { return !!(window.matchMedia && window.matchMedia("(any-pointer: fine)").matches); } catch (e) { return false; } };
+  const SET_LABELS = { slow: "ゆっくりモード", guide: "ガイドの てんせん", tap: "タップしき" };
   const setValue = (name) => (name === "slow" ? slow : name === "guide" ? guide : name === "tap" ? tap : false);
   const setLabel = (name) => `${SET_LABELS[name] || name}：${setValue(name) ? "オン" : "オフ"}`;
   function renderSetButtons() {
     el.card.querySelectorAll("[data-set]").forEach((b) => {
       const name = b.dataset.set;
       b.setAttribute("aria-pressed", String(setValue(name)));
-      b.textContent = setLabel(name);
+      // 名前と説明（<small>）を分けて持つ。名前の span だけ書き換える（HS-05）
+      const l = b.querySelector("[data-l]");
+      if (l) l.textContent = setLabel(name); else b.textContent = setLabel(name);
     });
   }
   // short：はじめての1回だけ自動で出す3行（SE 縦横でスクロールせずに「わかった」まで見える）。詳しい説明と設定は「？」から
@@ -864,12 +903,12 @@
       <p>うんと のばして 2つ さきの はっぱに とどいたら「とばし」。2つぶん＋おまけの てん！（むりに ねらわなくて だいじょうぶ）</p>
       <p>「どこまでも」：みずに おちると いのち ♥ が 1つ へるよ。0に なったら おしまい。おちても、おなじ ところから もう一度。</p>
       <p>「ステージ」：ゴールの はたの はっぱまで わたれば クリア。5まい わたるごとに きいろい はたが あるよ。おちたら さいごの はたから（「さいしょから」も えらべる）。はたは とじると きえて、つぎは ステージの さいしょから。たかい はっぱには ながい くきが いるよ。</p>
-      <p>キーボードの スペース・エンターでも あそべます。M で おと。</p>
+      ${hasFinePointer() ? "<p>キーボードの スペース・エンターでも あそべます。M で おと。</p>" : ""}
       <p>おしつづけるのが むずかしいときは「タップしき」：1かい タップで のびはじめ、もう1かいで たおれる。</p>
       <div class="sets">
-        <button class="cta set" type="button" data-set="slow" aria-pressed="false"></button>
-        <button class="cta set" type="button" data-set="guide" aria-pressed="false"></button>
-        <button class="cta set" type="button" data-set="tap" aria-pressed="false"></button>
+        <button class="cta set" type="button" data-set="slow" aria-pressed="false"><span class="set-t"><span data-l></span><small>くきが のびる はやさが はんぶん</small></span></button>
+        <button class="cta set" type="button" data-set="guide" aria-pressed="false"><span class="set-t"><span data-l></span><small>たおれる さきを てんせんで みせる</small></span></button>
+        <button class="cta set" type="button" data-set="tap" aria-pressed="false"><span class="set-t"><span data-l></span><small>おしつづけなくて いい（2かい タップ）</small></span></button>
       </div>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");
     el.card.dataset.help = "full";
@@ -981,7 +1020,7 @@
         platforms: run.platforms.map((p) => ({ x: p.x, w: p.w })),
         overlay: overlayKind, paused, runId,
         lastOutcome: lastOutcome ? Object.assign({}, lastOutcome) : null,
-        timers: timers.size, slow, guide, tap, cameraX,
+        timers: timers.size, slow, guide, tap, cameraX, maxed: phase === "growing" && maxed,
         mode: run.mode, stage: run.stage, goal: run.goal, cleared: run.cleared, stageReach, checkpoint: run.checkpoint
       };
     },

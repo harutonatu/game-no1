@@ -5,7 +5,8 @@
  *   hero: { x, y, pose },       // x は世界座標（ケロの足もとの右端。今の葉なら葉の右端）
  *                               // y は水面（葉の上面）からの高さ（論理単位、上が正。負なら水の中）
  *                               // pose: 'stand'|'walk'|'hop'|'fall'|'peek'
- *   bridge: { len, angle, x? },  // angle: 0=縦、PI/2=右へ倒れ終わり、それ以上は水へ倒れる
+ *   bridge: { len, angle, x?, maxed? },  // angle: 0=縦、PI/2=右へ倒れ終わり、それ以上は水へ倒れる
+ *                               // maxed: true なら いちばん長い（先が黄色に光る）
  *                               // x は茎の根もと（省略時は platforms[0] の右端）
  *   perfectFx, perfectX?,       // ぴったり演出の経過秒。perfectX は光る葉の中心（省略時はケロのいる葉）
  *   ghostTipX, guideTipX,
@@ -48,6 +49,9 @@
   var SPLASH_SEC = 0.9;       // ぽちゃんの長さ
   var SKIP_FX_SEC = 1.0;      // 「とばし！」の字が浮かぶ長さ
   var FLAG_FX_SEC = 1.0;      // 旗を取ったときの「はた！」の長さ
+  // 見えやすさ（HS-08。3:1 以上）：「ここまで要った」影の濃さ（水の上で約 4:1）と、その下に敷く暗いふちの濃さ（葉の上で見える）、
+  // ぴったり印（黄）のまわりの暗いふちの太さ（黄と葉は 2.6:1 しかないので、暗いふち（葉と 3.7:1・黄と 9.6:1）で囲む）
+  var GHOST_ALPHA = 0.5, GHOST_EDGE_ALPHA = 0.7, PERFECT_RING = 3;
 
   // 花火の表（main.js も音を鳴らすのに使う）：t＝開く時刻（秒）、x・y＝画面の中の位置（割合）、r＝大きさ、c・c2＝粒の2色
   var FIREWORKS = [
@@ -294,11 +298,16 @@
       ctx.lineTo(g.cx, my + dh);
       ctx.lineTo(g.cx - hw, my);
       ctx.closePath();
+      // 先に太い暗いふち（線の半分＝外側に PERFECT_RING/2 px）を引いてから黄で塗り、細いふちで締める
+      ctx.strokeStyle = C.perfectEdge;
+      ctx.lineJoin = "round";
+      ctx.lineWidth = PERFECT_RING * 2;
+      ctx.stroke();
       ctx.fillStyle = C.perfect;
       ctx.fill();
-      ctx.strokeStyle = C.perfectEdge;
       ctx.lineWidth = 1.5;
       ctx.stroke();
+      ctx.lineJoin = "miter";
 
       if (p.goal) {
         // ゴールの旗（葉の右寄り。色だけでなく形でも分かる）
@@ -333,7 +342,7 @@
     var tNow = 0;
 
     /* ---------- 茎 ---------- */
-    function drawBridge(baseX, deckY, lenPx, angle, s) {
+    function drawBridge(baseX, deckY, lenPx, angle, s, maxed) {
       if (lenPx <= 0.5) return;
       var th = clamp(9 * s, 3, 7);
       ctx.save();
@@ -347,11 +356,19 @@
       ctx.fillStyle = C.bridgeDark;
       var nodeGap = Math.max(18, 60 * s);
       for (var y = nodeGap; y < lenPx - 4; y += nodeGap) ctx.fillRect(-th / 2, -y, th, 1.5);
-      // 先の小さな葉
-      ctx.fillStyle = C.leaf;
+      // 先の小さな葉。いちばん長くなったら（maxed）黄色に光り、暗いふちの輪で囲む（これ以上のびないと分かる。HS-02）
+      if (maxed) {
+        ctx.fillStyle = C.perfect;
+        ctx.beginPath(); ctx.arc(0, -lenPx, th * 1.6, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = C.perfectEdge;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      ctx.fillStyle = maxed ? C.perfect : C.leaf;
       ctx.beginPath();
       ctx.ellipse(th * 0.9, -lenPx + th * 0.2, th * 1.1, th * 0.5, -0.6, 0, Math.PI * 2);
       ctx.fill();
+      if (maxed) { ctx.strokeStyle = C.perfectEdge; ctx.lineWidth = 1.5; ctx.stroke(); }
       ctx.restore();
     }
 
@@ -359,20 +376,29 @@
     function drawGhost(baseX, tipX, deckY, s, baseY) {
       var th = clamp(9 * s, 3, 7);
       var by = num(baseY, deckY);
+      var r = Math.max(5, th * 1.2);
+      function diamond() {
+        ctx.beginPath();
+        ctx.moveTo(tipX, deckY - r - 2); ctx.lineTo(tipX + r, deckY - 2);
+        ctx.lineTo(tipX, deckY + r - 2); ctx.lineTo(tipX - r, deckY - 2);
+        ctx.closePath();
+      }
       ctx.save();
-      ctx.globalAlpha = 0.32;
+      ctx.lineCap = "round";
+      // 下に暗いふち（葉の上でも影が見える）。その上に明るい影（水の上で 3:1 以上。HS-08）
+      ctx.globalAlpha = GHOST_EDGE_ALPHA;
+      ctx.strokeStyle = C.well;
+      ctx.lineWidth = th + 4;
+      ctx.beginPath(); ctx.moveTo(baseX, by); ctx.lineTo(tipX, deckY); ctx.stroke();
+      ctx.lineWidth = 4.5;
+      diamond(); ctx.stroke();
+      ctx.globalAlpha = GHOST_ALPHA;
       ctx.strokeStyle = C.ink;
       ctx.lineWidth = th;
       ctx.beginPath(); ctx.moveTo(baseX, by); ctx.lineTo(tipX, deckY); ctx.stroke();
-      ctx.globalAlpha = 0.6;
-      ctx.strokeStyle = C.ink;
+      ctx.globalAlpha = 0.85;
       ctx.lineWidth = 1.5;
-      var r = Math.max(5, th * 1.2);
-      ctx.beginPath();
-      ctx.moveTo(tipX, deckY - r - 2); ctx.lineTo(tipX + r, deckY - 2);
-      ctx.lineTo(tipX, deckY + r - 2); ctx.lineTo(tipX - r, deckY - 2);
-      ctx.closePath();
-      ctx.stroke();
+      diamond(); ctx.stroke();
       ctx.restore();
     }
 
@@ -737,7 +763,7 @@
       if (br) {
         var lenPx = clamp(num(br.len, 0), 0, 100000) * s;
         var ang = clamp(num(br.angle, 0), 0, Math.PI);
-        drawBridge(baseX, baseY, lenPx, ang, s);
+        drawBridge(baseX, baseY, lenPx, ang, s, !!br.maxed);
       }
 
       if (hero && isFinite(heroX)) {
@@ -774,6 +800,7 @@
 
   return {
     create: create, layout: layout, COLORS: C, PERFECT_FX_SEC: PERFECT_FX_SEC, SPLASH_SEC: SPLASH_SEC, SKIP_FX_SEC: SKIP_FX_SEC,
-    FLAG_FX_SEC: FLAG_FX_SEC, FIREWORKS: FIREWORKS, LOTUS_AT: LOTUS_AT, TOP_GAP: TOP_GAP
+    FLAG_FX_SEC: FLAG_FX_SEC, FIREWORKS: FIREWORKS, LOTUS_AT: LOTUS_AT, TOP_GAP: TOP_GAP,
+    GHOST_ALPHA: GHOST_ALPHA, GHOST_EDGE_ALPHA: GHOST_EDGE_ALPHA, PERFECT_RING: PERFECT_RING
   };
 });

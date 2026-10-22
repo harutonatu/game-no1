@@ -1418,4 +1418,126 @@ export const tests = [
       await ctx.close();
     },
   },
+  {
+    id: 'HW21', tier: 'full', title: 'ハシわたり v31 の直し（HS-01〜05・07・08）：隠す・遊び方で「ぴったり！」の案内が残らない、茎が最大で音が止まり光って知らせる・短すぎる押下を案内、最後のいのちはぽちゃんが終わってからカード、data-holding は main.js だけ、結果の見出しに「まい」・0 回の見出し・設定の説明・iPhone ではキーボードの行なし、カードの間は背景が inert・閉じたら池へフォーカス・♪の名前は1つ、影とぴったり印が 3:1 以上',
+    async run({ browser, check, root }) {
+      const READY = 'ながく おして、はなしてね';
+      const { ctx, page } = await newPage(browser, STD_V(), 'HW21', { clock: true, initScript: SFX_SPY });
+      await ctx.addInitScript(RENDER_SPY);
+      await gotoH(page);
+      const waitHint = async (re, maxMs = 3000) => { for (let t = 0; t <= maxMs; t += 16) { const h = await hintText(page); if (re.test(h || '')) return h; await wait(page, 16); } return null; };
+      // HS-01：渡った直後（「ぴったり！ +N」）に隠す → 案内はすぐ戻り、表に戻って続けても残らない。遊び方を開いたときも同じ
+      let L = await lens(page);
+      await holdLen(page, L.perfect);
+      const h1 = await waitHint(/ぴったり/);
+      await setHidden(page, true); await wait(page, 50);
+      const a1 = { hint: await hintText(page), timers: (await gs(page)).timers };
+      await setHidden(page, false); await wait(page, 100);
+      await clickCmd(page, 'resume'); await settle(page); await wait(page, 100);
+      const a2 = await hintText(page);
+      L = await lens(page);
+      await holdLen(page, L.perfect);
+      const h2 = await waitHint(/ぴったり/);
+      await page.click('#helpBtn'); await wait(page, 100);
+      const a3 = await hintText(page);
+      await clickCmd(page, 'close'); await settle(page); await wait(page, 1600);
+      const a4 = await hintText(page);
+      check(`HS-01：「${h1}」の間に隠すと案内が「${a1.hint}」に戻り（timers ${a1.timers}）、続けても「${a2}」。遊び方を開いても「${h2}」→「${a3}」→「${a4}」`,
+        /ぴったり/.test(h1 || '') && a1.hint === READY && a1.timers === 0 && a2 === READY && /ぴったり/.test(h2 || '') && a3 === READY && a4 === READY, { h1, a1, a2, h2, a3, a4 });
+
+      // HS-02：茎が最大になると grow の音が止まり、tap が1回、案内と絵（bridge.maxed）で知らせる
+      await gotoH(page);
+      await blurAll(page);
+      const K = await page.evaluate(() => ({ ms: Math.ceil(window.HashiLogic.holdForLength(window.HashiLogic.MAX_LEN)), max: window.HashiLogic.MAX_LEN }));
+      await page.evaluate(() => { window.__plays.length = 0; });
+      await page.keyboard.down('Space'); await wait(page, Math.round(K.ms / 2));
+      const m0 = await gs(page);
+      await wait(page, Math.round(K.ms / 2) + 200);
+      const m1 = await gs(page), mh = await hintText(page);
+      const v1 = await page.evaluate(() => ({ maxed: !!window.__hrView?.bridge?.maxed, len: window.__hrView?.bridge?.len }));
+      const p1 = await plays(page);
+      await wait(page, 400);
+      const p2 = await plays(page);
+      await page.keyboard.up('Space');
+      const growAfter = p2.slice(p1.length).filter((x) => x.n === 'grow').length, taps = p2.filter((x) => x.n === 'tap').length;
+      check(`HS-02：途中は maxed ${m0.maxed}、最大（${m1.bridgeLen}＝${K.max}）で maxed ${m1.maxed}・案内「${mh}」・描画の bridge.maxed ${v1.maxed}、そのあと grow ${growAfter} 回（0）・tap ${taps} 回（1）`,
+        m0.phase === 'growing' && m0.maxed === false && m1.phase === 'growing' && m1.bridgeLen === K.max && m1.maxed === true && /いちばん ながい/.test(mh || '') && v1.maxed && growAfter === 0 && taps === 1 && p1.some((x) => x.n === 'grow'), { m0, m1, mh, v1, growAfter, taps });
+      await settle(page);
+      // 短すぎる押下（MIN_HOLD_MS 未満）：落ちずに案内で知らせ、1.5 秒で戻す
+      await wait(page, 1600);
+      const s0 = await gs(page);
+      const okShort = await page.evaluate(() => window.HashiGame.holdFor(window.HashiLogic.MIN_HOLD_MS - 20));
+      const sh1 = await hintText(page), s1 = await gs(page);
+      await wait(page, 1600);
+      const sh2 = await hintText(page), s2 = await gs(page);
+      check(`HS-02：短すぎる押下は落ちず（${s1.phase}・lives ${s0.lives}→${s1.lives}）案内「${sh1}」、1.5 秒で「${sh2}」に戻る（timers ${s2.timers}）`,
+        okShort === true && s1.phase === 'ready' && s1.lives === s0.lives && /もうすこし ながく/.test(sh1 || '') && sh2 === READY && s2.timers === 0, { s1, sh1, sh2, s2 });
+
+      // HS-03：最後のいのちで落ちると、ぽちゃんが終わるまで（sinking）カードを出さない
+      await gotoH(page);
+      for (let i = 0; i < 2; i++) { const l = await lens(page); await holdLen(page, l.short); await settle(page); }
+      L = await lens(page);
+      await holdLen(page, L.short);
+      const sunk = await waitPhase(page, ['sinking', 'over']);
+      const k1 = { ph: await phaseOf(page), ov: (await overlayInfo(page)).shown, sp: await page.evaluate(() => window.__hrView?.splash) };
+      await wait(page, 300);
+      const k2 = { ph: await phaseOf(page), ov: (await overlayInfo(page)).shown, sp: await page.evaluate(() => window.__hrView?.splash) };
+      const shown = await waitOverlay(page);
+      const k3 = await gs(page);
+      check(`HS-03：最後のいのちで落ちると ${k1.ph}（カード ${k1.ov}）でぽちゃんが動き（${k1.sp?.toFixed?.(2)}→${k2.sp?.toFixed?.(2)} 秒）、終わってから結果カード（${shown}・${k3.phase}）`,
+        sunk && k1.ph === 'sinking' && !k1.ov && k2.ph === 'sinking' && !k2.ov && typeof k1.sp === 'number' && typeof k2.sp === 'number' && k2.sp > k1.sp + 0.2 && shown && k3.phase === 'over' && k3.lives === 0, { k1, k2, k3 });
+      // HS-05：0 回の見出し・結果の見出しに「まい」
+      const t0 = await page.evaluate(() => document.querySelector('#cardTitle')?.textContent.trim());
+      // HS-07：カードの間はプレイ画面が inert（池にフォーカスが行かない・Tab でも入らない）、♪の名前は「効果音」だけ
+      const inert = await page.evaluate(() => { const pv = document.querySelector('#playView'), sw = document.querySelector('#stageWrap'); sw.focus(); return { inert: pv.hasAttribute('inert'), focused: document.activeElement === sw, srOut: !pv.contains(document.querySelector('#sr')) }; });
+      const tabs = [];
+      for (let i = 0; i < 8; i++) { await page.keyboard.press('Tab'); tabs.push(await page.evaluate(() => !!document.activeElement?.closest?.('#playView'))); }
+      // カードのボタンにフォーカスを置いてから押す（押したボタンが消えると、直す前は body に落ちた）
+      await wait(page, 450);
+      await page.evaluate(() => { const b = document.querySelector('#overlay:not([hidden]) [data-cmd="again"]'); b.focus(); b.click(); });
+      await wait(page, 350);
+      const af = await page.evaluate(() => ({ id: document.activeElement?.id || document.activeElement?.tagName, inert: document.querySelector('#playView').hasAttribute('inert') }));
+      check(`HS-07：カードの間は #playView が inert（${inert.inert}）で池にフォーカスできず（${inert.focused}）、Tab 8 回で中に入らない（${tabs.filter(Boolean).length} 回）、#sr は外（${inert.srOut}）。閉じたらフォーカスは #${af.id}（stageWrap）・inert なし（${!af.inert}）`,
+        inert.inert && !inert.focused && inert.srOut && tabs.every((x) => !x) && af.id === 'stageWrap' && !af.inert, { inert, tabs, af });
+      const sb = [];
+      for (let i = 0; i < 2; i++) { sb.push(await page.evaluate(() => { const b = document.querySelector('#soundBtn'); return [b.getAttribute('aria-label'), b.getAttribute('aria-pressed')]; })); await page.click('#soundBtn'); await wait(page, 50); }
+      check(`HS-07：♪の名前は状態によらず「効果音」（${sb.map((x) => x.join('/')).join('、')}）、オン・オフは aria-pressed だけ`, sb.every((x) => x[0] === '効果音') && sb[0][1] !== sb[1][1], sb);
+      // 1 枚渡ってから落ちきる → 「1まい わたった！」
+      L = await lens(page); await holdLen(page, L.perfect); await settle(page);
+      await loseRun(page);
+      const t1 = await page.evaluate(() => document.querySelector('#cardTitle')?.textContent.trim());
+      check(`HS-05：結果の見出し「${t0}」（0 回）・「${t1}」（1 回。単位「まい」）`, t0 === 'つぎは わたろう！' && t1 === '1まい わたった！', { t0, t1 });
+      // HS-05：設定ボタンに説明、iPhone（指だけ）ではキーボードの行を出さない
+      await wait(page, 450); await clickCmd(page, 'again'); await wait(page, 350);
+      await page.click('#helpBtn'); await wait(page, 100);
+      const hp = await page.evaluate(() => ({ sets: [...document.querySelectorAll('#card [data-set]')].map((b) => [b.dataset.set, b.querySelector('[data-l]')?.textContent.trim() || '', b.querySelector('small')?.textContent.trim() || '']), kb: /キーボード/.test(document.querySelector('#card').textContent) }));
+      check(`HS-05：設定 ${hp.sets.length} 個に名前と説明（${hp.sets.map((x) => `${x[1]}｜${x[2]}`).join(' / ')}）、iPhone ではキーボードの行なし（${!hp.kb}）`,
+        hp.sets.length === 3 && hp.sets.every((x) => /：(オン|オフ)$/.test(x[1]) && x[2].length >= 4) && !hp.kb, hp);
+      await ctx.close();
+      // マウス（パソコン）ではキーボードの行を出す
+      const d = await openH(browser, 'HW21 マウス', { opts: { touch: false } });
+      await d.page.click('#helpBtn'); await wait(d.page, 100);
+      const kb2 = await d.page.evaluate(() => /キーボードの スペース・エンター/.test(document.querySelector('#card').textContent));
+      check(`HS-05：マウスのある画面ではキーボードの行を出す（${kb2}）`, kb2, kb2);
+      await d.ctx.close();
+
+      // HS-04：data-holding は main.js の1か所だけで書く（input.js は書かない）
+      const inSrc = fs.readFileSync(path.join(root, 'games/hashi/input.js'), 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+      const mainSrc = fs.readFileSync(path.join(root, 'games/hashi/main.js'), 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+      const writes = (src) => (src.match(/data-holding|dataset\.holding\s*=/g) || []).length;
+      check(`HS-04：data-holding を書く所は input.js ${writes(inSrc)} か所（0）・main.js ${writes(mainSrc)} か所（1）`, writes(inSrc) === 0 && writes(mainSrc) === 1, { input: writes(inSrc), main: writes(mainSrc) });
+
+      // HS-08：見えやすさ（3:1 以上）。描画の色と濃さから計算する
+      const c = await (async () => { const x = await openH(browser, 'HW21 色', { mode: null }); const r = await x.page.evaluate(() => { const R = window.HashiRender; return { C: R.COLORS, ga: R.GHOST_ALPHA, ea: R.GHOST_EDGE_ALPHA, ring: R.PERFECT_RING }; }); await x.ctx.close(); return r; })();
+      const hx = (h) => [1, 3, 5].map((i) => parseInt(h.substr(i, 2), 16));
+      const lum = (v) => { const q = v.map((x) => x / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)); return 0.2126 * q[0] + 0.7152 * q[1] + 0.0722 * q[2]; };
+      const mix = (a, b, al) => a.map((x, i) => x * al + b[i] * (1 - al));
+      const cr = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+      const rows = [];
+      for (const bg of ['water', 'waterDeep', 'bg']) { const B = hx(c.C[bg]); const edge = mix(hx(c.C.well), B, c.ea); rows.push([`影/${bg}`, cr(mix(hx(c.C.ink), edge, c.ga), B)]); }
+      { const B = hx(c.C.leaf); rows.push(['影のふち/leaf', cr(mix(hx(c.C.well), B, c.ea), B)]); }
+      rows.push(['ぴったり印のふち/leaf', cr(hx(c.C.perfectEdge), hx(c.C.leaf))], ['ぴったり印/ふち', cr(hx(c.C.perfect), hx(c.C.perfectEdge))]);
+      check(`HS-08：${rows.map(([n, v]) => `${n} ${v.toFixed(2)}`).join('・')}（すべて 3:1 以上）、ぴったり印の暗いふち ${c.ring}px（2 以上）`, rows.every(([, v]) => v >= 3) && c.ring >= 2, rows);
+    },
+  },
 ];

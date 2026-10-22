@@ -13,8 +13,8 @@
  *     ボタン・リンク・入力欄にフォーカスがあるとき、#overlay が開いているときは何もしない。
  *     指とキーボードは、先に始めた方だけを数える。
  *   - window の blur で、押している途中なら onHoldCancel({ reason: 'blur' })。
- *   - 押している間は surfaceEl の data-holding を "1"、それ以外は "0" にする。
- *   - detach で、付けたリスナーと変えたスタイル・属性をすべて元に戻す。
+ *   - surfaceEl の data-holding は書かない（main.js が phase から1か所で書く。HS-04）。
+ *   - detach で、付けたリスナーと変えたスタイルをすべて元に戻す。
  *   - タップ式（opts.tapMode が true を返すとき）：押し続けられない人向け。1回目のタップ（pointerdown・click・
  *     Space/Enter の keydown）で onHoldStart、2回目で onHoldEnd。離す（pointerup・keyup）は数えない。
  *     VoiceOver・スイッチコントロールの「有効化」は click だけが届くので、click も受ける
@@ -150,14 +150,10 @@
       webkitUserSelect: surfaceEl.style.webkitUserSelect,
       webkitTouchCallout: surfaceEl.style.webkitTouchCallout
     };
-    const prevHolding = surfaceEl.getAttribute("data-holding");
     surfaceEl.style.touchAction = "none";
     surfaceEl.style.userSelect = "none";
     surfaceEl.style.webkitUserSelect = "none";
     surfaceEl.style.webkitTouchCallout = "none";
-
-    function mark() { surfaceEl.setAttribute("data-holding", core.holding ? "1" : "0"); }
-    mark();
 
     function release() {
       if (source && source.type === "pointer") {
@@ -168,19 +164,16 @@
     function start(src) {
       source = src;
       if (!core.down(now())) source = null;
-      mark();
     }
     function finish() {
       source = null;
       core.up(now());
-      mark();
     }
     function cancel(reason) {
       const s = source;
       source = null;
       if (s && s.type === "pointer") { try { surfaceEl.releasePointerCapture(s.id); } catch (e) { /* 無視 */ } }
       core.cancel(reason);
-      mark();
     }
 
     // タップ式：押していなければ始め、押している（のびている）なら終える
@@ -287,8 +280,6 @@
         surfaceEl.style.userSelect = prevStyle.userSelect;
         surfaceEl.style.webkitUserSelect = prevStyle.webkitUserSelect;
         surfaceEl.style.webkitTouchCallout = prevStyle.webkitTouchCallout;
-        if (prevHolding === null) surfaceEl.removeAttribute("data-holding");
-        else surfaceEl.setAttribute("data-holding", prevHolding);
       },
       // 押下を取り消す（中断・遊び方を開いたときなど）。コールバックは呼ばない。
       // 押しっぱなしの指・キーは以後数えない（その指の pointerup・そのキーの keyup は無視される）
@@ -296,7 +287,6 @@
         release();
         source = null;
         core.reset();
-        if (attached) mark();
       },
       core,
       get holding() { return core.holding; }
