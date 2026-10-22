@@ -751,7 +751,7 @@ export const tests = [
     },
   },
   {
-    id: 'RL12', tier: 'full', node: true, title: '中継（Node だけ）：iPhone で開く URL の並び（ふつうの LAN が先・仮想のネットワークは後ろで印つき・先頭に「おすすめ」）（T-12）',
+    id: 'RL12', tier: 'full', node: true, title: '中継（Node だけ）：iPhone で開く URL の並び（ふつうの LAN が先・仮想のネットワーク（名前・アドレスの範囲・MAC の先頭で見る）は後ろで印つき・先頭に「おすすめ」）（T-12）',
     async run({ check, root }) {
       const m = await import(pathToFileURL(path.join(root, 'tests/relay/relay.mjs')).href);
       check('orderLanAddresses・isVirtualLan・lanUrlLines を export している', typeof m.orderLanAddresses === 'function' && typeof m.isVirtualLan === 'function' && typeof m.lanUrlLines === 'function');
@@ -771,6 +771,16 @@ export const tests = [
         'en5': [v4('10.0.0.8')], 'en0': [v4('192.168.0.20')], 'en7': [v4('100.64.1.2', { family: 4 })], 'lo': [v4('127.0.0.1', { internal: true })],
       });
       check('名前で仮想（VirtualBox・docker）、169.254 は仮想、192.168. → 10. → そのほか、数字の family（4）も読む、内部は除く', JSON.stringify(b.map((x) => x.address)) === JSON.stringify(['192.168.0.20', '10.0.0.8', '100.64.1.2', '192.168.99.1', '10.200.0.1', '169.254.3.4']) && b.slice(3).every((x) => x.virtual) && b.slice(0, 3).every((x) => !x.virtual), b);
+      // 名前でもアドレスでも分からない仮想（VirtualBox のホストオンリーを 192.168.57.1 に変えた「イーサネット 3」）は MAC の先頭で見る
+      const c = m.orderLanAddresses({
+        'イーサネット 3': [v4('192.168.57.1', { mac: '0a:00:27:00:00:05' })],
+        'Wi-Fi': [v4('192.168.1.13', { mac: 'a4:5e:60:11:22:33' })],
+      });
+      const lc = m.lanUrlLines(c, 8790, 'k');
+      check('MAC の先頭で仮想（イーサネット 3・192.168.57.1・0a:00:27）→ 後ろで印つき、Wi-Fi 192.168.1.13 が先頭の「おすすめ」', JSON.stringify(c.map((x) => [x.address, x.virtual])) === JSON.stringify([['192.168.1.13', false], ['192.168.57.1', true]]) && /192\.168\.1\.13.*おすすめ/.test(lc[1]) && /192\.168\.57\.1.*仮想のネットワーク/.test(lc[2]), { c, lc });
+      check('MAC の判定：VirtualBox・VMware・Hyper-V の先頭（大文字・- 区切りも）は仮想、ふつうの MAC・空・mac なしはふつう', typeof m.isVirtualMac === 'function'
+        && ['08:00:27:aa:bb:cc', '0A-00-27-00-00-05', '00:50:56:C0:00:08', '00-0C-29-12-34-56', '00:05:69:00:00:01', '00:15:5D:01:02:03'].every((x) => m.isVirtualMac(x) && m.isVirtualLan('イーサネット', '192.168.1.5', x))
+        && !m.isVirtualMac('a4:5e:60:11:22:33') && !m.isVirtualMac('00:00:00:00:00:00') && !m.isVirtualMac('') && !m.isVirtualMac(undefined) && !m.isVirtualLan('Wi-Fi', '192.168.1.13') && !m.isVirtualLan('Wi-Fi', '192.168.1.13', 'a4:5e:60:11:22:33'));
       check('空・壊れた入力でも落ちない', m.orderLanAddresses({}).length === 0 && m.orderLanAddresses(null).length === 0 && m.orderLanAddresses({ x: [null, { family: 'IPv4' }] }).length === 0);
       const lines = m.lanUrlLines(a, 8790, 'k2345678');
       check('起動の表示：先頭が 192.168.1.13 で「おすすめ」、仮想の 3 つに「仮想のネットワーク」の印、URL は ?debug=1&relay=1&key=', /http:\/\/192\.168\.1\.13:8790\/\?debug=1&relay=1&key=k2345678.*おすすめ/.test(lines[1]) && lines.slice(2, 5).every((l) => /仮想のネットワーク/.test(l)) && !/仮想/.test(lines[1]), lines);

@@ -450,9 +450,17 @@ function shortUa(ua) {
 
 // 仮想のネットワーク（iPhone からは届かないことが多い）のアダプタ名（T-12）
 const VIRTUAL_NAME = /virtualbox|vbox|vmware|vmnet|hyper-?v|vethernet|\bwsl\b|docker|\bveth|virbr|\bbr-|\blxd|\blxc|podman|parallels|utun|tailscale|zerotier|loopback|pseudo/i;
-/** 仮想のネットワークらしいか（アダプタ名か、アドレスの範囲で見る） */
-export function isVirtualLan(name, address) {
+// 仮想のアダプタの MAC の先頭（名前が「イーサネット 3」のように仮想と分からないとき用）。区切りは : と - のどちらでも、大文字小文字は問わない
+const VIRTUAL_MAC = ["0a:00:27", "08:00:27", "00:50:56", "00:0c:29", "00:05:69", "00:15:5d"];   // VirtualBox・VMware・Hyper-V
+/** MAC の先頭が仮想のアダプタのものか */
+export function isVirtualMac(mac) {
+  const m = String(mac || "").trim().toLowerCase().replace(/-/g, ":");
+  return VIRTUAL_MAC.some((p) => m.startsWith(p));
+}
+/** 仮想のネットワークらしいか（アダプタ名か、MAC の先頭か、アドレスの範囲で見る。mac は省いてよい） */
+export function isVirtualLan(name, address, mac) {
   if (VIRTUAL_NAME.test(String(name || ""))) return true;
+  if (isVirtualMac(mac)) return true;
   const m = /^(\d+)\.(\d+)\.(\d+)\.\d+$/.exec(String(address || ""));
   if (!m) return false;
   const a = Number(m[1]), b = Number(m[2]), c = Number(m[3]);
@@ -472,7 +480,7 @@ export function orderLanAddresses(nets) {
     for (const n of (nets && nets[name]) || []) {
       if (!n || typeof n.address !== "string") continue;
       const fam = typeof n.family === "number" ? (n.family === 4 ? "IPv4" : "IPv6") : n.family;
-      if (fam === "IPv4" && !n.internal) list.push({ address: n.address, name, virtual: isVirtualLan(name, n.address) });
+      if (fam === "IPv4" && !n.internal) list.push({ address: n.address, name, virtual: isVirtualLan(name, n.address, n.mac) });
     }
   }
   const rank = (x) => (x.virtual ? 3 : x.address.startsWith("192.168.") ? 0 : x.address.startsWith("10.") ? 1 : 2);
