@@ -448,16 +448,52 @@ function shortUa(ua) {
   return s.slice(0, 40) || "不明な端末";
 }
 
-function lanAddresses() {
-  const out = [];
-  const nets = os.networkInterfaces();
-  for (const name of Object.keys(nets)) {
-    for (const n of nets[name] || []) {
+// 仮想のネットワーク（iPhone からは届かないことが多い）のアダプタ名（T-12）
+const VIRTUAL_NAME = /virtualbox|vbox|vmware|vmnet|hyper-?v|vethernet|\bwsl\b|docker|\bveth|virbr|\bbr-|\blxd|\blxc|podman|parallels|utun|tailscale|zerotier|loopback|pseudo/i;
+/** 仮想のネットワークらしいか（アダプタ名か、アドレスの範囲で見る） */
+export function isVirtualLan(name, address) {
+  if (VIRTUAL_NAME.test(String(name || ""))) return true;
+  const m = /^(\d+)\.(\d+)\.(\d+)\.\d+$/.exec(String(address || ""));
+  if (!m) return false;
+  const a = Number(m[1]), b = Number(m[2]), c = Number(m[3]);
+  if (a === 192 && b === 168 && c === 56) return true;   // VirtualBox のホストオンリー（既定）
+  if (a === 172 && b >= 16 && b <= 31) return true;      // WSL・Hyper-V・Docker の既定
+  if (a === 169 && b === 254) return true;               // つながっていないアダプタ（自動のアドレス）
+  return false;
+}
+/**
+ * iPhone で開く URL のアドレスを、使いそうな順に並べる（純粋関数。T-12）。
+ * nets は os.networkInterfaces() と同じ形。IPv4 で内部（ループバック）でないものだけ。
+ * 並び：ふつうの LAN（192.168. → 10. → そのほか）→ 仮想。同じ組の中は元の順。戻り値 [{ address, name, virtual }]
+ */
+export function orderLanAddresses(nets) {
+  const list = [];
+  for (const name of Object.keys(nets || {})) {
+    for (const n of (nets && nets[name]) || []) {
+      if (!n || typeof n.address !== "string") continue;
       const fam = typeof n.family === "number" ? (n.family === 4 ? "IPv4" : "IPv6") : n.family;
-      if (fam === "IPv4" && !n.internal) out.push(n.address);
+      if (fam === "IPv4" && !n.internal) list.push({ address: n.address, name, virtual: isVirtualLan(name, n.address) });
     }
   }
-  return out;
+  const rank = (x) => (x.virtual ? 3 : x.address.startsWith("192.168.") ? 0 : x.address.startsWith("10.") ? 1 : 2);
+  return list.map((x, i) => ({ x, i })).sort((p, q) => rank(p.x) - rank(q.x) || p.i - q.i).map((p) => p.x);
+}
+
+function lanAddresses() {
+  return orderLanAddresses(os.networkInterfaces());
+}
+
+/** 起動の表示のうち、iPhone で開く URL の行（純粋関数。addrs は orderLanAddresses の戻り値） */
+export function lanUrlLines(addrs, port, key) {
+  if (!addrs || !addrs.length) return ["  iPhone から届くアドレスが見つかりません（Wi-Fi につながっているか確かめてください）。"];
+  const url = (ip) => `http://${ip}:${port}/?debug=1&relay=1&key=${key}`;
+  const lines = ["  iPhone の Safari で開く URL（同じ Wi-Fi で）："];
+  addrs.forEach((a, i) => {
+    const note = a.virtual ? "　（仮想のネットワーク。ふつうは使わない）" : i === 0 && addrs.length > 1 ? "　← おすすめ" : "";
+    lines.push(`    ${url(a.address)}${note}`);
+  });
+  if (addrs.length > 1) lines.push("    （複数あるときは、iPhone と同じ Wi-Fi のもの。ふつうは一番上の 192.168. で始まるもの）");
+  return lines;
 }
 
 function sendJson(res, status, obj) {
@@ -974,13 +1010,7 @@ async function main() {
   console.log(`  配信している場所：${relay.root}`);
   const loopOnly = host === "127.0.0.1" || host === "localhost" || host === "::1";
   const addrs = loopOnly ? [] : lanAddresses();
-  if (addrs.length) {
-    console.log("  iPhone の Safari で開く URL（同じ Wi-Fi で）：");
-    for (const ip of addrs) console.log(`    http://${ip}:${p}/?debug=1&relay=1&key=${key}`);
-    if (addrs.length > 1) console.log("    （複数あるときは、iPhone と同じ Wi-Fi のもの。ふつうは 192.168. で始まる）");
-  } else {
-    console.log("  iPhone から届くアドレスが見つかりません（Wi-Fi につながっているか確かめてください）。");
-  }
+  for (const line of lanUrlLines(addrs, p, key)) console.log(line);
   console.log(`  この PC で開く URL：http://127.0.0.1:${p}/?debug=1&relay=1&key=${key}`);
   console.log(`  命令を送る：node tests/relay/ask.mjs info${String(p) === "8790" ? "" : ` --port ${p}`}`);
   console.log("  止めるときは Ctrl+C");

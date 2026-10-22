@@ -276,7 +276,7 @@ export const tests = [
     },
   },
   {
-    id: 'RL3', tier: 'full', title: '中継：open でメニュー→ゲームへ移っても、/wait のあと命令が通る（sessionStorage で続く）、open は同じサイトの / 始まりだけ',
+    id: 'RL3', tier: 'full', title: '中継：open でメニュー→ゲームへ移っても、/wait のあと命令が通る（移る先の URL に debug・relay・key を付ける。sessionStorage も残る）、open は同じサイトの / 始まりだけ',
     async run({ browser, check, root }) {
       await withRelays(async (start) => {
         const r = await start(root);
@@ -293,12 +293,13 @@ export const tests = [
           const before = (await api(r, '/status')).device.connectedAt;
           const o = await run(r, 'open', { path: '/games/hashi/' });
           check('open { path:"/games/hashi/" } は ok:true を返してから移る', o.ok === true, o);
-          await page.waitForURL(/\/games\/hashi\/$/, { timeout: 5000 }).catch(() => {});
+          await page.waitForURL(/\/games\/hashi\/(\?|$)/, { timeout: 5000 }).catch(() => {});
           await sleep(300);
           const w = await api(r, `/wait?timeoutMs=15000&after=${encodeURIComponent(before)}`);
           const st = await until(async () => { const x = await api(r, '/status'); return x.connected && x.device && /^\/games\/hashi\//.test(x.device.page) ? x : null; }, 15000) || await api(r, '/status');
-          check('移った先（?debug なしの /games/hashi/）でつなぎ直し、/wait?after=<直前の connectedAt> が新しい接続を返し、/status の page が /games/hashi/', w.ok === true && w.device && /^\/games\/hashi\//.test(w.device.page) && st.connected === true && /^\/games\/hashi\//.test(st.device.page), { w, st });
-          check('ページの URL に ?debug・?relay は付いていない（sessionStorage で続いている）', new URL(page.url()).search === '' && (await page.evaluate(() => sessionStorage.getItem('yubi.relay'))) === KEY, page.url());
+          check('移った先（/games/hashi/）でつなぎ直し、/wait?after=<直前の connectedAt> が新しい接続を返し、/status の page が /games/hashi/', w.ok === true && w.device && /^\/games\/hashi\//.test(w.device.page) && st.connected === true && /^\/games\/hashi\//.test(st.device.page), { w, st });
+          { const sp = new URL(page.url()).searchParams;
+            check('移った先の URL に debug=1・relay=1・key=今の合言葉 が付き、open の答えの href と同じ、sessionStorage の合言葉も残る（T-11）', sp.get('debug') === '1' && sp.get('relay') === '1' && sp.get('key') === KEY && o.result && o.result.href === page.url() && (await page.evaluate(() => sessionStorage.getItem('yubi.relay'))) === KEY, { url: page.url(), o }); }
           const info = await run(r, 'info');
           const state = await run(r, 'state');
           check('移った先でも info・state が通る', info.ok === true && state.ok === true && Array.isArray(state.result.games), { info: info.ok, state });
@@ -714,6 +715,67 @@ export const tests = [
       ];
       const wrong = cases.filter(([h, want]) => m.isAllowedUpgrade(h) !== want);
       check(`判定の関数 isAllowedUpgrade（${cases.length} 通り）`, typeof m.isAllowedUpgrade === 'function' && wrong.length === 0, wrong);
+    },
+  },
+  {
+    id: 'RL11', tier: 'full', title: '中継：open・reload で移るとき、sessionStorage の印が消えていても（iPhone で起きたことのまね）、移った先でデバッグが有効（🐞）になり中継につなぎ直す（T-11）',
+    async run({ browser, check, root }) {
+      await withRelays(async (start) => {
+        const r = await start(root);
+        const { ctx, page } = await phone(browser, 'RL11');
+        const dbg = () => page.evaluate(() => ({ core: !!window.YubiDebug, bug: !!document.getElementById('yubi-debug'), relay: window.YubiDebugRelay ? window.YubiDebugRelay.status() : 'none' })).catch((e) => ({ err: e.message }));
+        try {
+          await openPhone(r, page);
+          await api(r, '/wait?timeoutMs=10000');
+          // iPhone の Safari では、命令で移った先で sessionStorage の印が読めなかった。印を消して同じ状況を作る
+          await page.evaluate(() => sessionStorage.clear());
+          const before = (await api(r, '/status')).device.connectedAt;
+          const o = await run(r, 'open', { path: '/games/hashi/?x=1&debug=0&key=zzz#top' });
+          const sp = o.ok && new URL(o.result.href).searchParams;
+          check('open の答えの href：debug=1・relay=1・key=今の合言葉 に置き換え、ほかの ?（x=1）と #top は残す', o.ok === true && sp.get('debug') === '1' && sp.get('relay') === '1' && sp.get('key') === KEY && sp.get('x') === '1' && new URL(o.result.href).hash === '#top' && new URL(o.result.href).pathname === '/games/hashi/', o);
+          const w = await api(r, `/wait?timeoutMs=15000&after=${encodeURIComponent(before)}`);
+          const st = await until(async () => { const x = await dbg(); return x.relay === 'open' ? x : null; }, 10000) || await dbg();
+          check('印が消えていても、open で移った先でつなぎ直し（/wait?after= が新しい接続、page が /games/hashi/）、デバッグが有効（YubiDebug・🐞 のボタン）', w.ok === true && w.device && /^\/games\/hashi\//.test(w.device.page) && st.core === true && st.bug === true && st.relay === 'open', { w, st, url: page.url() });
+          const info = await run(r, 'info');
+          check('移った先で命令（info）が通る', info.ok === true, info.ok);
+          // 指で移ったページ（URL に debug・relay・key が無い）で印が消えた状態から reload
+          await page.evaluate(() => { history.replaceState(null, '', '/games/hashi/'); sessionStorage.clear(); window.__rlMark = 'よみなおす前'; });
+          const before2 = (await api(r, '/status')).device.connectedAt;
+          const rl = await run(r, 'reload');
+          const w2 = await api(r, `/wait?timeoutMs=15000&after=${encodeURIComponent(before2)}`);
+          const st2 = await until(async () => { const x = await dbg(); return x.relay === 'open' ? x : null; }, 10000) || await dbg();
+          const sp2 = new URL(page.url()).searchParams;
+          check('reload：URL に debug=1・relay=1・key を付けて読み直し（印が消えていても）、つなぎ直してデバッグが有効', rl.ok === true && w2.ok === true && w2.device && w2.device.connectedAt !== before2 && st2.core === true && st2.bug === true && st2.relay === 'open' && sp2.get('debug') === '1' && sp2.get('relay') === '1' && sp2.get('key') === KEY && (await page.evaluate(() => window.__rlMark)) === undefined, { rl, w2, st2, url: page.url() });
+        } finally { await ctx.close(); }
+      });
+    },
+  },
+  {
+    id: 'RL12', tier: 'full', node: true, title: '中継（Node だけ）：iPhone で開く URL の並び（ふつうの LAN が先・仮想のネットワークは後ろで印つき・先頭に「おすすめ」）（T-12）',
+    async run({ check, root }) {
+      const m = await import(pathToFileURL(path.join(root, 'tests/relay/relay.mjs')).href);
+      check('orderLanAddresses・isVirtualLan・lanUrlLines を export している', typeof m.orderLanAddresses === 'function' && typeof m.isVirtualLan === 'function' && typeof m.lanUrlLines === 'function');
+      const v4 = (address, extra = {}) => ({ address, family: 'IPv4', internal: false, ...extra });
+      // 2026-10-22 段4 の自宅 PC と同じ並び（VirtualBox → Wi-Fi → Hyper-V の Default Switch → WSL）
+      const home = {
+        'イーサネット 3': [v4('192.168.56.1'), { address: 'fe80::1', family: 'IPv6', internal: false }],
+        'Wi-Fi': [v4('192.168.1.13')],
+        'vEthernet (Default Switch)': [v4('172.26.64.1')],
+        'vEthernet (WSL (Hyper-V firewall))': [v4('172.26.96.1')],
+        'Loopback Pseudo-Interface 1': [v4('127.0.0.1', { internal: true })],
+      };
+      const a = m.orderLanAddresses(home);
+      check('自宅 PC の 4 つ：192.168.1.13（Wi-Fi）が先頭でふつう、残り 3 つは仮想・元の順', JSON.stringify(a.map((x) => [x.address, x.virtual])) === JSON.stringify([['192.168.1.13', false], ['192.168.56.1', true], ['172.26.64.1', true], ['172.26.96.1', true]]), a);
+      const b = m.orderLanAddresses({
+        'VirtualBox Host-Only Network': [v4('192.168.99.1')], 'docker0': [v4('10.200.0.1')], 'eth1': [v4('169.254.3.4')],
+        'en5': [v4('10.0.0.8')], 'en0': [v4('192.168.0.20')], 'en7': [v4('100.64.1.2', { family: 4 })], 'lo': [v4('127.0.0.1', { internal: true })],
+      });
+      check('名前で仮想（VirtualBox・docker）、169.254 は仮想、192.168. → 10. → そのほか、数字の family（4）も読む、内部は除く', JSON.stringify(b.map((x) => x.address)) === JSON.stringify(['192.168.0.20', '10.0.0.8', '100.64.1.2', '192.168.99.1', '10.200.0.1', '169.254.3.4']) && b.slice(3).every((x) => x.virtual) && b.slice(0, 3).every((x) => !x.virtual), b);
+      check('空・壊れた入力でも落ちない', m.orderLanAddresses({}).length === 0 && m.orderLanAddresses(null).length === 0 && m.orderLanAddresses({ x: [null, { family: 'IPv4' }] }).length === 0);
+      const lines = m.lanUrlLines(a, 8790, 'k2345678');
+      check('起動の表示：先頭が 192.168.1.13 で「おすすめ」、仮想の 3 つに「仮想のネットワーク」の印、URL は ?debug=1&relay=1&key=', /http:\/\/192\.168\.1\.13:8790\/\?debug=1&relay=1&key=k2345678.*おすすめ/.test(lines[1]) && lines.slice(2, 5).every((l) => /仮想のネットワーク/.test(l)) && !/仮想/.test(lines[1]), lines);
+      const one = m.lanUrlLines([{ address: '192.168.1.13', virtual: false }], 8790, 'k');
+      check('1 つだけのときは「おすすめ」も複数の注意も出さない、0 のときは見つからない案内', one.length === 2 && !/おすすめ/.test(one[1]) && /見つかりません/.test(m.lanUrlLines([], 8790, 'k').join('')), one);
     },
   },
 ];

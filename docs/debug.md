@@ -115,6 +115,7 @@ iPhone の Safari で不具合が出たとき、PC なしで原因の手がか�
 - `key` は英数字 1〜16 文字だけ受け付ける。ほかは無視（つながない）。
 - 読み込み方：debug.js 自身の `src` と同じ場所の `debug-relay.js` を `<script>` で足す（`document.currentScript` の src から作る。ページの深さ（メニュー・`games/<名前>/`）に関係なく正しい場所になる）。読めなくてもゲームは動く。
 - 「デバッグを終わる」（`YubiDebug.stop()`）では `yubi.relay` も消し、接続を閉じる。
+- `open`・`reload` で移るときは、移る先の URL に `debug=1&relay=1&key=（今の合言葉）` を**付けて**移る（T-11）。iPhone の Safari では、命令（WebSocket の受信からのタイマー）で移ったときに sessionStorage の印が新しいページで読めないことがあり、🐞 が出ず中継にもつなぎ直さなかったため。URL に付いていれば印が無くても必ず有効になる。合言葉を URL に載せるのは最初に開く URL と同じ形で、合言葉の安全性（8 文字・別サイトを断る・5 回で締め切り）は変わらない。
 
 ### 5.3 運び役（common/debug-relay.js）
 
@@ -129,8 +130,8 @@ iPhone の Safari で不具合が出たとき、PC なしで原因の手がか�
 - 中継が合言葉違いで閉じたとき（閉じるコード **4001**）は、つなぎ直さない。`YubiDebug.log("warn", "中継：合言葉が ちがいます。PC に出ている合言葉と、URL の key= を見くらべてください")`。
 - 別の端末がつないで追い出されたとき（コード **4002**）も、つなぎ直さない。
 - 運び役だけの命令を `YubiDebug.command` で足す：
-  - `open`：引数 `{ path }`。同じサイトのページへ移る。`path` は `/` で始まり `//` で始まらないものだけ（`/games/hashi/` など。`?` 以降も可）。結果を返してから 100ms 後に移る。
-  - `reload`：結果を返してから 100ms 後に読み直す。
+  - `open`：引数 `{ path }`。同じサイトのページへ移る。`path` は `/` で始まり `//` で始まらないものだけ（`/games/hashi/` など。`?` 以降も可）。結果を返してから 100ms 後に移る。移る先の URL の `debug`・`relay`・`key` は `1`・`1`・今の合言葉に置き換える（ほかの `?` と `#` はそのまま。5.2 の最後）。結果の `href` が実際に移る URL。
+  - `reload`：結果を返してから 100ms 後に読み直す。今の URL に `debug=1&relay=1&key=…` が無ければ、付けた URL へ移し替える（`location.replace`。履歴は増やさない）。付いていればそのまま読み直す。
 - テスト用の窓口 `window.YubiDebugRelay = { status() → "connecting"|"open"|"closed"|"rejected", stop() }`。
 - 例外を外へ出さない。WebSocket が無い・つながらなくても、ゲームとデバッグ表示は動く。
 
@@ -140,7 +141,7 @@ iPhone の Safari で不具合が出たとき、PC なしで原因の手がか�
 
 - 既定：ポート 8790（環境変数 `RELAY_PORT` でも可）、合言葉は起動のたびに **8 文字**を作る（紛らわしい `0 o O 1 l i I` を除いた英小文字と数字、crypto の乱数。`--key` で固定。テスト用）、root はこのファイルの 2 つ上（リポジトリの一番上）、host は `0.0.0.0`（同じ Wi-Fi の iPhone から届く）。
 - `--exit-on-stdin-close`：標準入力が閉じたら終わる（テストから起動したときだけ付ける。親のテストが落ちても中継が残らない）。人が使うときは付けない（動きは今までどおり）。
-- 起動したら、最初の 1 行に `RELAY_READY port=<ポート> key=<合言葉>`（テストが読むので形を変えない）。そのあと PC の IPv4 アドレス（内部・ループバック以外）ごとに、iPhone で開く URL を出す：`http://192.168.x.x:8790/?debug=1&relay=1&key=…`。URL が複数あるときだけ「（複数あるときは、iPhone と同じ Wi-Fi のもの。ふつうは 192.168. で始まる）」を足す。合言葉と「止めるときは Ctrl+C」も出す。
+- 起動したら、最初の 1 行に `RELAY_READY port=<ポート> key=<合言葉>`（テストが読むので形を変えない）。そのあと PC の IPv4 アドレス（内部・ループバック以外）ごとに、iPhone で開く URL を出す：`http://192.168.x.x:8790/?debug=1&relay=1&key=…`。URL が複数あるときは、ふつうの LAN（Wi-Fi・有線）を先に、仮想のネットワークを後ろに並べ（T-12）、先頭に「おすすめ」、仮想のものに「（仮想のネットワーク。ふつうは使わない）」と添える。仮想とみなすのは、アダプタ名（`os.networkInterfaces` のキー）に VirtualBox・VMware・Hyper-V・vEthernet・WSL・Docker などを含むもの、`192.168.56.x`（VirtualBox の既定）、`172.16〜31.x`（WSL・Hyper-V・Docker の既定）、`169.254.x.x`（つながっていないアダプタ）。ふつうの LAN の中では `192.168.` → `10.` → そのほかの順。並べ方は純粋関数 `orderLanAddresses(nets)`（export。入力は `os.networkInterfaces()` と同じ形、出力は `[{ address, name, virtual }]`）。合言葉と「止めるときは Ctrl+C」も出す。
 - 出来事を 1 行ずつ出す：つながった（端末の幅×高さ・ページ）、切れた、合言葉ちがい、命令（名前・ok・ms）。
 - **静的ファイルの配信**：root の下だけ（`..` や絶対パスで外へ出ない）。`.` で始まる部分（`.git` など）・`:`・`~`（Windows の 8.3 形式の短い名前 `GIT~1`）を含む道は 404。シンボリックリンクなどは実際の場所（`fs.realpathSync.native`）で確かめ、root からの相対パスに `.` で始まる部分があれば 404（Windows では大文字小文字を区別せずに比べる）。フォルダに `/` が無いときの 301 の移す先は、先頭の `/` を 1 つにまとめた同じサイトの道（`//games` → `/games/`。よそのサイトへ移さない）。`/` で終わる URL は `index.html`。`/game-no1/` で始まる URL も同じものを返す（GitHub Pages と同じ形でも開ける）。拡張子に合った Content-Type（html・js・mjs・css・json・webmanifest・png・svg・ico・txt）。`Cache-Control: no-store`（直したらすぐ見える）。無ければ 404。
 - **WebSocket**：`/relay` の Upgrade だけ。RFC 6455 の最低限（握手・テキストの枠・マスク・分割の枠・ping/pong・close）。1 つの枠は 8MB まで（超えたら閉じる）。20 秒ごとに `{type:"ping"}` を送る。
@@ -179,7 +180,7 @@ node tests/relay/ask.mjs <命令> [引数…] [--yes] [--port 8790] [--timeout 1
 |---|---|
 | RL1（smoke） | 起動 → `?debug=1&relay=1&key=…` で開く → `/status` が connected、`info`・`layout`・`state`・`logs` が `/run` で返る |
 | RL2 | 合言葉が違うとつながらない（4001・`YubiDebugRelay.status()` が rejected・つなぎ直さない） |
-| RL3 | `open` でメニュー→ゲームへ移っても、`/wait` のあと命令が通る（sessionStorage で続く） |
+| RL3 | `open` でメニュー→ゲームへ移っても、`/wait` のあと命令が通る（移る先の URL に `debug=1&relay=1&key=` が付く。sessionStorage も残る） |
 | RL4 | 中継を止めて起動し直すと、運び役が自動でつなぎ直す |
 | RL5 | `relay` を付けない（`?debug=1` だけ）・`?debug=1` も無いときは debug-relay.js を読み込まない（時間で待たず、load と `YubiDebug` ができたことで判定）。`?relay=0`・`?debug=0`・「デバッグを終わる」で `yubi.relay` が消える |
 | RL6 | ask.mjs：`storage op=set` は `--yes` が無いと送らない、中継が無いと終了コード 2、`名前=値` の読み方 |
@@ -187,3 +188,5 @@ node tests/relay/ask.mjs <命令> [引数…] [--yes] [--port 8790] [--timeout 1
 | RL8 | 2 台目がつなぐと 1 台目が 4002 で閉じられ、つなぎ直さない |
 | RL9 | Node だけ（偽の端末）：握手と同じ包みの hello・分割の枠・途中の ping・バイト単位の分割・長さ 127 形式・1 回に複数の枠・ログの切り詰め・hello 前の 64KB 上限・`--exit-on-stdin-close` |
 | RL10 | なりすまし対策：別の Origin・Origin 無し・名前の Host は 403、合言葉 5 回間違いで正しい合言葉でも 4001、既定の合言葉は 8 文字、hello 前の接続は 8 本まで |
+| RL11 | `open`・`reload` で移るとき、sessionStorage の印が消えていても（iPhone で起きたことのまね）、移った先でデバッグが有効（🐞）になり中継につなぎ直す。移る先の URL に `debug=1&relay=1&key=` が付き、`path` の `?`・`#` は残る（T-11） |
+| RL12（Node だけ） | `orderLanAddresses`：ふつうの LAN が先・仮想（アダプタ名・192.168.56.x・172.16〜31.x・169.254.x.x）が後ろ・内部と IPv6 は除く・数字の family（Node 18.0〜18.3）も読む、起動の表示で先頭に「おすすめ」（T-12） |

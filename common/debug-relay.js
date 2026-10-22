@@ -153,18 +153,33 @@
     }
 
     // ---- 運び役だけの命令 ----
+    // 移る先の URL に debug=1&relay=1&key=今の合言葉 を付ける（T-11）。iPhone の Safari では、命令で移ったとき
+    // sessionStorage の印が新しいページで読めないことがあった。URL に付いていれば印が無くても有効になり、つなぎ直す。
+    // ほかの "?" の値と "#" はそのまま残す。合言葉を URL に載せるのは、最初に開く URL と同じ形（docs/debug.md 5.2）
+    function withRelayParams(href) {
+      var u = new URL(href);
+      u.searchParams.set("debug", "1");
+      u.searchParams.set("relay", "1");
+      u.searchParams.set("key", key);
+      return u.href;
+    }
+    function noHash(h) { var i = h.indexOf("#"); return i < 0 ? h : h.slice(0, i); }
     // open：同じサイトのページへ移る。path は "/" で始まり "//" で始まらないものだけ（"?" 以降も可）
     D.command("open", function (a) {
       var p = typeof a === "string" ? a : a && a.path;
       if (typeof p !== "string" || p.charAt(0) !== "/" || p.charAt(1) === "/" || /[\\\s\u0000-\u001f]/.test(p)) throw new Error("path は / で始まる同じサイトの道（例 /games/hashi/）");
       var href = new URL(p, location.href).href;
       if (new URL(href).origin !== location.origin) throw new Error("同じサイトの中だけ移れる: " + p);
+      href = withRelayParams(href);
       setTimeout(function () { location.assign(href); }, 100);     // 結果を返してから移る
       return { path: p, href: href, note: "100ms 後に移る。中継の /wait でつなぎ直しを待つ" };
     }, { desc: "同じサイトのページへ移る（運び役）", args: "{ path: '/games/hashi/' など }" });
     D.command("reload", function () {
-      setTimeout(function () { location.reload(); }, 100);           // 結果を返してから読み直す
-      return { href: location.href, note: "100ms 後に読み直す。中継の /wait でつなぎ直しを待つ" };
+      var href = withRelayParams(location.href);
+      // 今の URL にもう付いていれば、そのまま読み直す。付いていなければ、付けた URL へ移し替える（履歴は増やさない）
+      var same = noHash(href) === noHash(location.href);
+      setTimeout(function () { if (same) location.reload(); else location.replace(href); }, 100);   // 結果を返してから読み直す
+      return { href: href, note: "100ms 後に読み直す。中継の /wait でつなぎ直しを待つ" };
     }, { desc: "ページを読み直す（運び役）", args: "なし" });
 
     window.YubiDebugRelay = {
