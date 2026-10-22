@@ -76,18 +76,19 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 | どんな変更でも（コミット前） | `node tests/run.mjs smoke` |
 | CSS・HTML の配置・文字の大きさ | smoke ＋ `ONLY=V1,V2,V3,V4,V5,V6,V7,V8,E4,E5 node tests/run.mjs full` |
 | sw.js・manifest・ファイルの追加や改名（CACHE_VERSION を上げたとき） | smoke ＋ `ONLY=L5,L10,S8,S1,S2,S3,S4,S5,S6,S7 node tests/run.mjs full` |
-| 保存データ（localStorage）・2048 のロジック | smoke ＋ `ONLY=D1,D2,D3,D4,D5,D6,D7,D8,D9,D10 node tests/run.mjs full` |
+| 保存データ（localStorage）・2048 のロジック | smoke ＋ `ONLY=D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,P10 node tests/run.mjs full`（古いページから書き戻さない P10 は X-20。変異は `ONLY=P10 M=M24,M25,M26`） |
+| メニュー（index.html）の並び・カード | smoke ＋ `ONLY=E1,E7,E8,D9,A4,A5,T3 node tests/run.mjs full`（並びの保存を変えたら `ONLY=E1,E7,E8 M=MR1,MR2,MR3,MR4 node tests/mutants/mutate.mjs both`） |
 | キリトリ道場（games/kiritori/） | smoke ＋ `ONLY=L7,L8,L9,D3,D10,E4,E6,V1,V2,V3,V4,V5,P8,P9,A4,A6,T5,T6 node tests/run.mjs full` |
 | 効果音（common/sfx.js）・♪ボタン | smoke ＋ `ONLY=A1,A2,A3,A4,A5,A6,T1,T4,T6,P5 node tests/run.mjs full` |
 | タッチ操作・ダブルタップ抑止 | smoke ＋ `ONLY=T1,T2,T3,T4,T5,T6,P7,E5 node tests/run.mjs full`（WebKit でも `BROWSER=webkit … smoke`） |
-| いろコード（games/irocode/）の変更 | smoke ＋ `ONLY=I10,I11,I12,I13,I14,I15,I16,I17,I18 node tests/run.mjs full`（ロジックだけなら `ONLY=I1,I2,I3 node tests/run.mjs smoke`、0 秒） |
-| ゼンマイさんぽ（games/zenmai/）の変更 | smoke ＋ `ONLY=ZL1,ZL2,ZL3,ZL4,ZL5,ZL6,ZL7,ZU6,ZU7,ZU8,ZU9,ZU10,ZU11,ZU12,ZU13,ZU14 node tests/run.mjs full`（ステージの数値は ZL、画面は ZU） |
+| いろコード（games/irocode/）の変更 | smoke ＋ `ONLY=I10,I11,I12,I13,I14,I15,I16,I17,I18,I20 node tests/run.mjs full`（ロジックだけなら `ONLY=I1,I2,I3 node tests/run.mjs smoke`、0 秒） |
+| ゼンマイさんぽ（games/zenmai/）の変更 | smoke ＋ `ONLY=ZL1,ZL2,ZL3,ZL4,ZL5,ZL6,ZL7,ZU6,ZU7,ZU8,ZU9,ZU10,ZU11,ZU12,ZU13,ZU14,ZU16 node tests/run.mjs full`（ステージの数値は ZL、画面は ZU） |
 | ピカッと早押し（games/pikatto/）の変更 | smoke ＋ `ONLY=PK5,PK6,PK7,PK8,PK9,PK12,PK14,PK16,PK17,PK18 node tests/run.mjs full`（ルール・保存を変えたら `ONLY=PK1,PK3,PK9,PK15,PK16 M=MP1,MP2,MP3,MP4,MP5,MP6,MP7 node tests/mutants/mutate.mjs both`） |
-| ハシわたり（games/hashi/）の変更 | smoke ＋ `ONLY=HW5,HW6,HW7,HW8,HW9,HW10,HW11,HW12,HW13,HW14,HW15,HW17,HW19 node tests/run.mjs full`（ロジックだけなら `ONLY=HL1,HL2,HL3,HL4,HL5,HL6,HL7,HL8,HL9,HL10,HL11,HL12 node tests/run.mjs smoke`、0 秒。ルール・保存を変えたら `PORT=9900 ONLY=HL1,…,HL12,HW1,…,HW19 M=MH1,…,MH20 node tests/mutants/mutate.mjs both`（10 個ずつに分けて流す）） |
-| いろびん（games/irobin/）の変更 | smoke ＋ `ONLY=BW5,BW6,BW7,BW8,BW9,BW10,BW11,BW12,BW13,BW14,BW15,BW16 node tests/run.mjs full`（ロジックだけなら `ONLY=BL1,BL2,BL3,BL4,BL5,BL6,BL7,BL8,BL9,BL10,BL11,BL12,BL13,BL14 node tests/run.mjs smoke`、約 9 秒。ルール・保存・生成を変えたら `ONLY=BL1,…,BL14,BW1,…,BW18 M=MB1,…,MB17,MB19,MB20,MB21 node tests/mutants/mutate.mjs both`。MB18 は欠番） |
-| まとめてポン（games/matomete/）の変更 | smoke ＋ `ONLY=QW4,QW5,QW6,QW7,QW8,QW9,QW10,QW11,QW12,QW13,QW14,QW15,QW18,QW19 node tests/run.mjs full`（ロジックだけなら `ONLY=QL1,QL2,QL3,QL4,QL5,QL6,QL7,QL8,QL9,QL10,QL11 node tests/run.mjs full`、数秒。ルール・保存・2回タップを変えたら `ONLY=QL1,…,QL11,QW1,…,QW19 M=MQ1,MQ2,…,MQ40 node tests/mutants/mutate.mjs both`） |
+| ハシわたり（games/hashi/）の変更 | smoke ＋ `ONLY=HW5,HW6,HW7,HW8,HW9,HW10,HW11,HW12,HW13,HW14,HW15,HW17,HW19,HW20 node tests/run.mjs full`（ロジックだけなら `ONLY=HL1,HL2,HL3,HL4,HL5,HL6,HL7,HL8,HL9,HL10,HL11,HL12 node tests/run.mjs smoke`、0 秒。ルール・保存を変えたら `PORT=9900 ONLY=HL1,…,HL12,HW1,…,HW19 M=MH1,…,MH20 node tests/mutants/mutate.mjs both`（10 個ずつに分けて流す）。古いページから書き戻さない（X-20）を変えたら `ONLY=HW20 M=MH21,MH22,MH23 PORT=9900 node tests/mutants/mutate.mjs both`） |
+| いろびん（games/irobin/）の変更 | smoke ＋ `ONLY=BW5,BW6,BW7,BW8,BW9,BW10,BW11,BW12,BW13,BW14,BW15,BW16,BW20 node tests/run.mjs full`（ロジックだけなら `ONLY=BL1,BL2,BL3,BL4,BL5,BL6,BL7,BL8,BL9,BL10,BL11,BL12,BL13,BL14 node tests/run.mjs smoke`、約 9 秒。ルール・保存・生成を変えたら `ONLY=BL1,…,BL14,BW1,…,BW18 M=MB1,…,MB17,MB19,MB20,MB21 node tests/mutants/mutate.mjs both`。MB18 は欠番。古いページから書き戻さない（X-20）を変えたら `ONLY=BW20 M=MB23,MB24,MB25 PORT=9900 node tests/mutants/mutate.mjs both`） |
+| まとめてポン（games/matomete/）の変更 | smoke ＋ `ONLY=QW4,QW5,QW6,QW7,QW8,QW9,QW10,QW11,QW12,QW13,QW14,QW15,QW18,QW19,QW21 node tests/run.mjs full`（ロジックだけなら `ONLY=QL1,QL2,QL3,QL4,QL5,QL6,QL7,QL8,QL9,QL10,QL11 node tests/run.mjs full`、数秒。ルール・保存・2回タップを変えたら `ONLY=QL1,…,QL11,QW1,…,QW19 M=MQ1,MQ2,…,MQ40 node tests/mutants/mutate.mjs both`。古いページから書き戻さない（X-20）を変えたら `ONLY=QW21 M=MQ42,MQ43,MQ44 PORT=9950 node tests/mutants/mutate.mjs both`） |
 | ミチビキ空港（games/michibiki/）の変更 | smoke ＋ `ONLY=FW6,FW7,FW8,FW9,FW10,FW11,FW12,FW13,FW14,FW15,FW16,FW17,FW18,FW19,FW22,FW23 node tests/run.mjs full`（ロジックだけなら `ONLY=FL1,FL2,FL3,FL4,FL5,FL6,FL7,FL8,FL9,FL10,FL11,FL12 node tests/run.mjs full`、約 20 秒。ルール・保存・出現を変えたら `ONLY=FL1,…,FL12,FW1,…,FW23 M=MF1,…,MF29 node tests/mutants/mutate.mjs both`） |
-| もくもくこうば（games/seizai/）の変更 | smoke ＋ `ONLY=WW7,WW8,WW9,WW10,WW11,WW12,WW13,WW14,WW15,WW16,WW17,WW18,WW19,WW20,WW21,WW22,WW23,WW24,WW25 node tests/run.mjs full`（ロジックだけなら `ONLY=WL1,WL2,WL3,WL4,WL5,WL6,WL7,WL8,WL9,WL10,WL11,WL12,WL13 node tests/run.mjs full`。経済・保存・閉じた間・船・注文を変えたら `ONLY=WL1,…,WL11,WW1,…,WW19 M=MW1,…,MW50 PORT=9640 WORKERS=2 node tests/mutants/mutate.mjs both`。10 個ずつ M を区切って流す。さいしょから（契約 §21）を変えたら `ONLY=WW25 M=MW61,MW62,MW63,MW64 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`） |
+| もくもくこうば（games/seizai/）の変更 | smoke ＋ `ONLY=WW7,WW8,WW9,WW10,WW11,WW12,WW13,WW14,WW15,WW16,WW17,WW18,WW19,WW20,WW21,WW22,WW23,WW24,WW25,WW26 node tests/run.mjs full`（ロジックだけなら `ONLY=WL1,WL2,WL3,WL4,WL5,WL6,WL7,WL8,WL9,WL10,WL11,WL12,WL13 node tests/run.mjs full`。経済・保存・閉じた間・船・注文を変えたら `ONLY=WL1,…,WL11,WW1,…,WW19 M=MW1,…,MW50 PORT=9640 WORKERS=2 node tests/mutants/mutate.mjs both`。10 個ずつ M を区切って流す。さいしょから（契約 §21）を変えたら `ONLY=WW25 M=MW61,MW62,MW63,MW64 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`。古いページから書き戻さない（X-20）を変えたら `ONLY=WW26 M=MW65,MW66,MW67 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`） |
 | ちきゅうを守れ！ほしくだき（games/asteroid/）の変更 | smoke ＋ `ONLY=KW8,KW9,KW10,KW11,KW12,KW13,KW14,KW15,KW16,KW17,KW20,KW21 node tests/run.mjs full`（ロジックだけなら `ONLY=KL1,KL2,KL3,KL4,KL5,KL6,KL7,KL8,KL9,KL10,KL11,KL12,KL13,KL14,KL15 node tests/run.mjs full`。ルール・保存・中断・画面の流れを変えたら `PORT=9650 ONLY=KL1,…,KL15,KW1,…,KW20 M=MK1,…,MK37 node tests/mutants/mutate.mjs both`（10 個ずつ）。さいしょから（契約 §19）や保存を変えたら `ONLY=KW6,KW21 M=MK6,MK7,MK18,MK38,MK39,MK40,MK41,MK42 PORT=8900 WORKERS=2 node tests/mutants/mutate.mjs both`。ロジックの数値を変えたら main.js の gostar の表 `ARMS_LV` も測り直す（design.md §10.68）） |
 | 遠隔テストの中継（tests/relay/・common/debug-relay.js・common/debug.js の relay の部分） | smoke ＋ `ONLY=RL1,RL2,RL3,RL4,RL5,RL6,RL7,RL8,RL9,RL10,RL11,RL12 node tests/run.mjs full` を Chromium と WebKit（`BROWSER=webkit WORKERS=1`）の両方で。ONLY は番号を並べる形（`ONLY=RL` では絞れない）。約 30〜50 秒 |
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
@@ -103,9 +104,9 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 |---|---|---|
 | L | 計算ロジック・静的検査（Node） | 2048 の合体・詰み・乱数・盤面検証、キリトリ道場の判定（線分と円・得点・コンボ・ライフ・軌道・経過時間基準）、sw.js・manifest・HTML・メニューの GAMES |
 | D | データ保護・互換 | 途中経過・ベストの保存（キリトリは D10）、壊れた／古い保存データ |
-| E | 閉じ込めなし | どの画面・カードからもメニューへ戻れる（キリトリは E6）、低い画面でカードのボタンに届く |
+| E | 閉じ込めなし | どの画面・カードからもメニューへ戻れる（キリトリは E6）、低い画面でカードのボタンに届く、メニューが最近遊んだ順に並ぶ（E7・E8。X-21） |
 | S | オフライン・更新 | Service Worker：オフライン起動、旧版からの更新、遅い回線・無応答（3画面）、新しい版との食い違い |
-| V | 画面外・押せる・桁数 | 端末×向き×起動方法×画面（4画面）のペアワイズ、CSS の境界、7 桁のスコア |
+| V | 画面外・押せる・桁数 | 端末×向き×起動方法×画面（4画面）のペアワイズ、CSS の境界、7 桁のスコア。V2 は SE 横 Safari（568×270）のブロック・ピカッと 4 人が重ならない（X-17）。V8・V1 のスコア欄は文字の範囲の縦を行の高さで切り詰めて測る（T-13） |
 | P | 遊べること | キー・ボタン・スワイプ、0.8 秒の待ち、クリア、演出、キリトリの切る・落とす・爆弾・コンボ（P8・P9） |
 | A | 効果音 | 音名の一致、操作で鳴る（キリトリは A6）、オフなら鳴らない、メニューの tap |
 | T | タッチ操作 | ダブルタップ拡大の抑止、タッチでの音の準備（unlock）、操作一式（キリトリは T6） |
@@ -216,6 +217,8 @@ sw.js にも版を直接書く二重持ちにしているのは、import 先だ�
 7. CDP（Chromium 専用）を使う項目には `cdp: '理由'` を付ける（WebKit では対象外として表示）。CDP なしで書けるなら書く（T5 のように）。
    AudioContext が要る項目（A4）には `audio: true` を付ける。ブラウザに `AudioContext` も `webkitAudioContext` も無い環境（Windows 版 Playwright の WebKit）では、不合格にせず「対象外（環境に AudioContext が無い）」と表示する。OS 名では決めず、実際に調べる。Linux の WebKit・Chromium では今までどおり流れる。
 8. 外部（インターネット）に出ない・リポジトリや作業ツリーに書き込まない・決まったポート以外を使わない（ただし RL は、中継を空いているポート（`--port 0`）で起動する）。
+9. **古いページから書き戻さない（X-20）**：途中の保存を持つゲームは、表に戻ったとき（visibilitychange・pageshow）に保存が自分の覚えた文字と違えば、書かずに `location.reload()` する。裏へ回る（hidden）・閉じる（pagehide）ときの保存の前にも `staleOnHide()` で比べ直し、storage イベントが届く前に古い状態を書かない。reload は1回だけ。テストは pageshow を `new PageTransitionEvent('pageshow', { persisted: true })` で送って再現し、別のタブは同じ context の 2 つ目のページから書く（本物の storage イベント）。storage イベントが届かない場合は、同じページから localStorage を直接書き換えて再現する（各ゲームの X-20 の項目の (d)。もくもくこうば WW26 は (e)）。QW2 は setItem を見張る形に変えた。
+10. **メニューのカードは `nth()` でなく href で押す**：メニューは最近遊んだ順に並びが変わる（X-21）ので、`a.game[href="…"]` で押す。
 
 ## Chromium・WebKit と実機の違い
 
@@ -367,6 +370,8 @@ iPhone の Safari で「ボタンが押せない」「表示がずれる」「�
 9. キリトリ道場で、プレイ中に一時停止してメニューへ移り、戻るボタン（bfcache からの復帰）で戻ると一時停止の画面が出る。プレイ中に縦↔横を切り替えても、的が道場の中に置き直されライフが減らない（回転は V9 で確認済み。bfcache からの復帰は Playwright では再現できない）。
 10. ゼンマイさんぽ：ネジを指で円を描くように回して巻ける（指が速くても数えられ、片手の親指でも回せる）。そろそろ限界で色と音が変わる。＋/－と「歩かせる」だけでも遊べる。ステージ選択に★が出て、クリアで次が開く。機内モードでも遊べ、アプリを一度閉じても★が残る。効果音のカチカチが耳障りでない。（円ドラッグのテストは CDP の合成タッチなので、実際の指での回しやすさは実機で）
 11. デバッグ表示（v21〜）：Safari で `?debug=1` を付けて開くと「🐞 0」が出て、ゲームのボタンをふさがない。パネルの「コピー」を押し、メモなどに貼り付けられる。「デバッグを終わる」で消える。付けずに開いたときは何も出ない。
+12. メニュー（v30〜）：メニューでゲームを開いて戻ると、そのゲームが一番上に来る（絵とベストは残る）。ホーム画面のアプリを開き直しても、最近遊んだ順のまま。
+13. iPhone SE（または小さい iPhone）を Safari で横持ちにして、ピカッと早押しの 4 人プレイで上下の隅ボタン（1P×3P・2P×4P）が重ならない（X-17、V2 の 568×270）。
 
 ## 変異テスト
 
@@ -630,6 +635,34 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | MK40 ほしくだき：さいしょからで asteroid.best も消す | 見逃し（smoke では見逃す設計） | 検出（KW21） |
 | MK41 ほしくだき：さいしょからの確認で「やめる」を押しても消す | 見逃し（smoke では見逃す設計） | 検出（KW21） |
 | MK42 ほしくだき：さいしょからで消せないとき #hint で知らせない（古い保存が残ったのに気づけない） | 見逃し（smoke では見逃す設計） | 検出（KW21） |
+| MR1 メニュー：最近遊んだゲームを先頭でなく後ろに足す（X-21） | 見逃し（smoke では見逃す設計） | 検出（E7, E8） |
+| MR2 メニュー：最近遊んだ順に並べ替えない（X-21） | 見逃し（smoke では見逃す設計） | 検出（E7, E8） |
+| MR3 メニュー：壊れた yubi.recent で落ちる（X-21） | 見逃し（smoke では見逃す設計） | 検出（E8, X1） |
+| MR4 メニュー：カードを押した瞬間に並べ替える（押し間違い。X-21） | 見逃し（smoke では見逃す設計） | 検出（E8） |
+| MW65 もくもくこうば：表に戻ったとき保存がほかで変わっていても開き直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（WW26） |
+| MW66 もくもくこうば：開き直す前（stale）でも保存を書く（X-20） | 見逃し（smoke では見逃す設計） | 検出（WW26） |
+| MW67 もくもくこうば：裏へ回る・閉じるときの保存で比べ直さない（storage イベントが届く前に古い状態を書き戻す。X-20） | 見逃し（smoke では見逃す設計） | 検出（WW26） |
+| M24 ばいばいタイル：表に戻ったとき保存がほかで変わっていても開き直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（P10） |
+| M25 ばいばいタイル：裏で別のタブが書いても保存を止めない（storage を見ない。X-20） | 見逃し（smoke では見逃す設計） | 検出（P10） |
+| M26 ばいばいタイル：裏へ回る・閉じるときの保存で比べ直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（P10） |
+| MD9 いろコード：表に戻ったとき保存がほかで変わっていても開き直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（I20） |
+| MD10 いろコード：開き直す前（stale）でも保存を書く（X-20） | 見逃し（smoke では見逃す設計） | 検出（I20） |
+| MD11 いろコード：裏へ回る・閉じるときの保存で比べ直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（I20） |
+| MZ5 ゼンマイ：表に戻ったとき保存がほかで変わっていても開き直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（ZU16） |
+| MZ6 ゼンマイ：開き直す前（stale）でも進み具合を書く（X-20） | 見逃し（smoke では見逃す設計） | 検出（ZU16） |
+| MZ7 ゼンマイ：閉じるときの保存で比べ直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（ZU16） |
+| MB23 いろびん：表に戻ったとき保存がほかで変わっていても開き直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（BW20） |
+| MB24 いろびん：開き直す前（stale）でも保存を書く（X-20） | 見逃し（smoke では見逃す設計） | 検出（BW20） |
+| MB25 いろびん：裏へ回る・閉じるときの保存で比べ直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（BW20） |
+| MQ42 まとめてポン：表に戻ったとき保存がほかで変わっていても開き直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（QW21） |
+| MQ43 まとめてポン：裏で別のタブが書いても保存を止めない（storage を見ない。X-20） | 見逃し（smoke では見逃す設計） | 検出（QW21） |
+| MQ44 まとめてポン：裏へ回る・閉じるときの保存で比べ直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（QW21） |
+| MH21 ハシわたり：表に戻ったとき保存がほかで変わっていても開き直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（HW20） |
+| MH22 ハシわたり：開き直す前（stale）でもベストを書く（pagehide で下げる。X-20） | 見逃し（smoke では見逃す設計） | 検出（HW20） |
+| MH23 ハシわたり：閉じるときのベストの保存で比べ直さない（古いベストへ下げる。X-20） | 見逃し（smoke では見逃す設計） | 検出（HW20） |
+| MP10 ピカッと：とても低い横画面ですき間を詰めない（SE Safari 横で 4 人の隅が重なる。X-17） | 検出（V2） | 検出（V2） |
+
+メニューの並びと古いページの書き戻し（2026-10-22、v30。MR1〜4・MW65〜67・M24〜26・MD9〜11・MZ5〜7・MB23〜25・MQ42〜44・MH21〜23・MP10 の 26 個）：すべて検出（full 26/26。smoke の見逃しは新しい項目が full だけの設計のため。MP10 の V2 は smoke でも検出）。MW67・M26・MD11・MZ7・MB25・MQ44・MH23 は、レビュー後の直し（878b5af）で足した `staleOnHide()` の比べ直しを消すもの。置換元がずれていた MD3・MB22・MQ41・MW33 は今のコードに合わせた。
 
 さいしょから（2026-10-22、v29、fix/seizai-carry。Chromium・`WORKERS=2`）：もくもくこうば `ONLY=WW25 M=MW61〜MW64 PORT=8800` で smoke 0/4・full 4/4、ほしくだき `ONLY=KW6,KW21 M=MK6,MK7,MK18,MK38〜MK41 PORT=8900` で smoke 3/7・full 7/7 を検出（smoke の見逃しは MW61〜64・MK38〜41 で、WW25・KW21 は full なので見逃す設計）。同日、消せないときの扱い（契約 §19.2 R6）を直したあと `ONLY=KW21 M=MK38,MK39,MK40,MK41,MK42 PORT=8900` で smoke 0/5・full 5/5 を検出（MK42「消せないときヒントを出さない」を足した）。保存の既存の変異 MK6・MK7・MK18 も KW6 で引き続き検出。もくもくこうばの保存の既存の変異（分類「保存」の MW18〜MW21・MW35・MW38・MW44・MW47・MW49・MW53、`ONLY=WL1〜WL13,WW1〜WW25 PORT=9640`）も smoke 10/10・full 10/10 で検出。
 
