@@ -261,7 +261,9 @@
     .hold { flex-direction: row; align-items: center; gap: 6px; padding: 4px 8px; }
     .hold canvas { width: 56px; height: 34px; }
     .next canvas { height: 104px; }
-    .stats { padding-top: 48px; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 0 6px; }
+    /* LEVEL の列は中身の幅（auto）にし、欄を 162px に広げて列の間を 4px に詰め、LEVEL・LINES が 5 桁（99999）でも「…」にならないようにする（X-18）。
+       左の列（568 幅で約 155px）から左へ数 px はみ出すが、はみ出す先は .app の左の余白（16px 以上・safe-area 以上）の中 */
+    .stats { padding-top: 48px; width: 162px; grid-template-columns: auto minmax(0, 1fr); gap: 0 4px; }
     .stats .stat { flex-direction: row; align-items: baseline; gap: 4px; }
     .stats .label { flex: none; font-size: 12px; letter-spacing: 0.02em; }
     .stat b { font-size: 13px; line-height: 16px; }

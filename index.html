@@ -174,7 +174,7 @@
   //   name: ゲーム名 / desc: ひとこと説明 / url: ルートからの相対パス / best: ベストスコアの localStorage キー
   //   art: 下の ART にある絵の名前（省略すると頭文字のタイル）
   // 並び順（X-21）：localStorage "yubi.recent"（url の配列、最近が先頭、重複なし、最大 GAMES の数、日時は持たない）にある
-  //   ゲームをその順で先頭に、残りはこの GAMES の順のまま後ろ。カードを押したとき（click。Enter・タップも）に先頭へ入れるだけで、
+  //   ゲームをその順で先頭に、残りはこの GAMES の順のまま後ろ。カードを押したとき（click。Enter・タップも。修飾キーつき・中ボタンの別タブは除く：X-23）に先頭へ入れるだけで、
   //   その場では並べ替えない（押し間違い防止）。並べ直すのは開いたとき・pageshow・見えたとき（renderBest と同じ時）。
   //   壊れた保存（JSON でない・配列でない・知らない url など）は使える分だけ使う。直接 URL でゲームを開いた分は数えない
   const GAMES = [
@@ -184,7 +184,7 @@
     { name: "いろコード", desc: "4つの色の並びを推理する", url: "games/irocode/", stats: "irocode.stats", art: "code" },
     { name: "ゼンマイさんぽ", desc: "ネジを巻いて、崖の手前でぴたりと止める", url: "games/zenmai/", bestText: () => zenmaiBest(), art: "zenmai" },
     { name: "ピカッと早押し", desc: "ひかったら タップ！ いちばん はやいのは だれ？", url: "games/pikatto/", bestText: () => pikattoBest(), art: "pikatto" },
-    { name: "ハシわたり", desc: "ながおしで くきを のばして、つぎの葉へ", url: "games/hashi/", best: "hashi.best", art: "hashi" },
+    { name: "ハシわたり", desc: "ながおしで くきを のばして、つぎの はっぱへ", url: "games/hashi/", best: "hashi.best", art: "hashi" },
     { name: "いろびん", desc: "いろみずを そろえて、どうぶつに とどけよう", url: "games/irobin/", bestText: () => irobinBest(), art: "irobin" },
     { name: "まとめてポン", desc: "おなじ いろを まとめて ポン！ たくさん けすほど たかいてん", url: "games/matomete/", bestText: () => matometeBest(), art: "matomete" },
     { name: "ミチビキ空港", desc: "ゆびで みちを かいて、おなじ いろの かっそうろへ", url: "games/michibiki/", bestText: () => michibikiBest(), art: "michibiki" },
@@ -876,7 +876,11 @@
       sfx.play("tap");
     });
     // 押したら「最近遊んだ」の先頭に入れる（保存だけ。並べ替えは戻ってきたとき）。失敗しても移動は止めない
-    a.addEventListener("click", () => saveRecent(game.url));
+    // 修飾キー（Cmd・Ctrl・Shift・Alt）や左ボタン以外で押したとき（別タブ・別ウィンドウで開く）は、ここでは遊んでいないので入れない（X-23）。中ボタンは auxclick なので click は来ない
+    a.addEventListener("click", (e) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+      saveRecent(game.url);
+    });
     return { game, li, a, cv, val };
   });
 

@@ -84,7 +84,7 @@ async function screenCheck(browser, check, v, key, extra) {
 // ---- ブロックのスコア欄の桁数（fix4/t1.mjs から統合。b3e894f「スコア欄が … で省略される」の確認） ----
 // プレイ中に SCORE・BEST 1,234,567、LINES 9,999、LEVEL 99 を入れ、省略（…）・はみ出し・重なり・高さの変化がないか
 const STAT_VALS = [['score', '1,234,567'], ['best', '1,234,567'], ['lines', '9,999'], ['level', '99']];
-async function blocksStatsProbe(page, safe) {
+async function blocksStatsProbe(page, safe, vals = STAT_VALS) {
   await seed(page, {});
   await page.goto(BLK); await wait(page, 120);
   await page.click('#card [data-cmd=restart]'); await wait(page, 120);
@@ -120,12 +120,12 @@ async function blocksStatsProbe(page, safe) {
     const off = els.filter((b) => b.x < l - 0.5 || b.y < t - 0.5 || b.r > innerWidth - rr + 0.5 || b.b > innerHeight - bb + 0.5).map((b) => b.t);
     const board = R(document.querySelector('#board'));
     return { st, ov, off, minH: Math.min(...btns.map((b) => b.h)), after: `${Math.round(board.w)}x${Math.round(board.h)}/${document.querySelector('.stats').getBoundingClientRect().height.toFixed(1)}`, hs: document.documentElement.scrollWidth > innerWidth };
-  }, [STAT_VALS, safe]);
+  }, [vals, safe]);
   // BEST は最も狭い 2 画面（320 幅の縦・568×320 の横）では隠す仕様。隠れていれば省略の確認は不要
   const hiddenOk = (id) => id === 'best' && (page.viewportSize().width === 320 || page.viewportSize().height <= 320);
   const bad = [];
   for (const x of r.st) { if (!x.vis && !hiddenOk(x.id)) bad.push(x.id + ' 非表示'); if (x.vis && (x.sw > x.cw || x.text.includes('…'))) bad.push(`${x.id} 省略 ${x.sw}/${x.cw}`); }
-  if (!r.st.every((x, i) => x.text === STAT_VALS[i][1])) bad.push('値が変わった');
+  if (!r.st.every((x, i) => x.text === vals[i][1])) bad.push('値が変わった');
   if (before !== r.after) bad.push(`高さが変わる ${before}→${r.after}`);
   if (r.ov.length) bad.push('重なり ' + r.ov.join(','));
   if (r.off.length) bad.push('safe-area 外 ' + r.off.join(','));
@@ -331,6 +331,26 @@ export const tests = [
         await ctx.close();
       }
       check(`${cases.length - 1} 画面すべてで数字が省略されず、重なり・safe-area 外・横スクロールなし、ボタン 44px 以上`, bad.length === 0, bad);
+    },
+  },
+  {
+    id: 'V12', tier: 'full', title: 'ブロックの上の帯（X-18）：LEVEL・LINES 5桁（99999）と SCORE/BEST 7桁を同時に入れても、15 画面（SE 縦・iPhone 縦横・SE の Safari 横・切り欠きのある低い横・iPad 縦横）で「…」にならず、はみ出し・重なり・高さの変化なし',
+    async run({ browser, check }) {
+      const vals = [['score', '1,234,567'], ['best', '1,234,567'], ['lines', '99999'], ['level', '99999']];
+      const cases = [
+        [320, 568, [20, 0, 0, 0]], [375, 667, [20, 0, 0, 0]], [390, 844, [47, 0, 34, 0]], [430, 932, [59, 0, 34, 0]],
+        [568, 320, [0, 0, 0, 0]], [667, 375, [0, 0, 0, 0]], [844, 390, [0, 47, 21, 47]], [932, 430, [0, 59, 21, 59]],
+        [768, 1024, [24, 0, 20, 0]], [1024, 768, [24, 0, 20, 0]], [810, 1080, [24, 0, 20, 0]], [1080, 810, [24, 0, 20, 0]],
+        [568, 270, null], [568, 300, null], [812, 300, [0, 44, 21, 44]],   // 高さ 319 以下の横（欄を少し広げる区分）。切り欠きのある端末も
+      ];
+      const bad = [];
+      for (const [w, h, safe] of cases) {
+        const { ctx, page } = await newPage(browser, custom(w, h, safe), `V12 ${w}x${h}`, { clock: true });
+        const d = await blocksStatsProbe(page, safe, vals);
+        if (!d.ok) bad.push({ v: `${w}x${h}`, bad: d.bad });
+        await ctx.close();
+      }
+      check(`${cases.length} 画面すべてで LEVEL・LINES 99999 が省略されず（文字が欄の幅に入る）、重なり・safe-area 外・横スクロールなし`, bad.length === 0, bad);
     },
   },
   {

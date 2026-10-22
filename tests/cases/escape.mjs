@@ -236,7 +236,7 @@ export const tests = [
     },
   },
   {
-    id: 'E7', tier: 'smoke', title: 'メニューは最近遊んだ順（X-21）：空なら GAMES の順、押して戻るとそのゲームが先頭・一番上に見える（タップ・Enter）',
+    id: 'E7', tier: 'smoke', title: 'メニューは最近遊んだ順（X-21）：空なら GAMES の順、押して戻るとそのゲームが先頭・一番上に見える（タップ・Enter）。Ctrl+クリック（別タブ）では入れない（X-23）',
     async run({ browser, check }) {
       const { ctx, page } = await newPage(browser, V(), 'E7');
       await seed(page, {});
@@ -256,11 +256,18 @@ export const tests = [
       const b2 = await hrefs(page);
       const saved = await page.evaluate(() => localStorage.getItem('yubi.recent'));
       check(`(b) 続けて 2048 を Enter で開いて戻ると [2048, ${last}, 残りは GAMES の順]、保存は url の配列`, JSON.stringify(b2) === JSON.stringify(['games/2048/', last, ...GAME_URLS.filter((u) => u !== last && u !== 'games/2048/')]) && saved === JSON.stringify(['games/2048/', last]), { b2, saved });
+      // X-23：Ctrl+クリック（別タブで開く）では遊んでいないので先頭に入れない。開いた別タブは閉じる
+      const tabs = [];
+      ctx.on('page', (p) => tabs.push(p));
+      await page.locator('a.game[href="games/kiritori/"]').click({ modifiers: ['Control'] }); await sleep(300);
+      const c1 = await page.evaluate(() => localStorage.getItem('yubi.recent'));
+      check('(X-23) Ctrl+クリック（別タブで開く）では yubi.recent が変わらず、メニューに留まる', c1 === saved && page.url() === BASE, { c1, url: page.url(), tabs: tabs.length });
+      for (const p of tabs) await p.close().catch(() => {});
       await ctx.close();
     },
   },
   {
-    id: 'E8', tier: 'full', title: '最近遊んだ順（X-21）：壊れた保存でも落ちない・押した瞬間は並びが変わらない・保存に失敗しても移動する・並べ直しでベストと絵が残る',
+    id: 'E8', tier: 'full', title: '最近遊んだ順（X-21）：壊れた保存でも落ちない・押した瞬間は並びが変わらない・保存に失敗しても移動する・並べ直しでベストと絵が残る・修飾キーつき・中ボタンでは保存しない（X-23）',
     async run({ browser, check }) {
       const { ctx, page } = await newPage(browser, V(), 'E8');
       const rev = [...GAME_URLS].reverse();
@@ -299,6 +306,19 @@ export const tests = [
       await page.locator('a.game[href="games/2048/"]').tap(); await sleep(200);
       const d2 = await hrefs(page), dSaved2 = await page.evaluate(() => localStorage.getItem('yubi.recent'));
       check('(d) 押した瞬間は並びが変わらず（GAMES の順のまま）、保存だけ先頭に入る', JSON.stringify(d1) === JSON.stringify(GAME_URLS) && JSON.stringify(d2) === JSON.stringify(GAME_URLS) && dSaved === JSON.stringify([last]) && dSaved2 === JSON.stringify(['games/2048/', last]), { d1, d2, dSaved, dSaved2 });
+      // (X-23) 修飾キー（Ctrl・Meta・Shift・Alt）つき・中ボタン（auxclick）では保存しない。ふつうのクリックでは保存する
+      const keep = JSON.stringify(['games/2048/', last]), mods = [];
+      for (const m of ['Control', 'Meta', 'Shift', 'Alt']) {
+        await page.locator('a.game[href="games/kiritori/"]').click({ modifiers: [m] }); await sleep(60);
+        mods.push([m, await page.evaluate(() => localStorage.getItem('yubi.recent'))]);
+      }
+      await page.evaluate(() => document.querySelectorAll('a.game').forEach((a) => a.addEventListener('auxclick', (e) => e.preventDefault())));
+      await page.locator('a.game[href="games/kiritori/"]').click({ button: 'middle' }); await sleep(60);
+      mods.push(['中ボタン', await page.evaluate(() => localStorage.getItem('yubi.recent'))]);
+      check('(X-23) Ctrl・Meta・Shift・Alt を押しながらのクリックと中ボタンのクリックでは yubi.recent が変わらない', mods.every(([, v]) => v === keep), mods);
+      await page.locator('a.game[href="games/kiritori/"]').click(); await sleep(60);
+      const plain = await page.evaluate(() => localStorage.getItem('yubi.recent'));
+      check('(X-23) ふつうのクリックでは先頭に入る', plain === JSON.stringify(['games/kiritori/', 'games/2048/', last]), plain);
       // (e) 並べ直しても同じカード（作り直さない）で、ベスト表示と絵が残る
       await seed(page, { 'tile2048.best': '1234' });
       await page.goto(BASE); await sleep(300);
