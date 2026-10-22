@@ -13,11 +13,17 @@ import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import path from "node:path";
 
-const NOT_RUNNING = "中継が 動いていません：node tests/relay/relay.mjs で起動してください";
+const NOT_RUNNING =
+  "中継が 動いていません：node tests/relay/relay.mjs で起動してください" +
+  "（別の PowerShell の窓で node tests/relay/relay.mjs を動かしたままにしてください。ポートを変えたときは --port を付けます）";
+const NOT_CONNECTED_HINT =
+  "iPhone でまだ開いていないか、つながっていません。tests/README.md の『うまくいかないとき』を見てください";
 const USAGE = [
   "使い方：node tests/relay/ask.mjs <命令> [名前=値 …] [--yes] [--port 8790] [--timeout 10000]",
   "  特別な命令：status ・ logs [--since N] ・ wait",
   "  例：ask.mjs info ／ ask.mjs layout selector=#board limit=20 ／ ask.mjs tap x=100 y=200",
+  "  よく使う命令：info＝iPhone の画面・版など／layout＝ボタンの位置と大きさ／state＝ゲームの中の数／open＝画面を移す／logs＝エラーの記録",
+  "  まず status で \"connected\": true を確かめてから使います",
 ].join("\n");
 
 const NAME_EQ = /^[A-Za-z_$][\w$-]*=/;
@@ -133,13 +139,13 @@ async function main() {
     const q = new URLSearchParams();
     const since = opts.since ?? (args && typeof args === "object" ? args.since : undefined);
     if (since !== undefined) q.set("since", String(since));
-    r = await request(`${base}/logs${q.size ? "?" + q : ""}`, { method: "GET" }, 10000);
+    r = await request(`${base}/logs${q.toString() ? "?" + q : ""}`, { method: "GET" }, 10000);
   } else if (command === "wait") {
     const q = new URLSearchParams();
     if (args && typeof args === "object") for (const [k, v] of Object.entries(args)) q.set(k, String(v));
     if (opts.timeout !== undefined) q.set("timeoutMs", String(opts.timeout));
     const t = Math.min(Number(q.get("timeoutMs")) || 15000, 60000);
-    r = await request(`${base}/wait${q.size ? "?" + q : ""}`, { method: "GET" }, t + 5000);
+    r = await request(`${base}/wait${q.toString() ? "?" + q : ""}`, { method: "GET" }, t + 5000);
   } else {
     if (command === "storage" && args && typeof args === "object" && (args.op === "set" || args.op === "remove") && !opts.yes) {
       print({
@@ -165,6 +171,7 @@ async function main() {
     process.stderr.write(r.error + "\n");
     return 2;
   }
+  if (command === "status" && r.body && r.body.ok === true && r.body.connected === false) r.body.hint = NOT_CONNECTED_HINT;
   print(r.body);
   return r.body && r.body.ok === true ? 0 : 1;
 }

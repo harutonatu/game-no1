@@ -21,11 +21,14 @@ process.on('exit', () => { for (const c of children) { try { c.kill(); } catch {
 
 // 起動の行から実際のポートを読む（relay.mjs は最初に「RELAY_READY port=<ポート> key=<合言葉>」を出す）
 const PORT_RE = /RELAY_READY port=(\d+)/;
+// --exit-on-stdin-close：テスト（親）が落ちて標準入力が閉じたら、中継も終わる（残らない）。key:null なら --key を付けない（既定の合言葉）
+const KEY_RE = /RELAY_READY port=\d+ key=(\S+)/;
 function startRelay(root, { key = KEY, port = 0, host = '127.0.0.1', relRoot } = {}) {
   const file = path.join(root, 'tests/relay/relay.mjs');
-  const args = [file, '--port', String(port), '--key', key, '--host', host];
+  const args = [file, '--port', String(port), '--host', host, '--exit-on-stdin-close'];
+  if (key !== null) args.push('--key', key);
   if (relRoot) args.push('--root', relRoot);
-  const child = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, RELAY_PORT: '' } });
+  const child = spawn(process.execPath, args, { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, RELAY_PORT: '' } });
   children.add(child);
   let out = '';
   const r = {
@@ -45,7 +48,7 @@ function startRelay(root, { key = KEY, port = 0, host = '127.0.0.1', relRoot } =
     const on = (d) => {
       out += d;
       const m = out.match(PORT_RE);
-      if (m && !r.port) { r.port = Number(m[1]); clearTimeout(timer); resolve(r); }
+      if (m && !r.port) { r.port = Number(m[1]); const k = out.match(KEY_RE); if (k) r.key = k[1]; clearTimeout(timer); resolve(r); }
     };
     child.stdout.on('data', on); child.stderr.on('data', on);
     child.once('exit', (code) => { if (!r.port) { clearTimeout(timer); reject(new Error(`中継が起動の途中で終了（code ${code}）\n${out.slice(-800)}`)); } });
@@ -79,6 +82,69 @@ const rawGet = (port, p, host = '127.0.0.1') => new Promise((resolve) => {
 });
 // 空いているポート（何も待っていないポート。ask.mjs の「中継が無い」確認用）
 const freePort = () => new Promise((resolve) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); }); });
+
+// ---------- Node の偽の端末（ブラウザを使わない WebSocket。枠の形を自分で作って送る） ----------
+// 端末から中継への枠（マスクつき）。len127 は長さを 127 形式で書く（64KB 以上で使う）
+function cframe(op, payload, { fin = true } = {}) {
+  const data = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload ?? ''), 'utf8');
+  const len = data.length;
+  let head;
+  if (len < 126) { head = Buffer.alloc(2); head[1] = 0x80 | len; }
+  else if (len < 65536) { head = Buffer.alloc(4); head[1] = 0x80 | 126; head.writeUInt16BE(len, 2); }
+  else { head = Buffer.alloc(10); head[1] = 0x80 | 127; head.writeBigUInt64BE(BigInt(len), 2); }
+  head[0] = (fin ? 0x80 : 0) | op;
+  const mask = Buffer.from([0x12, 0x34, 0x56, 0x78]);
+  const body = Buffer.alloc(len);
+  for (let i = 0; i < len; i++) body[i] = data[i] ^ mask[i & 3];
+  return Buffer.concat([head, mask, body]);
+}
+const helloMsg = (key, page = '/rl-node') => JSON.stringify({ type: 'hello', key, page, info: { userAgent: 'node-rl', screen: { w: 11, h: 22 } } });
+// 中継へ WebSocket の握手を送る。first を渡すと、握手と同じ write で続けて送る（upgrade の head に入る）
+function wsClient(port, { origin, host, first, noOrigin = false } = {}) {
+  const H = host ?? `127.0.0.1:${port}`;
+  const O = noOrigin ? null : (origin ?? `http://${H}`);
+  return new Promise((resolve) => {
+    const sock = net.connect(port, '127.0.0.1');
+    const c = { sock, status: 0, frames: [], closeCode: null, ended: false, raw: '' };
+    let buf = Buffer.alloc(0), headDone = false, settled = false;
+    const done = () => { if (!settled) { settled = true; resolve(c); } };
+    c.send = (b) => { try { sock.write(b); } catch { /* 無視 */ } };
+    c.text = (o) => c.send(cframe(0x1, typeof o === 'string' ? o : JSON.stringify(o)));
+    c.msgs = () => c.frames.filter((f) => f.op === 1).map((f) => { try { return JSON.parse(f.data.toString('utf8')); } catch { return null; } }).filter(Boolean);
+    c.until = (fn, ms = 5000) => until(async () => fn(c), ms, 20);
+    c.end = () => { try { sock.destroy(); } catch { /* 無視 */ } };
+    sock.on('connect', () => {
+      const lines = ['GET /relay HTTP/1.1', `Host: ${H}`, 'Upgrade: websocket', 'Connection: Upgrade', 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==', 'Sec-WebSocket-Version: 13'];
+      if (O !== null) lines.push(`Origin: ${O}`);
+      const req = Buffer.from(lines.join('\r\n') + '\r\n\r\n');
+      sock.write(first ? Buffer.concat([req, first]) : req);
+    });
+    sock.on('data', (d) => {
+      buf = Buffer.concat([buf, d]);
+      if (!headDone) {
+        const i = buf.indexOf('\r\n\r\n');
+        if (i < 0) return;
+        c.raw = buf.subarray(0, i).toString('latin1');
+        c.status = Number((/^HTTP\/1\.1 (\d+)/.exec(c.raw) || [])[1] || 0);
+        buf = buf.subarray(i + 4); headDone = true; done();
+      }
+      for (;;) {
+        if (buf.length < 2) break;
+        const op = buf[0] & 0x0f; let len = buf[1] & 0x7f, off = 2;
+        if (len === 126) { if (buf.length < 4) break; len = buf.readUInt16BE(2); off = 4; }
+        else if (len === 127) { if (buf.length < 10) break; len = Number(buf.readBigUInt64BE(2)); off = 10; }
+        if (buf.length < off + len) break;
+        const data = buf.subarray(off, off + len);
+        buf = buf.subarray(off + len);
+        c.frames.push({ op, data });
+        if (op === 0x8) c.closeCode = data.length >= 2 ? data.readUInt16BE(0) : 1005;
+      }
+    });
+    const fin = () => { c.ended = true; done(); };
+    sock.on('close', fin); sock.on('error', fin);
+    setTimeout(done, 5000);
+  });
+}
 
 // ---------- ask.mjs（子のプロセス） ----------
 function ask(root, args) {
@@ -148,6 +214,8 @@ export const tests = [
           const st = await api(r, '/status');
           const d = st.device || {};
           check('/status：connected:true、device に userAgent・page・screen{w,h}・connectedAt・lastSeen', st.ok && st.connected === true && typeof d.userAgent === 'string' && d.userAgent.length > 0 && typeof d.page === 'string' && d.page.startsWith('/') && d.screen && d.screen.w > 0 && d.screen.h > 0 && d.connectedAt != null && d.lastSeen != null, st);
+          // 中継は hello を受けた時点で connected にし、そのあと welcome を送る。ページが welcome を読むまで待つ（WebKit は少し遅れる）
+          await until(async () => (await relayStatus(page)) === 'open', 3000, 50);
           check('ページ側：debug-relay.js を読み込み、YubiDebugRelay.status() が open、sessionStorage yubi.relay に合言葉', relayJs.length === 1 && (await relayStatus(page)) === 'open' && (await page.evaluate(() => sessionStorage.getItem('yubi.relay'))) === KEY, { relayJs, s: await relayStatus(page) });
           const info = await run(r, 'info');
           check('info：{ ok:true, result, command:"info", ms }（type・id は外す）、result の画面の幅が 390', info.ok === true && info.command === 'info' && typeof info.ms === 'number' && !('type' in info) && !('id' in info) && info.result && info.result.window && info.result.window.innerWidth === 390 && typeof info.result.userAgent === 'string', info);
@@ -280,12 +348,24 @@ export const tests = [
       try {
         const got = [];
         // デバッグが無効のうち（sessionStorage にまだ覚えていない）に relay=1 を試し、そのあと ?debug=1 だけで開く
+        // 待ち方：goto は load まで待つ。debug.js は読み込みの途中で <script> を足すので、読み込むなら load の前に要求が出て、
+        // load の時点で performance の記録に残る。デバッグが有効のページは YubiDebug ができていることも確かめる（時間の sleep に頼らない）
         for (const q of ['', 'games/irobin/', '?relay=1&key=1234', 'games/hashi/?relay=1&key=1234', '?debug=1', 'games/irobin/?debug=1', 'games/hashi/']) {
           const n = relayJs.length;
-          await page.goto(BASE + q); await sleep(250);
-          got.push({ q, loaded: relayJs.length - n, api: await page.evaluate(() => typeof window.YubiDebugRelay), ss: await page.evaluate(() => sessionStorage.getItem('yubi.relay')) });
+          await page.goto(BASE + q, { waitUntil: 'load' });
+          const wantDbg = q.includes('debug=1') || got.some((g) => g.q.includes('debug=1'));
+          if (wantDbg) await page.waitForFunction(() => !!window.YubiDebug, null, { timeout: 5000 }).catch(() => {});
+          const pg = await page.evaluate(() => ({
+            ready: document.readyState,
+            api: typeof window.YubiDebugRelay,
+            dbg: typeof window.YubiDebug,
+            ss: sessionStorage.getItem('yubi.relay'),
+            perf: performance.getEntriesByType('resource').filter((e) => e.name.includes('/common/debug-relay.js')).length,
+            tag: !!document.querySelector('script[src*="debug-relay.js"]'),
+          }));
+          got.push({ q, loaded: relayJs.length - n, ...pg, wantDbg });
         }
-        check('?debug=1 だけ・何も付けない・debug なしの relay=1（メニューとゲーム）：debug-relay.js を読まず、YubiDebugRelay も yubi.relay もない', got.every((g) => g.loaded === 0 && g.api === 'undefined' && g.ss === null) && sockets.length === 0, got);
+        check('?debug=1 だけ・何も付けない・debug なしの relay=1（メニューとゲーム）：debug-relay.js を読まず（要求・記録・<script> なし）、YubiDebugRelay も yubi.relay もない', got.every((g) => g.ready === 'complete' && g.loaded === 0 && g.perf === 0 && !g.tag && g.api === 'undefined' && g.ss === null && g.dbg === (g.wantDbg ? 'object' : 'undefined')) && sockets.length === 0, got);
       } finally { await ctx.close(); }
       // 中継で：?relay=0 で消える・「デバッグを終わる」で消えて切れる
       await withRelays(async (start) => {
@@ -308,6 +388,17 @@ export const tests = [
           await sleep(2500);
           const st3 = await api(r, '/status');
           check('「デバッグを終わる」（YubiDebug.stop）：yubi.relay を消し、接続を閉じ、つなぎ直さない', ss2 === null && st2.connected === false && st3.connected === false, { ss2, st2, st3 });
+          // ?debug=0 でも yubi.relay を消す：そのあと ?debug=1 だけで開いても、前の合言葉で勝手につながない
+          await openPhone(r, p2);
+          await api(r, '/wait?timeoutMs=10000');
+          await p2.goto(r.url('games/hashi/?debug=0'), { waitUntil: 'load' });
+          const d0 = { ss: await p2.evaluate(() => sessionStorage.getItem('yubi.relay')), dbg: await p2.evaluate(() => typeof window.YubiDebug), api: await p2.evaluate(() => typeof window.YubiDebugRelay) };
+          const n1 = j2.length;
+          await p2.goto(r.url('?debug=1'), { waitUntil: 'load' });
+          await p2.waitForFunction(() => !!window.YubiDebug, null, { timeout: 5000 }).catch(() => {});
+          const d1 = { ss: await p2.evaluate(() => sessionStorage.getItem('yubi.relay')), api: await p2.evaluate(() => typeof window.YubiDebugRelay), loaded: j2.length - n1 };
+          const st4 = await until(async () => { const x = await api(r, '/status'); return x.connected === false ? x : null; }, 5000) || await api(r, '/status');
+          check('?debug=0：yubi.relay も消す（そのあと ?debug=1 だけで開いても debug-relay.js を読まず、中継は connected:false）', d0.ss === null && d0.dbg === 'undefined' && d0.api === 'undefined' && d1.ss === null && d1.api === 'undefined' && d1.loaded === 0 && st4.connected === false, { d0, d1, st4: st4.connected });
         } finally { await c2.close(); }
       });
     },
@@ -402,6 +493,13 @@ export const tests = [
         check('. で始まる名前（.git など）・: を含む部分は 404', Object.values(hid).every((x) => x === 404), hid);
         const dir = await rawGet(r.port, '/games/hashi?x=1');
         check('フォルダに / が無いと 301 で / 付きへ', dir.status === 301 && /\/games\/hashi\/(\?x=1)?$/.test(dir.headers.location || ''), { status: dir.status, location: dir.headers.location });
+        // 先頭の / が 2 つ以上・\ 混じりでも、移す先は「/ 1 つで始まる同じサイトの道」（//games/ だと よそのサイト games へ移ってしまう）
+        const redir = {};
+        for (const p of ['//games', '///games', '/%5cgames', '//game-no1/games', '/game-no1']) { const x = await rawGet(r.port, p); redir[p] = [x.status, x.headers.location]; }
+        check('//games・///games・/\\games などの 301 の Location は / 1 つで始まる（よそのサイトへ移さない）', Object.values(redir).every(([st, loc]) => st === 301 && typeof loc === 'string' && /^\/[^/\\]/.test(loc)), redir);
+        const tilde = {};
+        for (const p of ['/GIT~1/config', '/games~1/', '/%7egit/HEAD']) tilde[p] = (await rawGet(r.port, p)).status;
+        check('~ を含む道（Windows の 8.3 形式の短い名前 GIT~1 など）は 404', Object.values(tilde).every((x) => x === 404), tilde);
         const post = await new Promise((resolve) => { const q = http.request({ host: '127.0.0.1', port: r.port, path: '/index.html', method: 'POST' }, (x) => { x.resume(); x.on('end', () => resolve(x.statusCode)); }); q.on('error', () => resolve(0)); q.end('x'); });
         check('ページへの POST は 405', post === 405, post);
         // PC 向けの窓口：ループバック（127.0.0.1）からは使える
@@ -421,6 +519,35 @@ export const tests = [
       const rs = { ok: m.resolveStatic(root, '/games/hashi/'), sub: m.resolveStatic(root, '/game-no1/sw.js'), up: m.resolveStatic(root, '/../sw.js'), enc: m.resolveStatic(root, '/%2e%2e/sw.js'), bs: m.resolveStatic(root, '/..%5csw.js'), dot: m.resolveStatic(root, '/.git/HEAD'), bad: m.resolveStatic(root, '/%E0%A4%A') };
       check('判定の関数 resolveStatic：root の中は場所を返し（/game-no1/ も）、外・.git・壊れたエンコードは null', rs.ok && rs.ok.file === path.join(root, 'games', 'hashi') && rs.sub && rs.sub.file === path.join(root, 'sw.js') && rs.up === null && rs.enc === null && rs.bs === null && rs.dot === null && rs.bad === null, rs);
       check('判定の関数 isPcRequest：接続元・Host・Origin がすべてループバックのときだけ通す（13 通り）', typeof m.isPcRequest === 'function' && wrong.length === 0, wrong);
+      // root の中かどうか（realpath のあと）：Windows の形は大文字小文字を区別しない、. で始まる部分があれば隠す
+      const ri = {
+        winCase: m.relInside('C:\\Users\\a\\game-no1', 'c:\\users\\A\\GAME-NO1\\index.html', 'win32') === 'index.html',
+        winOut: m.relInside('C:\\Users\\a\\game-no1', 'C:\\Users\\a\\game-no1x\\index.html', 'win32') === null,
+        winDrive: m.relInside('C:\\r', 'D:\\r\\x', 'win32') === null,
+        posixOut: m.relInside('/r/game', '/r/game-no1/x', 'posix') === null && m.relInside('/r/game', '/r/game', 'posix') === null,
+        posixIn: m.relInside('/r/game', '/r/game/a/b.js', 'posix') === 'a/b.js',
+        hidWin: m.hasHiddenPart('games\\.git\\config', 'win32') === true && m.hasHiddenPart('games\\hashi\\index.html', 'win32') === false,
+        hidPosix: m.hasHiddenPart('.git/config', 'posix') === true && m.hasHiddenPart('a/b.js', 'posix') === false,
+        slash: m.resolveStatic(root, '//games')?.slashURL === '/games/' && m.resolveStatic(root, '/%5cgames')?.slashURL === '/games/' && m.resolveStatic(root, '/game-no1/games')?.slashURL === '/game-no1/games/',
+        tilde: m.resolveStatic(root, '/GIT~1/config') === null,
+      };
+      check('判定の関数 relInside・hasHiddenPart・resolveStatic：Windows の大文字小文字・別のドライブ・名前の前方一致・.git・//・~', Object.values(ri).every(Boolean), ri);
+      // シンボリックリンクで root の中の隠しフォルダ（.secret）へ向けても読めない（8.3 形式の GIT~1 と同じ：実際の場所で .  始まりを見る）
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rl7-'));
+      try {
+        fs.mkdirSync(path.join(tmp, '.secret'));
+        fs.writeFileSync(path.join(tmp, '.secret', 'key.txt'), 'SECRET');
+        fs.writeFileSync(path.join(tmp, 'ok.txt'), 'OK');
+        let linked = true;
+        try { fs.symlinkSync(path.join(tmp, '.secret'), path.join(tmp, 'vis'), 'dir'); } catch { linked = false; }
+        if (!linked) check('（この機械ではシンボリックリンクを作れないので、隠しフォルダへのリンクは確かめられない）', true);
+        else await withRelays(async (start) => {
+          const r = await start(root, { relRoot: tmp });
+          const a = await rawGet(r.port, '/vis/key.txt');
+          const b = await rawGet(r.port, '/ok.txt');
+          check('リンク vis → .secret を通しても隠しフォルダの中は 404（root の中の ok.txt は 200）', a.status === 404 && !a.body.includes('SECRET') && b.status === 200 && b.body === 'OK', { vis: a.status, ok: b.status });
+        });
+      } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
       // ループバック以外からの要求：この機械の LAN の IPv4 があれば、0.0.0.0 で待つ中継へそのアドレスからつなぐ
       const lan = Object.values(os.networkInterfaces()).flat().find((i) => i && (i.family === 'IPv4' || i.family === 4) && !i.internal);
       if (!lan) { check('（この機械に LAN の IPv4 が無いので、ループバック以外からの 403 は確かめられない）', true); return; }
@@ -463,6 +590,130 @@ export const tests = [
           check('命令は 2 台目へ届く（info の幅 320）・2 台目は open のまま', info.ok === true && info.result.window.innerWidth === 320 && (await relayStatus(b.page)) === 'open', info.ok ? info.result.window : info);
         } finally { await a.ctx.close(); await b.ctx.close(); }
       });
+    },
+  },
+  {
+    id: 'RL9', tier: 'full', title: '中継（Node だけ）：WebSocket の枠の読み方（握手と同じ包みの hello・分割の枠・途中の ping・バイト単位の分割・長さ 127 形式・1 回に複数の枠）、hello 前の上限、標準入力が閉じたら終わる',
+    async run({ check, root }) {
+      await withRelays(async (start) => {
+        const r = await start(root);
+        const logsOf = async () => (await api(r, '/logs?since=0')).entries || [];
+        // 1) 握手と同じ write で hello を送る（upgrade の head に入る。捨てると welcome が来ない）
+        const a = await wsClient(r.port, { first: cframe(0x1, helloMsg(KEY, '/rl-head')) });
+        const aw = await a.until((c) => c.msgs().some((m) => m.type === 'welcome'), 3000);
+        check('握手と同じ包みで届いた hello（upgrade の head）も読み、welcome を返す', a.status === 101 && !!aw, { status: a.status, msgs: a.msgs() });
+        // 2) hello を 3 つの分割の枠で送り、途中に ping をはさむ → pong（同じ中身）と welcome
+        const b = await wsClient(r.port);
+        const hm = Buffer.from(helloMsg(KEY, '/rl-frag'));
+        const k1 = Math.floor(hm.length / 3), k2 = Math.floor(hm.length * 2 / 3);
+        b.send(cframe(0x1, hm.subarray(0, k1), { fin: false }));
+        b.send(cframe(0x0, hm.subarray(k1, k2), { fin: false }));
+        b.send(cframe(0x9, 'rl-ping'));
+        b.send(cframe(0x0, hm.subarray(k2), { fin: true }));
+        const bw = await b.until((c) => c.msgs().some((m) => m.type === 'welcome') && c.frames.some((f) => f.op === 0xa), 3000);
+        const pong = b.frames.find((f) => f.op === 0xa);
+        check('分割の枠（text＋続き＋続き）でまとめた hello が通り、途中の ping には同じ中身の pong を返す', !!bw && pong && pong.data.toString() === 'rl-ping', { msgs: b.msgs(), ops: b.frames.map((f) => f.op) });
+        check('2 本目が正しく hello すると、1 本目は 4002 で閉じられる', !!(await a.until((c) => c.closeCode === 4002, 3000)), a.closeCode);
+        const st1 = await api(r, '/status');
+        check('/status の device は 2 本目（/rl-frag・11×22）', st1.connected && st1.device.page === '/rl-frag' && st1.device.screen.w === 11 && st1.device.screen.h === 22, st1.device);
+        // 3) 1 回の write に 2 つの枠（ログ 2 件）
+        b.send(Buffer.concat([cframe(0x1, JSON.stringify({ type: 'log', entry: { level: 'log', text: 'RL9 いっしょ1' } })), cframe(0x1, JSON.stringify({ type: 'log', entry: { level: 'log', text: 'RL9 いっしょ2' } }))]));
+        const both = await until(async () => { const e = await logsOf(); return e.some((x) => x.entry?.text === 'RL9 いっしょ1') && e.some((x) => x.entry?.text === 'RL9 いっしょ2'); }, 3000);
+        check('1 回に届いた 2 つの枠を両方読む（ログ 2 件）', !!both);
+        // 4) 長さ 127 形式（64KB を超える）の枠：hello のあとは受け取り、ログ 1 件は 32KB までに切り詰める
+        const big = JSON.stringify({ type: 'log', entry: { level: 'warn', text: 'RL9 大きい ' + 'x'.repeat(70000) } });
+        b.send(cframe(0x1, big));
+        const bigE = await until(async () => (await logsOf()).find((x) => x.entry && x.entry.truncated && String(x.entry.text).includes('RL9 大きい')), 3000);
+        check('長さ 127 形式の枠（約 70KB）を読み、ログ 1 件は 32KB 以下に切り詰める（truncated・level は残る）', !!bigE && Buffer.byteLength(JSON.stringify(bigE.entry)) <= 32 * 1024 && bigE.entry.level === 'warn' && b.closeCode === null, bigE ? { bytes: Buffer.byteLength(JSON.stringify(bigE.entry)) } : await logsOf().then((e) => e.length));
+        // 5) バイト単位の分割：result の枠を 1 バイトずつ送る（/run の答えになる）
+        const runP = run(r, 'rlnode', { n: 1 }, 5000);
+        const got = await b.until((c) => c.msgs().find((m) => m.type === 'run'), 3000);
+        if (got) {
+          const fr = cframe(0x1, JSON.stringify({ type: 'result', id: got.id, ok: true, result: { echo: got.args }, command: got.command, ms: 1 }));
+          for (let i = 0; i < fr.length; i++) { b.send(fr.subarray(i, i + 1)); if (i % 8 === 0) await new Promise((res) => setImmediate(res)); }
+        }
+        const rr = await runP;
+        check('命令 { type:"run" } が偽の端末へ届き、1 バイトずつ送った result が /run の答えになる', !!got && got.command === 'rlnode' && rr.ok === true && rr.result && rr.result.echo && rr.result.echo.n === 1 && !('id' in rr), { got, rr });
+        b.end();
+        // 6) hello の前は 1 枠 64KB まで（超えたら 1009 で閉じる）
+        const c = await wsClient(r.port);
+        c.send(cframe(0x1, JSON.stringify({ type: 'hello', key: KEY, pad: 'y'.repeat(70000) })));
+        const cc = await c.until((x) => x.closeCode !== null || x.ended, 3000);
+        check('hello の前に 64KB を超える枠を送ると 1009 で閉じる（welcome は来ない）', !!cc && c.closeCode === 1009 && !c.msgs().some((m) => m.type === 'welcome'), { code: c.closeCode, ended: c.ended });
+        c.end();
+      });
+      // 7) --exit-on-stdin-close：標準入力が閉じたら中継は終わる（テストの親が落ちても残らない）
+      const r2 = await startRelay(root);
+      try {
+        const exited = new Promise((res) => r2.child.once('exit', () => res(true)));
+        r2.child.stdin.end();
+        const ok = await Promise.race([exited, sleep(5000).then(() => false)]);
+        check('--exit-on-stdin-close：標準入力が閉じたら 5 秒以内に終わる', ok === true, r2.out.slice(-200));
+      } finally { await r2.stop(); }
+    },
+  },
+  {
+    id: 'RL10', tier: 'full', title: '中継：なりすまし対策（Origin が同じページだけ・Origin 無しを断る・Host は IP か localhost だけ・合言葉 5 回間違いで締め切る・既定の合言葉は 8 文字・hello 前の接続は 8 本まで）',
+    async run({ browser, check, root }) {
+      await withRelays(async (start) => {
+        const r = await start(root, { key: null });
+        check('既定の合言葉は 8 文字（紛らわしい 0 o 1 l i を除いた英小文字と数字）', /^[a-hjkmnp-z2-9]{8}$/.test(r.key || ''), r.out.split('\n')[0]);
+        const P = r.port;
+        const res = {};
+        for (const [name, o] of [
+          ['別の Origin（http://evil.example）', { origin: 'http://evil.example' }],
+          ['Origin 無し', { noOrigin: true }],
+          ['Origin の port ちがい', { origin: `http://127.0.0.1:${P + 1}` }],
+          ['https の Origin（http の中継）', { origin: `https://127.0.0.1:${P}` }],
+          ['名前の Host（evil.example・Origin も合わせる）', { host: `evil.example:${P}` }],
+          ['名前の Host（127.0.0.1.nip.io）', { host: `127.0.0.1.nip.io:${P}` }],
+        ]) { const c = await wsClient(P, o); res[name] = c.status; c.end(); }
+        check('なりすまし：別の Origin・Origin 無し・port ちがい・名前の Host は 403（握手しない）', Object.values(res).every((x) => x === 403), res);
+        const okc = {};
+        for (const [name, o] of [['127.0.0.1', {}], ['localhost', { host: `localhost:${P}` }]]) { const c = await wsClient(P, o); okc[name] = c.status; c.end(); }
+        check('（前提）Host が IP・localhost で、Origin がそのページ自身なら 101', okc['127.0.0.1'] === 101 && okc.localhost === 101, okc);
+        check('PC の画面に「よそからの接続を断りました」が出る', /よそからの接続を断りました/.test(r.out), r.out.slice(-300));
+        // hello の前の接続は 8 本まで
+        await sleep(200);
+        const hold = [];
+        for (let i = 0; i < 8; i++) hold.push(await wsClient(P));
+        const ninth = await wsClient(P);
+        check('hello の前の接続は 8 本まで（9 本目は 503）', hold.every((c) => c.status === 101) && ninth.status === 503, { hold: hold.map((c) => c.status), ninth: ninth.status });
+        ninth.end(); for (const c of hold) c.end();
+        await until(async () => { const c = await wsClient(P); const ok = c.status === 101; c.end(); return ok; }, 3000);
+        // 合言葉の間違いは 5 回で締め切り：そのあとは正しい合言葉でも 4001
+        const codes = [];
+        for (let i = 0; i < 5; i++) {
+          const c = await wsClient(P);
+          c.text(helloMsg('wrong' + i));
+          await c.until((x) => x.closeCode !== null || x.ended, 3000);
+          codes.push(c.closeCode); c.end();
+        }
+        const st = await api(r, '/status');
+        check('合言葉ちがい 5 回はそれぞれ 4001、/status に badKeys:5・locked:true', codes.every((x) => x === 4001) && st.badKeys === 5 && st.locked === true, { codes, badKeys: st.badKeys, locked: st.locked });
+        const good = await wsClient(P);
+        good.text(helloMsg(r.key));
+        await good.until((x) => x.closeCode !== null || x.ended, 3000);
+        check('締め切ったあとは、正しい合言葉の hello も 4001 で断る（welcome なし・connected:false）', good.closeCode === 4001 && !good.msgs().some((m) => m.type === 'welcome') && (await api(r, '/status')).connected === false, { code: good.closeCode, msgs: good.msgs() });
+        good.end();
+        const { ctx, page } = await phone(browser, 'RL10');
+        try {
+          await openPhone(r, page);
+          const s = await until(async () => ((await relayStatus(page)) === 'rejected' ? 'rejected' : null), 6000) || await relayStatus(page);
+          check('ブラウザ（正しい合言葉）も締め切り中は rejected', s === 'rejected', s);
+        } finally { await ctx.close(); }
+        check('PC の画面に、締め切ったことと起動し直す案内が出る', /5 回になったので/.test(r.out) && /起動し直して/.test(r.out), r.out.slice(-400));
+      });
+      // 判定の関数（ブラウザ以外からも確かめる）
+      const m = await import(pathToFileURL(path.join(root, 'tests/relay/relay.mjs')).href);
+      const cases = [
+        [{ host: '192.168.1.5:8790', origin: 'http://192.168.1.5:8790' }, true], [{ host: '[::1]:8790', origin: 'http://[::1]:8790' }, true], [{ host: 'localhost:8790', origin: 'http://localhost:8790' }, true],
+        [{ host: '192.168.1.5:8790' }, false], [{ host: '192.168.1.5:8790', origin: 'null' }, false], [{ host: 'evil.example:8790', origin: 'http://evil.example:8790' }, false],
+        [{ host: '999.1.1.1:8790', origin: 'http://999.1.1.1:8790' }, false], [{ host: '192.168.1.5:8790', origin: 'http://192.168.1.5:8790.evil' }, false], [{ host: '192.168.1.5:8790', origin: 'https://192.168.1.5:8790' }, false],
+        [{ host: '1.2.3.4.nip.io', origin: 'http://1.2.3.4.nip.io' }, false], [{ origin: 'http://127.0.0.1' }, false],
+      ];
+      const wrong = cases.filter(([h, want]) => m.isAllowedUpgrade(h) !== want);
+      check(`判定の関数 isAllowedUpgrade（${cases.length} 通り）`, typeof m.isAllowedUpgrade === 'function' && wrong.length === 0, wrong);
     },
   },
 ];

@@ -1,9 +1,10 @@
 // 中継サーバー（iPhone の遠隔テスト）。約束は docs/debug.md の 5.4。
 // Node の標準モジュールだけで書く（WebSocket も自分で書く。package.json を入れない決まりのため）。
 //
-// 起動：node tests/relay/relay.mjs [--port 8790] [--key 1234] [--root <リポジトリ>] [--host 0.0.0.0]
+// 起動：node tests/relay/relay.mjs [--port 8790] [--key 1234] [--root <リポジトリ>] [--host 0.0.0.0] [--exit-on-stdin-close]
 // 最初の 1 行は機械が読める形：RELAY_READY port=<実際のポート> key=<合言葉>
 // --port 0 なら空いているポートで起動する（テスト用）。止めるときは Ctrl+C。
+// --exit-on-stdin-close：標準入力が閉じたら終わる（テストから起動したとき、親が先に終わっても中継が残らないように）。
 
 import http from "node:http";
 import crypto from "node:crypto";
@@ -16,6 +17,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(HERE, "..", "..");
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const MAX_FRAME = 8 * 1024 * 1024; // 1 つの枠（と、まとめた 1 つの文）の上限
+const MAX_FRAME_BEFORE_HELLO = 64 * 1024; // hello の前は小さく（合言葉を知らない相手にメモリを使わせない）
+const MAX_LOG_ENTRY = 32 * 1024; // ログ 1 件の上限（バイト。超えたら切り詰める）
+const MAX_PRE_HELLO = 8; // hello の前の接続の数の上限
+const MAX_BAD_KEYS = 5; // 合言葉の間違いがこの回数になったら、起動し直すまで hello をすべて断る
+const KEY_CHARS = "abcdefghjkmnpqrstuvwxyz23456789"; // 紛らわしい文字（0 o O 1 l i I）を除く
+const KEY_LEN = 8;
 const MAX_BODY = 1024 * 1024; // POST /run の本文の上限
 const HELLO_TIMEOUT = 10000;
 const PING_EVERY = 20000;
@@ -85,16 +92,94 @@ export function isPcRequest(remoteAddress, headers = {}) {
   return true;
 }
 
+/**
+ * WebSocket の Host が IP アドレス（IPv4・[IPv6]）か localhost なら true（ポートは付いていてよい）。
+ * 名前（evil.example など）は断る：DNS リバインディングで、よそのページから中継につながれないように。
+ */
+export function isIpOrLocalHost(host) {
+  if (typeof host !== "string" || !host) return false;
+  const h = host.trim().toLowerCase();
+  let name;
+  let rest;
+  if (h.startsWith("[")) {
+    const end = h.indexOf("]");
+    if (end < 0) return false;
+    name = h.slice(1, end);
+    rest = h.slice(end + 1);
+    if (!/^[0-9a-f:.]+$/.test(name) || !name.includes(":")) return false;
+  } else {
+    const c = h.indexOf(":");
+    name = c >= 0 ? h.slice(0, c) : h;
+    rest = c >= 0 ? h.slice(c) : "";
+    if (name !== "localhost") {
+      const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(name);
+      if (!m || m.slice(1).some((x) => Number(x) > 255)) return false;
+    }
+  }
+  return rest === "" || /^:\d{1,5}$/.test(rest);
+}
+
+/**
+ * WebSocket の Origin が、つないできたページそのもの（http:// ＋ Host。https なら https://）なら true。
+ * Origin が無い・違うものは断る（よそのサイトのページや、ブラウザ以外からのなりすましを防ぐ）。
+ */
+export function isSameOrigin(origin, host, secure = false) {
+  if (typeof origin !== "string" || !origin || typeof host !== "string" || !host) return false;
+  const want = (secure ? "https://" : "http://") + host.trim().toLowerCase();
+  return origin.trim().toLowerCase() === want;
+}
+
+/** WebSocket の upgrade を受けてよいか（Host が IP か localhost、Origin が同じページ） */
+export function isAllowedUpgrade(headers = {}, secure = false) {
+  return isIpOrLocalHost(headers.host) && isSameOrigin(headers.origin, headers.host, secure);
+}
+
+/** 既定の合言葉：紛らわしい文字を除いた英小文字と数字の 8 文字（crypto の乱数） */
+export function makeKey() {
+  let s = "";
+  for (let i = 0; i < KEY_LEN; i++) s += KEY_CHARS[crypto.randomInt(0, KEY_CHARS.length)];
+  return s;
+}
+
+/**
+ * real（realpath したもの）が realRoot の中なら、root からの相対パスを返す。外なら null。
+ * Windows（win32）では大文字小文字を区別しない。plat を変えると、ほかの OS の形でも確かめられる。
+ */
+export function relInside(realRoot, real, plat = process.platform) {
+  const P = plat === "win32" ? path.win32 : path.posix;
+  let a = String(realRoot);
+  let b = String(real);
+  if (plat === "win32") {
+    a = a.toLowerCase();
+    b = b.toLowerCase();
+  }
+  const rel = P.relative(a, b);
+  if (!rel || rel === ".." || rel.startsWith(".." + P.sep) || P.isAbsolute(rel)) return null;
+  return rel;
+}
+
+/** root の中で、相対パスのどこかに . で始まる部分（.git など）があれば true */
+export function hasHiddenPart(rel, plat = process.platform) {
+  const sep = plat === "win32" ? /[\\/]/ : /\//;
+  return String(rel).split(sep).some((s) => s.startsWith("."));
+}
+
 // ---- 静的ファイルの場所（root の外へ出ない） ----
 
 /**
  * URL の pathname（エンコードされたまま）から root の下のファイルの場所を作る。
- * だめなら null。戻り値 { file, dirSlash }（dirSlash は URL が / で終わるか）。
+ * だめなら null。戻り値 { file, dirSlash, slashURL }（dirSlash は URL が / で終わるか、
+ * slashURL はフォルダのとき移す先の URL。先頭の / は必ず 1 つ＝よそのサイトへ移さない）。
  */
 export function resolveStatic(root, rawPathname) {
-  let p = String(rawPathname || "/");
-  if (p === "/game-no1") return { file: path.resolve(root), dirSlash: false }; // / を付けた URL へ移す
-  if (p.startsWith("/game-no1/")) p = p.slice("/game-no1".length);
+  let p = String(rawPathname || "/").replace(/^\/+/, "/"); // //games → /games（//games/ だとよそのサイトと読まれる）
+  if (!p.startsWith("/")) return null;
+  let prefix = "";
+  if (p === "/game-no1") return { file: path.resolve(root), dirSlash: false, slashURL: "/game-no1/" }; // / を付けた URL へ移す
+  if (p.startsWith("/game-no1/")) {
+    p = p.slice("/game-no1".length);
+    prefix = "/game-no1";
+  }
   let decoded;
   try {
     decoded = decodeURIComponent(p);
@@ -109,11 +194,13 @@ export function resolveStatic(root, rawPathname) {
     if (s === "." || s === "..") return null;
     if (s.startsWith(".")) return null; // .git など隠しファイルは出さない
     if (s.includes(":")) return null; // Windows のドライブ名・代替データストリーム
+    if (s.includes("~")) return null; // Windows の 8.3 形式の短い名前（GIT~1 → .git）
   }
   const base = path.resolve(root);
   const file = path.resolve(base, ...segs);
   if (file !== base && !file.startsWith(base + path.sep)) return null;
-  return { file, dirSlash: decoded.endsWith("/") };
+  const slashURL = prefix + "/" + segs.map((s) => encodeURIComponent(s)).join("/") + (segs.length ? "/" : "");
+  return { file, dirSlash: decoded.endsWith("/"), slashURL };
 }
 
 // ---- WebSocket（RFC 6455 の最低限） ----
@@ -150,9 +237,11 @@ class WsConn {
     this.closeSent = false;
     this.closeCode = 1006;
     this.closeReason = "";
+    this.maxFrame = MAX_FRAME; // hello の前は小さくする（startRelay が決める）
     socket.setNoDelay(true);
     socket.on("data", (d) => this._onData(d));
     socket.on("close", () => this._finish());
+    socket.on("end", () => this._finish()); // 相手が閉じた（http のサーバーは半分開いたままにするので、こちらも閉じる）
     socket.on("error", () => this._finish());
   }
 
@@ -232,7 +321,7 @@ class WsConn {
     } else if (len === 127) {
       if (b.length < 10) return false;
       const big = b.readBigUInt64BE(2);
-      if (big > BigInt(MAX_FRAME)) {
+      if (big > BigInt(this.maxFrame)) {
         this._fail(1009, "too big");
         return false;
       }
@@ -247,7 +336,7 @@ class WsConn {
       this._fail(1002, "client frames must be masked");
       return false;
     }
-    if (len > MAX_FRAME) {
+    if (len > this.maxFrame) {
       this._fail(1009, "too big");
       return false;
     }
@@ -276,7 +365,7 @@ class WsConn {
       case 0x0: // 続きの枠
         if (!this.parts) return this._fail(1002, "unexpected continuation");
         this.partsLen += payload.length;
-        if (this.partsLen > MAX_FRAME) return this._fail(1009, "too big");
+        if (this.partsLen > this.maxFrame) return this._fail(1009, "too big");
         this.parts.push(payload);
         if (fin) {
           const all = Buffer.concat(this.parts);
@@ -348,10 +437,6 @@ function acceptKey(key) {
 
 // ---- 中継サーバー本体 ----
 
-function makeKey() {
-  return String(crypto.randomInt(0, 10000)).padStart(4, "0");
-}
-
 function shortUa(ua) {
   const s = String(ua || "");
   if (/iPhone/.test(s)) return "iPhone";
@@ -386,6 +471,20 @@ function sendJson(res, status, obj) {
   res.end(body);
 }
 
+/** ログ 1 件を MAX_LOG_ENTRY バイトまでに切り詰める（超えたら { truncated, text } にする） */
+function clipEntry(entry) {
+  let s;
+  try {
+    s = JSON.stringify(entry);
+  } catch {
+    return { truncated: true, text: "" };
+  }
+  if (s === undefined) return entry;
+  if (Buffer.byteLength(s) <= MAX_LOG_ENTRY) return entry;
+  const level = entry && typeof entry === "object" && typeof entry.level === "string" ? entry.level.slice(0, 20) : undefined;
+  return { level, truncated: true, text: Buffer.from(s, "utf8").subarray(0, MAX_LOG_ENTRY - 200).toString("utf8") };
+}
+
 function clampMs(v, def, max) {
   const n = Number(v);
   if (!Number.isFinite(n) || n <= 0) return def;
@@ -403,8 +502,10 @@ export function startRelay(opts = {}) {
   const say = opts.log || ((s) => console.log(s));
   let realRoot = root;
   try {
-    realRoot = fs.realpathSync(root);
+    realRoot = fs.realpathSync.native(root); // 下の静的ファイルと同じ方式（Windows で 2 種類が混ざらないように）
   } catch {}
+  let badKeys = 0; // 合言葉の間違いの数（MAX_BAD_KEYS で締め切る）
+  const preHello = new Set(); // hello の前の接続
 
   let device = null; // { conn, userAgent, page, screen, connectedAt, connectedAtMs, lastSeen }
   let nextId = 1;
@@ -446,9 +547,10 @@ export function startRelay(opts = {}) {
   }
 
   // ---- WebSocket の 1 本 ----
-  function onUpgrade(req, socket) {
+  function onUpgrade(req, socket, head) {
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
+    socket.on("error", () => {});
     let pathname = "/";
     try {
       pathname = new URL(req.url, "http://x").pathname;
@@ -457,6 +559,16 @@ export function startRelay(opts = {}) {
     const upgrade = String(req.headers.upgrade || "").toLowerCase();
     if (pathname !== "/relay" || upgrade !== "websocket" || !wsKey || req.headers["sec-websocket-version"] !== "13") {
       socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+      return;
+    }
+    // なりすまし対策：Host は IP か localhost だけ、Origin はそのページ自身（http:// ＋ Host）だけ
+    if (!isAllowedUpgrade(req.headers, !!req.socket.encrypted)) {
+      say(`[中継] よそからの接続を断りました（Host ${String(req.headers.host || "なし").slice(0, 60)}・Origin ${String(req.headers.origin || "なし").slice(0, 60)}）`);
+      socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+      return;
+    }
+    if (preHello.size >= MAX_PRE_HELLO) {
+      socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
       return;
     }
     socket.write(
@@ -472,13 +584,16 @@ export function startRelay(opts = {}) {
       (text) => onWsText(conn, state, text),
       (code) => onWsClose(conn, state, code)
     );
+    conn.maxFrame = MAX_FRAME_BEFORE_HELLO;
     allConns.add(conn);
+    preHello.add(conn);
     state.helloTimer = setTimeout(() => {
       if (!state.hello) {
         say(`[中継] hello が来ないので閉じました（${remote}）`);
         conn.close(1008, "no hello");
       }
     }, HELLO_TIMEOUT);
+    if (head && head.length) conn._onData(head); // 握手と同じ包みで届いた最初の枠も読む
   }
 
   function onWsText(conn, state, text) {
@@ -494,12 +609,24 @@ export function startRelay(opts = {}) {
     if (!state.hello) {
       if (msg.type !== "hello") return; // hello の前は受け付けない
       clearTimeout(state.helloTimer);
+      if (badKeys >= MAX_BAD_KEYS) {
+        say(`[中継] 締め切り中なので断りました（${conn.socket.remoteAddress}）。起動し直すと受け付けます`);
+        state.rejected = true;
+        conn.close(4001, "locked");
+        return;
+      }
       if (String(msg.key) !== key) {
-        say(`[中継] 合言葉が ちがいます（${conn.socket.remoteAddress}）`);
+        badKeys += 1;
+        say(`[中継] 合言葉が ちがいます（${conn.socket.remoteAddress}、${badKeys} 回目）`);
+        if (badKeys >= MAX_BAD_KEYS) {
+          say(`[中継] 合言葉の間違いが ${MAX_BAD_KEYS} 回になったので、これからの接続はすべて断ります。中継を起動し直してください（Ctrl+C → もう一度 node tests/relay/relay.mjs）`);
+        }
         state.rejected = true;
         conn.close(4001, "bad key");
         return;
       }
+      preHello.delete(conn);
+      conn.maxFrame = MAX_FRAME;
       const info = msg.info && typeof msg.info === "object" ? msg.info : {};
       const sc = info.screen && typeof info.screen === "object" ? info.screen : {};
       const now = new Date();
@@ -537,7 +664,7 @@ export function startRelay(opts = {}) {
       p.resolve(rest);
     } else if (msg.type === "log") {
       seq += 1;
-      logs.push({ seq, at: new Date().toISOString(), page: d.page, entry: msg.entry });
+      logs.push({ seq, at: new Date().toISOString(), page: d.page, entry: clipEntry(msg.entry) });
       if (logs.length > MAX_LOGS) logs.splice(0, logs.length - MAX_LOGS);
     } else if (msg.type === "hello") {
       // 同じ接続で hello が来たら、ページだけ覚え直す
@@ -548,6 +675,7 @@ export function startRelay(opts = {}) {
 
   function onWsClose(conn, state, code) {
     allConns.delete(conn);
+    preHello.delete(conn);
     clearTimeout(state.helloTimer);
     failPendingFor(conn, "とちゅうで きれました");
     const d = state.hello;
@@ -670,7 +798,7 @@ export function startRelay(opts = {}) {
     }
     if (req.method !== "GET") return sendJson(res, 405, { ok: false, error: "GET で送ってください" });
     if (p === "/status") {
-      return sendJson(res, 200, { ok: true, connected: !!device, key, port: actualPort, device: deviceView(device) });
+      return sendJson(res, 200, { ok: true, connected: !!device, key, port: actualPort, device: deviceView(device), badKeys, locked: badKeys >= MAX_BAD_KEYS });
     }
     if (p === "/logs") {
       const since = Number(url.searchParams.get("since")) || 0;
@@ -689,7 +817,7 @@ export function startRelay(opts = {}) {
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
       res.end("404 Not Found");
     };
-    const rawPath = String(req.url || "/").split("?")[0].split("#")[0];
+    const rawPath = String(req.url || "/").split("?")[0].split("#")[0].replace(/^\/+/, "/");
     const r = resolveStatic(root, rawPath);
     if (!r) return notFound();
     let file = r.file;
@@ -702,7 +830,7 @@ export function startRelay(opts = {}) {
     if (st.isDirectory()) {
       if (!r.dirSlash) {
         // 相対パスが正しく解決されるよう、/ を付けた URL へ移す
-        res.writeHead(301, { Location: rawPath + "/" + url.search, "Cache-Control": "no-store" });
+        res.writeHead(301, { Location: r.slashURL + url.search, "Cache-Control": "no-store" });
         return res.end();
       }
       file = path.join(file, "index.html");
@@ -713,10 +841,11 @@ export function startRelay(opts = {}) {
       }
     }
     if (!st.isFile()) return notFound();
-    // シンボリックリンクで root の外へ出ていないか
+    // シンボリックリンク・8.3 形式の短い名前で root の外や .git へ出ていないか（実際の場所で確かめる）
     try {
-      const real = await fs.promises.realpath(file);
-      if (!real.startsWith(realRoot + path.sep)) return notFound();
+      const real = fs.realpathSync.native(file);
+      const rel = relInside(realRoot, real);
+      if (rel === null || hasHiddenPart(rel)) return notFound();
     } catch {
       return notFound();
     }
@@ -796,6 +925,8 @@ export function startRelay(opts = {}) {
 
 // ---- 直接起動したときだけ動く部分 ----
 
+const FLAGS = new Set(["exit-on-stdin-close"]); // 値を取らないオプション
+
 function parseArgs(argv) {
   const o = {};
   for (let i = 0; i < argv.length; i++) {
@@ -803,6 +934,10 @@ function parseArgs(argv) {
     const eq = a.indexOf("=");
     const name = a.startsWith("--") ? (eq > 0 ? a.slice(2, eq) : a.slice(2)) : null;
     if (!name) continue;
+    if (FLAGS.has(name)) {
+      o[name] = true;
+      continue;
+    }
     const val = eq > 0 ? a.slice(eq + 1) : argv[++i];
     o[name] = val;
   }
@@ -842,6 +977,7 @@ async function main() {
   if (addrs.length) {
     console.log("  iPhone の Safari で開く URL（同じ Wi-Fi で）：");
     for (const ip of addrs) console.log(`    http://${ip}:${p}/?debug=1&relay=1&key=${key}`);
+    if (addrs.length > 1) console.log("    （複数あるときは、iPhone と同じ Wi-Fi のもの。ふつうは 192.168. で始まる）");
   } else {
     console.log("  iPhone から届くアドレスが見つかりません（Wi-Fi につながっているか確かめてください）。");
   }
@@ -860,13 +996,26 @@ async function main() {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   if (process.platform === "win32") process.on("SIGBREAK", stop);
+  if (a["exit-on-stdin-close"] !== undefined) {
+    // テストから起動したとき：親（テスト）が終わって標準入力が閉じたら、中継も終わる
+    let once = false;
+    const stdinStop = () => {
+      if (once) return;
+      once = true;
+      stop();
+    };
+    process.stdin.on("end", stdinStop);
+    process.stdin.on("close", stdinStop);
+    process.stdin.on("error", stdinStop);
+    process.stdin.resume();
+  }
 }
 
 function isMain() {
   if (!process.argv[1]) return false;
   try {
-    const me = fs.realpathSync(fileURLToPath(import.meta.url));
-    const arg = fs.realpathSync(path.resolve(process.argv[1]));
+    const me = fs.realpathSync.native(fileURLToPath(import.meta.url));
+    const arg = fs.realpathSync.native(path.resolve(process.argv[1]));
     return process.platform === "win32" ? me.toLowerCase() === arg.toLowerCase() : me === arg;
   } catch {
     return false;

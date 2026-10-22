@@ -1,7 +1,7 @@
 // ゆびあそび デバッグ表示（全ページで読み込む。ふだんは何もしない）
 //
 // ・有効にする：URL に ?debug=1 を付けて開く。そのタブの sessionStorage に覚えるので、メニュー→ゲームと移動しても有効のまま。
-// ・やめる：?debug=0 を付けて開くか、パネルの「デバッグを終わる」。
+// ・やめる：?debug=0 を付けて開くか、パネルの「デバッグを終わる」（どちらも中継の合言葉 yubi.relay も消す）。
 // ・無効のときは、DOM・console・イベントに一切触れずに終わる（window.YubiDebug も作らない）。
 //
 // 中は2つに分かれている（詳しくは docs/debug.md）。
@@ -17,7 +17,7 @@
   try {
     var q = /[?&]debug=([^&#]*)/.exec(location.search);
     if (q && q[1] === "1") { sessionStorage.setItem(KEY, "1"); enabled = true; }
-    else if (q && q[1] === "0") { sessionStorage.removeItem(KEY); }
+    else if (q && q[1] === "0") { sessionStorage.removeItem(KEY); sessionStorage.removeItem("yubi.relay"); }   // 中継の合言葉も消す（前の合言葉で勝手につながらないように）
     else enabled = sessionStorage.getItem(KEY) === "1";
   } catch (e) { enabled = false; }   // sessionStorage が使えない（プライベート・保存不可）ときは有効にしない
   if (!enabled || window.YubiDebug) return;

@@ -100,7 +100,7 @@
       if (stopped) { state = "closed"; return; }
       if (code === 4001) {
         state = "rejected";
-        try { D.log("warn", "中継：合言葉が ちがいます"); } catch (e) { /* 無視 */ }
+        try { D.log("warn", "中継：合言葉が ちがいます。PC に出ている合言葉と、URL の key= を見くらべてください"); } catch (e) { /* 無視 */ }
         return;
       }
       state = "closed";

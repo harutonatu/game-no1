@@ -108,6 +108,7 @@ iPhone の Safari で不具合が出たとき、PC なしで原因の手がか�
 |---|---|
 | `?debug=1&relay=1&key=1234` | sessionStorage `yubi.relay` に合言葉 `1234` を覚え、debug-relay.js を読み込む |
 | `?relay=0` | `yubi.relay` を消す（つながない） |
+| `?debug=0` | デバッグをやめるとき、`yubi.relay` も消す（前の合言葉で勝手につながらないように） |
 | 何も付けない | `yubi.relay` があれば読み込む（メニュー→ゲームと移っても続く） |
 
 - `relay` を見るのは、デバッグが有効（`?debug=1` か覚えている）のときだけ。無効のときは今までどおり何もしない（DG2）。
@@ -125,7 +126,7 @@ iPhone の Safari で不具合が出たとき、PC なしで原因の手がか�
   - `{ type:"ping" }`：`{ type:"pong" }` を返す。
 - 送るもの（ほか）：`YubiDebug.subscribe` の `log` の出来事を `{ type:"log", entry }` で送る（つながる前のログは、hello の直後に `YubiDebug.logs()` から最大 100 件まとめて送る）。
 - **つなぎ直し**：切れたら 1・2・4・8・10・10…秒の間隔でつなぎ直す。`visibilitychange` で画面が見えたら、すぐつなぎ直す。
-- 中継が合言葉違いで閉じたとき（閉じるコード **4001**）は、つなぎ直さない。`YubiDebug.log("warn", "中継：合言葉が ちがいます")`。
+- 中継が合言葉違いで閉じたとき（閉じるコード **4001**）は、つなぎ直さない。`YubiDebug.log("warn", "中継：合言葉が ちがいます。PC に出ている合言葉と、URL の key= を見くらべてください")`。
 - 別の端末がつないで追い出されたとき（コード **4002**）も、つなぎ直さない。
 - 運び役だけの命令を `YubiDebug.command` で足す：
   - `open`：引数 `{ path }`。同じサイトのページへ移る。`path` は `/` で始まり `//` で始まらないものだけ（`/games/hashi/` など。`?` 以降も可）。結果を返してから 100ms 後に移る。
@@ -135,21 +136,25 @@ iPhone の Safari で不具合が出たとき、PC なしで原因の手がか�
 
 ### 5.4 中継サーバー（tests/relay/relay.mjs）
 
-起動：`node tests/relay/relay.mjs [--port 8790] [--key 1234] [--root <リポジトリ>] [--host 0.0.0.0]`。
+起動：`node tests/relay/relay.mjs [--port 8790] [--key 1234] [--root <リポジトリ>] [--host 0.0.0.0] [--exit-on-stdin-close]`。
 
-- 既定：ポート 8790（環境変数 `RELAY_PORT` でも可）、合言葉は起動のたびに 4 けたの数字を作る（`--key` で固定。テスト用）、root はこのファイルの 2 つ上（リポジトリの一番上）、host は `0.0.0.0`（同じ Wi-Fi の iPhone から届く）。
-- 起動したら、PC の IPv4 アドレス（内部・ループバック以外）ごとに、iPhone で開く URL を出す：`http://192.168.x.x:8790/?debug=1&relay=1&key=1234`。合言葉と「止めるときは Ctrl+C」も出す。
+- 既定：ポート 8790（環境変数 `RELAY_PORT` でも可）、合言葉は起動のたびに **8 文字**を作る（紛らわしい `0 o O 1 l i I` を除いた英小文字と数字、crypto の乱数。`--key` で固定。テスト用）、root はこのファイルの 2 つ上（リポジトリの一番上）、host は `0.0.0.0`（同じ Wi-Fi の iPhone から届く）。
+- `--exit-on-stdin-close`：標準入力が閉じたら終わる（テストから起動したときだけ付ける。親のテストが落ちても中継が残らない）。人が使うときは付けない（動きは今までどおり）。
+- 起動したら、最初の 1 行に `RELAY_READY port=<ポート> key=<合言葉>`（テストが読むので形を変えない）。そのあと PC の IPv4 アドレス（内部・ループバック以外）ごとに、iPhone で開く URL を出す：`http://192.168.x.x:8790/?debug=1&relay=1&key=…`。URL が複数あるときだけ「（複数あるときは、iPhone と同じ Wi-Fi のもの。ふつうは 192.168. で始まる）」を足す。合言葉と「止めるときは Ctrl+C」も出す。
 - 出来事を 1 行ずつ出す：つながった（端末の幅×高さ・ページ）、切れた、合言葉ちがい、命令（名前・ok・ms）。
-- **静的ファイルの配信**：root の下だけ（`..` や絶対パスで外へ出ない）。`/` で終わる URL は `index.html`。`/game-no1/` で始まる URL も同じものを返す（GitHub Pages と同じ形でも開ける）。拡張子に合った Content-Type（html・js・mjs・css・json・webmanifest・png・svg・ico・txt）。`Cache-Control: no-store`（直したらすぐ見える）。無ければ 404。
+- **静的ファイルの配信**：root の下だけ（`..` や絶対パスで外へ出ない）。`.` で始まる部分（`.git` など）・`:`・`~`（Windows の 8.3 形式の短い名前 `GIT~1`）を含む道は 404。シンボリックリンクなどは実際の場所（`fs.realpathSync.native`）で確かめ、root からの相対パスに `.` で始まる部分があれば 404（Windows では大文字小文字を区別せずに比べる）。フォルダに `/` が無いときの 301 の移す先は、先頭の `/` を 1 つにまとめた同じサイトの道（`//games` → `/games/`。よそのサイトへ移さない）。`/` で終わる URL は `index.html`。`/game-no1/` で始まる URL も同じものを返す（GitHub Pages と同じ形でも開ける）。拡張子に合った Content-Type（html・js・mjs・css・json・webmanifest・png・svg・ico・txt）。`Cache-Control: no-store`（直したらすぐ見える）。無ければ 404。
 - **WebSocket**：`/relay` の Upgrade だけ。RFC 6455 の最低限（握手・テキストの枠・マスク・分割の枠・ping/pong・close）。1 つの枠は 8MB まで（超えたら閉じる）。20 秒ごとに `{type:"ping"}` を送る。
-  - hello の `key` が違えば、コード 4001 で閉じる。hello の前の命令は受け付けない。10 秒以内に hello が無ければ閉じる。
+  - **なりすまし対策**：Upgrade の `Host` は IP アドレス（IPv4・`[IPv6]`）か `localhost` だけ（名前は断る。DNS リバインディング対策。iPhone は `http://192.168.x.x:8790/` のように IP で開く）。`Origin` は `http://` ＋ `Host`（https なら `https://`）と同じものだけ（無いもの・違うものは断る）。断るときは握手せず HTTP 403。
+  - hello の `key` が違えば、コード 4001 で閉じる。間違いを数え、**5 回**になったら起動し直すまで hello をすべて（正しい合言葉でも）4001 で断り、PC の画面に出す。hello の前の命令は受け付けない。10 秒以内に hello が無ければ閉じる。
+  - hello の前は 1 つの枠を 64KB まで（超えたら 1009 で閉じる）。hello の前の接続は 8 本まで（9 本目は握手せず HTTP 503）。握手と同じ包みで届いた最初の枠も読む。
+  - 受け取ったログは 1 件 32KB までに切り詰める（超えたら `{ level, truncated:true, text }`）。
   - つなげるのは 1 台だけ。新しい端末が正しく hello したら、古い接続をコード 4002 で閉じる。
 - **PC 向けの窓口**（**ループバック（127.0.0.1・::1）からだけ**。ほかは 403。答えはすべて JSON）：
 
 | 窓口 | 答え |
 |---|---|
 | `POST /run` 本文 `{ command, args, timeoutMs }` | 運び役の result（`{ ok, result|error, command, ms }`。`type`・`id` は外す）。つながっていない：`{ ok:false, error:"iPhone が つながっていません" }`。待ちは既定 10 秒・最大 60 秒、過ぎたら `{ ok:false, error:"時間切れ" }`。途中で切れたら `{ ok:false, error:"とちゅうで きれました" }` |
-| `GET /status` | `{ ok:true, connected, key, port, device: { userAgent, page, screen:{w,h}, connectedAt, lastSeen } \| null }` |
+| `GET /status` | `{ ok:true, connected, key, port, device: { userAgent, page, screen:{w,h}, connectedAt, lastSeen } \| null, badKeys, locked }`（`badKeys`＝合言葉の間違いの数、`locked`＝5 回で締め切ったか） |
 | `GET /logs?since=<番号>` | `{ ok:true, last, entries: [{ seq, at, page, entry }] }`。中継が受け取ったログ（最大 1000 件、古いものから捨てる）のうち、seq が since より大きいもの |
 | `GET /wait?timeoutMs=<ms>` | つながるまで待つ（既定 15 秒・最大 60 秒）。`{ ok:true, connected:true, device }` か `{ ok:false, error:"時間切れ" }`。`open`・`reload` のあとに使う |
 
@@ -162,7 +167,9 @@ node tests/relay/ask.mjs <命令> [引数…] [--yes] [--port 8790] [--timeout 1
 - 特別な命令：`status`・`logs [--since N]`・`wait`（それぞれ 5.4 の窓口）。ほかは `POST /run`。
 - 引数は `名前=値` を並べる（PowerShell で JSON の引用符に困らないように）：`ask.mjs layout selector=#board limit=20`、`ask.mjs tap x=100 y=200`。値は JSON として読めればその値（数・true・null）、だめなら文字列。引数が 1 つで `{` で始まるなら JSON の本文として使う。引数が `名前=` の形でない 1 つだけなら、そのまま args にする（`ask.mjs layout "#board"`）。
 - `storage` の `op=set` と `op=remove` は `--yes` が無いと送らず、理由を出して終わる（保存データを消さないため）。
-- 出力は整形した JSON（標準出力）。終了コード：0＝ok、1＝ok:false、2＝中継に届かない（「中継が 動いていません：node tests/relay/relay.mjs で起動してください」）。
+- 出力は整形した JSON（標準出力）。終了コード：0＝ok、1＝ok:false、2＝中継に届かない（「中継が 動いていません：node tests/relay/relay.mjs で起動してください（別の PowerShell の窓で node tests/relay/relay.mjs を動かしたままにしてください。ポートを変えたときは --port を付けます）」）。
+- `status` で `connected:false` のときは、答えの JSON に `hint`（「iPhone でまだ開いていないか、つながっていません。tests/README.md の『うまくいかないとき』を見てください」）を足す。
+- 引数なしのときの使い方の表示に、よく使う命令（info・layout・state・open・logs）と「まず status で "connected": true を確かめてから使います」を出す。
 
 ### 5.6 テスト（RL 系、tests/cases/relay.mjs）
 
@@ -174,7 +181,9 @@ node tests/relay/ask.mjs <命令> [引数…] [--yes] [--port 8790] [--timeout 1
 | RL2 | 合言葉が違うとつながらない（4001・`YubiDebugRelay.status()` が rejected・つなぎ直さない） |
 | RL3 | `open` でメニュー→ゲームへ移っても、`/wait` のあと命令が通る（sessionStorage で続く） |
 | RL4 | 中継を止めて起動し直すと、運び役が自動でつなぎ直す |
-| RL5 | `relay` を付けない（`?debug=1` だけ）・`?debug=1` も無いときは debug-relay.js を読み込まない |
+| RL5 | `relay` を付けない（`?debug=1` だけ）・`?debug=1` も無いときは debug-relay.js を読み込まない（時間で待たず、load と `YubiDebug` ができたことで判定）。`?relay=0`・`?debug=0`・「デバッグを終わる」で `yubi.relay` が消える |
 | RL6 | ask.mjs：`storage op=set` は `--yes` が無いと送らない、中継が無いと終了コード 2、`名前=値` の読み方 |
-| RL7 | 静的配信：root の外（`/../`・`%2e%2e`）は読めない、`/game-no1/` でも開ける、PC 向けの窓口はループバック以外 403（ループバック以外からの要求が作れないなら、判定の関数を直接確かめる） |
+| RL7 | 静的配信：root の外（`/../`・`%2e%2e`）は読めない、`/game-no1/` でも開ける、`~` を含む道・隠しフォルダへのリンクは 404、`//games` の 301 は `/games/` へ、PC 向けの窓口はループバック以外 403（ループバック以外からの要求が作れないなら、判定の関数を直接確かめる。Windows の形は判定の関数で確かめる） |
 | RL8 | 2 台目がつなぐと 1 台目が 4002 で閉じられ、つなぎ直さない |
+| RL9 | Node だけ（偽の端末）：握手と同じ包みの hello・分割の枠・途中の ping・バイト単位の分割・長さ 127 形式・1 回に複数の枠・ログの切り詰め・hello 前の 64KB 上限・`--exit-on-stdin-close` |
+| RL10 | なりすまし対策：別の Origin・Origin 無し・名前の Host は 403、合言葉 5 回間違いで正しい合言葉でも 4001、既定の合言葉は 8 文字、hello 前の接続は 8 本まで |
