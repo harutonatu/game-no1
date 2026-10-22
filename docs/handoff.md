@@ -51,6 +51,12 @@ v29 の関門（自宅 PC）：Chromium smoke 179/179、WebKit smoke 176/176（�
 5. 関門（クラウド）：Chromium smoke・full、WebKit smoke（WORKERS=1）。
 6. ユーザーに結果を見せて承認 → 公開（`git push origin feature/v30:master`、fast-forward）。実機の確認：メニューでゲームを開いて戻ると、そのゲームが一番上に来るか。
 
+**クラウドでの進み具合（2026-10-22、ブランチ `claude/v30-handoff-docs-tftm14`＝feature/v30 の続き）**：1〜5 は済、6 の承認待ち。
+- 1：UX は要修正なし。技術は推奨1（裏から閉じるときに保存がほかで変わっていないか比べ直していない）を 878b5af で直した（`staleOnHide()`、reload は1回だけ）。残りは X-22〜24・T-14・T-15 へ。
+- 2・3：変異 26 個（MR1〜4、MW65〜67、M24〜26、MD9〜11、MZ5〜7、MB23〜25、MQ42〜44、MH21〜23、MP10）は全部検出。文書の合流は fd23b45。
+- 4：0dab210 で v30。
+- 5：Chromium smoke 180/180、full 356/356。WebKit smoke は 2 回とも 176/178（FW4 と、Target crashed の QW3・WW5）。FW4・WW5 は v29 の master でも同じに落ちるので v30 の変更ではない → T-16。
+
 ### 2.1 合流の材料（担当の報告から写したもの）
 
 **変異の案（mutate.mjs にそのまま貼る形）**
