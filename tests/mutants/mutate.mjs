@@ -274,6 +274,10 @@ const M = [
   ['MW58 もくもくこうば：こうじょう に広げても かんそう の台が来ない', 'ルール', 'games/seizai/logic.js', 'if (x.kind === "line" && x.stage === s.stage && s.depts[x.id].lines < 1)', 'if (x.kind === "line" && x.stage === s.stage && x.id !== "dry" && s.depts[x.id].lines < 1)'],
   ['MW59 もくもくこうば：つまりの判定で かんな を板の数のまま比べる（丸太に直さない）', '計算', 'games/seizai/logic.js', 'f.plane = rateOf(s, "plane") / PLANKS_PER_BEAM;', 'f.plane = rateOf(s, "plane");'],
   ['MW60 もくもくこうば：かんな ができても totals.smooth を数えない（保存・記録が増えない）', '保存', 'games/seizai/logic.js', 's.done.plane += n; s.totals.smooth += n;', 's.done.plane += n;'],
+  ['MW61 もくもくこうば：さいしょから で seizai.save.bak を消さない', '保存', 'games/seizai/main.js', 'removeKey(KEY_BAK);', '/* bak は消さない */'],
+  ['MW62 もくもくこうば：さいしょから で保存を止めずに消す（pagehide で古い状態を書き戻す）', '保存', 'games/seizai/main.js', 'resetting = true;', 'resetting = false;'],
+  ['MW63 もくもくこうば：さいしょから で seizai.best も消す', '保存', 'games/seizai/main.js', 'removeKey(KEY_BAK);', 'removeKey(KEY_BAK); removeKey(KEY_BEST);'],
+  ['MW64 もくもくこうば：さいしょからの「やめる」でも保存を消す', '保存', 'games/seizai/main.js', 'else if (cmd === "resetNo") swapCard("reset", "help");', 'else if (cmd === "resetNo") { removeKey(KEY_SAVE); swapCard("reset", "help"); }'],
   // ---- ちきゅうを守れ！ほしくだき（games/asteroid/）。中身の仕組みを変えたときだけ、このゲームの分だけ流す（契約 §11.4）。----
   //      数値（星の時間・値段・体力）の調整中なので、数値を変える変異は KL に任せ、ここは画面・保存・中断・オフライン・場を押す・ルールの流れを中心にする
   ['MK1 ほしくだき：2択の間も場が進む（choose でも step が進み、fly に戻る）', 'ルール', 'games/asteroid/logic.js', 'if (s.phase === "choose" || s.phase === "end") return;', 'if (s.phase === "end") return;'],
@@ -314,6 +318,10 @@ const M = [
   ['MK35 ほしくだき：2択の冒頭の案内 #choiceLead を出さない', '表示', 'games/asteroid/main.js', 'el.choiceLead.hidden = !lead;', 'el.choiceLead.hidden = true;'],
   ['MK36 ほしくだき：クリアの演出中の保存を同じ星にする（開き直すと同じ星をもう一度）', '保存', 'games/asteroid/logic.js', 'if (state.phase === "clear" && !(state.star === ENDING_STAR && !state.cleared)) {', 'if (false) {'],
   ['MK37 ほしくだき：壊れた bestT（キーが整数でない・0 以下・大きすぎ）を捨てない', '保存', 'games/asteroid/logic.js', 'if (!/^[1-9][0-9]{0,3}$/.test(k) || Number(k) > STAR_MAX || !isNum(v) || v <= 0 || v > 1e7) continue;', 'if (!isNum(v)) continue;'],
+  ['MK38 ほしくだき：さいしょからで asteroid.save.bak を消さない', 'データ消失', 'games/asteroid/main.js', 'const gone = removeKey(KEY_SAVE) && removeKey(KEY_BAK);', 'const gone = removeKey(KEY_SAVE);'],
+  ['MK39 ほしくだき：さいしょからのあと保存を止めない（pagehide・hidden でメモリ上の古い状態を書き戻す）', 'データ消失', 'games/asteroid/main.js', '    if (!state || restarting) return false;\n', '    if (!state) return false;\n'],
+  ['MK40 ほしくだき：さいしょからで asteroid.best も消す', 'データ消失', 'games/asteroid/main.js', 'const gone = removeKey(KEY_SAVE) && removeKey(KEY_BAK);', 'const gone = removeKey(KEY_SAVE) && removeKey(KEY_BAK) && removeKey(KEY_BEST);'],
+  ['MK41 ほしくだき：さいしょからの確認で「やめる」を押しても消す', '誤タップ', 'games/asteroid/main.js', 'el.restartNo.addEventListener("click", cancelRestart);', 'el.restartNo.addEventListener("click", doRestart);'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;
