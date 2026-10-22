@@ -12,7 +12,7 @@
 //   るすの あいだ（§4.3・§7.1）は、ページの時計を clockTime で決まった瞬間に固定して確かめる（日本・ロサンゼルスの2つのタイムゾーン）。
 //   期待値は Node で読んだ logic.js（同じ root）から作る。半分の速さの 45 秒・上限の 7200 秒は決め打ちの値で比べる（logic が変わっても見逃さない）。
 //   無いときに合格にしない（空振りの合格を作らない）：SeizaiGame・YubiDebug が無ければ例外で不合格にする。
-//   smoke：WW1〜WW6。full：WW7〜WW23（WW18 はレビュー後の直し §17.1、WW19 は §17.3 の B、WW20 は §18 待つ理由（SZ-03）、WW21〜23 は §19（新しい工程・道具・画面を広く）。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
+//   smoke：WW1〜WW6。full：WW7〜WW24（WW18 はレビュー後の直し §17.1、WW19 は §17.3 の B、WW20 は §18 待つ理由（SZ-03）、WW21〜23 は §19（新しい工程・道具・画面を広く）、WW24 は §20 はこぶ人の往復と「まち」（SZ-04・SZ-05）。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -1038,8 +1038,10 @@ export const tests = [
       // 録画と同じ局面：段1、きこり 1にん Lv2、なえぎ 1にん Lv2、はこぶ 2にん、森は木と若木でいっぱい
       const base = { money: 120, forest: { trees: 8, saplings: 4 }, buf: { yard: 0, logs: 0, goods: 0 }, depts: { cut: { staff: 1, level: 2 }, plant: { staff: 1, level: 2 }, carry: { staff: 2, level: 1 }, peel: { lines: 1, level: 1 }, shop: { staff: 1, level: 1 } } };
       {
-        const { ctx, page } = await OPEN(mkState(L, 1, base));
-        await adv(page, 20); await wait(page, 100);
+        // §20 E2（2026-10-22）から「まち」は 最近 何も作っていない部署だけ。録画の局面（森に木がある）で 20 秒進めると、なえぎ・はこぶ・かわむき は
+        // 来た分を すぐ片づけて働いている（まち は出ない。WW24 が確かめる）。ここは森の木が まだ育っていない（若木だけ）開いた直後＝本当に前の品が来ないときで確かめる
+        const { ctx, page } = await OPEN(mkState(L, 1, { ...base, forest: { trees: 0, saplings: 12 } }));
+        await adv(page, 1); await wait(page, 100);
         const g = await gs(page);
         const open = async (d) => { await page.evaluate((x) => document.querySelector(`.zone[data-dept="${x}"]`).click(), d); await wait(page, 120); return page.evaluate(() => { const e = document.querySelector('#sheetInfo'); return { t: e.textContent.trim(), wait: e.dataset.wait, jam: e.dataset.jam }; }); };
         const pl = await open('plant');
@@ -1304,6 +1306,48 @@ export const tests = [
         await wait(page, 200);
         const r = await page.evaluate(() => ({ cue: window.SeizaiGame.getState().scrollCue, hidden: document.querySelector('#scrollCue').hidden, fit: document.querySelector('#scene').scrollHeight <= document.querySelector('#scene').clientHeight + 1 }));
         check(`絵が全部入る画面（400×1400・こや）では案内を出さない（${JSON.stringify(r)}）`, r.fit && r.cue === null && r.hidden, r);
+        await ctx.close();
+      }
+      check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
+    },
+  },
+  {
+    id: 'WW24', tier: 'full', title: 'もくもくこうば はこぶ人の往復と「まち」（§20・SZ-04・SZ-05）：録画と同じ局面（こうば・きこり 2にん Lv2・なえぎ 2にん Lv3・はこぶ 3にん Lv2・かわむき 2台 Lv2・かくざい 2台 Lv2）で、ゲームの時間 30 秒の間に はこぶの人が丸太を持って門まで 3 回以上行き（carryTrips）、はこぶ・かわむき・かくざい の「まち」（getState().waits の "in"）が出続けず、はこぶ のシートに待つ文が出ない。動きを減らす設定でも往復する（ゆっくり歩くので 2 回以上）。本当に前の品が来ないとき（なえぎ 0 人で森が空）は今までどおり「まち」',
+    async run({ browser, check, root, errors }) {
+      const L = logicOf(root);
+      const e0 = errors.length;
+      const rec = { money: 50, forest: { trees: 16, saplings: 0 }, buf: { yard: 0, logs: 0, peeled: 0, goods: 0 }, depts: { cut: { staff: 2, level: 2 }, plant: { staff: 2, level: 3 }, carry: { staff: 3, level: 2 }, peel: { lines: 2, level: 2 }, beam: { lines: 2, level: 2 }, shop: { staff: 1, level: 1 } } };
+      for (const calm of [false, true]) {
+        const tag = calm ? '動きを減らす設定' : '通常';
+        const { ctx, page } = await openW(browser, 'WW24', { v: SMOKE_V(), items: { 'seizai.save': saveOf(L, mkState(L, 2, rec), T0) }, opts: { clockTime: new Date(T0 + 1000), ...(calm ? { reducedMotion: 'reduce' } : {}) } });
+        await closeCards(page);
+        await wait(page, 3000);   // 開いた直後（まだ何も作っていない間）は数えない
+        const g0 = await gs(page), l0 = await lg(page);
+        if (typeof g0.carryTrips !== 'number' || !g0.waits || typeof g0.waits !== 'object') throw new Error('getState() に carryTrips・waits が無い（§20 E4）');
+        const n = { carry: 0, peel: 0, beam: 0 };
+        const S = 30;
+        for (let i = 0; i < S; i++) {
+          await wait(page, 1000);
+          const w = (await gs(page)).waits;
+          for (const d in n) if (w[d] === 'in') n[d]++;
+        }
+        const g1 = await gs(page), l1 = await lg(page);
+        const trips = g1.carryTrips - g0.carryTrips;
+        const made = { carry: l1.done.carry - l0.done.carry, peel: l1.done.peel - l0.done.peel, beam: l1.done.beam - l0.done.beam };
+        check(`${tag}：つまりは ${g1.bottleneck}。30 秒で logic は ${made.carry} 本運び、はこぶの人は門まで ${trips} 回（${calm ? 'ゆっくり歩くので 2 回以上' : '3 回以上・運んだ数の半分以上'}）`, made.carry >= 5 && (calm ? trips >= 2 : trips >= 3 && trips >= made.carry / 2), { trips, made, bn: g1.bottleneck });
+        check(`${tag}：はこぶ の「まち」は ${n.carry}/${S} 回（2 割以下）`, n.carry <= S * 0.2, n);
+        check(`${tag}：作っている間（かわむき ${made.peel}・かくざい ${made.beam}）は「まち」にならない（${n.peel}/${S}・${n.beam}/${S}。2 割以下）`, made.peel >= 5 && made.beam >= 5 && n.peel <= S * 0.2 && n.beam <= S * 0.2, { n, made });
+        if (!calm) {
+          await page.evaluate(() => document.querySelector('.zone[data-dept="carry"]').click()); await wait(page, 150);
+          const ca = await page.evaluate(() => { const e = document.querySelector('#sheetInfo'); return { t: e.textContent.trim(), wait: e.dataset.wait }; });
+          check(`はこぶ のシート「${ca.t}」に「まるたが まだ ないよ」は出ない（data-wait ${ca.wait}）`, ca.wait === '0' && !/まるたが まだ/.test(ca.t), ca);
+          await page.click('#sheetClose'); await wait(page, 100);
+          // 本当に前の品が来ない：なえぎ 0 人・森も置き場も空 → 少し待つと はこぶ・かわむき・かくざい が「まち」
+          await setL(page, 'l.depts.plant.staff = 0; l.forest.trees = 0; l.forest.saplings = 0; for (const k of ["yard", "logs", "peeled"]) l.buf[k] = 0;');
+          await wait(page, 16000);
+          const w2 = (await gs(page)).waits;
+          check(`本当に前の品が来ないとき（なえぎ 0 人・森が空）は「まち」：はこぶ ${w2.carry}・かわむき ${w2.peel}・かくざい ${w2.beam}`, w2.carry === 'in' && w2.peel === 'in' && w2.beam === 'in', w2);
+        }
         await ctx.close();
       }
       check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));

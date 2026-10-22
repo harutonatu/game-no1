@@ -1372,6 +1372,9 @@
         return { actors: actors.all().length, frames, slowFrames, bgRedraws, drawMs: sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0, calm, toolBurst: lastToolBurst ? lastToolBurst.dept : null };
       },
       actors: () => actors.list(),
+      // 待つ理由（§20 E2・E3。吹き出しと同じもの）と、はこぶ の人が門に着いた回数（§20 E4）
+      waits: () => Object.assign({}, typeof actors.why === "function" ? actors.why() || {} : {}),
+      carryTrips: () => (typeof actors.carryTrips === "function" ? actors.carryTrips() | 0 : 0),
       get calm() { return calm; }
     };
   }

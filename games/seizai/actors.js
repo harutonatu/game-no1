@@ -13,6 +13,8 @@
  * - 人の数の上限 MAX_ACTORS = 66（§19.3.1）。超える分はお客さんから省く（§6.4）
  * - こうじょう から工場は 2 つの帯（上「さぎょうば」＝ かわむき・かくざい、下「しあげ」＝ かんそう・いた（・かんな））。§19.3.1
  * - 道具の段（logic の toolTier。Lv 1・5・15・30）ごとに、作業の手の動きを ANIM_MUL 倍に（見た目だけ。§19.2.2）
+ * - はこぶ の人は logic が実際に運んだ数（done.carry の増え）で往復する。待つ理由は「最近 作っていない」ときだけ（§20 E1・E2）
+ *   why() → その E2 の結果（render の吹き出しと main.js の文が同じものを使う）、carryTrips() → 丸太を持って門に着いた回数
  */
 (function (root) {
   "use strict";
@@ -88,12 +90,28 @@
     return t >= 0 && t <= 3 ? t : 0;
   }
 
-  // ===== 待っている理由（見た目と main.js の文で共有。§6.1・§18）=====
+  // ===== 待っている理由（見た目と main.js の文で共有。§6.1・§18・§20 E2）=====
   // 部署ごとに "in"（前の工程の品が来ない）・"out"（置き場が いっぱい）・""（待っていない）
   // plant の "in" は「切り株が無い」＝ きこりを待っている。cut の "in" は「切れる木が無い」＝ なえぎ（森）を待っている
-  function waitOf(state) {
+  // lastMade（{ 部署: その部署が最後に作った state.t }）を渡すと、"in" は「前の品が 1 未満 かつ 最近 何も作っていない」ときだけ（§20 E2）。
+  //   最近＝ clamp(2 ÷ rates[部署], 3, 15) 秒以内（速さ 0 なら すぐ待ち。作った時刻を知らない・時計が戻ったときも待ち）。
+  //   rates を渡さなければ logic の rates(state) を使う。lastMade を渡さなければ その瞬間の置き場だけで決める（§18 のまま）
+  function graceOf(rate) { return rate > 0 ? clamp(2 / rate, 3, 15) : 0; }
+  function waitOf(state, lastMade, ratesIn) {
     const o = { cut: "", plant: "", carry: "", peel: "", beam: "", dry: "", plank: "", plane: "", shop: "" };
     if (!state || typeof state !== "object") return o;
+    let idle = () => true;
+    if (lastMade && typeof lastMade === "object") {
+      let rates = ratesIn;
+      if (!rates || typeof rates !== "object") { try { rates = typeof Lg().rates === "function" ? Lg().rates(state) : null; } catch (e) { rates = null; } }
+      rates = rates || {};
+      const now = num(state.t, 0);
+      idle = (d) => {
+        const r = num(rates[d], 0), last = lastMade[d];
+        if (!(r > 0) || typeof last !== "number" || !Number.isFinite(last) || now < last) return true;
+        return now - last > graceOf(r);
+      };
+    }
     const stage = clampStage(state.stage);
     const caps = capsOf(stage);
     const buf = state.buf || {}, f = state.forest || {};
@@ -102,14 +120,14 @@
     const trees = num(f.trees, 0), saps = num(f.saplings, 0);
     const stumps = caps.forest - trees - saps;
     const qlen = Array.isArray(state.queue) ? state.queue.length : 0;
-    o.cut = trees < 1 ? "in" : full("yard") ? "out" : "";
-    o.plant = stumps < 1 ? "in" : "";
-    o.carry = v("yard") < 1 ? "in" : full("logs") ? "out" : "";
+    o.cut = trees < 1 && idle("cut") ? "in" : full("yard") ? "out" : "";
+    o.plant = stumps < 1 && idle("plant") ? "in" : "";
+    o.carry = v("yard") < 1 && idle("carry") ? "in" : full("logs") ? "out" : "";
     for (const d of ["peel", "beam", "dry", "plank", "plane"]) {
       if (stage < DEPT_FROM[d]) continue;
-      o[d] = v(inOf(d, stage)) < 1 ? "in" : full(outOf(d, stage)) ? "out" : "";
+      o[d] = v(inOf(d, stage)) < 1 && idle(d) ? "in" : full(outOf(d, stage)) ? "out" : "";
     }
-    o.shop = qlen > 0 && v("goods") < 1 ? "in" : "";
+    o.shop = qlen > 0 && v("goods") < 1 && idle("shop") ? "in" : "";
     return o;
   }
 
@@ -197,6 +215,10 @@
     let clk = 0;
     let info = null;
     let ratesFor = null, ratesMemo = null;
+    // §20：部署ごとに最後に作った時刻（state.t）、はこぶ の「運べる券」（logic が実際に運んだ数 ÷ 1 回に運ぶ数）、門に着いた回数
+    let lastMade = {};
+    let tickets = 0;
+    let carryTrips = 0;
 
     // ===== 森の木の場所 =====
     function slotPositions(cap) {
@@ -320,7 +342,7 @@
         try { rates = typeof Lg().rates === "function" ? Lg().rates(state) : null; } catch (e) { rates = null; }
         ratesFor = state; ratesMemo = rates;
       }
-      const why = waitOf(state);
+      const why = waitOf(state, lastMade, rates || {});
       const stuck = {}, tier = {};
       for (const d of DEPT_IDS) { stuck[d] = !!why[d]; tier[d] = tierOf(state, d); }
       return {
@@ -459,20 +481,37 @@
     }
 
     // ===== できた（done の増え方）=====
-    function madeTriggers(state, events, replace) {
+    // done の増え方を読む：最後に作った時刻（§20 E2）と はこぶ の券（§20 E1）を更新し、部署ごとの「できた」動きの回数を返す
+    function noteDone(state, events, replace, stage) {
       const done = state.done && typeof state.done === "object" ? state.done : null;
-      const counts = {};
+      const counts = {}, inc = {};
       if (done) {
         for (const d of DEPT_IDS) {
-          const cur = Math.floor(num(done[d], 0));
+          const cur = num(done[d], 0);
           const prev = prevDone[d];
           prevDone[d] = cur;
           if (replace || prev === undefined || cur < prev) continue;
-          counts[d] = Math.min(MAX_MADE, cur - prev);
+          if (cur > prev) inc[d] = cur - prev;
+          const k = Math.floor(cur + 1e-9) - Math.floor(prev + 1e-9);
+          if (k > 0) counts[d] = Math.min(MAX_MADE, k);
         }
       } else if (Array.isArray(events)) {
-        for (const e of events) if (e && e.kind === "made" && DEPT_IDS.indexOf(e.dept) >= 0) counts[e.dept] = Math.min(MAX_MADE, (counts[e.dept] || 0) + Math.max(1, Math.floor(num(e.n, 1))));
+        for (const e of events) {
+          if (!e || e.kind !== "made" || DEPT_IDS.indexOf(e.dept) < 0) continue;
+          const n = Math.max(1, Math.floor(num(e.n, 1)));
+          inc[e.dept] = (inc[e.dept] || 0) + n;
+          counts[e.dept] = Math.min(MAX_MADE, (counts[e.dept] || 0) + n);
+        }
       }
+      const t = num(state.t, 0);
+      for (const d in inc) lastMade[d] = t;
+      // 運べる券：1 枚＝ 1 往復（1 回に運ぶ数 CARRY_LOAD ぶん。歩く速さもこの数で決めている）。上限は はこぶの人数×2
+      const cap = countOf(state, "carry", stage) * 2;
+      if (inc.carry) tickets += inc.carry / CARRY_LOAD[tierOf(state, "carry")];
+      tickets = clamp(tickets, 0, cap);
+      return counts;
+    }
+    function madeTriggers(counts) {
       for (const d of DEPT_IDS) {
         const k = counts[d] || 0;
         for (let i = 0; i < k; i++) madeOnce(d);
@@ -576,14 +615,18 @@
           if (a.phase === "toGate") {
             a.carry = "log";
             if (moveTo(a, r.gateX - (a.idx % 4) * 6, y, dt, sp)) {
+              if (!a.atGate) { a.atGate = true; carryTrips++; }
               if (info.logsFull) { a.pose = "wait"; a.active = false; }
-              else { a.phase = "toYard"; a.carry = null; a.pose = "walk"; }
+              else { a.phase = "toYard"; a.carry = null; a.pose = "walk"; a.atGate = false; }
             } else { a.pose = info.boosted.carry ? "cheer" : "carry"; a.active = true; }
           } else {
             a.carry = null;
             if (moveTo(a, r.yardX + (a.idx % 4) * 6, y, dt, sp)) {
-              if (info.yard < 1) { a.pose = "wait"; a.active = false; }
-              else { a.phase = "toGate"; a.carry = "log"; a.pose = "carry"; }
+              // 出発は「運べる券」（logic が実際に運んだ数）で決める。置き場が 0 でも運んでいれば行く（§20 E1）。置き場に 1 本以上あれば券なしでも行く
+              if (tickets >= 1 || info.yard >= 1) {
+                if (tickets >= 1) tickets -= 1;
+                a.phase = "toGate"; a.carry = "log"; a.pose = "carry";
+              } else { a.pose = "wait"; a.active = false; }
             } else { a.pose = "walk"; a.active = true; }
           }
           break;
@@ -723,13 +766,15 @@
       let replace = first;
       if (!geo || geo.stage !== stage) { geo = geometry(stage); replace = true; }
       lastState = state;
+      let counts = {};
+      try { counts = noteDone(state, events, replace, stage); } catch (e) { counts = {}; }
       info = flowInfo(state, stage);
       try {
         syncForest(state, stage, replace);
         syncRoster(state, stage, replace);
         if (replace) actors = actors.filter((a) => a.role !== "customer");
         syncCustomers(state, events, replace);
-        madeTriggers(state, events, replace);
+        madeTriggers(counts);
         for (const a of actors) {
           update(a, d);
           // 待つ人は ときどき左右を見回す（「手が空いている」が分かる軽い動き。動きを減らす設定では しない）
@@ -760,15 +805,16 @@
       all: () => actors,
       slots: () => slots,
       why: () => (info ? info.why : {}),
+      carryTrips: () => carryTrips,
       drain() { const e = effects; effects = []; return e; },
       setCalm(b) { calm = !!b; },
       geometry: () => geo,
-      reset() { first = true; prevDone = {}; actors = []; slots = []; effects = []; },
+      reset() { first = true; prevDone = {}; actors = []; slots = []; effects = []; lastMade = {}; tickets = 0; },
       clock: () => clk
     };
   }
 
-  const api = Object.freeze({ create, geometry, station, waitOf, tierOf, inOf, MAX_ACTORS, ANIM_MUL, CARRY_LOAD, LINE_DEPTS, W, STAGE_H, DEPT_IDS, DEPT_FROM, ROLE_OF, byStage, capsOf, outOf });
+  const api = Object.freeze({ create, geometry, station, waitOf, graceOf, tierOf, inOf, MAX_ACTORS, ANIM_MUL, CARRY_LOAD, LINE_DEPTS, W, STAGE_H, DEPT_IDS, DEPT_FROM, ROLE_OF, byStage, capsOf, outOf });
   if (typeof module === "object" && module.exports) module.exports = api;
   root.SeizaiActors = api;
 })(typeof window !== "undefined" ? window : globalThis);

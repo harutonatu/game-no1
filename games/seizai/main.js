@@ -244,6 +244,7 @@
   }
   // 前の工程が遅くて待っている部署の、待つ理由と次にすること（なえぎ「きりかぶ まち」など。§18・SZ-03）
   // actors.js の waitOf（人の「待つ」姿と同じ見方）。ちらつかないよう、待たなくなってから 1.5 秒（ゲームの時間）は出したまま
+  // 吹き出しと同じ結果を使う：render の waits()（「最近 作っていない」も見た E2 の結果。§20 E3）。render が無いときだけ その瞬間の置き場で決める
   const WAIT_WHY = { cut: "きる きが まだ ないよ", plant: "きりかぶが まだ ないよ", carry: "まるたが まだ ないよ", peel: "まるたが まだ こないよ", beam: "むきまるたが まだ こないよ", dry: "かくざいが まだ こないよ", plank: "かくざいが まだ こないよ", plane: "いたが まだ こないよ", shop: "うりものが まだ ないよ" };
   // いた は こうじょう から かんそう の後（かわいた かくざい を待つ）
   const waitWhy = (d) => (d === "plank" && state && state.stage >= 3 ? "かわいた かくざいが まだ こないよ" : WAIT_WHY[d]);
@@ -252,12 +253,17 @@
   function trackWait() {
     const A = window.SeizaiActors;
     if (!state || !A || typeof A.waitOf !== "function") return;
-    const w = safeCall(() => A.waitOf(state), null) || {};
+    const w = currentWaits();
     const t = Number(state.t) || 0;
     for (const d of DEPT_IDS) {
       if (w[d]) waitSeen[d] = { t, kind: w[d] };
       else if (waitSeen[d] && (t - waitSeen[d].t > WAIT_HOLD || t < waitSeen[d].t)) delete waitSeen[d];
     }
+  }
+  function currentWaits() {
+    const A = window.SeizaiActors;
+    if (typeof render.waits === "function") { const w = safeCall(() => render.waits(), null); if (w) return w; }
+    return (A && typeof A.waitOf === "function" ? safeCall(() => A.waitOf(state), null) : null) || {};
   }
   // [待つ理由, 次にすること]（どちらも無ければ null）
   // bn：つまりの部署（呼ぶ側が 1 回だけ求めて渡す。bottleneck は state を写すので毎回呼ばない）
@@ -1294,7 +1300,9 @@
       wallLast, lastAway: lastAway ? JSON.parse(JSON.stringify(lastAway)) : null, saveCount, calm, timers: timers.size,
       sleeping, hint: el.hint ? el.hint.textContent : "", best,
       scrollCue: cue ? { dir: cue.dir, dept: cue.dept, text: cue.text } : null,
-      lastTool: lastTool ? Object.assign({}, lastTool) : null
+      lastTool: lastTool ? Object.assign({}, lastTool) : null,
+      carryTrips: typeof render.carryTrips === "function" ? safeCall(() => render.carryTrips(), 0) | 0 : 0,
+      waits: state ? Object.assign({}, currentWaits()) : {}
     };
   }
   function advance(sec) {
