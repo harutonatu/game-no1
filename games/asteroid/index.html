@@ -496,8 +496,9 @@
   .card .btns button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
   .card .btns button:active:not([aria-disabled="true"]) { filter: brightness(1.2); }
   .card button[aria-disabled="true"] { opacity: 0.6; }
-  /* 遊び方の「さいしょから あそぶ」：目立たない文字だけのボタン（押せる高さは 44px 以上。§19） */
-  .card .btns button.textbtn { background: transparent; border-color: transparent; color: var(--muted); font-weight: 600; font-size: 14px; min-height: 44px; text-decoration: underline; text-underline-offset: 3px; }
+  /* 遊び方の「さいしょから あそぶ」：目立たない文字だけのボタン（押せる高さは 44px 以上。§19）。
+     色は --muted と --ink の間（6:4）で読みやすく：カード #1a2347 に対して 11.0:1（--muted は 7.4:1）。目立たせるのは「わかった」（primary）のまま */
+  .card .btns button.textbtn { background: transparent; border-color: transparent; color: #d5daef; font-weight: 600; font-size: 14px; min-height: 44px; text-decoration: underline; text-underline-offset: 3px; }
 
   /* 2択（#choiceA・#choiceB は本物のボタン。出た直後 400ms は main.js が aria-disabled="true"） */
   .choices { display: flex; flex-direction: column; gap: 10px; }

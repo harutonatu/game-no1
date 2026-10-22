@@ -503,8 +503,9 @@
   .card .btns button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
   .card .btns button:active:not([aria-disabled="true"]) { filter: brightness(1.2); }
   .card .btns button[aria-disabled="true"] { opacity: 0.6; }
-  /* 目立たない文字ボタン（遊び方の「さいしょから あそぶ」§21 R1）。押せる高さは他と同じ */
-  .card .btns button.quiet { background: transparent; border-color: transparent; color: var(--muted); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+  /* 目立たない文字ボタン（遊び方の「さいしょから あそぶ」§21 R1）。押せる高さは他と同じ。
+     色は --muted と --ink の間（6:4）で読みやすく：カード #2a3a30 に対して 9.0:1（--muted は 6.5:1）。目立たせるのは「わかった」（primary）のまま */
+  .card .btns button.quiet { background: transparent; border-color: transparent; color: #d9e1d8; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
   .card .pic { display: block; margin: 0 auto; width: 120px; height: 56px; }
   @media (orientation: portrait) and (max-height: 620px) {
     .card { padding: 12px 14px; gap: 8px; }
