@@ -390,6 +390,11 @@
     .corner::after { font-size: 48px; }
     .signal .word { padding: 2px 14px; }
   }
+  /* とても低い横画面（SE の Safari 横 568×270 など）：すき間を詰めて、4人の上下の隅（44px 以上・すき間 6px）がフィールドに収まる高さを空ける（X-17） */
+  @media (orientation: landscape) and (max-height: 300px) {
+    .app { gap: 6px; padding-bottom: max(8px, env(safe-area-inset-bottom, 0px)); }
+    .play { gap: 4px; }
+  }
   @media (max-width: 480px) {
     .head { flex-wrap: wrap; row-gap: 4px; }
     h1.title { order: 3; flex: 1 0 100%; font-size: 18px; }

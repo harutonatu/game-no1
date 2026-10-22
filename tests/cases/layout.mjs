@@ -96,7 +96,21 @@ async function blocksStatsProbe(page, safe) {
     await new Promise((ok) => requestAnimationFrame(() => ok()));
     const R = (e) => { const b = e.getBoundingClientRect(); return { x: b.left, y: b.top, r: b.right, b: b.bottom, w: b.width, h: b.height }; };
     const st = V.map(([id]) => { const el = document.getElementById(id); return { id, text: el.textContent, vis: !!el.offsetParent, cw: el.clientWidth, sw: el.scrollWidth }; });
-    const textRect = (e) => { const rg = document.createRange(); rg.selectNodeContents(e); return R(rg); };
+    // 文字の範囲（Range）。ただし各行の縦は「行の高さ（line-height）」に切り詰める（T-13）：
+    // 字体の文字の箱（ascent+descent）は OS で違い、Windows の代わりの字体では line-height 15px に対して 16px あって上下に 0.5px ずつはみ出す。
+    // 行の箱の中心は文字の箱の中心と同じなので、中心から ±line-height/2 にすると OS の字体に左右されない。横は Range のまま（横のはみ出しは本物）。
+    // 折り返して行が増えたときは、増えた行の箱がそのまま入るので、縦のはみ出しも見つかる
+    const textRect = (e) => {
+      const rg = document.createRange(); rg.selectNodeContents(e);
+      const lh = parseFloat(getComputedStyle(e).lineHeight);   // 'normal' は NaN → 切り詰めない
+      const rs = [...rg.getClientRects()].filter((q) => q.width > 0 || q.height > 0).map((q) => {
+        const h = Number.isFinite(lh) ? Math.min(q.height, lh) : q.height, c = (q.top + q.bottom) / 2;
+        return { x: q.left, y: c - h / 2, r: q.right, b: c + h / 2 };
+      });
+      if (!rs.length) return R(rg);
+      const x = Math.min(...rs.map((q) => q.x)), y = Math.min(...rs.map((q) => q.y)), r = Math.max(...rs.map((q) => q.r)), b = Math.max(...rs.map((q) => q.b));
+      return { x, y, r, b, w: r - x, h: b - y };
+    };
     const btns = [...document.querySelectorAll('.key, .pause-btn')].filter((e) => e.offsetParent).map((e) => ({ t: e.dataset.action || e.id, ...R(e) }));
     const texts = [...document.querySelectorAll('.stat')].filter((e) => e.offsetParent).flatMap((x) => [...x.children].map((c) => ({ t: 'text:' + c.textContent, ...textRect(c) })));
     const others = [['board', '#board'], ['hold', '.hold'], ['next', '.next']].map(([t, q]) => ({ t, ...R(document.querySelector(q)) }));
@@ -163,7 +177,7 @@ export const tests = [
     },
   },
   {
-    id: 'V2', tier: 'smoke', title: '最も低い横画面（SE 横・ホーム画面 568×320、高さ ≤360 の区分）でゲーム3画面のボタンが画面内、SE 横 Safari（568×270）のブロックが重ならない（K1）',
+    id: 'V2', tier: 'smoke', title: '最も低い横画面（SE 横・ホーム画面 568×320、高さ ≤360 の区分）でゲーム3画面のボタンが画面内、SE 横 Safari（568×270）のブロック（K1）・ピカッと 4 人（X-17）が重ならない',
     async run({ browser, check }) {
       const v = view('SE', 'l', 'app');
       await screenCheck(browser, check, v, 'blocks', async (page) => {
@@ -177,6 +191,15 @@ export const tests = [
       await screenCheck(browser, check, v, 'matomete');
       // K1（SE を Safari で横持ち 568×270：DROP が LEVEL/LINES に、HOLD が NEXT に重なっていた）を smoke でも確かめる
       await screenCheck(browser, check, view('SE', 'l', 'safari'), 'blocks');
+      // X-17（SE を Safari で横持ち 568×270：ピカッと 4 人の上下の隅 1P×3P・2P×4P が 3px 重なっていた）。すき間 6px（PK-02）も見る
+      await screenCheck(browser, check, view('SE', 'l', 'safari'), 'pikatto', async (page) => {
+        const g = await page.evaluate(() => {
+          const q = (n) => document.querySelector(`.corner[data-player="${n}"]`).getBoundingClientRect();
+          const [a, b, c, d] = [1, 2, 3, 4].map(q);
+          return { v13: c.top - a.bottom, v24: d.top - b.bottom, h12: b.left - a.right, h34: d.left - c.right, minH: Math.min(a.height, b.height, c.height, d.height) };
+        });
+        check('SE横 Safari 568×270 ピカッと 4人：上下・左右の隅のすき間 6px 以上、隅の高さ 44px 以上', Math.min(g.v13, g.v24, g.h12, g.h34) >= 6 - 0.5 && g.minH >= 44 - 0.5, g);
+      });
     },
   },
   {
