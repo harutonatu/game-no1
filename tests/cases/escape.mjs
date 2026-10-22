@@ -3,6 +3,7 @@ import { BASE, GAME_COUNT, GAME_URLS, T48, BLK, KIRI, view, custom, newPage, see
 const V = () => view('i13', 'p', 'app');
 const OVER = [2, 4, 2, 4, 4, 2, 4, 2, 2, 4, 2, 4, 4, 2, 4, 2];
 const WIN = [2048, 4, 2, 4, 4, 2, 4, 2, 2, 4, 2, 4, 4, 2, 4, 0];
+const hrefs = (p) => p.evaluate(() => [...document.querySelectorAll('a.game')].map((a) => a.getAttribute('href')));
 const btns = (p) => p.evaluate(() => [...document.querySelectorAll('#card .row button')].map((b) => b.textContent + (b.classList.contains('primary') ? '*' : '') + (b.disabled ? '(off)' : '')));
 
 export const tests = [
@@ -12,8 +13,8 @@ export const tests = [
       const { ctx, page } = await newPage(browser, V(), 'E1', { clock: true });
       await seed(page, {});
       await page.goto(BASE);
-      check(`メニューにゲームのカードが GAMES と同じ ${GAME_COUNT} 枚・同じ順（キリトリ道場・いろコード・ゼンマイさんぽを含む）・見出し「ゆびあそび」`, await page.evaluate((urls) => JSON.stringify([...document.querySelectorAll('a.game')].map((a) => a.getAttribute('href'))) === JSON.stringify(urls) && document.querySelector('h1').textContent === 'ゆびあそび', GAME_URLS) && GAME_COUNT >= 5 && ['games/kiritori/', 'games/irocode/', 'games/zenmai/'].every((u) => GAME_URLS.includes(u)));
-      await page.locator('a.game').nth(0).tap(); await page.waitForURL('**/games/blocks/');
+      check(`保存が空のとき、メニューにゲームのカードが GAMES と同じ ${GAME_COUNT} 枚・同じ順（キリトリ道場・いろコード・ゼンマイさんぽを含む）・見出し「ゆびあそび」`, await page.evaluate((urls) => JSON.stringify([...document.querySelectorAll('a.game')].map((a) => a.getAttribute('href'))) === JSON.stringify(urls) && document.querySelector('h1').textContent === 'ゆびあそび', GAME_URLS) && GAME_COUNT >= 5 && ['games/kiritori/', 'games/irocode/', 'games/zenmai/'].every((u) => GAME_URLS.includes(u)));
+      await page.locator('a.game[href="games/blocks/"]').tap(); await page.waitForURL('**/games/blocks/');
       const title = await cardText(page);
       check('ブロック：タイトル画面に「スタート」と「メニューへ」', /スタート/.test(title) && /メニューへ/.test(title), title);
       await page.click('#card [data-cmd=restart]'); await wait(page, 100);
@@ -22,7 +23,7 @@ export const tests = [
       check('ブロック：プレイ中の「← メニュー」は一時停止画面を経由（誤タップで即終了しない）', /一時停止/.test(pc) && /メニューへ/.test(pc) && page.url().endsWith('games/blocks/'), pc);
       await page.locator('#card [data-cmd=menu]').tap(); await page.waitForURL(BASE);
       check('一時停止画面の「メニューへ」でメニューに戻る', page.url() === BASE);
-      await page.locator('a.game').nth(1).tap(); await page.waitForURL('**/games/2048/');
+      await page.locator('a.game[href="games/2048/"]').tap(); await page.waitForURL('**/games/2048/');
       const back = await page.evaluate(() => document.querySelector('#backLink').textContent.replace(/\s+/g, ''));
       await page.locator('#backLink').tap(); await page.waitForURL(BASE);
       check('2048：「← メニュー」でメニューに戻る', back === '←メニュー' && page.url() === BASE, back);
@@ -195,7 +196,7 @@ export const tests = [
       const { ctx, page } = await newPage(browser, V(), 'E6', { clock: true });
       await seed(page, {});
       await page.goto(BASE);
-      await page.locator('a.game').nth(2).tap(); await page.waitForURL('**/games/kiritori/'); await wait(page, 150);
+      await page.locator('a.game[href="games/kiritori/"]').tap(); await page.waitForURL('**/games/kiritori/'); await wait(page, 150);
       const title = await btns(page);
       check('タイトル：[メニューへ][はじめる*]、「← メニュー」の表記', JSON.stringify(title) === JSON.stringify(['メニューへ', 'はじめる*']) && await page.evaluate(() => document.querySelector('#menuBtn').textContent.replace(/\s+/g, '')) === '←メニュー', title);
       await page.click('#card [data-cmd=menu]'); await page.waitForURL(BASE);
@@ -232,6 +233,97 @@ export const tests = [
         check('結果カードの「もう一度」で新しいゲーム（スコア 0・ライフ 3）', s.state === 'play' && s.score === 0 && s.lives === 3 && !s.overlay, s);
       }
       await ctx.close();
+    },
+  },
+  {
+    id: 'E7', tier: 'smoke', title: 'メニューは最近遊んだ順（X-21）：空なら GAMES の順、押して戻るとそのゲームが先頭・一番上に見える（タップ・Enter）',
+    async run({ browser, check }) {
+      const { ctx, page } = await newPage(browser, V(), 'E7');
+      await seed(page, {});
+      await page.goto(BASE);
+      const a = await hrefs(page);
+      check('(a) 保存が空なら GAMES の順', JSON.stringify(a) === JSON.stringify(GAME_URLS), a);
+      // いちばん下のゲームをタップ → ブラウザの戻る（bfcache を含む）→ 先頭に来て、画面は一番上
+      const last = GAME_URLS.at(-1);
+      await page.locator(`a.game[href="${last}"]`).scrollIntoViewIfNeeded();
+      await page.locator(`a.game[href="${last}"]`).tap(); await page.waitForURL(BASE + last);
+      await page.goBack(); await page.waitForURL(BASE); await sleep(150);
+      const b1 = await hrefs(page), y1 = await page.evaluate(() => window.scrollY);
+      check(`(b) ${last} を押して戻ると先頭・残りは GAMES の順・スクロールは一番上`, JSON.stringify(b1) === JSON.stringify([last, ...GAME_URLS.filter((u) => u !== last)]) && y1 === 0, { b1, y1 });
+      // 次に 2048 を Enter で開き、ゲームの「← メニュー」で戻る → [2048, last, …]
+      await page.locator('a.game[href="games/2048/"]').focus(); await page.keyboard.press('Enter'); await page.waitForURL(T48);
+      await page.locator('#backLink').click(); await page.waitForURL(BASE); await sleep(150);
+      const b2 = await hrefs(page);
+      const saved = await page.evaluate(() => localStorage.getItem('yubi.recent'));
+      check(`(b) 続けて 2048 を Enter で開いて戻ると [2048, ${last}, 残りは GAMES の順]、保存は url の配列`, JSON.stringify(b2) === JSON.stringify(['games/2048/', last, ...GAME_URLS.filter((u) => u !== last && u !== 'games/2048/')]) && saved === JSON.stringify(['games/2048/', last]), { b2, saved });
+      await ctx.close();
+    },
+  },
+  {
+    id: 'E8', tier: 'full', title: '最近遊んだ順（X-21）：壊れた保存でも落ちない・押した瞬間は並びが変わらない・保存に失敗しても移動する・並べ直しでベストと絵が残る',
+    async run({ browser, check }) {
+      const { ctx, page } = await newPage(browser, V(), 'E8');
+      const rev = [...GAME_URLS].reverse();
+      const blockClicks = () => page.evaluate(() => document.querySelectorAll('a.game').forEach((a) => a.addEventListener('click', (e) => e.preventDefault())));
+      // (c) 壊れた yubi.recent：使える分だけ使い、落ちない（ページのエラーは watch が不合格にする）
+      const cases = [
+        ['JSON でない', 'games/2048/{', GAME_URLS],
+        ['配列でない（文字）', '"games/2048/"', GAME_URLS],
+        ['配列でない（物）', '{"0":"games/2048/"}', GAME_URLS],
+        ['null', 'null', GAME_URLS],
+        ['数・null・物・知らない url・重複', JSON.stringify([5, null, {}, 'games/nope/', 'games/kiritori/', 'games/2048', 'games/2048/', 'games/kiritori/', ['games/blocks/']]),
+          ['games/kiritori/', 'games/2048/', ...GAME_URLS.filter((u) => u !== 'games/kiritori/' && u !== 'games/2048/')]],
+        ['GAMES より長い', JSON.stringify([...rev, ...GAME_URLS]), rev],
+      ];
+      const bad = [];
+      for (const [label, raw, want] of cases) {
+        await seed(page, { 'yubi.recent': raw });
+        await page.goto(BASE); await sleep(80);
+        const got = await hrefs(page);
+        const best = await page.evaluate(() => [...document.querySelectorAll('.best b')].filter((b) => b.textContent).length);
+        if (JSON.stringify(got) !== JSON.stringify(want) || best !== GAME_COUNT) bad.push({ label, got, best });
+      }
+      check(`(c) 壊れた yubi.recent（${cases.map((c) => c[0]).join('・')}）でも落ちず、使える分だけで並ぶ`, bad.length === 0, bad);
+      // 壊れた保存（いまは「GAMES より長い」）のまま押すと、使える url だけ・重複なしで先頭に入れて保存し直す
+      await blockClicks();
+      await page.locator('a.game[href="games/blocks/"]').click();
+      const fixed = await page.evaluate(() => localStorage.getItem('yubi.recent'));
+      check('(c) 壊れた保存のまま押すと、使える url だけ・重複なし・最大 GAMES の数で保存し直す', fixed === JSON.stringify(['games/blocks/', ...rev.filter((u) => u !== 'games/blocks/')]), fixed);
+      // (d) 押したとき（click・タップ）は保存だけで、その場では並べ替えない
+      await seed(page, {});
+      await page.goto(BASE); await sleep(80);
+      await blockClicks();
+      const last = GAME_URLS.at(-1);
+      await page.locator(`a.game[href="${last}"]`).click(); await sleep(200);
+      const d1 = await hrefs(page), dSaved = await page.evaluate(() => localStorage.getItem('yubi.recent'));
+      await page.locator('a.game[href="games/2048/"]').tap(); await sleep(200);
+      const d2 = await hrefs(page), dSaved2 = await page.evaluate(() => localStorage.getItem('yubi.recent'));
+      check('(d) 押した瞬間は並びが変わらず（GAMES の順のまま）、保存だけ先頭に入る', JSON.stringify(d1) === JSON.stringify(GAME_URLS) && JSON.stringify(d2) === JSON.stringify(GAME_URLS) && dSaved === JSON.stringify([last]) && dSaved2 === JSON.stringify(['games/2048/', last]), { d1, d2, dSaved, dSaved2 });
+      // (e) 並べ直しても同じカード（作り直さない）で、ベスト表示と絵が残る
+      await seed(page, { 'tile2048.best': '1234' });
+      await page.goto(BASE); await sleep(300);
+      const before = await page.evaluate(() => {
+        const a = document.querySelector('a.game[href="games/2048/"]'); a.__mark = 1;
+        return { best: a.querySelector('.best b').textContent, art: a.querySelector('canvas').toDataURL(), n: document.querySelectorAll('#games > li').length };
+      });
+      await page.evaluate(() => { localStorage.setItem('yubi.recent', JSON.stringify(['games/2048/'])); window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); });
+      const after = await page.evaluate(() => {
+        const a = document.querySelector('a.game');
+        return { href: a.getAttribute('href'), same: a.__mark === 1, best: a.querySelector('.best b').textContent, art: a.querySelector('canvas').toDataURL(), n: document.querySelectorAll('#games > li').length, links: document.querySelectorAll('#games > li > a.game').length };
+      });
+      check('(e) pageshow で並べ直すと 2048 が先頭、同じカードのまま・ベスト「1,234」・絵（canvas）が残る・カードの数は同じ', after.href === 'games/2048/' && after.same && before.best === '1,234' && after.best === '1,234' && after.art === before.art && after.art.length > 1000 && after.n === GAME_COUNT && after.links === GAME_COUNT && before.n === GAME_COUNT, { before: { ...before, art: before.art.length }, after: { ...after, art: after.art.length } });
+      // 見えたとき（visibilitychange）にも並べ直す
+      await page.evaluate(() => { localStorage.setItem('yubi.recent', JSON.stringify(['games/kiritori/'])); document.dispatchEvent(new Event('visibilitychange')); });
+      const v = await hrefs(page);
+      check('(e) 見えたとき（visibilitychange）にも並べ直す', v[0] === 'games/kiritori/', v.slice(0, 3));
+      await ctx.close();
+      // 保存に失敗しても（容量いっぱいなど）移動は止まらない。メニューの画面だけ localStorage.setItem を失敗させる
+      const f = await newPage(browser, V(), 'E8 setItem失敗', { initScript: () => { if (!/\/games\//.test(location.pathname)) Storage.prototype.setItem = function () { throw new DOMException('full', 'QuotaExceededError'); }; } });
+      await f.page.goto(BASE);
+      await f.page.locator('a.game[href="games/2048/"]').click();
+      const moved = await f.page.waitForURL(T48, { timeout: 5000 }).then(() => true, () => false);
+      check('保存に失敗しても（setItem が例外）カードを押すとゲームへ移る', moved, f.page.url());
+      await f.ctx.close();
     },
   },
 ];

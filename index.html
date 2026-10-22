@@ -173,6 +173,10 @@
   // 3本目以降はここに1行足すだけでメニューに並ぶ。
   //   name: ゲーム名 / desc: ひとこと説明 / url: ルートからの相対パス / best: ベストスコアの localStorage キー
   //   art: 下の ART にある絵の名前（省略すると頭文字のタイル）
+  // 並び順（X-21）：localStorage "yubi.recent"（url の配列、最近が先頭、重複なし、最大 GAMES の数、日時は持たない）にある
+  //   ゲームをその順で先頭に、残りはこの GAMES の順のまま後ろ。カードを押したとき（click。Enter・タップも）に先頭へ入れるだけで、
+  //   その場では並べ替えない（押し間違い防止）。並べ直すのは開いたとき・pageshow・見えたとき（renderBest と同じ時）。
+  //   壊れた保存（JSON でない・配列でない・知らない url など）は使える分だけ使う。直接 URL でゲームを開いた分は数えない
   const GAMES = [
     { name: "ブロックパズル", desc: "落ちてくるブロックで横一列をそろえて消す", url: "games/blocks/", best: "blockpuzzle.best", art: "blocks" },
     { name: "ばいばいタイル", desc: "同じ数字をぶつけて合体、2048 を目指す", url: "games/2048/", best: "tile2048.best", art: "tiles" },
@@ -871,8 +875,47 @@
       sfx.unlock();
       sfx.play("tap");
     });
-    return { game, a, cv, val };
+    // 押したら「最近遊んだ」の先頭に入れる（保存だけ。並べ替えは戻ってきたとき）。失敗しても移動は止めない
+    a.addEventListener("click", () => saveRecent(game.url));
+    return { game, li, a, cv, val };
   });
+
+  // ===== 最近遊んだ順（X-21。決まりは GAMES の上のコメント） =====
+  const RECENT_KEY = "yubi.recent";
+  const KNOWN_URLS = new Set(GAMES.map((g) => g.url));
+  // 読み込んだ値から使える url だけを順に取り出す（文字・知っている url・初出のみ・最大 GAMES の数）
+  function cleanRecent(value) {
+    if (!Array.isArray(value)) return [];
+    return value
+      .filter((u, i) => typeof u === "string" && KNOWN_URLS.has(u) && value.indexOf(u) === i)
+      .slice(0, GAMES.length);
+  }
+  function readRecent() {
+    try { return cleanRecent(JSON.parse(localStorage.getItem(RECENT_KEY))); } catch (e) { return []; }
+  }
+  function withRecent(recent, url) {
+    return cleanRecent([url, ...recent.filter((u) => u !== url)]);
+  }
+  function saveRecent(url) {
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(withRecent(readRecent(), url))); }
+    catch (e) { console.warn("最近遊んだ順を保存できませんでした（並びは変わりません）", e); }
+  }
+  // recent にある行をその順で先頭に、残りは GAMES の順
+  function orderRows(recent) {
+    const rank = (r) => { const i = recent.indexOf(r.game.url); return i < 0 ? recent.length + rows.indexOf(r) : i; };
+    return [...rows].sort((x, y) => rank(x) - rank(y));
+  }
+  // li を付け直すだけ（カードは作り直さないので絵とベスト表示はそのまま）。並びが変わったときだけ一番上へ戻す
+  function placeRows() {
+    const want = orderRows(readRecent()).map((r) => r.li);
+    const now = [...list.children];
+    if (want.every((li, i) => now[i] === li)) return;
+    want.forEach((li) => list.appendChild(li));
+    window.scrollTo(0, 0);
+  }
+  function refresh() { placeRows(); renderBest(); }
+  // 戻ったときにブラウザが前のスクロール位置を書き戻すと、先頭に来たゲームが見えないので、自動の書き戻しを止める（いつも一番上から）
+  if ("scrollRestoration" in history) history.scrollRestoration = "manual";
 
   function renderBest() {
     rows.forEach(({ game, a, val }) => {
@@ -884,13 +927,13 @@
   }
   function paintAll() { rows.forEach(({ game, cv }) => paint(cv, game)); }
 
-  renderBest();
+  refresh();
   paintAll();
   // 数字の絵はフォントの読み込み後に描き直す
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(paintAll).catch(() => {});
-  // ゲームから戻ったとき（戻るボタン・bfcache からの復帰を含む）にベストを更新する
-  window.addEventListener("pageshow", renderBest);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) renderBest(); });
+  // ゲームから戻ったとき（戻るボタン・bfcache からの復帰を含む）に並びとベストを更新する
+  window.addEventListener("pageshow", refresh);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 
   // 長押しメニュー・iOS のピンチ拡大・ダブルタップ拡大を止める
   document.addEventListener("contextmenu", (e) => e.preventDefault());

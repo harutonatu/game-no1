@@ -191,7 +191,7 @@ export const tests = [
       nav = []; handler = []; tap = [];
       for (let i = 0; i < 6; i++) {
         await page.goto(BASE); await sleep(120);
-        const box = await page.locator('a.game').nth(i % 2).boundingBox();
+        const box = await page.locator(`a.game[href="${i % 2 ? 'games/2048/' : 'games/blocks/'}"]`).boundingBox();   // 最近遊んだ順（X-21）で並びが変わるので href で押す
         await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
         const t0 = Date.now();
         await page.mouse.down();

@@ -242,14 +242,14 @@ export const tests = [
       const { ctx, page } = await newPage(browser, V(), 'D9', { clock: true });
       await seed(page, { 'tile2048.best': '10' });
       await page.goto(BASE);
-      await page.locator('a.game').nth(1).click(); await page.waitForURL('**/games/2048/');
+      await page.locator('a.game[href="games/2048/"]').click(); await page.waitForURL('**/games/2048/');
       await page.evaluate(() => localStorage.setItem('tile2048.best', '99999'));
       await page.goBack(); await page.waitForURL(BASE); await wait(page, 150);
-      const a = await page.evaluate(() => [...document.querySelectorAll('.best b')].map((b) => b.textContent));
+      const a = await page.evaluate(() => document.querySelector('a.game[href="games/2048/"] .best b').textContent);   // 最近遊んだ順（X-21）で 2048 が先頭に来るので、href で読む
       await page.evaluate(() => localStorage.setItem('tile2048.best', '2048'));
       await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
-      const b = await page.evaluate(() => [...document.querySelectorAll('.best b')].map((b) => b.textContent));
-      check('戻るボタンで戻っても、bfcache 復帰(pageshow persisted)でもベストを再表示', a[1] === '99,999' && b[1] === '2,048', { a, b });
+      const b = await page.evaluate(() => document.querySelector('a.game[href="games/2048/"] .best b').textContent);   // 最近遊んだ順（X-21）で 2048 が先頭に来るので、href で読む
+      check('戻るボタンで戻っても、bfcache 復帰(pageshow persisted)でもベストを再表示', a === '99,999' && b === '2,048', { a, b });
       await ctx.close();
     },
   },
