@@ -1083,7 +1083,7 @@ export const tests = [
     },
   },
   {
-    id: 'KW21', tier: 'full', title: 'ほしくだき さいしょから（§19・AS-05）：遊び方の「わかった」の下に文字ボタン #helpRestart（44px 以上）、押すと確認 #restartCard（見出し・本文の決まった言葉、やめる #restartNo が先で primary・フォーカス、出た直後 400ms は押せない、場は止まる）。やめる・Esc で遊び方へ戻り保存は変わらない。さいしょから はじめる で読み直して ほし 1・武器 1 つから、asteroid.best・asteroid.help・ほかのゲームのキーは残り、asteroid.save は新しい・asteroid.save.bak は消える。押した直後の pagehide・hidden・save() でも古い保存を書き戻さず、開き直しても古い進みが戻らない。SE 縦・横で確認のボタンが画面内・44px 以上',
+    id: 'KW21', tier: 'full', title: 'ほしくだき さいしょから（§19・AS-05）：遊び方の「わかった」の下に文字ボタン #helpRestart（44px 以上）、押すと確認 #restartCard（見出し・本文の決まった言葉、やめる #restartNo が先で primary・フォーカス、出た直後 400ms は押せない、場は止まる）。やめる・Esc で遊び方へ戻り保存は変わらない。さいしょから はじめる で読み直して ほし 1・武器 1 つから、asteroid.best・asteroid.help・ほかのゲームのキーは残り、asteroid.save は新しい・asteroid.save.bak は消える。押した直後の pagehide・hidden・save() でも古い保存を書き戻さず、開き直しても古い進みが戻らない。消せない（removeItem が何もしない）ときは読み直さず古い状態のまま続け、カードを閉じて #hint「けせなかったよ。もう いちど ためしてね」と console.error、保存も止めたままにしない。SE 縦・横で確認のボタンが画面内・44px 以上',
     async run({ browser, check, errors }) {
       const others = { 'matomete.best': '123', 'seizai.best': '3' };
       // 古い進み：ほし 6・かけら 多め・武器 3 つ。bak も置いておく（消えること）
@@ -1174,6 +1174,25 @@ export const tests = [
       check(`読み直し後（ほし ${d1.star}）も、離れて開き直したあと（ほし ${d2.star}・武器 ${d2.slots.length}・かけら ${d2.kakera}）も古い進みが戻らない、bak なし`,
         d1.star === 1 && d1.slots.length === 1 && d2.star === 1 && d2.slots.length === 1 && d2.kakera < 123456 && JSON.parse(raw2).star === 1 && (await stored(page, 'asteroid.save.bak')) === null && (await stored(page, 'asteroid.best')) === '7', { d1: { star: d1.star, slots: d1.slots }, d2: { star: d2.star, slots: d2.slots, k: d2.kakera } });
       check('さいしょからの間にページエラーが無い', errors.length === e0, errors.slice(e0));
+      // (e) 消せないとき（removeItem が何もしない。§19.2 R6、もくもくこうば WW25 と同じ）：読み直さず、古い状態のまま続け、カードを閉じて必ず知らせる
+      const old3 = await prep(page);
+      const e1 = errors.length;
+      await page.evaluate(() => { window.__kw21 = 1; Storage.prototype.removeItem = function () {}; });
+      await page.click('#helpBtn'); await wait(page, 60);
+      await pressCard(page, '#helpRestart');
+      if (!(await unlocked(page, '#restartYes'))) throw new Error('#restartYes のロックが外れない（消せないとき）');
+      await page.click('#restartYes');
+      await wait(page, 500);
+      const same = await page.evaluate(() => window.__kw21 === 1);
+      const e5 = await gs(page);
+      const f5 = await page.evaluate(() => new Promise((ok) => { const f0 = window.AsteroidGame.getState().frames; setTimeout(() => ok([f0, window.AsteroidGame.getState().frames]), 400); }));
+      const c5 = e5.saveCount, r5 = await page.evaluate(() => window.AsteroidGame.save()), c6 = (await gs(page)).saveCount;
+      const hint5 = await txt(page, '#hint');
+      const errs5 = errors.slice(e1);
+      check(`消せないとき：読み直さない（${same}）・ほし ${e5.star}・武器 ${e5.slots.length} のまま・カードを閉じる（overlay ${e5.overlay}・phase ${e5.phase}）・場が動く（frames ${f5[0]} → ${f5[1]}）・#hint「${hint5}」・保存は止めたままにしない（save() ${r5}・saveCount ${c5} → ${c6}）・bak も残る・console.error あり`,
+        !!old3 && same && e5.star === 6 && e5.slots.length === 3 && e5.kakera >= 123456 && e5.overlay === null && e5.phase === 'fly' && f5[1] > f5[0] && hint5 === 'けせなかったよ。もう いちど ためしてね' && r5 === true && c6 === c5 + 1 && (await stored(page, 'asteroid.save.bak')) === '{old-bak' && JSON.parse(await stored(page, 'asteroid.save')).star === 6 && errs5.length >= 1 && errs5.every((e) => /さいしょから/.test(e)),
+        { same, star: e5.star, slots: e5.slots.length, overlay: e5.overlay, phase: e5.phase, f5, hint5, r5, c5, c6, errs5 });
+      errors.splice(e1);
       await ctx.close();
       // 画面内：SE 縦・横（ホーム画面・Safari）で「さいしょから あそぶ」と確認の 2 つのボタンが見えて押せる・44px 以上・重ならない
       const rows = [];

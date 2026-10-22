@@ -318,10 +318,11 @@ const M = [
   ['MK35 ほしくだき：2択の冒頭の案内 #choiceLead を出さない', '表示', 'games/asteroid/main.js', 'el.choiceLead.hidden = !lead;', 'el.choiceLead.hidden = true;'],
   ['MK36 ほしくだき：クリアの演出中の保存を同じ星にする（開き直すと同じ星をもう一度）', '保存', 'games/asteroid/logic.js', 'if (state.phase === "clear" && !(state.star === ENDING_STAR && !state.cleared)) {', 'if (false) {'],
   ['MK37 ほしくだき：壊れた bestT（キーが整数でない・0 以下・大きすぎ）を捨てない', '保存', 'games/asteroid/logic.js', 'if (!/^[1-9][0-9]{0,3}$/.test(k) || Number(k) > STAR_MAX || !isNum(v) || v <= 0 || v > 1e7) continue;', 'if (!isNum(v)) continue;'],
-  ['MK38 ほしくだき：さいしょからで asteroid.save.bak を消さない', 'データ消失', 'games/asteroid/main.js', 'const gone = removeKey(KEY_SAVE) && removeKey(KEY_BAK);', 'const gone = removeKey(KEY_SAVE);'],
+  ['MK38 ほしくだき：さいしょからで asteroid.save.bak を消さない', 'データ消失', 'games/asteroid/main.js', 'goneBak = removeKey(KEY_BAK);', 'goneBak = true;'],
   ['MK39 ほしくだき：さいしょからのあと保存を止めない（pagehide・hidden でメモリ上の古い状態を書き戻す）', 'データ消失', 'games/asteroid/main.js', '    if (!state || restarting) return false;\n', '    if (!state) return false;\n'],
-  ['MK40 ほしくだき：さいしょからで asteroid.best も消す', 'データ消失', 'games/asteroid/main.js', 'const gone = removeKey(KEY_SAVE) && removeKey(KEY_BAK);', 'const gone = removeKey(KEY_SAVE) && removeKey(KEY_BAK) && removeKey(KEY_BEST);'],
+  ['MK40 ほしくだき：さいしょからで asteroid.best も消す', 'データ消失', 'games/asteroid/main.js', 'goneBak = removeKey(KEY_BAK);', 'goneBak = removeKey(KEY_BAK) && removeKey(KEY_BEST);'],
   ['MK41 ほしくだき：さいしょからの確認で「やめる」を押しても消す', '誤タップ', 'games/asteroid/main.js', 'el.restartNo.addEventListener("click", cancelRestart);', 'el.restartNo.addEventListener("click", doRestart);'],
+  ['MK42 ほしくだき：さいしょからで消せないとき #hint で知らせない（古い保存が残ったのに気づけない）', '保存', 'games/asteroid/main.js', '      setHint(HINT_RESET_FAIL, 5000);\n', ''],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

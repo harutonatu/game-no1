@@ -49,6 +49,7 @@
   const PLUS_MS = 800;                 // 「＋12%」を出しておく時間
   const READY_MS = 800;
   const HINT_BLOCKED = "ほぞんが できないよ（このまま あそべるよ）";
+  const HINT_RESET_FAIL = "けせなかったよ。もう いちど ためしてね";   // さいしょから で消せない（§19.2 R6。もくもくこうばと同じ言葉）
 
   const $ = (id) => document.getElementById(id);
   const body = document.body;
@@ -757,15 +758,22 @@
   }
   function doRestart() {
     if (overlay !== "restart" || cardLocked() || restarting) return;
-    // 消す → 保存を止める → 新しい状態で始める。止めるのが先（消したあとの pagehide・visibilitychange・自動保存で古い状態を書き戻さない）
+    // 止める → 消す → 消えたか確かめる → 読み直す。止めるのが先（消したあとの pagehide・visibilitychange・自動保存で古い状態を書き戻さない）
     restarting = true;
+    const goneSave = removeKey(KEY_SAVE), goneBak = removeKey(KEY_BAK);   // 片方が消せなくても、もう片方は消してみる
+    if (!goneSave || !goneBak) {
+      // 消せない（§19.2 R6。もくもくこうばと同じ）：止めたのを戻し、古い状態のまま続ける。カードを閉じて必ず知らせる
+      console.error("ほしくだき: さいしょから で保存を消せませんでした");
+      restarting = false;
+      closeCard("restart");
+      setHint(HINT_RESET_FAIL, 5000);
+      ensureLoop();
+      return;
+    }
     stopLoop();
     clearLater();
-    const gone = removeKey(KEY_SAVE) && removeKey(KEY_BAK);
-    if (gone) {
-      try { location.reload(); return; } catch (e) { console.error("ほしくだき: 読み直せない", e); }
-    }
-    // 消せない（保存が使えない）・読み直せない：この場で新しく始める。消せなかった保存は新しい状態で上書きする
+    try { location.reload(); return; } catch (e) { console.error("ほしくだき: 読み直せない", e); }
+    // 消せたが読み直せない：この場で新しく始める（保存は消えているので新しい状態を書いてよい）
     const s = safeCall(() => L.newGame((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0), null) || safeCall(() => L.newGame(1), null);
     restarting = false;
     if (!s) { console.error("ほしくだき: newGame が動きません"); return; }
