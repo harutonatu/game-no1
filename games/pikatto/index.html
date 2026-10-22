@@ -21,7 +21,7 @@
     #setup（人数選び）→ #play（4つのすみのボタンで早押し）→ #overlay（結果カード）
 
   ラウンドの状態（#field[data-phase]）：
-    'ready'   … よーい（約 1000ms）。この間の押下は無視（PK-05）
+    'ready'   … よーい（約 1000ms）。この間の押下は無視（PK-05）。中央に「よーい」を出し、押したらヒントで「まだ」と返す（PK-31）
     'waiting' … 合図前。押したらフライング（applyPress → foul）
     'armed'   … 合図中。押した時刻が合図より後なら勝ち（前ならフライング、PK-10）
     'resolved'… 結果が確定。次ラウンド or 終了カード
@@ -318,14 +318,15 @@
   .field[data-players="4"] .corner[data-player="2"]::before,
   .field[data-players="4"] .corner[data-player="2"]::after { transform: rotate(180deg); }
   /* 合図中（armed）：すぐ光る（transition なし、PK-13）。明るさだけでなく白い太枠でも伝える */
+  /* 白い枠の内側に濃い線（3px）も重ねる。黄（3P）の上では白が見えにくい（約1.2:1）ので、濃い線で 3:1 以上にする（PK-37） */
   .field[data-phase="armed"] .corner {
     background-image: none;
     filter: brightness(1.1);
-    box-shadow: inset 0 0 0 5px #ffffff;
+    box-shadow: inset 0 0 0 5px #ffffff, inset 0 0 0 8px #111111;
     transition: none;
   }
   .field[data-phase="resolved"] .corner { background-image: linear-gradient(rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.22)); }
-  .corner[data-lit="on"] { background-image: none; filter: brightness(1.25) saturate(1.1); box-shadow: inset 0 0 0 5px #ffffff, 0 0 0 3px rgba(255, 255, 255, 0.6); }
+  .corner[data-lit="on"] { background-image: none; filter: brightness(1.25) saturate(1.1); box-shadow: inset 0 0 0 5px #ffffff, inset 0 0 0 8px #111111, 0 0 0 3px rgba(255, 255, 255, 0.6); }
   .corner:active { transform: scale(0.985); }
 
   /* 合図：中央に濃い色の「ピカッ！」と、フィールドの淡い光（PK-08・PK-19） */
@@ -360,6 +361,16 @@
     box-shadow: 0 0 0 3px #1b1206, 0 6px 18px rgba(0, 0, 0, 0.45);
   }
   .signal[data-phase="armed"] { opacity: 1; transition: none; }
+  /* よーい中：中央に落ち着いた色の「よーい」（合図の「ピカッ！」とは色・形を変える。光らない、PK-31） */
+  .signal[data-phase="ready"] { opacity: 1; transition: none; }
+  .signal[data-phase="ready"]::before { display: none; }
+  .signal .word.ready {
+    background: var(--panel);
+    color: var(--ink);
+    font-size: 28px;
+    box-shadow: 0 0 0 2px var(--line);
+    border: 2px dashed var(--muted);
+  }
   .signal[data-phase="armed"]::before { animation: flash 350ms ease-out both; }
   @keyframes flash {
     0% { opacity: 1; }
@@ -507,21 +518,21 @@
     <h1 class="title">ピカッと早押し</h1>
     <div class="head-tools">
       <button id="help-btn" class="tool" type="button" aria-label="遊び方">？</button>
-      <button id="sound-btn" class="tool sound-btn" type="button" aria-label="音のオン/オフ" aria-pressed="true">♪</button>
+      <button id="sound-btn" class="tool sound-btn" type="button" aria-label="音" aria-pressed="true">♪</button>
     </div>
   </header>
 
   <!-- 設定画面 -->
   <section class="setup" id="setup" aria-label="設定">
     <h2>にんずうをえらぶ</h2>
-    <p class="lead">ひかったら、じぶんの色を タップ。<br>ひかるまえに おすと、ほかのみんなに 1点。</p>
+    <p class="lead" id="setup-lead">ひかったら、じぶんの色を タップ。<br>ひかるまえに おすと、ほかのみんなに 1点。</p>
     <div class="players-pick" id="players-pick" role="group" aria-label="人数">
       <button type="button" data-players="2" aria-pressed="true">2人</button>
       <button type="button" data-players="3" aria-pressed="false">3人</button>
       <button type="button" data-players="4" aria-pressed="false">4人</button>
       <button type="button" data-players="solo" aria-pressed="false">ひとりで れんしゅう</button>
     </div>
-    <p class="rule">さきに 3点とったら 勝ち（5回で おわり）</p>
+    <p class="rule" id="setup-rule">さきに 3点とったら 勝ち（5回で おわり）</p>
     <button class="start" type="button" data-action="start">はじめる</button>
   </section>
 
@@ -563,6 +574,8 @@
   const $ = (id) => document.getElementById(id);
   const el = {
     setup: $("setup"),
+    setupLead: $("setup-lead"),
+    setupRule: $("setup-rule"),
     play: $("play"),
     playersPick: $("players-pick"),
     startBtn: $("setup").querySelector('[data-action="start"]'),
@@ -585,8 +598,8 @@
   document.addEventListener("pointerdown", () => sfx.unlock(), { capture: true });
   document.addEventListener("touchend", () => sfx.unlock(), { capture: true });
   function renderSoundBtn() {
+    // オン・オフは aria-pressed だけで伝える（名前に「オン」を入れると「音：オン、オン」と二重に読まれる、PK-36）
     el.soundBtn.setAttribute("aria-pressed", String(!!sfx.on));
-    el.soundBtn.setAttribute("aria-label", sfx.on ? "音：オン" : "音：オフ");
   }
   el.soundBtn.addEventListener("click", () => { sfx.toggle(); renderSoundBtn(); });
   renderSoundBtn();
@@ -606,6 +619,7 @@
   let returnCard = null;         // 遊び方を閉じたときに戻すカード
   let bestUpdated = false;       // このラウンドでベストを更新した（PK-15）
   let focusBeforeCard = null;    // カードを開く前にフォーカスがあった要素（閉じたら戻す）
+  let confirmBack = null;        // 「メニューへ もどる？」で「やめる」を押したときに戻すカード（PK-33）
   let bestSolo = loadBestSolo();
   let bestAvgSolo = loadBestAvgSolo();
   let prevBestSolo = 0;          // このラウンドの前のベスト（ベストまでの差の表示用）
@@ -663,12 +677,20 @@
   }
 
   // ===== 設定画面 =====
+  // 説明の文はモードで変える（ひとりで れんしゅう は点を競わない、PK-34）
+  const SETUP_TEXT = {
+    vs: { lead: "ひかったら、じぶんの色を タップ。<br>ひかるまえに おすと、ほかのみんなに 1点。", rule: "さきに 3点とったら 勝ち（5回で おわり）" },
+    solo: { lead: "ひかったら、すぐに タップ。<br>はやさを はかって、ベストを めざそう。", rule: "5回 はかったら おわり（へいきんも でるよ）" }
+  };
   function selectPlayers(v) {
     selectedPlayers = v;
     el.playersPick.querySelectorAll("button").forEach((b) => {
       b.setAttribute("aria-pressed", String(String(b.dataset.players) === String(v)));
     });
     el.startBtn.disabled = selectedPlayers === null;
+    const t = SETUP_TEXT[v === "solo" ? "solo" : "vs"];
+    if (el.setupLead) el.setupLead.innerHTML = t.lead;
+    if (el.setupRule) el.setupRule.textContent = t.rule;
   }
   el.playersPick.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-players]");
@@ -771,12 +793,18 @@
   }
 
   // ===== ヒント（1行目：回数、2行目：いまの状態。高さは2行分で固定） =====
+  // 読み上げ（aria-live）は変わった所だけ：毎回 innerHTML で作り直すと「〇回目…」から全文を読み直し、
+  // 「いまだ！」が遅れる（PK-36）。2つの span は作り直さず、文字が変わったときだけ textContent を変える
   function setHint(msg) {
     if (!gameState) { el.hint.textContent = msg || ""; return; }
     const head = `${gameState.round}回目（全${MAX_ROUNDS}回）` + (gameState.mode === "solo" ? "" : `・${WIN_SCORE}点で勝ち`);
-    el.hint.innerHTML = `<span class="round"></span><span class="msg"></span>`;
-    el.hint.querySelector(".round").textContent = head;
-    el.hint.querySelector(".msg").textContent = msg || "";
+    let r = el.hint.querySelector(":scope > .round"), m = el.hint.querySelector(":scope > .msg");
+    if (!r || !m || el.hint.children.length !== 2) {
+      el.hint.innerHTML = `<span class="round"></span><span class="msg"></span>`;
+      r = el.hint.querySelector(".round"); m = el.hint.querySelector(".msg");
+    }
+    if (r.textContent !== head) r.textContent = head;
+    if (m.textContent !== (msg || "")) m.textContent = msg || "";
   }
 
   // ===== ラウンド =====
@@ -797,6 +825,9 @@
     bestUpdated = false;
     el.field.dataset.phase = "ready";
     signalOff();
+    // よーい中だと見て分かるように、中央に「よーい」を出す（待ち中・合図とは見た目を変える、PK-31）
+    el.signal.innerHTML = `<span class="word ready">よーい</span>`;
+    el.signal.dataset.phase = "ready";
     clearLit();
     setHint("よーい…");
     sfx.play("ready");
@@ -817,6 +848,7 @@
     if (input) input.discard();
     ready = false;
     el.field.dataset.phase = "waiting";
+    signalOff();
     setHint("ひかったら じぶんの色を タップ");
     const delay = Math.max(0, Number(gameState.signalDelay) || 1000);
     signalTimer = setTimeout(fireSignal, delay);
@@ -838,6 +870,8 @@
     const L = window.PikattoLogic;
     if (!L || !gameState || screen !== "play") return false;
     // よーい・一時停止中は無視（フライングにしない）。判断は押下が届いた時点で行う
+    // よーい中に押したら、ヒントで「まだ」と返す（反応がなくて「壊れた？」と思わないように、PK-31）
+    if (ready && !paused) { setHint("まだ ひかってないよ。まってね"); return false; }
     if (ready || paused) return false;
     if (gameState.phase !== "waiting" && gameState.phase !== "armed") return false;
     const { state: next, outcome } = L.applyPress(gameState, { playerIdx, pressedAt });
@@ -989,7 +1023,7 @@
       mark = `<div class="winner-mark" aria-hidden="true" style="background:${colorFor(w)};color:${inkFor(w)}">${PLAYER_ICONS[w] || ""}</div>`;
     }
     const bestLine = solo && bestSolo > 0 ? `<p>ベスト ${escapeHtml(fmtMs(bestSolo))}</p>` : "";
-    showCard(`
+    const finalHtml = `
       ${mark}
       <h2>${escapeHtml(title)}</h2>
       <p class="res">${escapeHtml(body)}</p>
@@ -1002,7 +1036,15 @@
         <div class="row"><button class="cta primary" type="button" data-cmd="again">もう一度</button></div>
         <div class="row"><button class="cta" type="button" data-cmd="menu">メニューへ</button></div>
       </div>
-    `, { soft: true, lock: true, final: true, best: bestUpdated });
+    `;
+    const finalOpts = { soft: true, lock: true, final: true, best: bestUpdated, kind: "final" };
+    // 最終カードを待つ 400ms の間に「？」を開いていたら、遊び方を勝手に閉じない。
+    // 「わかった」で閉じたときに最終カードを出す（PK-35）
+    if (!el.overlay.hidden && currentCard && currentCard.opts && currentCard.opts.kind === "help") {
+      returnCard = { html: finalHtml, opts: finalOpts };
+      return;
+    }
+    showCard(finalHtml, finalOpts);
   }
   function scoresLineHtml() {
     if (gameState.mode === "solo") return "";
@@ -1014,21 +1056,41 @@
   }
   // resume=true：プレイ中に開いたとき（close の代わりに「つづける」）
   function showHelpCard({ resume = false } = {}) {
+    // プレイ中に開いたときは「メニューへ」も出す（後ろの a#back は押せないため、PK-33）
     const btn = resume
-      ? `<button class="cta primary" type="button" data-cmd="resume">つづける</button>`
+      ? `<button class="cta primary" type="button" data-cmd="resume">つづける</button></div><div class="row"><button class="cta" type="button" data-cmd="menu">メニューへ</button>`
       : `<button class="cta primary" type="button" data-cmd="close">わかった</button>`;
     showCard(`
       <h2>遊び方</h2>
       <dl class="howto">
-        <dt>にんずう</dt><dd>2〜4人。4つのすみのボタンに1人ずつ。ひとりで れんしゅう もできます。</dd>
-        <dt>ひかる</dt><dd>よーいの あと、1〜4秒で 画面がピカッと ひかります。</dd>
-        <dt>勝ち</dt><dd>ひかったら じぶんの色を タップ。いちばん はやい人に 1点。さきに 3点とったら 勝ち。5回で おわり、同じ点なら ひきわけ。</dd>
-        <dt>まだ</dt><dd>ひかるまえに おすと、ほかのみんなに 1点。</dd>
-        <dt>れんしゅう</dt><dd>ひかってから おすまでの はやさを はかります。はやさは ms（1000分の1秒）で 出ます。</dd>
-        <dt>iPad</dt><dd>4本・5本指のジェスチャーは、iPad の設定でオフにすると安全です。</dd>
+        <dt>にんずう</dt><dd>2〜4人。4つの すみの ボタンに 1人ずつ。ひとりで れんしゅう も できます。</dd>
+        <dt>ひかる</dt><dd>「よーい」の あと、すこし まつと がめんが ピカッと ひかります。</dd>
+        <dt>勝ち</dt><dd>ひかったら じぶんの色を タップ。いちばん はやい人に 1点。さきに 3点とったら 勝ち。5回で おわり、おなじ点なら ひきわけ。</dd>
+        <dt>まだ</dt><dd>ひかるまえに おすと、ほかの みんなに 1点。</dd>
+        <dt>れんしゅう</dt><dd>ひかってから おすまでの はやさを はかります。かずが 小さいほど はやい！（230 ms は 0.23びょう）</dd>
+        <dt>iPad</dt><dd>手のひらや たくさんの ゆびで さわると、ホームに もどる ことが あります。おとなの人が iPad の「せってい」で ジェスチャを オフに すると あんしんです。</dd>
       </dl>
       <div class="btns"><div class="row">${btn}</div></div>
-    `);
+    `, { kind: "help" });
+  }
+
+  // ===== メニューへ（対戦の途中で点が消えるときだけ確かめる、PK-33） =====
+  // 対戦（vs）で、まだ終わっておらず、だれかが 1点以上持っているときだけ「点が消える」
+  function scoresWouldBeLost() {
+    return !!gameState && screen === "play" && gameState.mode !== "solo" && gameState.phase !== "done"
+      && (gameState.scores || []).some((n) => n > 0);
+  }
+  function goMenu() { location.href = "../../"; }
+  function showMenuConfirm() {
+    confirmBack = currentCard;
+    showCard(`
+      <h2>メニューへ もどる？</h2>
+      <p class="res">いまの 点は きえます。</p>
+      <div class="btns">
+        <div class="row"><button class="cta primary" type="button" data-cmd="menu-cancel">やめる</button></div>
+        <div class="row"><button class="cta" type="button" data-cmd="menu-go">メニューへ</button></div>
+      </div>
+    `, { soft: true, kind: "confirm" });
   }
 
   // opts: soft（背景を薄く）、lock（600ms ボタンを押せない）、final（data-final）、best（data-best）
@@ -1083,10 +1145,21 @@
     const back = focusBeforeCard;
     focusBeforeCard = null;
     if (back && back.isConnected && !back.disabled && !back.closest("[hidden]")) back.focus({ preventScroll: true });
+    else focusDefault();
     delete el.card.dataset.final;
     delete el.card.dataset.best;
     currentCard = null;
     returnCard = null;
+    confirmBack = null;
+  }
+  // 戻す先が無いとき（起動直後の遊び方など）、フォーカスが body に落ちないよう画面の中に置く（PK-35）
+  function focusDefault() {
+    const a = document.activeElement;
+    if (a && a !== document.body && !el.overlay.contains(a)) return;
+    let t = null;
+    if (screen === "play") t = el.corners.find((c) => !c.hidden) || el.helpBtn;
+    else t = el.playersPick.querySelector('button[aria-pressed="true"]') || el.startBtn;
+    if (t && !t.disabled) t.focus({ preventScroll: true });
   }
 
   el.overlay.addEventListener("click", (e) => {
@@ -1095,7 +1168,15 @@
     const cmd = b.dataset.cmd;
     if (cmd === "next") { hideOverlay(); startRound(); }
     else if (cmd === "again") { hideOverlay(); startGame(); }
-    else if (cmd === "menu") { location.href = "../../"; }
+    else if (cmd === "menu") { if (scoresWouldBeLost()) showMenuConfirm(); else goMenu(); }
+    else if (cmd === "menu-go") { goMenu(); }
+    else if (cmd === "menu-cancel") {
+      // 確かめる前のカード（一時停止・遊び方・結果）に戻す（鍵はかけ直さない）
+      const back = confirmBack;
+      confirmBack = null;
+      if (back) showCard(back.html, Object.assign({}, back.opts, { lock: false }));
+      else hideOverlay();
+    }
     else if (cmd === "resume") { markHelpSeen(); resumeRound(); }
     else if (cmd === "close") {
       markHelpSeen();
@@ -1105,6 +1186,14 @@
       if (back) showCard(back.html, Object.assign({}, back.opts, { lock: false }));
     }
   });
+  // キーの押しっぱなし（repeat）でカードのボタンを押さない（PK-35）。
+  // 隅で Enter を押したまま 600ms たつと「つぎへ」にフォーカスが移り、repeat の keydown で押されてしまうため。
+  // （Space は離したときに押され、そのボタンの上で押し始めていなければ押されないので、ここでは止めなくてよい）
+  document.addEventListener("keydown", (e) => {
+    if (!e.repeat || (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar")) return;
+    if (el.overlay.contains(e.target)) e.preventDefault();
+  }, { capture: true });
+
   el.helpBtn.addEventListener("click", () => {
     sfx.unlock();
     // プレイ中（よーい・待ち・合図中）は止めてから遊び方を出す（PK-04）

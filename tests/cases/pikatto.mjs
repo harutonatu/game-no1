@@ -1,5 +1,5 @@
 // PK: ピカッと早押し（games/pikatto/）。
-//   Node で logic.js・input.js を直接読む PK1・PK9・PK14、静的検査の PK10（ブラウザ不要）、画面のテスト PK2〜PK8・PK11〜PK13・PK15〜PK18。
+//   Node で logic.js・input.js を直接読む PK1・PK9・PK14、静的検査の PK10（ブラウザ不要）、画面のテスト PK2〜PK8・PK11〜PK13・PK15〜PK22（PK19〜PK22 は v31 の PK-31〜PK-37）。
 //   画面の DOM は契約（docs/pikatto-contract.md §5）だけに頼る：
 //     a#back・.setup・.setup [data-players=…]・.setup [data-action="start"]・.play・.corner[data-player="1..4"]・
 //     #field[data-phase]（ready/waiting/armed/resolved/paused）・#field[data-players]・#signal・#hint・#scores・
@@ -693,6 +693,10 @@ export const tests = [
         check('結果画面から a#back でメニューに戻る', page.url() === BASE, page.url());
       } else if (ov.cmds.includes('menu')) {
         await cmd(page, 'menu');
+        // 対戦の途中で点（1P が 1点）が消えるので、確かめるカードが出る（PK-33）。「メニューへ」で戻る
+        const cf = await overlayInfo(page);
+        check('結果画面の「メニューへ」：点が消えるので確かめるカード（[data-cmd="menu-go"]・[data-cmd="menu-cancel"]）が出る（PK-33）', cf.cmds.includes('menu-go') && cf.cmds.includes('menu-cancel') && page.url() !== BASE, cf);
+        if (cf.cmds.includes('menu-go')) await page.click('.overlay [data-cmd="menu-go"]');
         await page.waitForURL(BASE, { timeout: 5000 }).catch(() => {});
         check('結果画面から [data-cmd="menu"] でメニューに戻る', page.url() === BASE, page.url());
       } else {
@@ -992,6 +996,206 @@ export const tests = [
         return { during, after, hasReset: typeof h.reset === 'function' };
       });
       check('PikattoInput.attach の戻り値に reset() があり、detach で touchAction・userSelect が attach 前の値に戻る', st.hasReset && st.during.ta === 'none' && st.after.ta === 'pan-y' && st.after.us === 'text', st);
+      await ctx.close();
+    },
+  },
+
+  // ================= PK19 よーいの見た目・設定と遊び方の言葉 =================
+  {
+    id: 'PK19', tier: 'full', title: 'ピカッと よーい・言葉：よーい中は中央に「よーい」（合図とは違う見た目）、押すとヒントで「まだ」と返しフライングにしない、設定の説明はモードで変わる、遊び方に「ms（1000分の1秒）」「4本・5本指」を使わない（PK-31・PK-32・PK-34）',
+    async run({ browser, check }) {
+      const { ctx, page } = await openPK(browser, 'PK19');
+      const setupText = () => page.evaluate(() => ({ lead: (document.querySelector('.setup .lead')?.textContent || '').trim(), rule: (document.querySelector('.setup .rule')?.textContent || '').trim() }));
+      const vs = await setupText();
+      check(`設定（2人）：説明に「1点」、ルールに「3点」（「${vs.lead}」「${vs.rule}」）`, /1点/.test(vs.lead) && /3点/.test(vs.rule), vs);
+      await page.locator('.setup [data-players="solo"]').tap(); await wait(page, 150);
+      const so = await setupText();
+      check(`設定（ひとりで れんしゅう）：説明・ルールが対戦の文と違い、「ほかのみんなに 1点」「3点」を言わず「はやさ」「5回」を言う（「${so.lead}」「${so.rule}」）（PK-34）`,
+        so.lead !== vs.lead && so.rule !== vs.rule && !/ほかの\s*みんな|1点/.test(so.lead) && !/3点/.test(so.rule) && /はやさ/.test(so.lead) && /5回/.test(so.rule), so);
+      await page.locator('.setup [data-players="4"]').tap(); await wait(page, 150);
+      check('4人に戻すと対戦の説明に戻る', eq(await setupText(), vs), await setupText());
+      // 遊び方の言葉（PK-32）
+      await page.locator('#help-btn').tap(); await wait(page, 200);
+      const help = (await overlayInfo(page)).text;
+      check('遊び方：「ms（1000分の1秒）」「4本・5本指」「ジェスチャー」「設定」「安全」「画面」を使わず、よーい・れんしゅうの はやさ（びょう）を やさしい言葉で書く',
+        !/1000分|4本|5本指|ジェスチャー|設定|安全|画面/.test(help) && /よーい/.test(help) && /びょう/.test(help), help);
+      await page.click('.overlay [data-cmd="close"]'); await wait(page, 150);
+      // よーいの見た目と押したときの反応（PK-31）
+      await page.locator('.setup [data-players="2"]').tap(); await wait(page, 150);
+      await page.locator('.setup [data-action="start"]').tap(); await wait(page, 300);
+      const sig = () => page.evaluate(() => { const s = document.querySelector('#signal'); const w = s.querySelector('.word'); return { phase: s.dataset.phase || null, text: (s.textContent || '').trim(), op: getComputedStyle(s).opacity, bg: w ? getComputedStyle(w).backgroundColor : null }; });
+      const msg = () => page.evaluate(() => (document.querySelector('#hint .msg')?.textContent || '').trim());
+      const r0 = await sig();
+      check(`よーい中：#field[data-phase="ready"]、中央に「よーい」が見える（#signal[data-phase="ready"]、不透明 ${r0.op}）`, (await fieldPhase(page)) === 'ready' && r0.phase === 'ready' && /よーい/.test(r0.text) && Number(r0.op) > 0.9, r0);
+      const pr = await pressFor(page, 0);
+      await page.locator('.corner[data-player="2"]').tap(); await wait(page, 100);
+      const s1 = await getState(page), ov1 = await overlayInfo(page), m1 = await msg();
+      check(`よーい中に押す：フライングにせず（pressFor=false・点 0,0・カードなし・よーいのまま）、ヒントが「まだ」と返す（「${m1}」）`,
+        pr === false && eq(s1.scores, [0, 0]) && !s1.lastOutcome && !ov1.shown && s1.ready === true && /まだ/.test(m1), { pr, s1, ov1, m1 });
+      await wait(page, READY_MS);
+      const w0 = await sig(), m2 = await msg();
+      check(`よーいの後（waiting）：中央の「よーい」は消え、ヒントは「${m2}」`, (await fieldPhase(page)) === 'waiting' && w0.phase === null && w0.text === '' && /ひかったら/.test(m2), { w0, m2 });
+      await arm(page);
+      const a0 = await sig();
+      check(`合図：中央は「ピカッ！」、「よーい」とは地の色が違う（${r0.bg} と ${a0.bg}）`, a0.phase === 'armed' && /ピカッ/.test(a0.text) && a0.bg !== r0.bg, { a0, r0 });
+      await ctx.close();
+    },
+  },
+
+  // ================= PK20 メニューへの確認 =================
+  {
+    id: 'PK20', tier: 'full', title: 'ピカッと メニューへ：対戦の途中で点が消えるときだけ確かめる（やめる／メニューへ）、やめるで元のカードに戻る、プレイ中の「？」のカードにも「メニューへ」、点が無い・れんしゅう・最終結果では確かめずに戻る（PK-33）',
+    async run({ browser, check }) {
+      const { ctx, page } = await openPK(browser, 'PK20');
+      await startVs(page, 4);
+      await playRounds(page, [0]);
+      await cmd(page, 'menu');
+      const c1 = await overlayInfo(page);
+      check('4人・1P が 1点の結果カードで「メニューへ」：確かめるカード（「きえ」・[menu-cancel]・[menu-go]）が出て、まだメニューへ行かない',
+        c1.shown && c1.cmds.includes('menu-cancel') && c1.cmds.includes('menu-go') && /きえ/.test(c1.text) && page.url() === PK_URL, { c1, url: page.url() });
+      const f1 = await page.evaluate(() => document.activeElement?.dataset?.cmd || document.activeElement?.tagName);
+      check(`確かめるカードでは安全な「やめる」（menu-cancel）にフォーカス（${f1}）`, f1 === 'menu-cancel', f1);
+      await page.click('.overlay [data-cmd="menu-cancel"]'); await wait(page, 100);
+      const c2 = await overlayInfo(page), s2 = await getState(page);
+      check('「やめる」で結果カードに戻る（[data-cmd="next"] が押せる、点は [1,0,0,0] のまま）', c2.shown && c2.cmds.includes('next') && eq(s2.scores, [1, 0, 0, 0]) && !(await page.isDisabled('.overlay [data-cmd="next"]')), { c2, s2: s2.scores });
+      await page.click('.overlay [data-cmd="next"]'); await wait(page, 100);
+      // プレイ中の「？」のカードに「メニューへ」
+      await page.locator('#help-btn').tap(); await wait(page, 150);
+      const h1 = await overlayInfo(page);
+      check('プレイ中の「？」のカードに [data-cmd="resume"] と [data-cmd="menu"] がある', h1.cmds.includes('resume') && h1.cmds.includes('menu'), h1);
+      await page.click('.overlay [data-cmd="menu"]'); await wait(page, 100);
+      const h2 = await overlayInfo(page);
+      check('「？」のカードの「メニューへ」も、点が消えるので確かめる', h2.cmds.includes('menu-go') && page.url() === PK_URL, h2);
+      await page.click('.overlay [data-cmd="menu-cancel"]'); await wait(page, 100);
+      const h3 = await overlayInfo(page);
+      check('「やめる」で遊び方のカード（つづける）に戻る', h3.cmds.includes('resume') && h3.cmds.includes('menu') && /遊び方/.test(h3.text), h3);
+      await page.click('.overlay [data-cmd="resume"]'); await wait(page, 100);
+      check('「つづける」で同じ回のよーいから（round=2、点はそのまま）', (await getState(page)).ready === true && (await getState(page)).round === 2 && eq((await getState(page)).scores, [1, 0, 0, 0]));
+      // 一時停止のカード → 確かめる → メニューへ
+      await wait(page, READY_MS);
+      await setHidden(page, true); await wait(page, 100); await setHidden(page, false); await wait(page, 100);
+      await page.click('.overlay [data-cmd="menu"]'); await wait(page, 100);
+      const p1 = await overlayInfo(page);
+      check('一時停止のカードの「メニューへ」も確かめる', p1.cmds.includes('menu-go'), p1);
+      await page.click('.overlay [data-cmd="menu-go"]');
+      await page.waitForURL(BASE, { timeout: 5000 }).catch(() => {});
+      check('確かめるカードの「メニューへ」でメニューに戻る', page.url() === BASE, page.url());
+      // 点が無いときは確かめない
+      await page.goto(PK_URL); await wait(page, 300);
+      await startVs(page, 2);
+      await page.locator('#help-btn').tap(); await wait(page, 150);
+      await page.click('.overlay [data-cmd="menu"]');
+      await page.waitForURL(BASE, { timeout: 5000 }).catch(() => {});
+      check('まだ だれも点が無いときの「？」→「メニューへ」は確かめずに戻る', page.url() === BASE, page.url());
+      // れんしゅうは確かめない（ベストは保存済み）
+      await page.goto(PK_URL); await wait(page, 300);
+      await startSolo(page);
+      await arm(page); await pressAfter(page, 0, 300);
+      await cmd(page, 'menu');
+      await page.waitForURL(BASE, { timeout: 5000 }).catch(() => {});
+      check('ひとりで れんしゅう の結果カードの「メニューへ」は確かめずに戻る', page.url() === BASE, page.url());
+      // 最終結果（試合は終わっている）は確かめない
+      await page.goto(PK_URL); await wait(page, 300);
+      await startVs(page, 2);
+      await playRounds(page, [0, 0, 0]);
+      const fc = await finalCard(page);
+      check('準備：最終カード（data-final="1"）', fc.final === '1', fc);
+      await cmd(page, 'menu');
+      await page.waitForURL(BASE, { timeout: 5000 }).catch(() => {});
+      check('最終カードの「メニューへ」は確かめずに戻る', page.url() === BASE, page.url());
+      await ctx.close();
+    },
+  },
+
+  // ================= PK21 キーボード =================
+  {
+    id: 'PK21', tier: 'full', title: 'ピカッと キーボード：カードを閉じてもフォーカスが body に落ちない、Enter・Space の押しっぱなしで「つぎへ」が押されない、最終カードを待つ間に開いた「？」が勝手に閉じない（PK-35）',
+    async run({ browser, check }) {
+      // 起動直後の遊び方（初回だけ出る）を Enter で閉じる
+      const { ctx, page } = await newPage(browser, V(), 'PK21', { clock: true });
+      await seed(page, {});
+      await page.goto(PK_URL); await wait(page, 400);
+      const o0 = await overlayInfo(page);
+      check('準備：初回の遊び方が出て、「わかった」にフォーカス', o0.shown && o0.cmds.includes('close') && (await page.evaluate(() => document.activeElement?.dataset?.cmd)) === 'close', o0);
+      await page.keyboard.press('Enter'); await wait(page, 150);
+      const f0 = await page.evaluate(() => ({ body: document.activeElement === document.body, inSetup: !!document.activeElement?.closest('.setup'), tag: document.activeElement?.outerHTML.slice(0, 60) }));
+      check(`Enter で閉じると、フォーカスは body ではなく設定画面のボタン（${f0.tag}）`, !(await overlayInfo(page)).shown && !f0.body && f0.inSetup, f0);
+      // Enter の押しっぱなし
+      await page.click('.setup [data-players="2"]'); await page.click('.setup [data-action="start"]'); await wait(page, 300);
+      await arm(page);
+      await page.evaluate(() => document.querySelector('.corner[data-player="1"]').focus());
+      await page.keyboard.down('Enter'); await wait(page, 100);
+      check('準備：1P の隅で Enter を押すと結果カード', (await overlayInfo(page)).cmds.includes('next') && (await getState(page)).scores[0] === 1);
+      await wait(page, CARD_LOCK_MS + 50);
+      for (let i = 0; i < 4; i++) { await page.keyboard.down('Enter'); await wait(page, 40); }   // 2回目からは repeat=true
+      await page.keyboard.up('Enter'); await wait(page, 100);
+      const k1 = await overlayInfo(page), ks1 = await getState(page);
+      const focusNext = await page.evaluate(() => document.activeElement?.dataset?.cmd);
+      check(`Enter を押したまま 600ms たっても（repeat の keydown が「つぎへ」に届いても）「つぎへ」は押されない（round=${ks1.round}、フォーカス ${focusNext}）`, k1.shown && k1.cmds.includes('next') && ks1.round === 1 && focusNext === 'next', { k1, round: ks1.round });
+      await page.keyboard.press('Enter'); await wait(page, 150);
+      check('押し直した Enter では「つぎへ」が押される（round=2）', (await getState(page)).round === 2 && !(await overlayInfo(page)).shown);
+      // Space の押しっぱなし（Space は離したときに押されるので、離すのが「つぎへ」の上でも押さない）
+      await arm(page);
+      await page.evaluate(() => document.querySelector('.corner[data-player="1"]').focus());
+      await page.keyboard.down(' '); await wait(page, 100);
+      await wait(page, CARD_LOCK_MS + 50);
+      await page.keyboard.up(' '); await wait(page, 100);
+      const k2 = await overlayInfo(page), ks2 = await getState(page);
+      check(`隅で押した Space を「つぎへ」にフォーカスが移ってから離しても押されない（round=${ks2.round}、点 ${ks2.scores}）`, k2.shown && k2.cmds.includes('next') && ks2.round === 2 && ks2.scores[0] === 2, { k2, round: ks2.round });
+      await page.keyboard.press(' '); await wait(page, 150);
+      check('押し直した Space では「つぎへ」が押される（round=3）', (await getState(page)).round === 3);
+      // 最終カードを待つ 400ms の間に「？」
+      await arm(page); await pressAfter(page, 0, 200);
+      check('準備：3点目で phase=done、最終カードはまだ出ていない', (await getState(page)).phase === 'done' && !(await overlayInfo(page)).shown);
+      await page.click('#help-btn'); await wait(page, 800);
+      const q1 = await overlayInfo(page);
+      check('最終カードを待つ間に開いた遊び方は、時間がたっても勝手に閉じない（[close] のまま、data-final なし）', q1.shown && q1.cmds.includes('close') && !q1.final && /遊び方/.test(q1.text), q1);
+      await page.click('.overlay [data-cmd="close"]'); await wait(page, 150);
+      const q2 = await overlayInfo(page);
+      check('「わかった」で閉じると最終カード（data-final="1"、もう一度・メニューへ）が出る', q2.final === '1' && q2.cmds.includes('again') && q2.cmds.includes('menu'), q2);
+      await ctx.close();
+    },
+  },
+
+  // ================= PK22 読み上げ・合図の枠のコントラスト =================
+  {
+    id: 'PK22', tier: 'full', title: 'ピカッと 読み上げ・見え方：#hint は変わった行だけ書き換える（「いまだ！」で回数の行を読み直さない）、♪の名前にオン／オフを入れない（aria-pressed だけ）、黄（3P）の上でも合図の枠が 3:1 以上（PK-36・PK-37）',
+    async run({ browser, check }) {
+      const { ctx, page } = await openPK(browser, 'PK22');
+      const snd = () => page.evaluate(() => { const b = document.querySelector('#sound-btn'); return { label: b.getAttribute('aria-label'), pressed: b.getAttribute('aria-pressed') }; });
+      const b0 = await snd();
+      await page.click('#sound-btn'); await wait(page, 100);
+      const b1 = await snd();
+      await page.click('#sound-btn'); await wait(page, 100);
+      check(`♪：aria-label（「${b0.label}」）にオン／オフを入れず、切り替えても名前は同じ、aria-pressed が ${b0.pressed}→${b1.pressed}`, !!b0.label && !/オン|オフ/.test(b0.label) && b0.label === b1.label && b0.pressed !== b1.pressed, { b0, b1 });
+      await startVs(page, 3);
+      await wait(page, READY_MS);
+      await page.evaluate(() => {
+        window.__hm = [];
+        const h = document.querySelector('#hint');
+        new MutationObserver((ms) => ms.forEach((m) => {
+          const t = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+          window.__hm.push({ type: m.type, on: t === h ? 'hint' : (t.closest('#hint > span')?.className || '?') });
+        })).observe(h, { childList: true, subtree: true, characterData: true });
+      });
+      await arm(page);
+      const hm = await page.evaluate(() => window.__hm.splice(0));
+      const msg = await page.evaluate(() => document.querySelector('#hint .msg')?.textContent);
+      check(`合図で #hint は「いまだ！」の行（.msg）だけ変わる。#hint の子の作り直し・回数の行（.round）の書き換えはない（${JSON.stringify(hm)}）`,
+        msg === 'いまだ！' && hm.length > 0 && hm.every((m) => m.on === 'msg'), { hm, msg });
+      // 黄（3P）の合図の枠
+      const c = await page.evaluate(() => {
+        const e = document.querySelector('.corner[data-player="3"]');
+        const cs = getComputedStyle(e);
+        const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+        const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+        const nums = (s) => s.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number);
+        const bg = nums(cs.backgroundColor);
+        const rings = (cs.boxShadow.match(/rgba?\([^)]*\)[^,]*inset|inset[^,]*rgba?\([^)]*\)/g) || []).map((s) => { const col = nums(s.match(/rgba?\([^)]*\)/)[0]); return { col, r: Math.round(ratio(col, bg) * 100) / 100 }; });
+        return { bg, shadow: cs.boxShadow, rings, phase: document.querySelector('#field').dataset.phase };
+      });
+      const best = Math.max(0, ...c.rings.map((x) => x.r));
+      check(`合図中の 3P（黄）の隅：内側の枠のどれかが地の色と ${best}:1（3:1 以上）`, c.phase === 'armed' && best >= 3, c);
       await ctx.close();
     },
   },
