@@ -5,7 +5,8 @@
  *
  * - 時間：rAF ごとに差を取り 0.1 秒で頭打ち、STEP（1/30 秒）ずつ step（1 フレームに最大 3 回。足りない分は捨てる）。
  * - 閉じている間は止まる（ユーザー決定「止まる」）：hidden → 保存して rAF を止める。visible → そのまま続き（実際の時計は使わない）。
- * - 遊び方・2択・エンディングのカードが出ている間も進まない。
+ * - 遊び方・2択・エンディング・さいしょからの確認のカードが出ている間も進まない。
+ * - さいしょから（§19）：asteroid.save と asteroid.save.bak を消し、保存を止めてから読み直す（best・help は残す）。
  * - 場（#field・#fieldCanvas）には押す処理を付けない（ユーザー決定「なにもしない」）。
  * - 画面の数はロジックの関数（formatKakera・upCostOf・slotCostOf・progressOf・dpsOf）の値そのまま（§13-1）。
  * - タイマーは later / clearLater だけ（setTimeout を直接呼ばない）。
@@ -62,7 +63,8 @@
     choiceCard: $("choiceCard"), choiceA: $("choiceA"), choiceB: $("choiceB"),
     bounceBanner: $("bounceBanner"), clearBanner: $("clearBanner"), bossBanner: $("bossBanner"), msBanner: $("msBanner"), choiceLead: $("choiceLead"),
     endCard: $("endCard"), endText: $("endText"), endStats: $("endStats"), endOk: $("endOk"),
-    help: $("help"), helpOk: $("helpOk"), hint: $("hint")
+    help: $("help"), helpOk: $("helpOk"), hint: $("hint"),
+    helpRestart: $("helpRestart"), restartCard: $("restartCard"), restartNo: $("restartNo"), restartYes: $("restartYes")
   };
   const part = (node, name) => (node ? node.querySelector('[data-part="' + name + '"]') : null);
   const rows = [0, 1, 2, 3].map((k) => {
@@ -105,6 +107,7 @@
   // ===== 保存の読み書き（できなくても遊べる） =====
   function readKey(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
   function writeKey(key, val) { try { localStorage.setItem(key, val); return true; } catch (e) { return false; } }
+  function removeKey(key) { try { localStorage.removeItem(key); return localStorage.getItem(key) === null; } catch (e) { return false; } }
 
   // ===== タイマー（later / clearLater） =====
   const timers = new Set();
@@ -118,7 +121,8 @@
 
   // ===== 状態 =====
   let state = null;            // AsteroidLogic の state（イミュータブル）
-  let overlay = null;          // null | 'help' | 'choose' | 'end'
+  let overlay = null;          // null | 'help' | 'choose' | 'end' | 'restart'
+  let restarting = false;      // さいしょから（§19）：保存を消したあとは、古い状態を二度と書かない
   let sleeping = false;
   let rafId = 0, lastT = null, acc = 0;
   let pendingEvents = [];      // ボタンで起きた出来事（upgrade の evolve）。次のフレームで render に渡す
@@ -158,7 +162,7 @@
 
   // ===== 保存（§8） =====
   function saveNow() {
-    if (!state) return false;
+    if (!state || restarting) return false;
     saveSince = 0;
     if (saveBlocked) return false;
     const raw = safeCall(() => L.makeSave(state), null);
@@ -272,14 +276,14 @@
   // ===== 進め方（§7.1） =====
   function phaseNow() {
     if (sleeping) return "paused";
-    if (overlay === "help") return "paused";
+    if (overlay === "help" || overlay === "restart") return "paused";
     return state ? state.phase : "fly";
   }
   function syncPhase() {
     const p = phaseNow();
     if (p !== phaseShown) { phaseShown = p; body.dataset.phase = p; }
   }
-  const running = () => !sleeping && overlay !== "help" && overlay !== "end";
+  const running = () => !sleeping && !restarting && overlay !== "help" && overlay !== "end" && overlay !== "restart";
 
   function stepOnce(dt, collect) {
     const r = safeCall(() => L.step(state, dt), null);
@@ -293,7 +297,7 @@
     if (state.phase === "fly") saveSince += dt;
   }
   function ensureLoop() {
-    if (rafId || sleeping || !state) return;
+    if (rafId || sleeping || restarting || !state) return;
     rafId = requestAnimationFrame(frame);
   }
   function stopLoop() { if (rafId) cancelAnimationFrame(rafId); rafId = 0; lastT = null; acc = 0; }
@@ -618,6 +622,7 @@
   // ===== カード（§5.3。出た直後 400ms は押せない） =====
   const CARDS = {
     help: { box: () => el.help, primary: () => el.helpOk },
+    restart: { box: () => el.restartCard, primary: () => el.restartNo },
     // 2択は見出しにフォーカス（選ぶ前の枠が金の輪で「選び済み」に見えないように U14。Tab で A・B へ進める）
     choose: { box: () => el.choiceCard, primary: () => $("choiceTitle") },
     end: { box: () => el.endCard, primary: () => el.endOk }
@@ -730,6 +735,47 @@
     writeKey(KEY_HELP, "1");
     closeCard("help");
   }
+  // ===== さいしょから（§19） =====
+  // カードを入れ替える（閉じたあとの 2択・エンディングの出し直しをしない。もどり先のフォーカスは最初のカードのまま）
+  function swapCard(from, to) {
+    if (overlay !== from) return;
+    const box = CARDS[from].box();
+    if (box) box.hidden = true;
+    const fb = focusBack;
+    overlay = null;
+    unlockCardButtons();
+    openCard(to);
+    focusBack = fb;
+  }
+  function askRestart() {
+    if (overlay !== "help" || cardLocked() || !el.restartCard) return;
+    swapCard("help", "restart");
+  }
+  function cancelRestart() {
+    if (overlay !== "restart" || cardLocked()) return;
+    swapCard("restart", "help");
+  }
+  function doRestart() {
+    if (overlay !== "restart" || cardLocked() || restarting) return;
+    // 消す → 保存を止める → 新しい状態で始める。止めるのが先（消したあとの pagehide・visibilitychange・自動保存で古い状態を書き戻さない）
+    restarting = true;
+    stopLoop();
+    clearLater();
+    const gone = removeKey(KEY_SAVE) && removeKey(KEY_BAK);
+    if (gone) {
+      try { location.reload(); return; } catch (e) { console.error("ほしくだき: 読み直せない", e); }
+    }
+    // 消せない（保存が使えない）・読み直せない：この場で新しく始める。消せなかった保存は新しい状態で上書きする
+    const s = safeCall(() => L.newGame((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0), null) || safeCall(() => L.newGame(1), null);
+    restarting = false;
+    if (!s) { console.error("ほしくだき: newGame が動きません"); return; }
+    closeCardForce();
+    bossUntil = -1; pendingEvents = [];
+    applyState(s);
+    sfx.play("start");
+    syncPhase();
+    ensureLoop();
+  }
   function endOk() {
     if (overlay !== "end" || cardLocked()) return;
     // 「このまま あそぶ」：星 31 の最初から（logic の説明どおり loadSave(makeSave(state))）
@@ -750,6 +796,9 @@
   if (el.choiceB) el.choiceB.addEventListener("click", () => doChoose(1, true));
   if (el.helpBtn) el.helpBtn.addEventListener("click", () => { sfx.unlock(); showHelp(); });
   if (el.helpOk) el.helpOk.addEventListener("click", closeHelp);
+  if (el.helpRestart) el.helpRestart.addEventListener("click", askRestart);
+  if (el.restartNo) el.restartNo.addEventListener("click", cancelRestart);
+  if (el.restartYes) el.restartYes.addEventListener("click", doRestart);
   if (el.endOk) el.endOk.addEventListener("click", endOk);
   if (el.soundBtn) el.soundBtn.addEventListener("click", toggleSound);
   if (el.back) el.back.addEventListener("click", () => { saveNow(); clearLater(); });
@@ -764,6 +813,7 @@
       return;
     }
     if (overlay === "help") { if (key === "Escape" || key === "?") { e.preventDefault(); closeHelp(); } return; }
+    if (overlay === "restart") { if (key === "Escape") { e.preventDefault(); cancelRestart(); } return; }
     if (overlay) return;
     if (key >= "1" && key <= "4") { e.preventDefault(); const k = Number(key) - 1; doUpgrade(k, rows[k] && rows[k].btn); }
     else if (key === "u" || key === "U") { e.preventDefault(); doUnlock(); }

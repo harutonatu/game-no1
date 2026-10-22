@@ -496,6 +496,8 @@
   .card .btns button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
   .card .btns button:active:not([aria-disabled="true"]) { filter: brightness(1.2); }
   .card button[aria-disabled="true"] { opacity: 0.6; }
+  /* 遊び方の「さいしょから あそぶ」：目立たない文字だけのボタン（押せる高さは 44px 以上。§19） */
+  .card .btns button.textbtn { background: transparent; border-color: transparent; color: var(--muted); font-weight: 600; font-size: 14px; min-height: 44px; text-decoration: underline; text-underline-offset: 3px; }
 
   /* 2択（#choiceA・#choiceB は本物のボタン。出た直後 400ms は main.js が aria-disabled="true"） */
   .choices { display: flex; flex-direction: column; gap: 10px; }
@@ -728,7 +730,22 @@
       <li>したの ボタンを おすと ぶきが つよくなるよ。がめんの ほしは おしても うごかないよ。あたらしい ぶきは 2つから えらべるよ。</li>
       <li>ほしが ちきゅうに とどいても バリアが まもるよ。つよくして もういちど！</li>
     </ol>
-    <div class="btns"><button type="button" id="helpOk" class="primary">わかった</button></div>
+    <div class="btns">
+      <button type="button" id="helpOk" class="primary">わかった</button>
+      <button type="button" id="helpRestart" class="textbtn">さいしょから あそぶ</button>
+    </div>
+  </div>
+</div>
+
+<!-- さいしょから（§19。遊び方の「さいしょから あそぶ」から。安全側の「やめる」を先・primary） -->
+<div class="overlay" id="restartCard" role="dialog" aria-modal="true" aria-labelledby="restartTitle" hidden>
+  <div class="card">
+    <h2 id="restartTitle">さいしょから はじめる？</h2>
+    <p id="restartText">いまの ほし・かけら・ぶきは ぜんぶ きえるよ。ベストの きろくは のこるよ。</p>
+    <div class="btns">
+      <button type="button" id="restartNo" class="primary">やめる</button>
+      <button type="button" id="restartYes">さいしょから はじめる</button>
+    </div>
   </div>
 </div>
 

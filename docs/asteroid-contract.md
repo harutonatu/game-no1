@@ -309,13 +309,13 @@ AsteroidLogic = {
 - `#clearBanner`：「ほし 3 クリア！ ＋120かけら」。1.5 秒。
 - `#bossBanner`：「おおきな ほしが きた！」（5 の倍数の星の始め）。
 - `#endCard`：エンディング。`#endOk`「このまま あそぶ」。
-- `#help`：遊び方（3 項目、SE 縦横でスクロールなしで `#helpOk`「わかった」が押せる）。
+- `#help`：遊び方（3 項目、SE 縦横でスクロールなしで `#helpOk`「わかった」が押せる）。その下に文字ボタン `#helpRestart`「さいしょから あそぶ」→ 確認カード `#restartCard`（§19）。
   1. せんとうきは じぶんで うつよ。ほしを ぜんぶ こわすと クリア。
   2. かけらで ぶきを つよく しよう。あたらしい ぶきは 2つから えらべるよ。ぶきには とくいな いわが あるよ。
   3. ほしが ちきゅうに とどいても バリアが まもるよ。つよくして もういちど！
 
 ### 5.4 DOM 契約（E のテストが使う）
-`#hud`、`#back`、`#gameTitle`、`#helpBtn`、`#soundBtn`、`#kakera`、`#starLabel`、`#starBar`（`aria-valuenow` 0〜100）、`#field`・`#fieldCanvas`、`#distance`（`aria-valuenow`）、`#weapons`・`.wrow[data-slot]`・`[data-up]`、`#unlockBtn`（4 枠なら `hidden`）、`#choiceCard`・`#choiceA`・`#choiceB`、`#bounceBanner`、`#clearBanner`、`#bossBanner`、`#endCard`・`#endOk`、`#help`・`#helpOk`、`#hint`（`aria-live="polite"`）。`body[data-phase="fly|choose|bounce|clear|end|paused"]`。
+`#hud`、`#back`、`#gameTitle`、`#helpBtn`、`#soundBtn`、`#kakera`、`#starLabel`、`#starBar`（`aria-valuenow` 0〜100）、`#field`・`#fieldCanvas`、`#distance`（`aria-valuenow`）、`#weapons`・`.wrow[data-slot]`・`[data-up]`、`#unlockBtn`（4 枠なら `hidden`）、`#choiceCard`・`#choiceA`・`#choiceB`、`#bounceBanner`、`#clearBanner`、`#bossBanner`、`#endCard`・`#endOk`、`#help`・`#helpOk`・`#helpRestart`、`#restartCard`・`#restartTitle`・`#restartText`・`#restartNo`・`#restartYes`（§19）、`#hint`（`aria-live="polite"`）。`body[data-phase="fly|choose|bounce|clear|end|paused"]`。
 
 ## 6. 描画（`render.js`、担当B）
 
@@ -369,7 +369,7 @@ AsteroidRender.create(canvas, { calm }) → {
 ### 7.3 テスト用の公開 API（C が作り、E が使う）
 ```js
 window.AsteroidGame = Object.freeze({
-  getState(),      // { phase, star, kakera, slots, offer, progress, overlay: null|'help'|'choose'|'end', particles, shots, frames, slowFrames, saveCount, calm, timers }
+  getState(),      // { phase, star, kakera, slots, offer, progress, overlay: null|'help'|'choose'|'end'|'restart', particles, shots, frames, slowFrames, saveCount, calm, timers }
   logic(),         // logic の state の写し（JSON にできる形）
   advance(sec),    // sec 秒すすめる（固定ステップで。演出は省く）
   upgrade(slot), unlock(), choose(k),
@@ -670,6 +670,32 @@ PM の質問：「3つのレビューが終わりました。大きな指摘は 
 - 区切りのおまけは 1 つの星で 3 回 × 星の全部のかけらの 3%（クリアのおまけ 20% の半分弱）。買い物の回数は 1 星で 0〜1 回増える程度。
 - KL：KL1〜KL15 すべて合格（KL13 区切り・KL14 クリアの時間とベスト・KL15 hit の aff ともろい底を足した。KL11 に「最初の 30 秒で 15%」）。T10（KL10 で 3 枠の凍らせた state を unlock→choose）と T11（KL12 の restarted を step ごと、やり直しを通ったことも確かめる）を直した。変異 MK1〜MK4 は KL だけで全部検出。足した仕組みをわざと壊す（やり直しで ms を消す・ベストを遅いほうに・もろい底なし・aff をいつも 1・途中の保存で区切りを足さない）も全部 KL で検出。
 - T9：ちらしの扇のコメントを式に合わせた（となりの弾との角度は 5 発 8°・7 発 約 6.7°・9 発 6°・11 発 5.6°、扇の全体は 32°・40°・48°・56°。式は変えていない）。
+
+## 19. さいしょから（AS-05、v29。2026-10-22）
+
+ユーザーの承認の言葉（そのまま）：「おすすめどおり進めてください：v29 に SZ-07・AS-05（さいしょから、ベストは残す）、X-19 を済に、T-11・T-12 を入れて、関門テストは最後に1回」。もくもくこうば（SZ-07）と同じ約束で作る。
+
+### 19.1 置き場所と言葉
+- 遊び方 `#help` のカードの中、主ボタン `#helpOk`「わかった」（`primary` のまま）の下に、目立たない文字ボタン `#helpRestart`「さいしょから あそぶ」（`class="textbtn"`：背景・枠なし、うすい色・下線、高さ 44px 以上）。横向きの低い画面（`.card .btns` が横並び）では「わかった」の右に並ぶ。
+- 押すと確認カード `#restartCard`（`role="dialog"`・`aria-labelledby="restartTitle"`。§5.3 のカードと同じ作り、出た直後 400ms は押せない）。遊び方のカードと入れ替わる（重ねない）。
+  - 見出し `#restartTitle`「さいしょから はじめる？」
+  - 本文 `#restartText`「いまの ほし・かけら・ぶきは ぜんぶ きえるよ。ベストの きろくは のこるよ。」（約束の案「いまの ほしと つよさは…」を、このゲームの画面の言葉「ほし」「かけら」「ぶき」に合わせて直した）
+  - ボタン：`#restartNo`「やめる」（`primary`・先に並べる・開いたときのフォーカス。michibiki の確認カードの並び）、`#restartYes`「さいしょから はじめる」。
+- 「やめる」と Esc：遊び方のカードへ戻る（保存は何も変えない）。
+- 確認カードの間は場が止まる（`overlay` `'restart'`、`body[data-phase="paused"]`）。`a#back` はいつでも押せる（ほかのカードと同じ）。
+
+### 19.2 実行したとき（main.js `doRestart`）
+1. `restarting = true`（以後 `saveNow` は何も書かない＝`pagehide`・`visibilitychange`・15 秒ごとの自動保存・`a#back`・テスト用 `save()` でも古い状態を書き戻さない）。rAF を止め、`clearLater`。
+2. `asteroid.save` と `asteroid.save.bak` を消す（`removeItem` のあと `getItem` が `null` で確かめる）。
+3. `location.reload()`。起動は保存なし（新しい種で ほし 1・`shot` Lv1）と同じ道を通る。`asteroid.help` が `'1'` なので遊び方は出ない。
+- 残すもの：`asteroid.best`（ベストの きろく。メニューの表示）、`asteroid.help`、効果音のオン・オフ（`common/sfx.js` のキー）、ほかのゲームのキー。ほかに `asteroid.*` の控えは無い（§8・`MY_KEYS` の 4 つだけ）。
+- `.bak` も消す理由：`.bak` は壊れた保存の元（§8.3）で、ゲームは `.bak` から読み戻さない。それでも古い進みの文字を残さないため、またいつか「bak から戻す」仕組みを足したときに古い進みがよみがえらないように消す。
+- 消せない（保存が使えない・例外）とき：読み直さず、その場で `newGame` から始め、新しい状態で保存を上書きする（`restarting` を戻す）。
+- 効果音は増やさない（読み直しで鳴る `start` だけ）。デバッグ命令は変えない（`gostar` などは確認カードが出ていれば閉じてから動く）。
+
+### 19.3 テスト・変異
+- KW21（full）：§19.1・§19.2 の全部と、押した直後の `pagehide`・hidden・`save()`・`advance` でも `asteroid.save`・`.bak` が空のまま、離れて開き直しても古い進みが戻らない、SE 縦・横（ホーム画面・Safari）で 4 つのボタンが画面内・押せる・44px 以上・重ならない。
+- 変異（MK38〜MK41）：bak を消さない／保存を止めない（メモリ上の状態で書き戻す）／best も消す／「やめる」で消す。4 つとも KW21 だけで不合格になることを手で確かめた（2026-10-22）。
 
 ## 決定済み（2026-10-21）
 

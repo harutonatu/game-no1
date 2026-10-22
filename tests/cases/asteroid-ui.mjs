@@ -11,7 +11,7 @@
 //     ・API の choose は 400ms のロックを通らないので、400ms の検査はクリック・キーで行う
 //     ・はね返しの「あと N%」は max(1, round((1-broken)×100))
 //   無いときに合格にしない（空振りの合格を作らない）：AsteroidGame・YubiDebug が無ければ例外で不合格にする。マスが 0 の状態で「欠けた」を検査しない（§13-8）。
-//   smoke：KW1〜KW7。full：KW8〜KW17（KW10・KW17 は CDP なので Chromium だけ、KW14 は AudioContext が要る）。KW15 は NAME とメニューの名前の一致。
+//   smoke：KW1〜KW7・KW18・KW19。full：KW8〜KW17・KW20・KW21（さいしょから）（KW10・KW17 は CDP なので Chromium だけ、KW14 は AudioContext が要る）。KW15 は NAME とメニューの名前の一致。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -1080,6 +1080,119 @@ export const tests = [
       const gl = await lg(page);
       check(`gostar ${nIron} で ほし ${gl.star} の最初（こわした割合 ${L.progressOf(gl).broken}）・武器 ${JSON.stringify(gl.slots)}（Lv1 より強い）`, g.star === nIron && gl.star === nIron && L.progressOf(gl).broken === 0 && gl.slots.length >= 2 && gl.slots.every((x) => x.lv > 1) && gl.phase === 'fly', { g, slots: gl.slots });
       await ctx.close();
+    },
+  },
+  {
+    id: 'KW21', tier: 'full', title: 'ほしくだき さいしょから（§19・AS-05）：遊び方の「わかった」の下に文字ボタン #helpRestart（44px 以上）、押すと確認 #restartCard（見出し・本文の決まった言葉、やめる #restartNo が先で primary・フォーカス、出た直後 400ms は押せない、場は止まる）。やめる・Esc で遊び方へ戻り保存は変わらない。さいしょから はじめる で読み直して ほし 1・武器 1 つから、asteroid.best・asteroid.help・ほかのゲームのキーは残り、asteroid.save は新しい・asteroid.save.bak は消える。押した直後の pagehide・hidden・save() でも古い保存を書き戻さず、開き直しても古い進みが戻らない。SE 縦・横で確認のボタンが画面内・44px 以上',
+    async run({ browser, check, errors }) {
+      const others = { 'matomete.best': '123', 'seizai.best': '3' };
+      // 古い進み：ほし 6・かけら 多め・武器 3 つ。bak も置いておく（消えること）
+      const prep = async (page) => {
+        await gotoK(page, { ...others, 'asteroid.best': '7', 'asteroid.save.bak': '{old-bak' }, { debug: true });
+        await setL(page, `l.star = 6; l.kakera = 123456; ${ARMS(3, 9)}`);
+        await page.evaluate(() => window.AsteroidGame.save());
+        return stored(page, 'asteroid.save');
+      };
+      const { ctx, page } = await openK(browser, 'KW21', { v: SMOKE_V(), debug: true });
+      const e0 = errors.length;
+      const old = await prep(page);
+      check(`前提：古い保存が ほし 6（${old && JSON.parse(old).star}）`, !!old && JSON.parse(old).star === 6, old);
+      // (a) 遊び方に文字ボタン、押すと確認
+      await page.click('#helpBtn'); await wait(page, 60);
+      const hb = await page.evaluate(() => {
+        const ok = document.querySelector('#helpOk'), b = document.querySelector('#helpRestart');
+        if (!b) return null;
+        const r = b.getBoundingClientRect(), o = ok.getBoundingClientRect();
+        return { text: b.textContent.trim(), h: r.height, w: r.width, below: r.top >= o.bottom - 0.5 || r.left >= o.right - 0.5, order: !!(ok.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING), okPrimary: ok.classList.contains('primary'), primary: b.classList.contains('primary'), inHelp: !!b.closest('#help') };
+      });
+      check(`遊び方に「さいしょから あそぶ」（${hb && hb.text}・${hb && Math.round(hb.h)}px）が「わかった」（primary のまま）の後ろにあり、目立たない（primary でない）`, !!hb && hb.text === 'さいしょから あそぶ' && hb.h >= 44 - 0.5 && hb.w >= 44 - 0.5 && hb.below && hb.order && hb.okPrimary && !hb.primary && hb.inHelp, hb);
+      await pressCard(page, '#helpRestart');
+      const c = await page.evaluate(() => {
+        const box = document.querySelector('#restartCard'), no = document.querySelector('#restartNo'), yes = document.querySelector('#restartYes');
+        return { shown: !!box && !box.hidden, helpHidden: document.querySelector('#help').hidden, title: document.querySelector('#restartTitle')?.textContent.trim(), text: document.querySelector('#restartText')?.textContent.trim(),
+          no: no?.textContent.trim(), yes: yes?.textContent.trim(), noFirst: !!(no && yes && (no.compareDocumentPosition(yes) & Node.DOCUMENT_POSITION_FOLLOWING)), noPrimary: !!no?.classList.contains('primary'), yesPrimary: !!yes?.classList.contains('primary'),
+          focus: document.activeElement === no, role: box?.getAttribute('role'), label: box?.getAttribute('aria-labelledby'), locked: yes?.getAttribute('aria-disabled') === 'true' };
+      });
+      const s1 = await gs(page);
+      check(`確認カード：見出し「${c.title}」・本文「${c.text}」・「${c.no}」が先で primary・フォーカス、「${c.yes}」、overlay ${s1.overlay}・phase ${s1.phase}、遊び方は隠れる、出た直後はロック`,
+        c.shown && c.helpHidden && c.title === 'さいしょから はじめる？' && c.text === 'いまの ほし・かけら・ぶきは ぜんぶ きえるよ。ベストの きろくは のこるよ。' && c.no === 'やめる' && c.yes === 'さいしょから はじめる' && c.noFirst && c.noPrimary && !c.yesPrimary && c.focus && c.role === 'dialog' && c.label === 'restartTitle' && c.locked && s1.overlay === 'restart' && s1.phase === 'paused', { c, s1: { overlay: s1.overlay, phase: s1.phase } });
+      // 出た直後（400ms の間）に押しても始め直さない・場は止まる
+      await clickAt(page, '#restartYes');
+      const t0 = (await lg(page)).t;
+      await adv(page, 5); await wait(page, 500);
+      const s2 = await gs(page);
+      check(`出た直後の「さいしょから はじめる」は効かない（overlay ${s2.overlay}・ほし ${s2.star}）、確認の間は t が進まない（${t0} → ${s2.t}）`, s2.overlay === 'restart' && s2.star === 6 && s2.t === t0 && (await stored(page, 'asteroid.save')) === old, { overlay: s2.overlay, star: s2.star, t0, t: s2.t });
+      // (b) やめる → 遊び方に戻る・保存は変わらない。Esc でも同じ
+      await pressCard(page, '#restartNo');
+      const b1 = { s: await gs(page), save: await stored(page, 'asteroid.save'), bak: await stored(page, 'asteroid.save.bak'), card: await page.evaluate(() => document.querySelector('#restartCard').hidden) };
+      await pressCard(page, '#helpRestart');
+      await unlocked(page, '#restartNo');
+      await page.keyboard.press('Escape'); await wait(page, 60);
+      const b2 = { s: await gs(page), save: await stored(page, 'asteroid.save'), bak: await stored(page, 'asteroid.save.bak') };
+      check(`やめる・Esc で遊び方へ戻る（overlay ${b1.s.overlay}・${b2.s.overlay}）、ほし ${b2.s.star}・かけら ${b2.s.kakera}・asteroid.save と bak は変わらない`,
+        b1.s.overlay === 'help' && b1.card && b2.s.overlay === 'help' && b1.save === old && b2.save === old && b1.bak === '{old-bak' && b2.bak === '{old-bak' && b2.s.star === 6 && b2.s.kakera === 123456 && b2.s.slots.length === 3, { b1: { overlay: b1.s.overlay, same: b1.save === old, bak: b1.bak }, b2: { overlay: b2.s.overlay, same: b2.save === old, bak: b2.bak } });
+      // (c) さいしょから はじめる → 読み直して新しい状態
+      await pressCard(page, '#helpRestart');
+      if (!(await unlocked(page, '#restartYes'))) throw new Error('#restartYes のロックが外れない');
+      await Promise.all([page.waitForEvent('load', { timeout: 10000 }), page.click('#restartYes')]);
+      await wait(page, 300);
+      const n1 = { l: await lg(page), s: await gs(page), save: await stored(page, 'asteroid.save'), bak: await stored(page, 'asteroid.save.bak'), best: await stored(page, 'asteroid.best'), help: await stored(page, 'asteroid.help'),
+        others: await page.evaluate((ks) => Object.fromEntries(ks.map((k) => [k, localStorage.getItem(k)])), Object.keys(others)) };
+      const ns = n1.save ? JSON.parse(n1.save) : null;
+      check(`さいしょから：ほし ${n1.l.star}・武器 ${JSON.stringify(n1.l.slots)}・かけら ${n1.l.kakera}、遊び方は出ない（overlay ${n1.s.overlay}）、best ${n1.best}・help ${n1.help}・ほかのゲームのキーは残る、asteroid.save は新しい（ほし ${ns && ns.star}）・bak ${n1.bak}`,
+        n1.l.star === 1 && n1.l.slots.length === 1 && n1.l.slots[0].id === 'shot' && n1.l.slots[0].lv === 1 && n1.l.kakera < 123456 && n1.s.overlay === null && n1.s.phase === 'fly' && n1.best === '7' && n1.help === '1' && JSON.stringify(n1.others) === JSON.stringify(others) && !!ns && ns.star === 1 && ns.slots.length === 1 && n1.bak === null && n1.s.best === 7,
+        { star: n1.l.star, slots: n1.l.slots, kakera: n1.l.kakera, overlay: n1.s.overlay, best: n1.best, help: n1.help, bak: n1.bak, save: ns && { star: ns.star, slots: ns.slots }, others: n1.others });
+      // (d) 押した直後に pagehide・hidden・save() が来ても古い状態を書き戻さない、開き直しても古い進みが戻らない
+      const old2 = await prep(page);
+      await page.click('#helpBtn'); await wait(page, 60);
+      await pressCard(page, '#helpRestart');
+      if (!(await unlocked(page, '#restartYes'))) throw new Error('#restartYes のロックが外れない（2回目）');
+      const [, d] = await Promise.all([page.waitForEvent('load', { timeout: 10000 }), page.evaluate(() => {
+        document.querySelector('#restartYes').click();
+        const after = [];
+        const read = (why) => after.push({ why, save: localStorage.getItem('asteroid.save'), bak: localStorage.getItem('asteroid.save.bak') });
+        read('押した直後');
+        window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
+        read('pagehide');
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+        document.dispatchEvent(new Event('visibilitychange'));
+        read('hidden');
+        const r = window.AsteroidGame.save();
+        window.AsteroidGame.advance(30);
+        read('save()・advance');
+        return { after, r };
+      })]);
+      check(`押した直後・pagehide・hidden・save()・advance のあとも asteroid.save と bak は空のまま（${d.after.map((x) => `${x.why} ${x.save === null ? '空' : 'あり'}/${x.bak === null ? '空' : 'あり'}`).join('・')}）、save() は false`,
+        !!old2 && d.after.length === 4 && d.after.every((x) => x.save === null && x.bak === null) && d.r === false, d);
+      await wait(page, 300);
+      const d1 = await lg(page);
+      await page.goto(BASE + 'manifest.webmanifest');
+      await page.goto(AST); await wait(page, 300);
+      const d2 = await lg(page);
+      const raw2 = await stored(page, 'asteroid.save');
+      check(`読み直し後（ほし ${d1.star}）も、離れて開き直したあと（ほし ${d2.star}・武器 ${d2.slots.length}・かけら ${d2.kakera}）も古い進みが戻らない、bak なし`,
+        d1.star === 1 && d1.slots.length === 1 && d2.star === 1 && d2.slots.length === 1 && d2.kakera < 123456 && JSON.parse(raw2).star === 1 && (await stored(page, 'asteroid.save.bak')) === null && (await stored(page, 'asteroid.best')) === '7', { d1: { star: d1.star, slots: d1.slots }, d2: { star: d2.star, slots: d2.slots, k: d2.kakera } });
+      check('さいしょからの間にページエラーが無い', errors.length === e0, errors.slice(e0));
+      await ctx.close();
+      // 画面内：SE 縦・横（ホーム画面・Safari）で「さいしょから あそぶ」と確認の 2 つのボタンが見えて押せる・44px 以上・重ならない
+      const rows = [];
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari')]) {
+        const o = await openK(browser, `KW21 ${v.label}`, { v, help: false });
+        const probe = (sels) => o.page.evaluate((sels) => sels.map((s) => {
+          const e = document.querySelector(s), r = e.getBoundingClientRect();
+          const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return { s, h: Math.round(r.height), w: Math.round(r.width), in: r.top >= -0.5 && r.bottom <= innerHeight + 0.5 && r.left >= -0.5 && r.right <= innerWidth + 0.5, hit: !!t && (t === e || e.contains(t)), box: [r.left, r.top, r.right, r.bottom] };
+        }), sels);
+        const lap = (a, b) => a.box[0] < b.box[2] - 0.5 && b.box[0] < a.box[2] - 0.5 && a.box[1] < b.box[3] - 0.5 && b.box[1] < a.box[3] - 0.5;
+        const h = await probe(['#helpOk', '#helpRestart']);
+        await pressCard(o.page, '#helpRestart');
+        const r = await probe(['#restartNo', '#restartYes']);
+        const all = [...h, ...r];
+        rows.push({ v: v.label, ok: all.every((x) => x.in && x.hit && x.h >= 44 - 0.5 && x.w >= 44 - 0.5) && !lap(h[0], h[1]) && !lap(r[0], r[1]), all: all.map((x) => `${x.s} ${x.w}×${x.h}${x.in ? '' : ' 画面外'}${x.hit ? '' : ' 押せない'}`) });
+        await o.ctx.close();
+      }
+      check(`SE 縦・横で「わかった」「さいしょから あそぶ」「やめる」「さいしょから はじめる」が画面内・押せる・44px 以上・重ならない（${rows.map((r) => r.v + (r.ok ? ' ○' : ' ×')).join('・')}）`, rows.every((r) => r.ok), rows);
     },
   },
 ];
