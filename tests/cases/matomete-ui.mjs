@@ -984,7 +984,7 @@ export const tests = [
     },
   },
   {
-    id: 'QW15', tier: 'full', title: 'まとめてポン メニュー：カードの名前が MatometeLogic.NAME と一致・絵がある、matomete.best が 1516 なら「1,516 てん」、壊れた値・0 なら「まだ記録なし」、7 桁でもはみ出さない、押すとゲームが開く',
+    id: 'QW15', tier: 'full', title: 'まとめてポン メニュー：カードの名前が MatometeLogic.NAME と一致・絵がある、matomete.best が 1516 なら「1,516 てん」、壊れた値・0 なら「まだ記録なし」、7 桁でも省略されず（2 行まで）はみ出さない、押すとゲームが開く',
     async run({ browser, check, root }) {
       const f = path.join(root, 'games/matomete/logic.js');
       if (!fs.existsSync(f)) throw new Error('games/matomete/logic.js が無い');
@@ -1022,7 +1022,7 @@ export const tests = [
       // 1回の点数の上限は 200 個まとめて (200−2)²＋1000 ＝ 40204（5 桁）。5 桁は省略されずに全部見え、7 桁（壊れた値に近いもの）でもカードがはみ出さない
       for (const v of [STD_V(), view('SE', 'p', 'app')]) {
         await page.setViewportSize({ width: v.w, height: v.h });
-        for (const [raw, want, mustFit] of [['40204', '40,204 てん', true], ['9999999', '9,999,999 てん', false]]) {
+        for (const [raw, want, mustFit] of [['40204', '40,204 てん', true], ['9999999', '9,999,999 てん', true]]) {   // 7 桁も省略しない（2 行に折り返す。MT-02）
           await seed(page, { 'matomete.best': raw });
           await page.goto(BASE); await wait(page, 150);
           const cm = await page.evaluate(() => { const a = document.querySelector('a.game[href="games/matomete/"]'); const r = a.getBoundingClientRect(), b = a.querySelector('.best b'); return { right: r.right, iw: innerWidth, hs: document.documentElement.scrollWidth > innerWidth, best: b.textContent, fit: b.scrollWidth <= b.clientWidth + 0.5 }; });
@@ -1311,6 +1311,62 @@ export const tests = [
         hiddenWrite: (p) => p.evaluate(() => { window.MatometeGame.restart(); }) });
       check(`まとめてポン：${x20Text(r)}`, r.ok, r);
       await ctx.close();
+    },
+  },
+  {
+    id: 'QW22', tier: 'full', title: 'まとめてポン v34 の小さな直し（MT-01・MT-13・MT-16）：選んでいるとき盤の外（ヒント・点数の欄・上の帯）を押しても選びをやめる（？ボタンは今までどおり遊び方を開く）、SE 横 Safari（568×270）の終わりのカード（いちばん行の多い形）がスクロールなしで全部見える、「れんぞく」の札が盤にかかるのは 10px まで・縦では点数の欄の文字に重ならない・画面の上にはみ出さない',
+    async run({ browser, check }) {
+      // ---- MT-01 ----
+      const { ctx, page } = await openG(browser, 'QW22');
+      await fresh(page, 1);
+      const pick = async () => {
+        const g = groupsOf((await gs(page)).grid).find((x) => x.length >= 2);
+        await page.evaluate(([x, y]) => window.MatometeGame.select(x, y), g[0]);
+      };
+      const res = [];
+      for (const sel of ['#hint', '.stats .stat:nth-child(1)', '.head h1']) {
+        await pick();
+        const before = (await gs(page)).selected;
+        const pt = await page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }, sel);
+        await page.mouse.click(pt[0], pt[1]); await wait(page, 60);
+        const s1 = await gs(page), t1 = await tagInfo(page);
+        res.push({ sel, before, after: s1.selected, phase: s1.phase, tag: t1.shown, dsel: t1.sel });
+      }
+      check(`選んでいるとき盤の外（${res.map((r) => `${r.sel}：${r.before}→${r.after}`).join('、')}）を押すと選びをやめる（selected null・phase idle・data-selected なし・札が消える）`,
+        res.length === 3 && res.every((r) => r.before >= 2 && r.after === null && r.phase === 'idle' && r.dsel === null && !r.tag), res);
+      await pick();
+      await page.click('#helpBtn'); await wait(page, 150);
+      check('選んでいるとき ？ を押すと、今までどおり遊び方が開く（ボタンは盤の外のタップに数えない）', (await gs(page)).overlay === 'help', (await gs(page)).overlay);
+      await ctx.close();
+      // ---- MT-13：568×270 の終わりのカード（いちばん行の多い形。matomete.least があると「まえの いちばん すくない」「さいこう きろく！」も出る） ----
+      {
+        const v = view('SE', 'l', 'safari');
+        const h = await openG(browser, 'QW22 終わり 568×270', { v, extra: { 'matomete.least': '199' } });
+        await fresh(h.page, 1);
+        await playToOver(h.page); await wait(h.page, 700);
+        const o = await overlayProbe(h.page, v.safe, { noScroll: true });
+        const sc = await h.page.evaluate(() => { const ov = document.querySelector('#overlay'); return { sh: ov.scrollHeight, ch: ov.clientHeight, lines: document.querySelectorAll('#card p').length }; });
+        check(`${v.label} ${v.w}×${v.h}：終わりのカード（文 ${sc.lines} 行）がスクロールなしで全部見え（scrollHeight ${sc.sh}・高さ ${sc.ch}）、文が下の帯に隠れない（隠れ：${o.covered.join(' / ') || 'なし'}）、ボタン 44px 以上`,
+          overlayOk(o) && o.covered.length === 0 && sc.sh <= sc.ch + 1 && sc.lines >= 6, { o, sc });
+        await h.ctx.close();
+      }
+      // ---- MT-16：れんぞくの札（いちばん長い文「ひろがる！ れんぞく 12」）の位置 ----
+      {
+        const rows = [];
+        for (const vv of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('i13', 'p', 'app'), view('SE', 'l', 'app'), view('SE', 'l', 'safari'), view('iPad', 'p', 'app')]) {
+          const x = await openG(browser, `QW22 れんぞく ${vv.label}`, { v: vv });
+          const r = await x.page.evaluate(() => {
+            const s = document.querySelector('#streak'); s.hidden = false; s.dataset.wide = '1'; s.textContent = 'ひろがる！ れんぞく 12';
+            const q = s.getBoundingClientRect(), b = document.querySelector('#board').getBoundingClientRect();
+            const textBottom = Math.max(...[...document.querySelectorAll('.stat b, .stat .lbl')].map((e) => e.getBoundingClientRect().bottom));
+            return { into: Math.round(q.bottom - b.top), h: Math.round(q.height), top: Math.round(q.top), textBottom: Math.round(textBottom), port: innerHeight > innerWidth, cell: window.MatometeGame.state().cell };
+          });
+          rows.push({ v: vv.label, safeTop: vv.safe ? vv.safe[0] : 0, ...r });
+          await x.ctx.close();
+        }
+        check(`「れんぞく」の札が盤にかかるのは 10px まで（${rows.map((r) => `${r.v} ${r.into}px／マス ${r.cell}px`).join('、')}）、縦では点数の欄の文字に重ならず、画面（safe-area）の上にはみ出さない`,
+          rows.every((r) => r.into >= 0 && r.into <= 10 && r.top >= r.safeTop - 0.5 && (!r.port || r.top >= r.textBottom - 0.5)), rows);
+      }
     },
   },
 ];

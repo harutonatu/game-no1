@@ -182,11 +182,11 @@
     { name: "ばいばいタイル", desc: "同じ数字をぶつけて合体、2048 を目指す", url: "games/2048/", best: "tile2048.best", art: "tiles" },
     { name: "キリトリ道場", desc: "飛んでくる的を指でなぞって切る。爆弾に注意", url: "games/kiritori/", best: "kiritori.best", art: "kiritori" },
     { name: "いろコード", desc: "4つの色の並びを推理する", url: "games/irocode/", stats: "irocode.stats", art: "code" },
-    { name: "ゼンマイさんぽ", desc: "ネジを巻いて、崖の手前でぴたりと止める", url: "games/zenmai/", bestText: () => zenmaiBest(), art: "zenmai" },
+    { name: "ゼンマイさんぽ", desc: "ネジを巻いて、崖の手前でぴたりと止める", url: "games/zenmai/", bestText: () => zenmaiBest(), art: "zenmai", bestWrap: true },
     { name: "ピカッと早押し", desc: "ひかったら タップ！ いちばん はやいのは だれ？", url: "games/pikatto/", bestText: () => pikattoBest(), art: "pikatto" },
     { name: "ハシわたり", desc: "ながおしで くきを のばして、つぎの はっぱへ", url: "games/hashi/", best: "hashi.best", art: "hashi" },
-    { name: "いろびん", desc: "いろみずを そろえて、どうぶつに とどけよう", url: "games/irobin/", bestText: () => irobinBest(), art: "irobin" },
-    { name: "まとめてポン", desc: "おなじ いろを まとめて ポン！ たくさん けすほど たかいてん", url: "games/matomete/", bestText: () => matometeBest(), art: "matomete" },
+    { name: "いろびん", desc: "いろみずを そろえて、どうぶつに とどけよう", url: "games/irobin/", bestText: () => irobinBest(), art: "irobin", bestWrap: true },
+    { name: "まとめてポン", desc: "おなじ いろを まとめて ポン！ たくさん けすほど たかいてん", url: "games/matomete/", bestText: () => matometeBest(), art: "matomete", bestWrap: true },
     { name: "ミチビキ空港", desc: "ゆびで みちを かいて、おなじ いろの かっそうろへ", url: "games/michibiki/", bestText: () => michibikiBest(), art: "michibiki" },
     { name: "もくもくこうば", desc: "もりの きを きって、いたに して うろう。もくもく はたらく みんなを そだてよう", url: "games/seizai/", bestText: () => seizaiBest(), art: "seizai" },
     // 名前が長いので、折り返すときは nameParts の切れ目（「ちきゅうを守れ！」と「ほしくだき」の間）だけで折る（約束 §1.4・§10）
@@ -788,7 +788,8 @@
         const v = p.stars["z" + String(i).padStart(2, "0")];
         if (Number.isInteger(v) && v >= 1 && v <= 3) sum += v;
       }
-      return sum > 0 ? "★合計 " + sum + " / 45" : "";
+      // 折り返すときは「★合計」のあとだけ（「45 /」と「45」に割らない。MT-02）。  は折り返さない空白
+      return sum > 0 ? "★合計 " + sum + "\u00a0/\u00a045" : "";
     } catch (e) { return ""; }
   }
 

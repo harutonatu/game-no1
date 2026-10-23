@@ -415,4 +415,37 @@ export const tests = [
       }
     },
   },
+  {
+    id: 'V13', tier: 'full', title: 'メニューのベスト表示の最大の桁（MT-02 の横展開）：SE 縦（320×568）・SE 横・iPhone 13 縦で、全部のゲームの「ありうる長い記録」が「…」で切れず（2 行まで）、カードが画面からはみ出さない。ゼンマイの「45 / 45」は行の途中で割れない',
+    async run({ browser, check }) {
+      const stars = Object.fromEntries(Array.from({ length: 15 }, (_, i) => ['z' + String(i + 1).padStart(2, '0'), 3]));
+      const ITEMS = {
+        'blockpuzzle.best': '9999999', 'tile2048.best': '3932100', 'kiritori.best': '99999', 'irocode.stats': JSON.stringify({ best: 10 }),
+        'zenmai.progress': JSON.stringify({ stars, unlocked: 15 }), 'pikatto.bestSolo': '5000', 'hashi.best': '9999', 'irobin.best': '999',
+        'matomete.best': '9999999', 'michibiki.best': '9999', 'seizai.best': '3', 'asteroid.best': '9999',
+      };
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app'), view('i13', 'p', 'app')]) {
+        const { ctx, page } = await newPage(browser, v, 'V13 ' + v.label, { clock: true });
+        await seed(page, ITEMS);
+        await page.goto(BASE); await wait(page, 200);
+        const r = await page.evaluate(() => [...document.querySelectorAll('a.game')].map((a) => {
+          const b = a.querySelector('.best b'), cs = getComputedStyle(b), q = a.getBoundingClientRect();
+          const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.3;
+          return { url: a.getAttribute('href'), t: b.textContent, none: b.classList.contains('none'), fit: b.scrollWidth <= b.clientWidth + 0.5, lines: Math.round(b.getBoundingClientRect().height / lh), right: Math.round(q.right), iw: innerWidth };
+        }));
+        const z = await page.evaluate(() => {
+          const tn = document.querySelector('a.game[href="games/zenmai/"] .best b').firstChild, s = tn.textContent, i = s.indexOf('45');
+          if (i < 0) return { s, rows: 0 };
+          const rg = document.createRange(); rg.setStart(tn, i); rg.setEnd(tn, s.length);
+          return { s, rows: new Set([...rg.getClientRects()].map((x) => Math.round(x.top))).size };
+        });
+        const hs = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+        const bad = r.filter((x) => x.none || !x.fit || x.lines > 2 || x.right > x.iw);
+        check(`${v.label} ${v.w}×${v.h}：${r.length} 本の長い記録（${r.map((x) => `${x.t}${x.lines > 1 ? '（2 行）' : ''}`).join('・')}）が「…」で切れず 2 行まで、カードがはみ出さない、横スクロールなし`,
+          r.length === GAME_URLS.length && bad.length === 0 && !hs, { bad, hs });
+        check(`${v.label}：ゼンマイの「${z.s}」の「45 / 45」が行の途中で割れない（${z.rows} 行）`, z.rows === 1, z);
+        await ctx.close();
+      }
+    },
+  },
 ];

@@ -77,7 +77,7 @@
   document.addEventListener("touchend", () => sfx.unlock(), { capture: true });
   function renderSoundBtn() {
     el.soundBtn.setAttribute("aria-pressed", String(!!sfx.on));
-    el.soundBtn.setAttribute("aria-label", sfx.on ? "効果音：オン" : "効果音：オフ");
+    el.soundBtn.setAttribute("aria-label", "効果音");   // オン・オフは aria-pressed だけで伝える（名前に入れると読み上げが二重になる。X-25）
   }
   function toggleSound() { sfx.unlock(); sfx.toggle(); renderSoundBtn(); }
   el.soundBtn.addEventListener("click", toggleSound);
@@ -636,7 +636,9 @@
     }
   }
   const input = I && typeof I.attach === "function"
-    ? I.attach({ board: el.board, area: el.playView, root: document }, { onTap, onKey },
+    // 盤の外ならどこを押しても選びをやめる（ヒント・点数の欄・上の帯も。ボタン・リンクは input.js が数えない。MT-01）。
+    // カードが出ている間は isBlocked・onTap の overlayKind で何もしない。.app は max-width 820px なので iPad の左右の余白も入るよう body で受ける
+    ? I.attach({ board: el.board, area: document.body, root: document }, { onTap, onKey },
       { isBlocked: () => !!overlayKind, cellAt: (cx, cy) => pickCell(cx, cy) })
     : null;
   if (!input) console.error("まとめてポン: MatometeInput が読み込まれていません（input.js）。タップとキーボードが使えません");
