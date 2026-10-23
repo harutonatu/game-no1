@@ -736,7 +736,7 @@ export const tests = [
     },
   },
   {
-    id: 'FW18', tier: 'full', cdp: 'CDP の CPU 低速化', title: 'ミチビキ空港 性能：機体 10・道 400 点 × 3 本で、CPU 4倍遅く（CDP）して lastDrawMs の 95% が 8ms 以内、一時停止中は frames が増えない',
+    id: 'FW18', tier: 'full', solo: true, cdp: 'CDP の CPU 低速化', title: 'ミチビキ空港 性能：機体 10・道 400 点 × 3 本で、CPU 4倍遅く（CDP）して lastDrawMs の 95% が 8ms 以内、一時停止中は frames が増えない',
     async run({ browser, check }) {
       const { ctx, page } = await openM(browser, 'FW18', { v: view('SE', 'p', 'app') });
       await firstPlane(page);

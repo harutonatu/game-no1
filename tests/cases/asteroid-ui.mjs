@@ -935,7 +935,7 @@ export const tests = [
     },
   },
   {
-    id: 'KW10', tier: 'full', cdp: 'CDP の CPU 低速化', title: 'ほしくだき 性能（§21.5）：gostar で ほし 30（大きな星・48×48 に近い）・4 台 Lv30 にして、CPU 4 倍遅く（CDP）で 10 秒、34ms を超えるコマが 5% 以下・描画 drawMs の中央 8ms 以内・ロジック stepMs の中央 4ms 以内、粒 ≦ 240・弾 ≦ SHOTS_MAX',
+    id: 'KW10', tier: 'full', solo: true, cdp: 'CDP の CPU 低速化', title: 'ほしくだき 性能（§21.5）：gostar で ほし 30（大きな星・48×48 に近い）・4 台 Lv30 にして、CPU 4 倍遅く（CDP）で 10 秒、34ms を超えるコマが 5% 以下・描画 drawMs の中央 8ms 以内・ロジック stepMs の中央 4ms 以内、粒 ≦ 240・弾 ≦ SHOTS_MAX',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await newPage(browser, view('SE', 'p', 'app'), 'KW10');

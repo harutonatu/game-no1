@@ -170,7 +170,7 @@ export const tests = [
     },
   },
   {
-    id: 'A5', tier: 'full', title: 'メニュー：カードを押すと tap が鳴り、押したときの処理が短い（遷移を遅らせない）',
+    id: 'A5', tier: 'full', solo: true, title: 'メニュー：カードを押すと tap が鳴り、押したときの処理が短い（遷移を遅らせない）',
     async run({ browser, check }) {
       const { ctx, page } = await newPage(browser, V(), 'A5', {
         initScript: () => {
