@@ -1621,4 +1621,22 @@ export const tests = [
       await ctx.close();
     },
   },
+  {
+    id: 'WW28', tier: 'full', title: 'もくもくこうば マネージャーの切り替え（X-25）：「はやい／もうかる」の ✓ は見た目だけで、読み上げの名前（ariaSnapshot）に ✓ が入らない、状態は aria-pressed（押すと入れ替わる）',
+    async run({ browser, check, root }) {
+      const L = logicOf(root);
+      const { ctx, page } = await openW(browser, 'WW28', { v: SMOKE_V(), items: { 'seizai.save': saveOf(L, mkState(L, 2, { depts: { cut: { staff: 2, level: 10, mgr: 'fast' } } }), T0) }, opts: { clockTime: new Date(T0 + 1000) } });
+      await page.evaluate(() => document.querySelector('.zone[data-dept="cut"]').click()); await wait(page, 100);
+      const ax = async () => ({ fast: (await page.locator('#mgrFast').ariaSnapshot()).replace(/\s+/g, ' '), gain: (await page.locator('#mgrGain').ariaSnapshot()).replace(/\s+/g, ' '),
+        vis: await page.evaluate(() => getComputedStyle(document.querySelector('#mgrFast > span'), '::before').content) });
+      const a0 = await ax();
+      await page.click('#mgrGain'); await wait(page, 100);
+      const a1 = await ax();
+      const okOne = (a, on) => /^- button "/.test(a.fast) && /^- button "/.test(a.gain) && !/✓/.test(a.fast + a.gain)
+        && /\[pressed\]/.test(on === 'fast' ? a.fast : a.gain) && !/\[pressed\]/.test(on === 'fast' ? a.gain : a.fast);
+      check(`はやい・もうかる の読み上げの名前に ✓ なし、状態は aria-pressed（${a0.fast} / ${a0.gain} → もうかるを押すと ${a1.fast} / ${a1.gain}）。見た目の ✓ は残る（${a0.vis}）`,
+        okOne(a0, 'fast') && okOne(a1, 'gain') && /✓/.test(a0.vis), { a0, a1 });
+      await ctx.close();
+    },
+  },
 ];

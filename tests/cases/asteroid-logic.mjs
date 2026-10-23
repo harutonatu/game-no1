@@ -1063,7 +1063,7 @@ export const tests = [
     },
   },
   {
-    id: 'KL19', tier: 'full', node: true, title: 'ほしくだき：重さ（§21.5：48×41 のいちばん大きな星・4 台 Lv30 で 1 step の中央 1ms 以下、stepCells 6000 以下、greedy で星 30 まで 10 秒以内）',
+    id: 'KL19', tier: 'full', node: true, title: 'ほしくだき：重さ（§21.5：48×41 のいちばん大きな星・4 台 Lv30 で 1 step の中央 1ms 以下、stepCells 6000 以下、greedy で星 30 まで CPU 時間 10 秒以内（T-20））',
     run({ check, root }) {
       const L = load(root);
       const slots = ['spread', 'bomb', 'bolt', 'beam'].map((id) => ({ id, lv: 30 }));
@@ -1080,10 +1080,11 @@ export const tests = [
         out.push({ star, lv, grid: s.rock.cols + 'x' + s.rock.rows, median: +ts[ts.length >> 1].toFixed(4), p95: +ts[Math.floor(ts.length * 0.95)].toFixed(3), cells: sim.stepCells, brk, err: sim.error });
       }
       check('48×41（GRID_MAX 48 の列）の星・4 台（ちらし・どかん・いなずま・ビーム）Lv30 と Lv80（よく欠ける）で、1 step の中央が 1ms 以下・stepCells の最大が 6000 以下', out.every((o) => o.grid === '48x41' && o.median <= 1 && o.cells > 0 && o.cells <= 6000 && !o.err) && out[2].brk > 50, out);
-      const t0 = Date.now();
+      // 重さは CPU 時間で見る（ほかのテストや変異テストを並列に流して CPU が混んでも、待たされた時間を数えない。T-20）。壁の時計の時間は参考に出すだけ
+      const c0 = process.cpuUsage(), t0 = Date.now();
       const g = L.simulate('greedy', { seed: 1 });
-      const ms = Date.now() - t0;
-      check('greedy で星 30 まで 1 本が 10 秒以内（Node）・stepCells の最大 6000 以下', !g.error && g.stars.length === 30 && ms <= 10000 && g.stepCells <= 6000, [ms, g.stepCells, g.stars.length]);
+      const cu = process.cpuUsage(c0), ms = Math.round((cu.user + cu.system) / 1000), wall = Date.now() - t0;
+      check(`greedy で星 30 まで 1 本が CPU 時間 10 秒以内（Node。CPU ${ms}ms・壁の時計 ${wall}ms）・stepCells の最大 6000 以下`, !g.error && g.stars.length === 30 && ms <= 10000 && g.stepCells <= 6000, [ms, wall, g.stepCells, g.stars.length]);
     },
   },
 ];

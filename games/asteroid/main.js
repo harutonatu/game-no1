@@ -114,7 +114,7 @@
   function renderSoundBtn() {
     if (!el.soundBtn) return;
     el.soundBtn.setAttribute("aria-pressed", String(!!sfx.on));
-    el.soundBtn.setAttribute("aria-label", sfx.on ? "こうかおん：オン" : "こうかおん：オフ");
+    el.soundBtn.setAttribute("aria-label", "こうかおん");   // オン・オフは aria-pressed だけで伝える（名前に入れると読み上げが二重になる。X-25）
   }
   function toggleSound() { sfx.unlock(); sfx.toggle(); renderSoundBtn(); }
   renderSoundBtn();

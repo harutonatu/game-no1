@@ -649,7 +649,7 @@
   const soundBtn = $("soundBtn");
   function renderSoundBtn() {
     soundBtn.setAttribute("aria-pressed", String(sfx.on));
-    soundBtn.setAttribute("aria-label", sfx.on ? "効果音：オン" : "効果音：オフ");
+    soundBtn.setAttribute("aria-label", "効果音");   // オン・オフは aria-pressed だけで伝える（名前に入れると読み上げが二重になる。X-25）
   }
   soundBtn.addEventListener("click", () => { sfx.toggle(); renderSoundBtn(); });
   renderSoundBtn();

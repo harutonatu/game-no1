@@ -336,7 +336,8 @@
   .mgr-switch button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; }
   .mgr-switch button small { font: 600 12px/1.25 var(--font-text); opacity: 0.9; white-space: nowrap; }
   .mgr-switch button[aria-pressed="true"] { background: #f0a43a; border-color: #f0a43a; color: var(--accent-ink); }
-  .mgr-switch button[aria-pressed="true"] > span::before { content: "✓ "; }
+  /* ✓ は見た目だけ（状態は aria-pressed で読む）。「/ ""」で読み上げの名前に入れない（古い Safari は 1つ目の content を使う。X-25） */
+  .mgr-switch button[aria-pressed="true"] > span::before { content: "✓ "; content: "✓ " / ""; }
   #mgrHelp { margin: 0; font: 600 12px/1.35 var(--font-text); color: var(--muted); word-break: keep-all; overflow-wrap: anywhere; }
   #mgrHelp[hidden] { display: none; }
 

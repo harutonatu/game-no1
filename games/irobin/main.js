@@ -71,7 +71,7 @@
   document.addEventListener("touchend", () => sfx.unlock(), { capture: true });
   function renderSoundBtn() {
     el.soundBtn.setAttribute("aria-pressed", String(!!sfx.on));
-    el.soundBtn.setAttribute("aria-label", sfx.on ? "効果音：オン" : "効果音：オフ");
+    el.soundBtn.setAttribute("aria-label", "効果音");   // オン・オフは aria-pressed だけで伝える（名前に入れると読み上げが二重になる。X-25）
   }
   function toggleSound() { sfx.unlock(); sfx.toggle(); renderSoundBtn(); }
   el.soundBtn.addEventListener("click", toggleSound);

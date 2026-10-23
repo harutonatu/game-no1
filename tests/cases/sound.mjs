@@ -261,4 +261,32 @@ export const tests = [
       check('音名の一覧：ブロック・タイル・メニューは従来どおり、キリトリだけに slice・combo・bomb・miss・launch', Object.keys(want).every((g) => got[g] === want[g]), got);
     },
   },
+  {
+    id: 'A7', tier: 'full', title: '♪の読み上げ（X-25。PK-36・HS-07 の横展開）：全部のゲームで、♪の aria-label は状態によらず同じ名前（効果音／こうかおん／音）でオン・オフを入れない、押すと aria-pressed だけが true⇄false に変わる、読み上げの名前（ariaSnapshot）にも オン／オフ が出ない',
+    async run({ browser, check }) {
+      const WANT = [['games/blocks/', '効果音'], ['games/2048/', '効果音'], ['games/kiritori/', '効果音'], ['games/irocode/', '効果音'], ['games/zenmai/', '効果音'],
+        ['games/pikatto/', '音'], ['games/hashi/', '効果音'], ['games/irobin/', '効果音'], ['games/matomete/', '効果音'], ['games/michibiki/', '効果音'],
+        ['games/seizai/', 'こうかおん'], ['games/asteroid/', 'こうかおん']];
+      const { ctx, page } = await newPage(browser, V(), 'A7');
+      const rows = [], bad = [];
+      for (const [url, want] of WANT) {
+        await seed(page, {});
+        await page.goto(BASE + url); await wait(page, 300);
+        const btn = page.locator('#soundBtn, #sound-btn').first();
+        const read = async () => ({ label: await btn.getAttribute('aria-label'), pressed: await btn.getAttribute('aria-pressed'), ax: (await btn.ariaSnapshot()).replace(/\s+/g, ' ') });
+        const r0 = await read();
+        await btn.evaluate((b) => b.click()); await wait(page, 80);
+        const r1 = await read();
+        await btn.evaluate((b) => b.click()); await wait(page, 80);
+        const r2 = await read();
+        // ピカッとの最初の画面は ♪ が読み上げの木の外（ariaSnapshot が空）なので、名前は aria-label だけで見る
+        const axOk = (r) => (r.ax === '' ? url === 'games/pikatto/' : r.ax.startsWith(`- button "${want}"`) && !/オン|オフ/.test(r.ax));
+        const ok = [r0, r1, r2].every((r) => r.label === want && axOk(r)) && /^(true|false)$/.test(String(r0.pressed)) && r1.pressed !== r0.pressed && r2.pressed === r0.pressed;
+        rows.push(`${url.replace(/^games\/|\/$/g, '')} 「${r0.label}」${r0.pressed}→「${r1.label}」${r1.pressed}`);
+        if (!ok) bad.push({ url, r0, r1, r2 });
+      }
+      check(`♪の名前は状態によらず同じで、オン・オフは aria-pressed だけ（${rows.join('、')}）`, rows.length === WANT.length && bad.length === 0, bad);
+      await ctx.close();
+    },
+  },
 ];
