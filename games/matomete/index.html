@@ -446,6 +446,17 @@
     .card ol.rules { font-size: 15px; line-height: 1.5; }
     .card p.note { display: none; }
   }
+  /* 縦でとても背が低い（SE の Safari 320×454 など）：終わりのカードの字とすき間を詰めて、スクロールなしで収める（MT-18） */
+  @media (orientation: portrait) and (max-height: 500px) {
+    .card:has(> .btns.row4) { padding-top: 10px; padding-bottom: 10px; gap: 6px; }
+    .card:has(> .btns.row4) h2 { font-size: 20px; }
+    .card:has(> .btns.row4) p { font-size: 15px; line-height: 1.35; }
+    .card:has(> .btns.row4) p.sub { margin-top: -2px; font-size: 14px; }
+    .card:has(> .btns.row4) p.least, .card:has(> .btns.row4) p.note-best { font-size: 13px; }
+    .card:has(> .btns.row4) p.big { font-size: 32px; line-height: 1.1; }
+    .card:has(> .btns.row4) .btns { gap: 6px; }
+    .card:has(> .btns.row4) .btns button { min-height: 44px; padding: 4px 6px; }
+  }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }

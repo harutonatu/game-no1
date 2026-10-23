@@ -110,6 +110,10 @@
   .level .unit { font: 700 13px var(--font-text); color: var(--muted); }
   .level[data-size="m"] b { font-size: 16px; }
   .level[data-size="l"] b { font-size: 14px; }
+  /* 6〜8 桁：段を増やさず、字とすき間を詰めて 1 段に収める（SE 縦でも。IB-30） */
+  .level[data-size="t"] { gap: 2px; }
+  .level[data-size="t"] b, .level[data-size="t"] .unit { font-size: 12px; }
+  .head:has(> .level[data-size="t"]) { column-gap: 4px; }
   .head[data-long="1"] .level { justify-self: end; }
   .head-tools { grid-area: tools; display: flex; gap: 6px; }
   .tool {

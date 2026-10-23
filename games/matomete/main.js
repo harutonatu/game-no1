@@ -175,17 +175,18 @@
   }
 
   // ===== 表示 =====
-  const sizeOf = (text) => (text.length <= 5 ? "s" : text.length <= 6 ? "m" : "l");
-  function setNum(node, n) {
+  // 字の大きさ：sMax 文字までは s、その 1 文字上は m、もっと長いと l。「のこり」の欄はいちばん狭いので 4 文字までを s にする（5 桁でも欄に収める。MT-17）
+  const sizeOf = (text, sMax = 5) => (text.length <= sMax ? "s" : text.length <= sMax + 1 ? "m" : "l");
+  function setNum(node, n, sMax) {
     const t = String(n);
     if (node.textContent !== t) node.textContent = t;
-    node.dataset.size = sizeOf(t);
+    node.dataset.size = sizeOf(t, sMax);
   }
   function hud() {
     if (!state) return;
     setNum(el.score, state.score);
     setNum(el.best, bestShown);
-    setNum(el.left, safeCall(() => L.remaining(state), 0));
+    setNum(el.left, safeCall(() => L.remaining(state), 0), 4);
     el.score.dataset.overBest = bestShown > 0 && state.score > bestShown ? "1" : "0";
     el.modeChip.textContent = `ベスト（${MODE_NAME[mode] || MODE_NAME.normal}）`;
     el.modeChip.dataset.mode = mode;

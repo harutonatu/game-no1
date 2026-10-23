@@ -172,7 +172,8 @@
   const restPhase = () => (state && state.won ? "clear" : isStuckNow() ? "stuck" : selected !== null ? "selected" : "idle");
 
   // 表示：ロジックの値をそのまま出す
-  const sizeOf = (text) => (text.length <= 4 ? "s" : text.length <= 8 ? "m" : "l");
+  // 面の番号の字の大きさ：4 桁まで s、5 桁は m、6〜8 桁は t（1 段のまま字を 12px に詰める）、9 桁からは l（番号を下の段にまわす）。6〜8 桁を m のまま並べると SE 縦で数 px 足りない（IB-30）
+  const sizeOf = (text) => (text.length <= 4 ? "s" : text.length <= 5 ? "m" : text.length <= 8 ? "t" : "l");
   function hud() {
     if (!state) return;
     const h = safeCall(() => L.hud(state), null);

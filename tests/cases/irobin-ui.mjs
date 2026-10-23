@@ -1206,4 +1206,30 @@ export const tests = [
       await ctx.close();
     },
   },
+  {
+    id: 'BW21', tier: 'full', title: 'いろびん v35 の小さな直し（IB-30）：上の帯の面の番号が 4〜8 桁（9999・99999・999999・12345678）でも 1 段のまま（6〜8 桁は字を 12px に詰める）省略されず上の帯に収まり、ほかのボタンと重ならない（SE 縦横・13 縦・iPad 縦）',
+    async run({ browser, check }) {
+      const rows = [];
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('i13', 'p', 'app'), view('iPad', 'p', 'app')]) {
+        let h4 = 0;
+        for (const lv of ['9999', '99999', '999999', '12345678']) {
+          const { ctx, page } = await openG(browser, `BW21 ${v.label} ${lv}`, { v, extra: { 'irobin.best': String(Number(lv) - 1) } });
+          const r = await page.evaluate(() => {
+            const e = document.querySelector('#level'), box = document.querySelector('#levelBox'), u = box.querySelector('.unit').getBoundingClientRect(), hd = document.querySelector('.head').getBoundingClientRect();
+            const others = ['a#back', '#helpBtn', '#soundBtn', 'h1.title'].map((s) => document.querySelector(s)?.getBoundingClientRect()).filter(Boolean);
+            const hit = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+            const q = e.getBoundingClientRect();
+            return { t: e.textContent, size: box.dataset.size, fit: e.scrollWidth <= e.clientWidth + 0.5, unitIn: u.right <= box.getBoundingClientRect().right + 0.5, inHead: q.left >= hd.left - 0.5 && u.right <= hd.right + 0.5,
+              overlap: others.some((o) => hit(o, q) || hit(o, u)), px: parseFloat(getComputedStyle(e).fontSize), unitPx: parseFloat(getComputedStyle(box.querySelector('.unit')).fontSize),
+              long: document.querySelector('.head').dataset.long, headH: Math.round(hd.height), hs: document.documentElement.scrollWidth > innerWidth };
+          });
+          if (lv === '9999') h4 = r.headH;
+          rows.push({ v: v.label, lv, h4, ...r });
+          await ctx.close();
+        }
+      }
+      const bad = rows.filter((r) => r.t !== r.lv || !r.fit || !r.unitIn || !r.inHead || r.overlap || r.px < 12 || r.unitPx < 12 || r.hs || r.long !== '0' || r.headH !== r.h4);
+      check(`面の番号 4〜8 桁が ${rows.length / 4} 画面で、1 段のまま（上の帯の高さが 4 桁と同じ）省略されず上の帯に収まり重ならない、字 12px 以上（SE 縦：${rows.filter((r) => r.v.startsWith('SE縦・ホーム')).map((r) => `${r.lv}→${r.size} ${r.px}px`).join('、')}）`, rows.length === 20 && bad.length === 0, bad);
+    },
+  },
 ];

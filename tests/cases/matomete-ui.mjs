@@ -1125,9 +1125,13 @@ export const tests = [
       let gcx = 0, gcy = 0; for (const [x, y] of g1) { gcx += x + 0.5; gcy += y + 0.5; } gcx /= g1.length; gcy /= g1.length;
       const byD = ex1.map(([x, y]) => ({ x, y, d: Math.hypot(x + 0.5 - gcx, y + 0.5 - gcy) })).sort((a, b) => a.d - b.d);
       const nearC = byD[0], farC = byD[byD.length - 1];
-      await tapReal(page, g1[0][0], g1[0][1]);
-      await wait(page, 175);
-      const mid = { busy: await page.evaluate(() => window.MatometeGame.isAnimating()), near: await alphaAt(nearC.x, nearC.y), far: await alphaAt(farC.x, farC.y), animMs: (await gs(page)).animMs };
+      // 押してから 0.175 秒ちょうどで見る：ページの時計を止めて wait でだけ進める（止めないと、負荷で遅れた実時間のぶん演出が先へ進む。T-08）
+      let mid;
+      await frozen(page, async () => {
+        await tapReal(page, g1[0][0], g1[0][1]);
+        await wait(page, 175);
+        mid = { busy: await page.evaluate(() => window.MatometeGame.isAnimating()), near: await alphaAt(nearC.x, nearC.y), far: await alphaAt(farC.x, farC.y), animMs: (await gs(page)).animMs };
+      });
       await wait(page, 900);
       const s1 = await gs(page);
       anims.push(s1.animMs);
@@ -1367,6 +1371,42 @@ export const tests = [
         check(`「れんぞく」の札が盤にかかるのは 10px まで（${rows.map((r) => `${r.v} ${r.into}px／マス ${r.cell}px`).join('、')}）、縦では点数の欄の文字に重ならず、画面（safe-area）の上にはみ出さない`,
           rows.every((r) => r.into >= 0 && r.into <= 10 && r.top >= r.safeTop - 0.5 && (!r.port || r.top >= r.textBottom - 0.5)), rows);
       }
+    },
+  },
+  {
+    id: 'QW23', tier: 'full', title: 'まとめてポン v35 の小さな直し（MT-17・MT-18）：上の帯の「のこり」が 5 桁（99999）でも省略・はみ出しなし（SE 縦横・13 縦・iPad）、SE 縦 Safari（320×454）の終わりのカード（いちばん行の多い形）がスクロールなしで全部見える',
+    async run({ browser, check }) {
+      // ---- MT-17：のこり 99999。ほんとうの のこりは 200 こまでなので、MatometeLogic.remaining だけを差し替えて main.js の表示（setNum・data-size）を通す ----
+      const LEFT_SPY = () => {
+        let v;
+        Object.defineProperty(window, 'MatometeLogic', { configurable: true, get: () => v,
+          set(x) { v = Object.freeze({ ...x, remaining: (s) => (window.__left !== undefined ? window.__left : x.remaining(s)) }); } });
+      };
+      const rows = [];
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('i13', 'p', 'app'), view('iPad', 'p', 'app')]) {
+        const { ctx, page } = await openG(browser, `QW23 のこり ${v.label}`, { v, opts: { initScript: LEFT_SPY } });
+        for (const n of [200, 9999, 99999]) {
+          await page.evaluate((n) => { window.__left = n; }, n);
+          await fresh(page, 1);
+          const r = await page.evaluate(() => { const e = document.querySelector('#left'), st = e.closest('.stat').getBoundingClientRect(), q = e.getBoundingClientRect();
+            return { t: e.textContent, size: e.dataset.size, fit: e.scrollWidth <= e.clientWidth + 0.5, inBox: q.right <= st.right + 0.5, px: parseFloat(getComputedStyle(e).fontSize), hs: document.documentElement.scrollWidth > innerWidth }; });
+          rows.push({ v: v.label, n, ...r });
+        }
+        await ctx.close();
+      }
+      const bad = rows.filter((r) => r.t !== String(r.n) || !r.fit || !r.inBox || r.px < 12 || r.hs);
+      check(`上の帯の「のこり」200・9999・99999 が ${rows.length / 3} 画面で省略されず欄に収まる、文字 12px 以上（${rows.filter((r) => r.n === 99999).map((r) => `${r.v} ${r.size} ${r.px}px`).join('、')}）`, rows.length === 15 && bad.length === 0, bad);
+      // ---- MT-18：SE 縦 Safari 320×454 の終わりのカード（QW22 の MT-13 と同じ形。matomete.least があると「まえの いちばん すくない」「さいこう きろく！」も出る） ----
+      const v = view('SE', 'p', 'safari');
+      const h = await openG(browser, 'QW23 終わり 320×454', { v, extra: { 'matomete.least': '199' } });
+      await fresh(h.page, 1);
+      await playToOver(h.page); await wait(h.page, 700);
+      const o = await overlayProbe(h.page, v.safe, { noScroll: true });
+      const sc = await h.page.evaluate(() => { const ov = document.querySelector('#overlay'); return { sh: ov.scrollHeight, ch: ov.clientHeight, lines: document.querySelectorAll('#card p').length,
+        small: [...document.querySelectorAll('#card p, #card h2, #card button')].filter((e) => parseFloat(getComputedStyle(e).fontSize) < 12).map((e) => e.className || e.tagName) }; });
+      check(`${v.label} ${v.w}×${v.h}：終わりのカード（文 ${sc.lines} 行）がスクロールなしで全部見え（scrollHeight ${sc.sh}・高さ ${sc.ch}）、文が下の帯に隠れない（隠れ：${o.covered.join(' / ') || 'なし'}）、ボタン 44px 以上、文字 12px 以上`,
+        overlayOk(o) && o.covered.length === 0 && sc.sh <= sc.ch + 1 && sc.lines >= 6 && sc.small.length === 0, { o, sc });
+      await h.ctx.close();
     },
   },
 ];
