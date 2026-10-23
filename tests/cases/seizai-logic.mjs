@@ -8,6 +8,8 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+// 重さを測る CPU 時間（このスレッドだけ。GC・JIT の裏のスレッドと、CPU が混んで待たされた時間を数えない。古い Node は process.cpuUsage。T-21）
+const cpuOf = (prev) => (process.threadCpuUsage ? process.threadCpuUsage(prev) : process.cpuUsage(prev));
 
 function load(root) {
   const f = path.join(root, 'games/seizai/logic.js');
@@ -382,10 +384,12 @@ export const tests = [
       const bad = [L.catchUp(s, -5), L.catchUp(s, NaN), L.catchUp(s, 'x'), L.catchUp(s, null)];
       check('catchUp の秒が 負・NaN・文字・null → 何も進めない', bad.every((c) => c.report.effective === 0 && c.state.t === s.t), bad.map((c) => c.report));
       check('catchUp は大口の注文・広げる・買うを自動でしない', (() => { const g = mk(L, 1, { money: 1e9, goal: { done: 1000 } }); const c = L.catchUp(g, 7200).state; return c.stage === 1 && J(c.depts) === J(g.depts); })(), null);
-      const t0 = process.hrtime.bigint();
-      L.catchUp(maxed(L, 4), 7200);
-      const ms = Number(process.hrtime.bigint() - t0) / 1e6;
-      check('catchUp(7200)（みなと・全部最大）が Node で 50ms 以内', ms <= 50, ms.toFixed(1) + 'ms');
+      // 重さは CPU 時間で見る（並列のテストで CPU が混んでも、待たされた時間を数えない。T-21・T-20 と同じ）
+      const g4 = maxed(L, 4);
+      const c0 = cpuOf(), t0 = process.hrtime.bigint();
+      L.catchUp(g4, 7200);
+      const cu = cpuOf(c0), ms = (cu.user + cu.system) / 1000, wall = Number(process.hrtime.bigint() - t0) / 1e6;
+      check(`catchUp(7200)（みなと・全部最大）が Node で CPU 時間 50ms 以内（CPU ${ms.toFixed(1)}ms・壁の時計 ${wall.toFixed(1)}ms）`, ms <= 50, [ms.toFixed(1) + 'ms', wall.toFixed(1) + 'ms']);
     },
   },
   {

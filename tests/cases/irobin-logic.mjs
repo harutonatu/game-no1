@@ -6,6 +6,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
+// 重さを測る CPU 時間（このスレッドだけ。GC・JIT の裏のスレッドと、CPU が混んで待たされた時間を数えない。古い Node は process.cpuUsage。T-21）
+const cpuOf = (prev) => (process.threadCpuUsage ? process.threadCpuUsage(prev) : process.cpuUsage(prev));
 
 function load(root) {
   const f = path.join(root, 'games/irobin/logic.js');
@@ -195,9 +197,10 @@ export const tests = [
     run({ check, root }) {
       const L = load(root);
       const levels = [...Array.from({ length: 60 }, (_, i) => i + 1), 1000];
-      const t0 = Date.now();
+      // 重さは CPU 時間で見る（並列のテストで CPU が混んでも、待たされた時間を数えない。T-21・T-20 と同じ）
+      const c0 = cpuOf(), t0 = Date.now();
       const first = levels.map((lv) => L.createLevel(lv));
-      const ms = Date.now() - t0;
+      const cu = cpuOf(c0), ms = Math.round((cu.user + cu.system) / 1000), wall = Date.now() - t0;
       const bad = [];
       const fb = { 0: 0, 1: 0, 2: 0 };
       for (let i = 0; i < levels.length; i++) {
@@ -238,7 +241,7 @@ export const tests = [
         if (!(info.nodes <= L.GEN_NODE_BUDGET * 1.5)) bad.push(`${lv}: nodes ${info.nodes}`);
       }
       check(`${levels.length} 面（1〜60・1000）：決定的・各色4段・最初からそろった瓶なし・隠れの形・注文が各色1つ・id が 0〜・solutionIds を replay すると won、残るのは空き瓶だけ（届けた瓶は全部消える。空き瓶の布の面は 1 本多い）・布の瓶の数と cover が info.cloths と合う`, bad.length === 0, bad.slice(0, 8));
-      check(`1〜60 面と 1000 面の生成が合計 3 秒以内（${ms}ms。目安 iPhone SE 相当で 1 面 300ms 以内）`, ms <= 3000, ms);
+      check(`1〜60 面と 1000 面の生成が CPU 時間で合計 3 秒以内（CPU ${ms}ms・壁の時計 ${wall}ms。目安 iPhone SE 相当で 1 面 300ms 以内）`, ms <= 3000, [ms, wall]);
       check(`表のとおりに作れた面（fallback 0）が 8 割以上（0:${fb[0]} 1:${fb[1]} 2:${fb[2]}）`, fb[0] >= levels.length * 0.8, fb);
       const l1 = first[0].state;
       check('1 面は瓶 4 本（色 2＋空き 2。最初の手で解けなくならない）・隠れなし（遊び方を覚える面）', l1.bottles.length === 4 && !l1.bottles.some((b) => b.hidden.some(Boolean)), l1.bottles.length);
@@ -563,11 +566,13 @@ export const tests = [
       const fb = { 0: 0, 1: 0, 2: 0 };
       let maxMs = 0, maxAt = 0, clothLv = 0, emptyCl = 0, fullCl = 0, effN = 0, effYes = 0;
       const covBad = [];
-      const t0 = Date.now();
+      // 重さは CPU 時間で見る（T-21。壁の時計の合計は参考に出すだけ）
+      const cpuMs = (c) => { const u = cpuOf(c); return (u.user + u.system) / 1000; };
+      const c0 = cpuOf(), t0 = Date.now();
       for (let lv = 1; lv <= N; lv++) {
-        const a = Date.now();
+        const a = cpuOf();
         const c = L.createLevel(lv);
-        const ms = Date.now() - a; if (ms > maxMs) { maxMs = ms; maxAt = lv; }
+        const ms = Math.round(cpuMs(a)); if (ms > maxMs) { maxMs = ms; maxAt = lv; }
         if (lv % 7 === 0 || lv <= 30) { if (J(L.createLevel(lv)) !== J(c)) det.push(lv); }
         const { state: s, info } = c, p = L.paramsFor(lv);
         fb[info.fallback] = (fb[info.fallback] || 0) + 1;
@@ -609,14 +614,14 @@ export const tests = [
         else if (st.bottles.some((b) => b.cover !== null) || unv !== cov.length) bad.push(`${lv}: 布が取れないまま終わった（取れた ${unv}/${cov.length}）`);
         if (bad.length > 20) break;
       }
-      const total = Date.now() - t0;
+      const total = Math.round(cpuMs(c0)), wallTotal = Date.now() - t0;
       check(`paramsFor の布の表（1〜7 面 0 本、8〜24 面 1 本・空き瓶 8 面 0／9〜14 面 0.7／15〜24 面 0.4、25 面以降は偶数面 1 本・奇数面 0 本・空き瓶 0）が 1〜${N} 面で正しい`, tbl.length === 0, tbl.slice(0, 6));
       check(`中身ありの布の cover の幅（8 面は中身あり cover 1、〜14 面 1〜total/3、15〜24 面 total/3〜total/2、25 面以降 total/2±1）`, covBad.length === 0, covBad.slice(0, 6));
       check(`25〜600 面の布の面の半分以上で布が効いている（cover 1 より探索量 1.5 倍以上）：${effYes}/${effN}＝${Math.round(100 * effYes / Math.max(1, effN))}%`, effN > 0 && effYes * 2 >= effN, { effYes, effN });
       check(`1〜${N} 面：布の本数・中身（空き瓶か 4 段、同じ色 4 段なし）・cover・瓶 11 本以内・solution を再生すると won で布は全部取れる（布の面 ${clothLv}・空き瓶の布 ${emptyCl}・中身ありの布 ${fullCl}）`, bad.length === 0 && clothLv > 0 && emptyCl > 0 && fullCl > 0, bad.slice(0, 8));
       check(`決定的（1〜30 面と 7 の倍数の面を 2 回作って JSON が一致）`, det.length === 0, det.slice(0, 8));
       check(`fallback 2（固定の予備の面）が出ない（0:${fb[0]} 1:${fb[1]} 2:${fb[2]}）`, !fb[2], fb);
-      check(`生成が速い：1 面の最大 ${maxMs}ms（${maxAt} 面。目安 300ms 以内）、合計 ${total}ms`, maxMs <= 300, { maxMs, maxAt, total });
+      check(`生成が速い：1 面の最大 CPU ${maxMs}ms（${maxAt} 面。目安 300ms 以内）、合計 CPU ${total}ms・壁の時計 ${wallTotal}ms`, maxMs <= 300, { maxMs, maxAt, total, wallTotal });
     },
   },
   {

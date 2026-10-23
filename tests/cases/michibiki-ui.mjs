@@ -278,14 +278,20 @@ export const tests = [
       r.pausedOpen = (await dom(page)).overlay === 'paused';
       r.paused = await reachable(page, 'a#back') && await go();
       await gotoM(page);
-      for (let i = 0; i < 3; i++) await crashOnce(page);
-      await wait(page, 700);
-      r.overOpen = (await dom(page)).overlay === 'over';
-      r.over = await reachable(page, 'a#back') && await go();
+      // ページの時計を止めて wait でだけ進める（止めないと WebKit ではページの時刻がずれ、0.7 秒進めても 0.6 秒のカードがまだ出ていないことがある。FW2 と同じ。T-16）
+      await frozen(page, async () => {
+        for (let i = 0; i < 3; i++) await crashOnce(page);
+        await wait(page, 700);
+        r.overOpen = (await dom(page)).overlay === 'over';
+        r.overReach = await reachable(page, 'a#back');
+      });
+      r.over = r.overReach && await go();
       check('遊んでいる途中・遊び方・一時停止・終わりのカードのどれからも a#back が見えて押せ、メニューが開く', Object.values(r).every(Boolean), r);
       await gotoM(page);
-      for (let i = 0; i < 3; i++) await crashOnce(page);
-      await wait(page, 1300);
+      await frozen(page, async () => {   // 1.3 秒＝カード 0.6 秒＋押せない 0.6 秒のあと（T-16）
+        for (let i = 0; i < 3; i++) await crashOnce(page);
+        await wait(page, 1300);
+      });
       await page.click('#menuBtn'); await page.waitForURL(BASE, { timeout: 5000 }).catch(() => {});
       check('終わりのカードの「メニューへ」（#menuBtn）でメニューが開く', page.url() === BASE && await page.locator('a.game').count() >= 2, page.url());
       await ctx.close();

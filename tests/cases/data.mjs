@@ -266,7 +266,7 @@ export const tests = [
       await wait(page, 50);
       const s1 = await kiriSnap(page);
       const ls1 = await page.evaluate(() => localStorage.getItem('kiritori.best'));
-      check(`不正なベスト（abc）は 0 表示、的を切った瞬間にベスト ${s1.score} を保存`, b0 === '0' && !!f && s1.score >= 1 && ls1 === String(s1.score), { b0, score: s1.score, ls1 });
+      check(`不正なベスト（abc）は 0 表示、的を切った瞬間にベスト ${s1.score} を保存`, b0 === '0' && !!f && s1.score >= 1 && ls1 === String(s1.score), { b0, score: s1.score, ls1, f: f ? { kind: f.o.kind, x: Math.round(f.o.x), y: Math.round(f.o.y), r: f.o.r } : null, after: { state: s1.state, cut: s1.cutCount, lives: s1.lives, objs: s1.objs.length, overlay: s1.overlay } });   // f・after は T-07 の原因を絞るため
       await page.click('#pauseBtn'); await wait(page, 60);
       const note = await page.evaluate(() => document.querySelector('#card p')?.textContent || '');
       await page.click('#card [data-cmd=menu]'); await page.waitForURL(BASE);

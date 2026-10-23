@@ -610,10 +610,10 @@ export const tests = [
       const { ctx, page } = await openH(browser, 'HW7', { opts: { touch: false } });
       await blurAll(page);
       await page.keyboard.down('Space'); await wait(page, 200);
-      const k1 = await gs(page), kh = await holdingAttr(page);
+      const k1 = await gs(page), kh = await holdingAttr(page), ae1 = await page.evaluate(() => document.activeElement ? (document.activeElement.id || document.activeElement.tagName) : null);   // ae1 は T-18 の原因を絞るため detail に出すだけ
       await page.keyboard.down('Space'); await wait(page, 100);      // 押しっぱなしの repeat
       const k2 = await gs(page);
-      check(`Space の keydown で伸びる（phase ${k1.phase}・bridgeLen ${k1.bridgeLen?.toFixed?.(1)}・data-holding ${kh}）`, k1.phase === 'growing' && k1.bridgeLen > 0 && kh === '1', { k1, kh });
+      check(`Space の keydown で伸びる（phase ${k1.phase}・bridgeLen ${k1.bridgeLen?.toFixed?.(1)}・data-holding ${kh}）`, k1.phase === 'growing' && k1.bridgeLen > 0 && kh === '1', { k1, kh, ae1 });
       check(`repeat の keydown で伸び直さない（${k1.bridgeLen?.toFixed?.(1)} → ${k2.bridgeLen?.toFixed?.(1)}、増え続ける）`, k2.phase === 'growing' && k2.bridgeLen > k1.bridgeLen, { k1, k2 });
       await page.keyboard.up('Space'); await wait(page, 50);
       const k3 = await gs(page);
@@ -866,10 +866,12 @@ export const tests = [
       // ガイド点線：押している間、guideTipX = 今の葉の右端 + 今の長さ
       const [cx, cy] = await stageCenter(page);
       const right = (await lens(page)).right;
+      // 押す前のようす（押しても伸びないことがまれにある。T-05 の原因を絞るため detail に出すだけ）
+      const pre = await page.evaluate(([x, y]) => { const s = window.HashiGame.getState(), e = document.elementFromPoint(x, y); return { phase: s.phase, overlay: s.overlay, paused: s.paused, at: e ? (e.id || e.className || e.tagName) : null, t: Math.round(performance.now()) }; }, [cx, cy]);
       await page.mouse.move(cx, cy); await page.mouse.down(); await wait(page, 300);
-      const gv = await page.evaluate(() => ({ g: window.__hrView?.guideTipX ?? null, len: window.HashiGame.getState().bridgeLen }));
+      const gv = await page.evaluate(() => ({ g: window.__hrView?.guideTipX ?? null, len: window.HashiGame.getState().bridgeLen, phase: window.HashiGame.getState().phase, t: Math.round(performance.now()) }));
       await page.mouse.up(); await settle(page);
-      check(`ガイドがオンなら、押している間 guideTipX（${gv.g}）＝右端 ${right}＋長さ ${gv.len?.toFixed?.(1)}`, typeof gv.g === 'number' && Math.abs(gv.g - (right + gv.len)) <= 10, { gv, right });
+      check(`ガイドがオンなら、押している間 guideTipX（${gv.g}）＝右端 ${right}＋長さ ${gv.len?.toFixed?.(1)}`, typeof gv.g === 'number' && Math.abs(gv.g - (right + gv.len)) <= 10, { gv, right, pre });
       // オフに戻す
       await wait(page, 400);
       await page.click('#helpBtn'); await wait(page, 200);
