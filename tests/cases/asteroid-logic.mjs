@@ -220,9 +220,9 @@ export const tests = [
         const ang = sp.map((b) => Math.atan2(b.vy, b.vx)).sort((a, b) => a - b);
         const gaps = ang.slice(1).map((a, k) => a - ang[k]);
         check(`ちらし Lv${lv}：扇に ${n} 発（向きが全部違い、間かくがそろう）`, sp.length === n && gaps.every((g) => g > 0.04 && near(g, gaps[0], 1e-9)), sp.length);
-        // 扇の全体の幅（ユーザー決定 2026-10-22「半分くらいにして」：5発 16°・7発 20°）
+        // 扇の全体の幅（ユーザー決定 2026-10-22「半分くらいにして」、2026-10-23「今の25%減」：5発 12°・7発 15°）
         const width = (ang[ang.length - 1] - ang[0]) * 180 / Math.PI;
-        check(`ちらし Lv${lv}：扇の全体の幅が ${lv === 1 ? 16 : 20}°`, near(width, lv === 1 ? 16 : 20, 1e-6), width);
+        check(`ちらし Lv${lv}：扇の全体の幅が ${lv === 1 ? 12 : 15}°`, near(width, lv === 1 ? 12 : 15, 1e-6), width);
       }
       // どかん：円（半径 1.5 マス）の中だけ
       let bm = mk(L, { slots: [{ id: 'shot', lv: 1 }, { id: 'bomb', lv: 1 }] });
