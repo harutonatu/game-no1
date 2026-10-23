@@ -185,8 +185,8 @@
   #distance {
     position: absolute;
     right: 6px;
-    top: 10%;
-    bottom: 14%;
+    top: max(10%, 18px);
+    bottom: var(--dist-bot, 14%);
     width: 8px;
     border-radius: 4px;
     background: #0a0f24;
@@ -201,8 +201,9 @@
   #distance[data-near="1"] ~ .dist-ic.bot { color: #ffb09c; font-weight: 900; }
   @keyframes nearBlink { 50% { opacity: 0.45; } }
   .dist-ic { position: absolute; right: 2px; font: 700 12px/1 var(--font-text); color: var(--muted); pointer-events: none; text-shadow: 0 0 3px #070b1f, 0 0 3px #070b1f; }
-  .dist-ic.top { top: calc(10% - 15px); }
-  .dist-ic.bot { bottom: calc(14% - 15px); }
+  /* 文字は場の中に収め（低い場で上の HUD に重ねない）、右端の砲台の上に重ねない（UX 5。横向きで背が低いときは --dist-bot で棒の下を上げる） */
+  .dist-ic.top { top: calc(max(10%, 18px) - 15px); }
+  .dist-ic.bot { bottom: calc(var(--dist-bot, 14%) - 15px); }
 
   /* 場の上の帯（カードではない。押せない） */
   .banner {
@@ -518,6 +519,9 @@
   .card h2 { margin: 0; font-size: 22px; line-height: 1.3; letter-spacing: 0.04em; overflow-wrap: anywhere; word-break: keep-all; }
   .card p { margin: 0; font: 16px/1.5 var(--font-text); word-break: keep-all; overflow-wrap: anywhere; }
   .card p.small { color: var(--muted); font-size: 14px; }
+  /* 古い保存（v:1）から来たときだけ、遊び方の先頭に出す知らせ（UX 4。カードの外のヒントは幕の下に隠れるため） */
+  .card p.mig { margin: 0; padding: 4px 8px; border-radius: 8px; background: rgba(255, 216, 77, 0.16); color: var(--gold); font-weight: 800; text-align: left; }
+  .card p.mig[hidden] { display: none; }
   .card ol.rules { margin: 0; padding-left: 1.4em; text-align: left; font: 15px/1.5 var(--font-text); display: flex; flex-direction: column; gap: 6px; word-break: keep-all; overflow-wrap: anywhere; }
   .card .btns { display: flex; flex-direction: column; gap: 8px; }
   .card .btns button {
@@ -687,8 +691,8 @@
       grid-template-areas: "field hud" "field weapons" "field btns";
       gap: var(--app-gap) 8px;
     }
-    /* 場は左の列いっぱい（render.js が小惑星に寄せて描く） */
-    .field { height: 100%; }
+    /* 場は左の列いっぱい（render.js が小惑星に寄せて描く）。「ちかい」を右端の砲台より上に置く（UX 5） */
+    .field { height: 100%; --dist-bot: 26%; }
     .weapons { margin-top: 0; }
     .hud { gap: 0; }
     .head { column-gap: 4px; }
@@ -702,6 +706,7 @@
     .card p { font-size: 13px; line-height: 1.4; }
     .card p.small { font-size: 12px; }
     .card ol.rules { font-size: 13px; line-height: 1.35; gap: 2px; }
+    .card p.mig { padding: 1px 8px; font-size: 13px; line-height: 1.3; }
     .card .btns { flex-direction: row; }
     .card .btns button { min-height: 44px; padding: 4px 6px; font-size: 14px; }
     .choices { flex-direction: row; gap: 8px; }
@@ -851,7 +856,7 @@
 <div class="overlay" id="swapCard" role="dialog" aria-modal="true" aria-labelledby="swapTitle" hidden>
   <div class="card">
     <h2 id="swapTitle" tabindex="-1">どの ぶきに かえる？</h2>
-    <p class="small" id="swapText">つぎの ほしか、はねかえされた あとから かわるよ</p>
+    <p class="small" id="swapText">えらぶと、つぎの ほしから かわるよ（ほしが ちきゅうに とどいた あとも かわるよ）</p>
     <div class="swapslots" role="group" aria-label="ほうだい">
       <button type="button" class="sslot" data-swap-slot="0" aria-pressed="true"></button>
       <button type="button" class="sslot" data-swap-slot="1" aria-pressed="false" hidden></button>
@@ -867,9 +872,10 @@
 <div class="overlay" id="help" role="dialog" aria-modal="true" aria-labelledby="helpTitle" hidden>
   <div class="card">
     <h2 id="helpTitle">あそびかた</h2>
+    <p class="mig" id="helpMig" hidden>あたらしい ほしくだきに なったよ。かけらは そのまま つかえるよ。</p>
     <ol class="rules">
       <li>ほうだいは じぶんで うつよ。みているだけで いいよ。ほしを ぜんぶ こわすと クリア。</li>
-      <li>したの ボタンを おすと ぶきが つよくなるよ。ぶきには とくいな いわが あるよ。てにいれた ぶきは「いれかえ」で かえられるよ。がめんの ほしは おしても うごかないよ。</li>
+      <li>したの ボタンを おすと ぶきが つよくなるよ。ぶきには とくいが あるよ。てにいれた ぶきは「いれかえ」で えらべるよ。かわるのは つぎの ほしから。がめんの ほしは おしても うごかないよ。</li>
       <li>ほしが ちきゅうに とどいても バリアが まもるよ。つよくして もういちど！</li>
     </ol>
     <div class="btns">

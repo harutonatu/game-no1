@@ -322,6 +322,7 @@ const M = [
   // かんな の直し（契約 §23・SZ-08）。流すときは ONLY=WL14,WW27,X1
   ['MW68 もくもくこうば：かんな の baseTime を 5 に戻す（全部さいだい・はやい でも かんな が いちばん遅いまま。SZ-08）', '計算', 'games/seizai/logic.js', 'plank: 2.5, plane: 2.5, shop: 3 });', 'plank: 2.5, plane: 5, shop: 3 });'],
   ['MW69 もくもくこうば：もう強くできない部署にも「ここが おそい！」の札を出す（SZ-08）', '表示', 'games/seizai/render.js', 'if (bn === d && memo.maxed) {', 'if (false) {'],
+  ['MW70 もくもくこうば：次の段で上限（CAPS）が増える部署でも「これいじょう はやく できないよ」と言う（moreNextStage が CAPS を見ない。S1）', '表示', 'games/seizai/logic.js', '    if ((kind === "staff" || kind === "line") && capOf(s.stage + 1, id) > capOf(s.stage, id)) return true;\n', ''],
   // ---- ちきゅうを守れ！ほしくだき（games/asteroid/）。中身の仕組みを変えたときだけ、このゲームの分だけ流す（契約 §11.4）。----
   //      数値（星の時間・値段・体力）の調整中なので、数値を変える変異は KL に任せ、ここは画面・保存・中断・オフライン・場を押す・ルールの流れを中心にする
   ['MK1 ほしくだき：2択の間も場が進む（choose でも step が進み、fly に戻る）', 'ルール', 'games/asteroid/logic.js', 'if (s.phase === "choose" || s.phase === "end") return;', 'if (s.phase === "end") return;'],
@@ -392,12 +393,14 @@ const M = [
   ['MK64 ほしくだき：裏へ回る・閉じるときの保存で比べ直さない（staleOnHide。storage イベントが届く前に古い状態を書き戻す。X-20）', '保存', 'games/asteroid/main.js', '    if (!stale && changedElsewhere()) stale = true;\n    return stale;', '    return stale;'],
   ['MK65 ほしくだき：裏で別のタブが書いても保存を止めない（storage を見ない。X-20）', '保存', 'games/asteroid/main.js', 'if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true;', 'if (false) stale = true;'],
   ['MK66 ほしくだき：2択の候補に ひかえの武器が出る', 'ルール', 'games/asteroid/logic.js', 'const have = new Set(s.slots.map((x) => x.id).concat((s.bench || []).map((x) => x.id)));', 'const have = new Set(s.slots.map((x) => x.id));'],
-  ['MK67 ほしくだき：4 台のあとの2択で「えらんだ ぶきは ひかえに はいるよ」を出さない', '表示', 'games/asteroid/main.js', 'if (state.slots.length >= SLOTS_MAX) parts.push("えらんだ ぶきは ひかえに はいるよ");', ''],
+  ['MK67 ほしくだき：4 台のあとの2択で「えらんだ ぶきは ひかえ（いま つかわない ぶき）に はいるよ」を出さない', '表示', 'games/asteroid/main.js', 'if (state.slots.length >= SLOTS_MAX) parts.push("えらんだ ぶきは ひかえ（いま つかわない ぶき）に はいるよ");', ''],
   ['MK68 ほしくだき：残りの武器が 1 つでも #choiceB を隠さない', '表示', 'games/asteroid/main.js', '        setHidden(btn, !knownId(id));', '        setHidden(btn, false);'],
   ['MK69 ほしくだき：ひかえが空でも #swapCard を開く', '操作', 'games/asteroid/main.js', '    if (!benchOf(state).length) { setHint(HINT_NO_BENCH);', '    if (false) { setHint(HINT_NO_BENCH);'],
   ['MK70 ほしくだき：予約の札「つぎから ○○」を出さない', '表示', 'games/asteroid/main.js', '      r.next.hidden = !nx;', '      r.next.hidden = true;'],
   ['MK71 ほしくだき：入れ替えの予約を保存しない（開き直すと予約が消える）', '保存', 'games/asteroid/logic.js', '      slots, bench, offer: state.offer ? state.offer.slice() : null, swap, cleared', '      slots, bench, offer: state.offer ? state.offer.slice() : null, swap: [], cleared'],
   ['MK72 ほしくだき：クリアの演出中の保存で予約を当てない（開き直すと予約が消える）', '保存', 'games/asteroid/logic.js', '      applySwaps(tmp, []);\n', ''],
+  ['MK73 ほしくだき：はね返しの間の保存で予約を当てない（開き直すとやり直しに予約が当たらない。T1）', '保存', 'games/asteroid/logic.js', '    if (toNext || ph === "bounce") {', '    if (toNext) {'],
+  ['MK74 ほしくだき：2択の間の保存で戻り先（bounce・clear）を見ない（T1）', '保存', 'games/asteroid/logic.js', '    const ph = state.phase === "choose" ? state.back : state.phase;', '    const ph = state.phase;'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

@@ -544,6 +544,17 @@
   function maxedOut(state, dept) {
     try { return okState(state) ? maxedOutS(clone(state), dept) : false; } catch (e) { return false; }
   }
+  // 次の段に上がると、もっと強くできる部署か（S1・契約 §23 K3）：人数・台数の上限（CAPS）が増える、または こや でマネージャーがまだいない
+  // （こうば から雇える）。みなと（段 4）・使えない部署は false。maxedOut が true でも、これが true なら「これいじょう はやく できない」とは言わない
+  function moreNextStageS(s, id) {
+    if (!DEPT[id] || !unlocked(s.stage, id) || s.stage >= 4) return false;
+    const kind = DEPT[id].kind;
+    if ((kind === "staff" || kind === "line") && capOf(s.stage + 1, id) > capOf(s.stage, id)) return true;
+    return s.stage < 2 && s.depts[id].mgr === null;
+  }
+  function moreNextStage(state, dept) {
+    try { return okState(state) ? moreNextStageS(clone(state), dept) : false; } catch (e) { return false; }
+  }
   function priceOf(state) {
     try { return okState(state) ? priceOfS(clone(state)) : null; } catch (e) { return null; }
   }
@@ -1077,7 +1088,7 @@
     SAVE_VERSION, SAVE_KEY, SAVE_KEY_BAK, SAVE_KEY_BEST, SAVE_KEY_HELP,
     START_LEVEL, TOOL_LV, TOOLS,
     speedMul, toolTier, toolOf,
-    newGame, step, rates, bottleneck, maxedOut, priceOf, productOf, costOf, buy, setMgr, boost, callCustomer, acceptOrder, forceOrder,
+    newGame, step, rates, bottleneck, maxedOut, moreNextStage, priceOf, productOf, costOf, buy, setMgr, boost, callCustomer, acceptOrder, forceOrder,
     canExpand, expand, goalOf, shipNeed, awaySeconds, catchUp, fastForward, formatYen, makeSave, loadSave, validateBest, validateFlag, simulate
   };
   return Object.freeze(api);

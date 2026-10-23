@@ -1380,10 +1380,13 @@
     let slots = state.slots.map((x) => ({ id: x.id, lv: x.lv }));
     let bench = (Array.isArray(state.bench) ? state.bench : []).map((x) => ({ id: x.id, lv: x.lv }));
     let swap = (Array.isArray(state.swap) ? state.swap : []).map((x) => ({ slot: x.slot, id: x.id }));
-    // クリアの演出中（phase 'clear'）は次の星を保存する（はじめての星 ENDING_STAR だけはエンディングを見せるため、その星のまま）。
-    // 次の星として書くときは、入れ替えの予約を当てた slots・bench と swap: [] で書く（§8.2）
-    if (state.phase === "clear" && !(state.star === ENDING_STAR && !state.cleared)) {
-      star = Math.min(STAR_MAX, state.star + 1); tries = 1; ms = [];
+    // クリアの演出中（phase 'clear'、または 2択の間で戻り先が 'clear'）は次の星を保存する（はじめての星 ENDING_STAR だけはエンディングを見せるため、その星のまま）。
+    // はね返しの間（phase 'bounce'、または 2択の間で戻り先が 'bounce'）は、やり直しの始めに当たる予約を先に当てて書く（tries はそのまま）。
+    // どちらも、入れ替えの予約を当てた slots・bench と swap: [] で書く（§8.2）
+    const ph = state.phase === "choose" ? state.back : state.phase;
+    const toNext = ph === "clear" && !(state.star === ENDING_STAR && !state.cleared);
+    if (toNext) { star = Math.min(STAR_MAX, state.star + 1); tries = 1; ms = []; }
+    if (toNext || ph === "bounce") {
       const tmp = { slots, bench, swap, turrets: layTurrets(null, slots.length) };
       applySwaps(tmp, []);
       slots = tmp.slots; bench = tmp.bench; swap = [];

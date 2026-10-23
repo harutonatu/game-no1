@@ -640,7 +640,7 @@ export const tests = [
     },
   },
   {
-    id: 'WL14', tier: 'smoke', node: true, title: 'もくもくこうば：かんな の直し（SZ-08・契約 §23）みなと で全部さいだい・はやい でも つまりは かんな でない、かんな の速さ（1ぷんに N まい）の式、もう強くできない部署（maxedOut）の判定',
+    id: 'WL14', tier: 'smoke', node: true, title: 'もくもくこうば：かんな の直し（SZ-08・契約 §23）みなと で全部さいだい・はやい でも つまりは かんな でない、かんな の速さ（1ぷんに N まい）の式、もう強くできない部署（maxedOut）の判定、次の段で もっと強くできるか（moreNextStage。S1）',
     run({ check, root }) {
       const L = load(root);
       // ユーザーの録画の形：みなと で全部の部署を 上限・Lv50・はやい
@@ -666,6 +666,14 @@ export const tests = [
       check('こや（マネージャーを雇えない）では 上限・Lv50 なら true、Lv49 なら false', L.maxedOut(s1, 'cut') === true && L.maxedOut(s1lv, 'cut') === false, [L.maxedOut(s1, 'cut'), L.maxedOut(s1lv, 'cut')]);
       check('maxedOut はおかしな引数でも例外を出さず false', [L.maxedOut(null, 'cut'), L.maxedOut({}, 'cut'), L.maxedOut(s4, 'nope'), L.maxedOut(s4)].every((v) => v === false), null);
       check('maxedOut は渡した state を変えない', J(s4) === J(allFast(4)), null);
+      // 次の段で もっと強くできるか（S1・契約 §23 K3）：段 4 より前で、上限（CAPS）が増える・こや でマネージャーがまだいない部署は true
+      const more = (st) => Object.fromEntries(IDS.map((id) => [id, L.moreNextStage(st, id)]));
+      const m3 = more(s3), m4 = more(s4), m1 = more(s1), s2 = allFast(2), m2 = more(s2);
+      check(`こうじょう で全部さいだい・はやい：つまり ${L.bottleneck(s3)} は maxedOut だが moreNextStage true（みせ 3→4 人）。きこり・なえぎ・はこび・みせ は true、かわむき・かくざい・かんそう・いた（上限が同じ 4）と 使えない かんな は false`,
+        L.bottleneck(s3) === 'shop' && L.maxedOut(s3, 'shop') === true && m3.shop && m3.cut && m3.plant && m3.carry && !m3.peel && !m3.beam && !m3.dry && !m3.plank && !m3.plane, m3);
+      check('みなと（段 4）は どの部署も false（これいじょう はやく できない）', IDS.every((id) => m4[id] === false), m4);
+      check('こや は 使える部署が全部 true（マネージャーは こうば から雇える）、使えない部署は false。こうば の かわむき（3→4 台）は true', m1.cut && m1.plant && m1.carry && m1.peel && m1.shop && !m1.beam && !m1.plane && m2.peel && m2.beam && !m2.dry, { m1, m2 });
+      check('moreNextStage はおかしな引数でも例外を出さず false・渡した state を変えない', [L.moreNextStage(null, 'cut'), L.moreNextStage({}, 'cut'), L.moreNextStage(s3, 'nope'), L.moreNextStage(s3)].every((v) => v === false) && J(s3) === J(allFast(3)), null);
     },
   },
   {

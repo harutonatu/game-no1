@@ -727,7 +727,7 @@ export const tests = [
     },
   },
   {
-    id: 'KW24', tier: 'smoke', title: 'ほしくだき 古い保存（v:1。§8.4）：v:1 の保存（ほし 12・かけら 5 万・武器 4 つ・asteroid.best 11）で開くと、ほし 1・たま Lv1・ひかえ なし・かけら 5 万だけ引き継ぐ（ベスト時間・累計・区切りは 0 から）、#hint「あたらしい ほしくだきに なったよ。かけらは そのまま つかえるよ」を 5 秒・遊び方をもう一度、asteroid.save.bak に元の v:1（bak が既にあれば上書きしない）、保存は v:2 になる、asteroid.best は 11 のまま（クリアしても下げない）・メニューも「ほし 11 まで クリア」。開き直すともう知らせない。壊れた v:1 の かけら は 0、大きすぎは KAKERA_MAX',
+    id: 'KW24', tier: 'smoke', title: 'ほしくだき 古い保存（v:1。§8.4）：v:1 の保存（ほし 12・かけら 5 万・武器 4 つ・asteroid.best 11）で開くと、ほし 1・たま Lv1・ひかえ なし・かけら 5 万だけ引き継ぐ（ベスト時間・累計・区切りは 0 から）、遊び方をもう一度出し、その先頭（見出しのすぐ下）に 1 行「あたらしい ほしくだきに なったよ。かけらは そのまま つかえるよ。」（#helpMig。カードの外の #hint は幕の下に隠れるので出さない。SE 縦で「わかった」までスクロールなし。閉じたら消え、？で開き直しても出ない。UX 4）、asteroid.save.bak に元の v:1（bak が既にあれば上書きしない）、保存は v:2 になる、asteroid.best は 11 のまま（クリアしても下げない）・メニューも「ほし 11 まで クリア」。開き直すともう知らせない。壊れた v:1 の かけら は 0、大きすぎは KAKERA_MAX',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const HINT_MIG = 'あたらしい ほしくだきに なったよ。かけらは そのまま つかえるよ';
@@ -740,17 +740,27 @@ export const tests = [
       check(`v:1 から：ほし ${l.star}・武器 ${JSON.stringify(l.slots)}・ひかえ ${JSON.stringify(l.bench)}・予約 ${JSON.stringify(l.swap)}・かけら ${l.kakera}（#kakera「${await txt(page, '#kakera')}」）、ベスト時間 ${JSON.stringify(l.bestT)}・累計 ${JSON.stringify(l.totals)}・ms ${JSON.stringify(l.ms)}・tries ${l.tries}・cleared ${l.cleared}`,
         l.star === 1 && JSON.stringify(l.slots) === JSON.stringify([{ id: 'shot', lv: 1 }]) && l.bench.length === 0 && l.swap.length === 0 && l.kakera === 50000 && (await txt(page, '#kakera')) === L.formatKakera(50000) &&
         JSON.stringify(l.bestT) === '{}' && Object.values(l.totals).every((x) => x === 0) && l.ms.length === 0 && l.tries === 1 && l.cleared === false && l.offer === null, l);
-      check(`v:1 から：#hint「${s.hint}」・遊び方をもう一度（overlay ${s.overlay}・#help ${await shown(page, '#help')}）`, s.hint === HINT_MIG && s.overlay === 'help' && (await shown(page, '#help')), { hint: s.hint, overlay: s.overlay });
+      const mig = () => page.evaluate(() => { const m = document.querySelector('#helpMig'); const ok = document.querySelector('#helpOk').getBoundingClientRect(); const t = document.querySelector('#helpTitle');
+        return { shown: !!m && !m.hidden && !m.closest('[hidden]') && m.getBoundingClientRect().height > 0, text: m ? m.textContent.trim() : null, first: !!m && t.nextElementSibling === m, okIn: ok.bottom <= innerHeight + 0.5 && ok.top >= -0.5 }; });
+      const m0 = await mig();
+      check(`v:1 から：遊び方をもう一度（overlay ${s.overlay}・#help ${await shown(page, '#help')}）、その先頭（見出しのすぐ下 ${m0.first}）に「${m0.text}」・「わかった」まで画面内 ${m0.okIn}、カードの外の #hint「${s.hint}」には出さない（幕の下に隠れるため）`,
+        s.overlay === 'help' && (await shown(page, '#help')) && m0.shown && m0.first && m0.text === HINT_MIG + '。' && m0.okIn && s.hint !== HINT_MIG, { hint: s.hint, overlay: s.overlay, m0 });
       check(`v:1 から：asteroid.save.bak が元の v:1、保存は v:${sv && sv.v}（ほし ${sv && sv.star}・かけら ${sv && sv.kakera}）、asteroid.best ${await stored(page, 'asteroid.best')}・asteroid.help ${await stored(page, 'asteroid.help')} は変えない`,
         (await stored(page, 'asteroid.save.bak')) === v1 && !!sv && sv.v === 2 && sv.star === 1 && sv.kakera === 50000 && (await stored(page, 'asteroid.best')) === '11' && (await stored(page, 'asteroid.help')) === '1' && s.best === 11, sv);
-      // 開いてから（gotoK の 0.3 秒・上の 0.1 秒のあと）約 4 秒・約 5.6 秒
+      // 開いてから約 4 秒・約 5.6 秒：カードの知らせは閉じるまで残り、#hint には出ない
       await wait(page, 3600);
-      const h45 = await txt(page, '#hint');
+      const h45 = await txt(page, '#hint'), m45 = await mig();
       await wait(page, 1600);
-      const h55 = await txt(page, '#hint');
-      check(`知らせは 5 秒（開いて約 4 秒後「${h45}」・約 5.6 秒後「${h55}」）`, h45 === HINT_MIG && h55 === '', { h45, h55 });
-      // 遊び方を閉じて ほし 1 をクリアしても asteroid.best は 11 のまま（下げない）
+      const h55 = await txt(page, '#hint'), m55 = await mig();
+      check(`知らせはカードを閉じるまで残る（約 4 秒後 ${m45.shown}・約 5.6 秒後 ${m55.shown}）、#hint には出ない（「${h45}」・「${h55}」）`, m45.shown && m55.shown && h45 !== HINT_MIG && h55 !== HINT_MIG, { h45, h55 });
+      // 遊び方を閉じると知らせは消え、？で開き直しても出ない（この回だけ）
       await pressCard(page, '#helpOk');
+      const mClosed = await mig();
+      await clickAt(page, '#helpBtn'); await wait(page, 500);
+      const mRe = await mig(), oRe = (await gs(page)).overlay;
+      await pressCard(page, '#helpOk');
+      check(`遊び方を閉じると知らせは消え（${mClosed.shown ? '残る' : '消えた'}）、？で開き直しても出ない（overlay ${oRe}・知らせ ${mRe.shown ? 'あり' : 'なし'}）`, !mClosed.shown && oRe === 'help' && !mRe.shown, { mClosed, mRe, oRe });
+      // ほし 1 をクリアしても asteroid.best は 11 のまま（下げない）
       const cl = await frozen(page, async () => { await dbg(page, 'win'); return advUntil(page, 'clear', { step: 1 / 30, maxSec: 60 }); });
       check(`ほし 1 をクリアしても asteroid.best は ${await stored(page, 'asteroid.best')}（11 のまま）・getState().best ${(await gs(page)).best}`, cl && (await stored(page, 'asteroid.best')) === '11' && (await gs(page)).best === 11, null);
       await adv(page, L.CLEAR_SEC + 0.2);
@@ -777,7 +787,7 @@ export const tests = [
 
   // ================= full =================
   {
-    id: 'KW8', tier: 'full', title: 'ほしくだき 画面内（§5.1・§18.1 A）：SE 縦（ホーム画面・Safari 320×454）・SE 横（568×320・568×270）・375×667・iPhone 13 縦横・iPad 縦横で、最大の桁（KAKERA_MAX・Lv99・ほし STAR_MAX）の 3 台（あたらしい ぶき あり・ひかえ なし）、4 台＋ひかえ 1・予約の札「つぎから いなずま Lv99」（あたらしい ぶき（ひかえへ）あり）、4 台＋ひかえ 2（6 種類。あたらしい ぶき なし）で、#hud・行・#unlockBtn・#swapBtn が画面内・44px 以上（#swapBtn は幅 88px 以上）・重ならない、行は 52px 以上（低い画面＝縦で高さ 620 以下・横で 360 以下は 44px 以上）、文字が欠けない（はみ出し・省略なし）、12px 以上。場は 320×568・375×667 で画面の高さ（safe-area を除く）の 5 割以上（4 台のときは 4 割 3 分以上）・Safari 縦 320×454 で 4 割以上（4 台のときは 3 割以上）、小惑星が横に欠けず・バリアと砲台がぜんぶ見える（getState().view・turrets）',
+    id: 'KW8', tier: 'full', title: 'ほしくだき 画面内（§5.1・§18.1 A）：SE 縦（ホーム画面・Safari 320×454）・SE 横（568×320・568×270）・375×667・iPhone 13 縦横・iPad 縦横で、最大の桁（KAKERA_MAX・Lv99・ほし STAR_MAX）の 3 台（あたらしい ぶき あり・ひかえ なし）、4 台＋ひかえ 1・予約の札「つぎの ほしから いなずま Lv99」（行の幅に入らないときだけ「つぎから」。あたらしい ぶき（ひかえへ）あり）、4 台＋ひかえ 2（6 種類。あたらしい ぶき なし）で、#hud・行・#unlockBtn・#swapBtn が画面内・44px 以上（#swapBtn は幅 88px 以上）・重ならない、行は 52px 以上（低い画面＝縦で高さ 620 以下・横で 360 以下は 44px 以上）、文字が欠けない（はみ出し・省略なし）、12px 以上。場は 320×568・375×667 で画面の高さ（safe-area を除く）の 5 割以上（4 台のときは 4 割 3 分以上）・Safari 縦 320×454 で 4 割以上（4 台のときは 3 割以上）、小惑星が横に欠けず・バリアと砲台がぜんぶ見える（getState().view・turrets）。右の目盛りの文字「とおい／ちかい」は場の中で、砲台に重ならない（UX 5）',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const views = [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari'), custom(375, 667, null, '375×667'), view('i13', 'p', 'app'), view('i13', 'l', 'app'), view('iPad', 'p', 'app'), view('iPad', 'l', 'app')];
@@ -817,8 +827,17 @@ export const tests = [
             }
             const c = document.querySelector('#fieldCanvas').getBoundingClientRect();
             const sw = document.querySelector('#swapBtn');
-            const nexts = [...document.querySelectorAll('.wrow [data-next]')].filter(vis).map((e) => e.textContent.trim());
-            return { rows, cut, small, field: [Math.round(c.width), Math.round(c.height)], unlock: vis(document.querySelector('#unlockBtn')), swapW: vis(sw) ? Math.round(sw.getBoundingClientRect().width) : 0, bench: document.querySelector('#benchCount').textContent.trim(), nexts, w: innerWidth, h: innerHeight };
+            // 予約の札：文字と、「つぎの ほしから」（長いほう）にしたら行の幅からはみ出すか（はみ出すときだけ「つぎから」でよい。UX 1）
+            const nexts = [...document.querySelectorAll('.wrow [data-next]')].filter(vis).map((e) => {
+              const t = e.textContent.trim();
+              const cl = e.cloneNode(true); const tn = [...cl.childNodes].find((x) => x.nodeType === 3); if (tn) tn.textContent = tn.textContent.replace(/^つぎから/, 'つぎの ほしから');
+              e.after(cl); e.hidden = true; const box = cl.parentElement; const longCut = cl.scrollWidth > cl.clientWidth + 0.5 || box.scrollWidth > box.clientWidth + 0.5; cl.remove(); e.hidden = false;
+              return t.startsWith('つぎから') && longCut ? t.replace(/^つぎから/, 'つぎの ほしから') : t + (t.startsWith('つぎから') ? '（入るのに短い）' : '');
+            });
+            // 右の目盛りの文字「とおい／ちかい」：場の中・場の上の HUD に重ならない（UX 5）。砲台との重なりは外で見る
+            const fr = document.querySelector('#field').getBoundingClientRect();
+            const dist = [...document.querySelectorAll('.dist-ic')].map((e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; });
+            return { canvas: [c.left, c.top], fieldBox: [fr.left, fr.top, fr.right, fr.bottom], dist, rows, cut, small, field: [Math.round(c.width), Math.round(c.height)], unlock: vis(document.querySelector('#unlockBtn')), swapW: vis(sw) ? Math.round(sw.getBoundingClientRect().width) : 0, bench: document.querySelector('#benchCount').textContent.trim(), nexts, w: innerWidth, h: innerHeight };
           });
           const st = await gs(page), lv = await lg(page);
           const vw = st.view;
@@ -834,11 +853,15 @@ export const tests = [
           const tx = lv.turrets.map((t) => t.x), ty = lv.turrets.map((t) => t.y);
           const viewOk = !!vw && vw.zoom > 0 && vw.left <= rx0 + 0.5 && vw.left + vw.width >= rx1 - 0.5 && vw.rockPx <= m.field[0] + 1 && vw.top <= L.BARRIER_Y &&
             lv.turrets.length === n && vw.left <= Math.min(...tx) - 10 && vw.left + vw.width >= Math.max(...tx) + 10 && vw.top + vw.height >= Math.max(...ty) + 10;
-          const nextWant = n >= 4 ? lv.swap.map((p) => `つぎから ${L.WEAPONS.find((w) => w.id === p.id).name} Lv99`) : [];
+          const nextWant = n >= 4 ? lv.swap.map((p) => `つぎの ほしから ${L.WEAPONS.find((w) => w.id === p.id).name} Lv99`) : [];
+          // 「とおい／ちかい」が場の中にあり、砲台（中心から横 14px・上 20px〜下 6px）に重ならない
+          const tBox = vw ? lv.turrets.map((t) => { const x = m.canvas[0] + (t.x - vw.left) * vw.zoom, y = m.canvas[1] + (t.y - vw.top) * vw.zoom; return [x - 14, y - 20, x + 14, y + 6]; }) : [];
+          const fb = m.fieldBox;
+          const distBad = m.dist.filter((a) => a[1] < fb[1] - 0.5 || a[3] > fb[3] + 0.5 || tBox.some((t) => a[0] < t[2] && t[0] < a[2] && a[1] < t[3] && t[1] < a[3])).length;
           const ok = lp.n > 0 && lp.outside.length === 0 && lp.overlaps.length === 0 && lp.small.length === 0 && !lp.hscroll && m.rows.length === n && m.rows.every((h) => h >= rowMin - 0.5) &&
             m.cut.length === 0 && m.small.length === 0 && m.field[0] >= 64 && m.field[1] >= 64 && viewOk && m.unlock === cs.unlock && m.swapW >= 88 - 0.5 &&
-            JSON.stringify(m.nexts) === JSON.stringify(nextWant) && m.bench === (lv.bench.length ? `ひかえ ${lv.bench.length}` : 'ひかえ なし');
-          check(`${v.label}・${cs.name}：画面外 ${lp.outside.length}・重なり ${lp.overlaps.length}・44px 未満 ${lp.small.length}・横スクロール ${lp.hscroll}、行の高さ ${m.rows.join('/')}（${rowMin}px 以上${low ? '・低い画面' : ''}）、欠ける文字 ${m.cut.length}・12px 未満 ${m.small.length}、場 ${m.field.join('×')}、小惑星 ${vw && vw.rockPx}px・見える範囲 ${vw ? `${vw.left}〜${vw.left + vw.width}×${vw.top}〜${vw.top + vw.height}` : 'なし'}・砲台 x ${tx.map(Math.round).join('/')}、あたらしい ぶき ${m.unlock ? 'あり' : 'なし'}・いれかえ 幅 ${m.swapW}「${m.bench}」・札 ${JSON.stringify(m.nexts)}`, ok, { lp, m, vw, rock: [rx0, rx1], fieldRatio, nextWant });
+            JSON.stringify(m.nexts) === JSON.stringify(nextWant) && m.dist.length === 2 && distBad === 0 && m.bench === (lv.bench.length ? `ひかえ ${lv.bench.length}` : 'ひかえ なし');
+          check(`${v.label}・${cs.name}：画面外 ${lp.outside.length}・重なり ${lp.overlaps.length}・44px 未満 ${lp.small.length}・横スクロール ${lp.hscroll}、行の高さ ${m.rows.join('/')}（${rowMin}px 以上${low ? '・低い画面' : ''}）、欠ける文字 ${m.cut.length}・12px 未満 ${m.small.length}、場 ${m.field.join('×')}、小惑星 ${vw && vw.rockPx}px・見える範囲 ${vw ? `${vw.left}〜${vw.left + vw.width}×${vw.top}〜${vw.top + vw.height}` : 'なし'}・砲台 x ${tx.map(Math.round).join('/')}、あたらしい ぶき ${m.unlock ? 'あり' : 'なし'}・いれかえ 幅 ${m.swapW}「${m.bench}」・札 ${JSON.stringify(m.nexts)}、とおい／ちかい の場の外・砲台との重なり ${distBad}`, ok, { lp, m, vw, rock: [rx0, rx1], fieldRatio, nextWant, tBox });
           // 場の高さ（§5.1）。SE 縦・ホーム画面（safe-area の上 20px を除く）の 4 台は、いまの作りで 42.7%（部品C の 44% は safe-area なしの 320×568 で測った値）。PM の決定（2026-10-23）で 4 台の目安は 42%
           if (ratioMin) check(`${v.label}・${cs.name}：場の高さ ${m.field[1]}px は画面の高さ（safe-area を除く ${usable}px）の ${(fieldRatio * 100).toFixed(1)}%（${Math.round(ratioMin * 100)}% 以上）`, fieldRatio >= ratioMin, { field: m.field, usable, fieldRatio, ratioMin });
         }
@@ -1362,13 +1385,18 @@ export const tests = [
     },
   },
   {
-    id: 'KW23', tier: 'full', title: 'ほしくだき ひかえと入れ替え（§3.6・§5.3・§21.7）：ひかえが空なら #swapBtn でカードが開かずヒント。4 台のあとの「あたらしい ぶき（ひかえへ）」は2択の案内「えらんだ ぶきは ひかえに はいるよ」で、選んだ武器は ひかえ に Lv1（#hint・#benchCount）、持ったことが無い武器は予約できない・ひかえの武器は強くできない、残り 1 つは候補 1 枚（#choiceB なし・「さいごの ぶき だよ」）、6 種類で #unlockBtn が消える。#swapBtn → #swapCard（出た直後 400ms は押せない・場が止まる・a#back で戻れる・枠のボタン・#benchList に swapChoicesOf の全部と覚えている Lv・今の武器は「このまま」）、予約で音 swap と行に「つぎから ○○ Lv」、ほかの枠で予約した武器は出ない、今の武器で取り消し（音 toggle）。星の途中は替わらない、再読み込みで予約と ひかえ が残る、はね返しのやり直しの始めとクリアの次の星の始めで替わる（Lv は武器ごと・外した武器は その Lv で ひかえ へ・音 swap）。キーボード（S・1〜4・←→・Enter・Esc）だけでもできる。SE 縦横でカードのボタンが画面内・44px 以上・重ならない',
+    id: 'KW23', tier: 'full', title: 'ほしくだき ひかえと入れ替え（§3.6・§5.3・§21.7）：ひかえが空なら #swapBtn でカードが開かずヒント。4 台のあとの「あたらしい ぶき（ひかえへ）」は2択の案内「えらんだ ぶきは ひかえ（いま つかわない ぶき）に はいるよ」で、選んだ武器は ひかえ に Lv1（#hint「…が ひかえ（おやすみ中の ぶき）に はいったよ…」は 2 行まで・#benchCount・#swapBtn が一度光る（動きを減らす設定では光らない））、持ったことが無い武器は予約できない・ひかえの武器は強くできない、残り 1 つは候補 1 枚（#choiceB なし・見出し「さいごの 1つ！」・注記「これで 6しゅるい ぜんぶ そろうよ」）、6 種類で #unlockBtn が消える。#swapBtn → #swapCard（出た直後 400ms は押せない・場が止まる・a#back で戻れる・枠のボタン・#benchList に swapChoicesOf の全部と覚えている Lv・今の武器は「このまま」）、予約で音 swap と行に「つぎの ほしから ○○ Lv」（行の幅に入らないときだけ「つぎから」）、ほかの枠で予約した武器は出ない、今の武器で取り消し（音 toggle）。星の途中は替わらない、再読み込みで予約と ひかえ が残る、はね返しのやり直しの始めとクリアの次の星の始めで替わる（Lv は武器ごと・外した武器は その Lv で ひかえ へ・音 swap）。キーボード（S・1〜4・←→・Enter・Esc）だけでもできる。SE 縦横でカードのボタンが画面内・44px 以上・重ならない',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const wName = (id) => L.WEAPONS.find((w) => w.id === id)?.name;
       const { ctx, page } = await openK(browser, 'KW23', { debug: true, opts: { initScript: SFX_SPY, touch: false } });
       const sounds = async (from) => (await plays(page)).slice(from).map((x) => x.n);
-      const rowNext = (k) => page.evaluate((k) => { const r = document.querySelector(`.wrow[data-slot="${k}"]`); const n = r.querySelector('[data-next]'); return { text: n && !n.hidden ? n.textContent.trim() : '', has: r.dataset.hasNext || null, name: r.querySelector('[data-part="name"]').textContent.trim(), lv: r.querySelector('[data-part="lv"]').textContent.trim() }; }, k);
+      // 札の文字と、「つぎの ほしから」（長いほう）にしたら行の幅からはみ出すか（longCut。はみ出すときだけ「つぎから」でよい。UX 1）
+      const rowNext = (k) => page.evaluate((k) => { const r = document.querySelector(`.wrow[data-slot="${k}"]`); const n = r.querySelector('[data-next]');
+        let longCut = null;
+        if (n && !n.hidden) { const c = n.cloneNode(true); const tn = [...c.childNodes].find((x) => x.nodeType === 3); if (tn) tn.textContent = tn.textContent.replace(/^つぎから/, 'つぎの ほしから'); n.after(c); n.hidden = true; const box = c.parentElement; longCut = c.scrollWidth > c.clientWidth + 0.5 || box.scrollWidth > box.clientWidth + 0.5; c.remove(); n.hidden = false; }
+        return { longCut, text: n && !n.hidden ? n.textContent.trim() : '', has: r.dataset.hasNext || null, name: r.querySelector('[data-part="name"]').textContent.trim(), lv: r.querySelector('[data-part="lv"]').textContent.trim() }; }, k);
+      const nextOk = (t, id, lv) => t.text === `つぎの ほしから ${wName(id)} Lv${lv}` || (t.text === `つぎから ${wName(id)} Lv${lv}` && t.longCut === true);
       const benchBtns = () => page.evaluate(() => [...document.querySelectorAll('#benchList [data-swap-to]')].map((b) => ({ id: b.dataset.swapTo, text: b.textContent.replace(/\s+/g, ' ').trim(), pressed: b.getAttribute('aria-pressed') })));
       const slotBtns = () => page.evaluate(() => [...document.querySelectorAll('[data-swap-slot]')].filter((b) => !b.hidden).map((b) => b.getAttribute('aria-pressed')));
       // (1) ひかえが空：開かずにヒント
@@ -1387,12 +1415,16 @@ export const tests = [
       const c1 = await frozen(page, async () => { await clickAt(page, '#unlockBtn'); return { s: await gs(page), lead: await txt(page, '#choiceLead') }; });
       const offer = c1.s.offer || [];
       const rest = L.WEAPONS.map((w) => w.id).filter((id) => !FOUR.some((x) => x.id === id));
-      check(`2択（overlay ${c1.s.overlay}）の候補 ${JSON.stringify(offer)} は持っていない残りの 2 つ（${rest}）、案内「${c1.lead}」に「えらんだ ぶきは ひかえに はいるよ」`, c1.s.overlay === 'choose' && offer.length === 2 && offer.every((id) => rest.includes(id)) && offer[0] !== offer[1] && (c1.lead || '').includes('えらんだ ぶきは ひかえに はいるよ'), c1);
+      check(`2択（overlay ${c1.s.overlay}）の候補 ${JSON.stringify(offer)} は持っていない残りの 2 つ（${rest}）、案内「${c1.lead}」に「えらんだ ぶきは ひかえ（いま つかわない ぶき）に はいるよ」`, c1.s.overlay === 'choose' && offer.length === 2 && offer.every((id) => rest.includes(id)) && offer[0] !== offer[1] && (c1.lead || '').includes('えらんだ ぶきは ひかえ（いま つかわない ぶき）に はいるよ'), c1);
+      // ひかえが 0 → 1 になったら #swapBtn を一度だけ光らせる（.flash。動きを減らす設定では光らせない）
+      await page.evaluate(() => { window.__swapFlash = 0; new MutationObserver(() => { if (document.querySelector('#swapBtn').classList.contains('flash')) window.__swapFlash++; }).observe(document.querySelector('#swapBtn'), { attributes: true, attributeFilter: ['class'] }); });
       await pressCard(page, '#choiceA');
       const p1 = await gs(page);
       const hint1 = await txt(page, '#hint');
-      check(`選んだ ${wName(offer[0])} は ひかえ に Lv1（${JSON.stringify(p1.bench)}）、砲台は 4 台のまま（${JSON.stringify(p1.slots)}）、ヒント「${hint1}」、#benchCount「${await txt(page, '#benchCount')}」・#swapBtn が押せる、音 unlock`,
-        JSON.stringify(p1.bench) === JSON.stringify([{ id: offer[0], lv: 1 }]) && JSON.stringify(p1.slots) === JSON.stringify(FOUR) && p1.turrets.length === 4 && hint1 === `${wName(offer[0])}が ひかえに はいったよ。「いれかえ」で つかえるよ` && (await txt(page, '#benchCount')) === 'ひかえ 1' && (await attr(page, '#swapBtn', 'aria-disabled')) === null && (await sounds(n0)).includes('unlock'), { p1, hint1 });
+      const flash1 = await page.evaluate(() => window.__swapFlash >= 1), calm1 = await page.evaluate(() => document.body.dataset.calm === '1');
+      const h1Lines = await page.evaluate(() => { const h = document.querySelector('#hint'); const lh = parseFloat(getComputedStyle(h).lineHeight) || 16; return Math.round(h.getBoundingClientRect().height / lh); });
+      check(`選んだ ${wName(offer[0])} は ひかえ に Lv1（${JSON.stringify(p1.bench)}）、砲台は 4 台のまま（${JSON.stringify(p1.slots)}）、ヒント「${hint1}」（${h1Lines} 行・2 行まで）、#swapBtn が光る（${flash1}${calm1 ? '・動きを減らす設定' : ''}）、#benchCount「${await txt(page, '#benchCount')}」・#swapBtn が押せる、音 unlock`,
+        JSON.stringify(p1.bench) === JSON.stringify([{ id: offer[0], lv: 1 }]) && JSON.stringify(p1.slots) === JSON.stringify(FOUR) && p1.turrets.length === 4 && hint1 === `${wName(offer[0])}が ひかえ（おやすみ中の ぶき）に はいったよ。「いれかえ」で つかえるよ` && h1Lines <= 2 && (calm1 || flash1) && (await txt(page, '#benchCount')) === 'ひかえ 1' && (await attr(page, '#swapBtn', 'aria-disabled')) === null && (await sounds(n0)).includes('unlock'), { p1, hint1 });
       // 一度持った武器だけ：まだ持っていない武器は予約できない。ひかえの武器は強くできない
       const never = offer[1];
       const rs = await page.evaluate((id) => window.AsteroidGame.reserveSwap(0, id), never);
@@ -1401,8 +1433,8 @@ export const tests = [
       check(`持ったことが無い ${wName(never)} は予約できない（${JSON.stringify(rs)}・予約 ${JSON.stringify(l3.swap)}）、選べるのは今の武器と ひかえ だけ（${JSON.stringify(L.swapChoicesOf(l3, 0))}）、ひかえの武器は強くできない（upgrade(4) ${JSON.stringify(upB)}・ひかえ ${JSON.stringify(l3.bench)}）`,
         rs && rs.ok === false && l3.swap.length === 0 && JSON.stringify(L.swapChoicesOf(l3, 0)) === JSON.stringify(['shot', offer[0]]) && upB && upB.ok === false && JSON.stringify(l3.bench) === JSON.stringify([{ id: offer[0], lv: 1 }]), { rs, upB });
       // (3) 残り 1 つ：候補 1 枚
-      const c2 = await frozen(page, async () => { await clickAt(page, '#unlockBtn'); return { s: await gs(page), title: await txt(page, '#choiceTitle'), b: await shown(page, '#choiceB'), a: await txt(page, '#choiceA [data-part="name"]') }; });
-      check(`残り 1 つ（${wName(never)}）は候補 1 枚：offer ${JSON.stringify(c2.s.offer)}・#choiceB ${c2.b ? 'あり' : 'なし'}・見出し「${c2.title}」・「${c2.a}」`, JSON.stringify(c2.s.offer) === JSON.stringify([never]) && !c2.b && c2.title === 'さいごの ぶき だよ' && c2.a === wName(never), c2);
+      const c2 = await frozen(page, async () => { await clickAt(page, '#unlockBtn'); return { s: await gs(page), title: await txt(page, '#choiceTitle'), note: await txt(page, '#choiceNote'), b: await shown(page, '#choiceB'), a: await txt(page, '#choiceA [data-part="name"]') }; });
+      check(`残り 1 つ（${wName(never)}）は候補 1 枚：offer ${JSON.stringify(c2.s.offer)}・#choiceB ${c2.b ? 'あり' : 'なし'}・見出し「${c2.title}」・注記「${c2.note}」・「${c2.a}」`, JSON.stringify(c2.s.offer) === JSON.stringify([never]) && !c2.b && c2.title === 'さいごの 1つ！' && c2.note === 'これで 6しゅるい ぜんぶ そろうよ' && c2.a === wName(never), c2);
       await pressCard(page, '#choiceA');
       const p2 = await gs(page), l4 = await lg(page);
       const ul = await page.evaluate(() => window.AsteroidGame.unlock());
@@ -1442,7 +1474,7 @@ export const tests = [
       await page.click(`#benchList [data-swap-to="${B0}"]`); await wait(page, 50);
       const s3 = await gs(page), r2 = await rowNext(2);
       check(`枠 3 を選ぶ（${sl2.join('/')}・候補 ${list2.map((x) => x.id)}）→ ${wName(B0)} を押すと予約（${JSON.stringify(s3.swap)}）・音 swap（${(await sounds(n1)).join(',')}）・行に「${r2.text}」（data-has-next ${r2.has}）、砲台の武器はまだ替わらない（${s3.slots[2].id}）`,
-        JSON.stringify(sl2) === JSON.stringify(['false', 'false', 'true', 'false']) && list2[0].id === 'bomb' && JSON.stringify(s3.swap) === JSON.stringify([{ slot: 2, id: B0 }]) && (await sounds(n1)).includes('swap') && r2.text === `つぎから ${wName(B0)} Lv12` && r2.has === '1' && s3.slots[2].id === 'bomb', { s3: s3.swap, r2 });
+        JSON.stringify(sl2) === JSON.stringify(['false', 'false', 'true', 'false']) && list2[0].id === 'bomb' && JSON.stringify(s3.swap) === JSON.stringify([{ slot: 2, id: B0 }]) && (await sounds(n1)).includes('swap') && nextOk(r2, B0, 12) && r2.has === '1' && s3.slots[2].id === 'bomb', { s3: s3.swap, r2 });
       // 枠 4（いなずま）：ほかの枠で予約した B0 は出ない。B1 を予約 → 今の武器で取り消し（音 toggle）→ もう一度予約
       await page.click('[data-swap-slot="3"]'); await wait(page, 30);
       const list3 = await benchBtns();
@@ -1464,7 +1496,7 @@ export const tests = [
       // (6) 再読み込みで予約と ひかえ が残る
       await page.reload(); await wait(page, 300);
       const re = await lg(page), r4 = await rowNext(2);
-      check(`再読み込みで予約 ${JSON.stringify(re.swap)}・ひかえ ${JSON.stringify(re.bench)}・砲台が残り、行の札「${r4.text}」`, JSON.stringify(re.swap) === JSON.stringify(sw3) && JSON.stringify(re.bench) === JSON.stringify([{ id: B0, lv: 12 }, { id: B1, lv: 3 }]) && JSON.stringify(re.slots) === JSON.stringify(FOUR) && r4.text === `つぎから ${wName(B0)} Lv12`, { swap: re.swap, bench: re.bench });
+      check(`再読み込みで予約 ${JSON.stringify(re.swap)}・ひかえ ${JSON.stringify(re.bench)}・砲台が残り、行の札「${r4.text}」`, JSON.stringify(re.swap) === JSON.stringify(sw3) && JSON.stringify(re.bench) === JSON.stringify([{ id: B0, lv: 12 }, { id: B1, lv: 3 }]) && JSON.stringify(re.slots) === JSON.stringify(FOUR) && nextOk(r4, B0, 12), { swap: re.swap, bench: re.bench });
       // (7) はね返しのやり直しの始めで替わる（Lv は武器ごと）
       const bo = await frozen(page, async () => { await dbg(page, 'lose'); await adv(page, L.STEP); const a = await lg(page); await adv(page, L.BOUNCE_SEC + 0.1); return { a, b: await lg(page), r2: await rowNext(2), r3: await rowNext(3) }; });
       const hasB = (bench, id, lv) => bench.some((x) => x.id === id && x.lv === lv);

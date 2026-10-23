@@ -1574,7 +1574,7 @@ export const tests = [
     },
   },
   {
-    id: 'WW27', tier: 'full', title: 'もくもくこうば もう強くできない つまり（§23・SZ-08）：ユーザーの録画と同じ みなと・全部の部署を上限・Lv50・はやい で、つまりは かんな でなく、かんな のシートは「1ぷんに 849まい」。つまりの部署が もう強くできないときは「ここが おそい！」の札（jamTag）・シートと読み上げの「ここが おそいよ」を出さず、「ぜんぶ さいだい！」（シート「これいじょう はやく できないよ」・data-maxed=1・data-jam=0）、ほかの場所に「〇〇を ふやそう」を出さない。マネージャーを「もうかる」にすると（まだ速くできる）「ここが おそい」に戻る',
+    id: 'WW27', tier: 'full', title: 'もくもくこうば もう強くできない つまり（§23・SZ-08）：ユーザーの録画と同じ みなと・全部の部署を上限・Lv50・はやい で、つまりは かんな でなく、かんな のシートは「1ぷんに 849まい」。つまりの部署が もう強くできないときは「ここが おそい！」の札（jamTag）・シートと読み上げの「ここが おそいよ」を出さず、「ぜんぶ さいだい！」（シート「これいじょう はやく できないよ」・data-maxed=1・data-jam=0）、ほかの場所に「〇〇を ふやそう」を出さない。マネージャーを「もうかる」にすると（まだ速くできる）「ここが おそい」に戻る。こうじょう（段 3）で全部さいだい・はやい のときは、つまり（みせ）は みなと で上限が増えるので シートは「つぎの だんで もっと ふやせるよ」（「これいじょう はやく できないよ」と言わない。S1）',
     async run({ browser, check, root, errors }) {
       const L = logicOf(root);
       const e0 = errors.length;
@@ -1607,6 +1607,16 @@ export const tests = [
       await wait(page, 400);
       const g2 = await gs(page), z2 = await zoneInfo(), s2 = await sheetOf(g2.bottleneck);
       check(`${bn} を「もうかる」に（${JSON.stringify(sm && sm.ok !== undefined ? sm.ok : sm)}）：つまり ${g2.bottleneck}・bottleneckMaxed false、札「${g2.jamTag && g2.jamTag.text}」、場所 data-jam 1、シート「${s2.t}」に「ここが おそいよ」`, g2.bottleneck === bn && g2.bottleneckMaxed === false && g2.jamTag && /おそい！/.test(g2.jamTag.text) && z2[bn].jam === '1' && z2[bn].maxed === '0' && /ここが おそいよ/.test(z2[bn].label) && /ここが おそいよ/.test(s2.t) && s2.jam === '1', { g2: { bn: g2.bottleneck, m: g2.bottleneckMaxed, tag: g2.jamTag }, z: z2[bn], s2 });
+      // 段 3（こうじょう）で全部さいだい・はやい：つまり（みせ）は今は もう強くできないが、みなと で上限が増える → 「これいじょう はやく できないよ」とは言わない（S1）
+      const st3 = mkState(L, 3, { goal: { done: 0 } });
+      for (const [k, d] of Object.entries(st3.depts)) { const cap = L.CAPS[2][k]; if (!cap) continue; d.level = 50; d.mgr = 'fast'; if ('lines' in d) d.lines = cap; else d.staff = cap; }
+      await gotoW(page, { 'seizai.save': saveOf(L, st3, T0) });
+      await closeCards(page);
+      await page.evaluate(() => { for (const d of window.SeizaiLogic.DEPTS) window.SeizaiGame.tapZone(d.id); });
+      await wait(page, 5600);
+      const g3 = await gs(page), s3 = await sheetOf(g3.bottleneck);
+      check(`こうじょう で全部さいだい・はやい：つまり ${g3.bottleneck}（bottleneckMaxed ${g3.bottleneckMaxed}・bottleneckMoreNext ${g3.bottleneckMoreNext}）のシート「${s3.t}」は「つぎの だんで もっと ふやせるよ」で、「これいじょう はやく できないよ」「ここが おそいよ」は無い（data-maxed 1）`,
+        g3.stage === 3 && g3.bottleneck === 'shop' && g3.bottleneckMaxed === true && g3.bottleneckMoreNext === true && /つぎの だんで もっと ふやせるよ/.test(s3.t) && !/これいじょう/.test(s3.t) && !/おそい/.test(s3.t) && s3.maxed === '1' && s3.jam === '0', { g3: { st: g3.stage, bn: g3.bottleneck, m: g3.bottleneckMaxed, more: g3.bottleneckMoreNext }, s3 });
       check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
       await ctx.close();
     },

@@ -51,6 +51,7 @@
   const HINT_RETRY = "ひかっている ぶきを つよくして もういちど！";
   const HINT_NEAR = "バリアが ひかってる！";
   const HINT_NO_BENCH = "ひかえの ぶきが まだ ないよ";
+  const NEXT_LONG = "つぎの ほしから", NEXT_SHORT = "つぎから";   // 予約の札の頭（UX 1。幅が足りない行だけ短いほう）
   const NEAR_AT = 0.28;                // 地球までの残りがこの割合以下で赤く（U7・Q7）
   const MS_BANNER_SEC = 1.0;           // 25・50・75% の帯（ロジックの時計で数える）
   const MS_TEXT = { 25: "4ぶんの1 こわした！", 50: "はんぶん こわした！", 75: "あと 4ぶんの1！" };
@@ -73,7 +74,7 @@
     swapCard: $("swapCard"), swapTitle: $("swapTitle"), swapText: $("swapText"), swapSlots: $("swapSlots"), benchList: $("benchList"), swapDone: $("swapDone"),
     bounceBanner: $("bounceBanner"), clearBanner: $("clearBanner"), bossBanner: $("bossBanner"), msBanner: $("msBanner"), choiceLead: $("choiceLead"),
     endCard: $("endCard"), endText: $("endText"), endStats: $("endStats"), endOk: $("endOk"),
-    help: $("help"), helpOk: $("helpOk"), hint: $("hint"),
+    help: $("help"), helpOk: $("helpOk"), helpMig: $("helpMig"), hint: $("hint"),
     helpRestart: $("helpRestart"), restartCard: $("restartCard"), restartNo: $("restartNo"), restartYes: $("restartYes")
   };
   const part = (node, name) => (node ? node.querySelector('[data-part="' + name + '"]') : null);
@@ -88,6 +89,8 @@
       prevCan: undefined, fillShown: "", nextShown: null
     };
   });
+  // 画面の大きさ・向きが変わったら、予約の札の長さ（つぎの ほしから／つぎから）を測り直す（次の updateUi で）
+  window.addEventListener("resize", () => { for (const r of rows) r.nextShown = null; });
   const slotBtns = [0, 1, 2, 3].map((k) => document.querySelector('[data-swap-slot="' + k + '"]'));
   const barPct = document.querySelector(".barrow [data-part=pct]");
   const missing = ["kakera", "starLabel", "starBar", "canvas", "unlockBtn", "swapBtn", "choiceCard", "swapCard", "benchList"].filter((k) => !el[k]);
@@ -546,6 +549,13 @@
       setAttr(el.swapBtn, "data-wide", sc === null ? "1" : null);
     }
   }
+  // 予約の札が行（.wl2）の幅からはみ出すか（はみ出すなら短い「つぎから」にする）
+  function nextOverflows(e) {
+    try {
+      const box = e.parentElement || e;
+      return e.scrollWidth > e.clientWidth + 0.5 || box.scrollWidth > box.clientWidth + 0.5;
+    } catch (err) { return false; }
+  }
   function updateRow(k) {
     const r = rows[k];
     if (!r.row) return;
@@ -563,15 +573,18 @@
     setText(r.dps, "1びょうに " + (dps === null ? "-" : dps));
     const gh = goodHtml(x.id);
     if (r.good && r.good.innerHTML !== gh) r.good.innerHTML = gh;
-    // 入れ替えの予約「つぎから いなずま Lv12」（§5.2）
+    // 入れ替えの予約「つぎの ほしから いなずま Lv12」（§5.2）。行の幅に入らないときだけ「つぎから」（UX 1。画面の大きさが変わったら測り直す）
     const nx = reservedFor(k);
     const nkey = nx ? nx.id + ":" + nx.lv : "";
+    setAttr(r.row, "data-has-next", nx ? "1" : null);
     if (r.next && r.nextShown !== nkey) {
       r.nextShown = nkey;
-      r.next.innerHTML = nx ? '<i class="wicon mini" data-w="' + esc(nx.id) + '" aria-hidden="true"></i>つぎから ' + esc(wName(nx.id)) + " Lv" + nx.lv : "";
+      const head = nx ? '<i class="wicon mini" data-w="' + esc(nx.id) + '" aria-hidden="true"></i>' : "";
+      const tail = nx ? esc(wName(nx.id)) + " Lv" + nx.lv : "";
+      r.next.innerHTML = nx ? head + NEXT_LONG + " " + tail : "";
       r.next.hidden = !nx;
+      if (nx && nextOverflows(r.next)) r.next.innerHTML = head + NEXT_SHORT + " " + tail;
     }
-    setAttr(r.row, "data-has-next", nx ? "1" : null);
     let note = "";
     if (x.lv < EVOLVE_LAST) {
       const next = (Math.floor(x.lv / EVOLVE_EVERY) + 1) * EVOLVE_EVERY;
@@ -580,7 +593,7 @@
     setText(r.note, note);
     setHidden(r.note, !note);
     const cost = safeCall(() => L.upCostOf(state, k), null);
-    const nxLabel = nx ? "（つぎから " + wName(nx.id) + " Lv" + nx.lv + "）" : "";
+    const nxLabel = nx ? "（" + NEXT_LONG + " " + wName(nx.id) + " Lv" + nx.lv + "）" : "";
     if (cost === null) {
       setAttr(r.btn, "data-max", "1");
       setAttr(r.btn, "aria-disabled", "true");
@@ -722,7 +735,7 @@
     R_call("burst", "unlock", slot >= 0 ? slot : undefined);
     if (slot >= 0) pulseClass(rows[slot] && rows[slot].row, "flash", 900);
     else pulseClass(el.swapBtn, "flash", 900);
-    setHint(toBench ? wName(id) + "が ひかえに はいったよ。「いれかえ」で つかえるよ" : wName(id) + "が なかまに なった！", toBench ? 4000 : HINT_MS);
+    setHint(toBench ? wName(id) + "が ひかえ（おやすみ中の ぶき）に はいったよ。「いれかえ」で つかえるよ" : wName(id) + "が なかまに なった！", toBench ? 4000 : HINT_MS);
     saveNow();
     updateUi();
     return { ok: true, id, slot, to: r.to };
@@ -784,7 +797,7 @@
         b.innerHTML = iconHtml(x.id) + '<span class="sname">' + esc(wName(x.id)) + "</span>" + (nx ? iconHtml(nx.id, "nx") : "");
       }
       setAttr(b, "aria-pressed", k === swapSel ? "true" : "false");
-      setAttr(b, "aria-label", (k + 1) + "ばんめの ほうだい " + wName(x.id) + " Lv" + x.lv + (nx ? "（つぎから " + wName(nx.id) + "）" : ""));
+      setAttr(b, "aria-label", (k + 1) + "ばんめの ほうだい " + wName(x.id) + " Lv" + x.lv + (nx ? "（" + NEXT_LONG + " " + wName(nx.id) + "）" : ""));
     });
     const list = safeCall(() => L.swapChoicesOf(state, swapSel), null) || [];
     const cur = state.slots[swapSel];
@@ -798,7 +811,7 @@
       const lv = isCur ? cur.lv : b ? b.lv : 1;
       const w = WEAPON[id] || {};
       const fit = !!w.good && w.good === starMain();
-      const tag = isCur ? "このまま" : id === pick ? "つぎから" : "";
+      const tag = isCur ? "このまま" : id === pick ? NEXT_LONG : "";
       const label = wName(id) + " Lv" + lv + (w.good ? "。" + (MAT_NAME[w.good] || w.good) + "に つよい" : "") + (isCur ? "。このまま" : "") + (id === pick && !isCur ? "。よやく ずみ" : "");
       html += '<button type="button" class="bench" data-swap-to="' + esc(id) + '" aria-pressed="' + (id === pick ? "true" : "false") + '" aria-label="' + esc(label) + '">' +
         iconHtml(id) + '<span class="bname">' + esc(wName(id)) + ' <span class="lv">Lv' + lv + "</span>" + (fit ? '<span class="fit" aria-hidden="true">◎</span>' : "") + "</span>" +
@@ -851,11 +864,11 @@
         btn.setAttribute("data-fit", fit ? "1" : "0");
         btn.setAttribute("aria-label", wName(id) + "。" + (w.desc || "") + (w.good ? "。" + (MAT_NAME[w.good] || w.good) + "に つよい" : "") + (fit ? "。いまの ほしに ぴったり" : ""));
       });
-      setText($("choiceTitle"), one ? "さいごの ぶき だよ" : "どっちに する？");
+      setText($("choiceTitle"), one ? "さいごの 1つ！" : "どっちに する？");
       // 冒頭の案内：4 台のあとは ひかえへ・この星に多いマス／まだ出ないなら、いつから出るか（U6）
       if (el.choiceLead) {
         const parts = [];
-        if (state.slots.length >= SLOTS_MAX) parts.push("えらんだ ぶきは ひかえに はいるよ");
+        if (state.slots.length >= SLOTS_MAX) parts.push("えらんだ ぶきは ひかえ（いま つかわない ぶき）に はいるよ");
         const main = starMain();
         if (main) parts.push("この ほしは " + (MAT_NAME[main] || main) + "が おおいよ");
         else if (Array.isArray(L.MATS)) {
@@ -866,7 +879,7 @@
         setText(el.choiceLead, lead);
         el.choiceLead.hidden = !lead;
       }
-      setText(el.choiceNote, one ? "これで ぜんぶの ぶきが そろうよ" : "てにいれた ぶきは「いれかえ」で つかいわけ できるよ");
+      setText(el.choiceNote, one ? "これで 6しゅるい ぜんぶ そろうよ" : "てにいれた ぶきは「いれかえ」で つかいわけ できるよ");
     } else if (kind === "swap") {
       fillSwap();
     } else if (kind === "end" && state) {
@@ -947,6 +960,7 @@
   function closeHelp() {
     if (overlay !== "help" || cardLocked()) return;
     writeKey(KEY_HELP, "1");
+    if (el.helpMig) el.helpMig.hidden = true;
     closeCard("help");
   }
   // ===== さいしょから（§19） =====
@@ -1436,7 +1450,8 @@
       if (!state) { console.error("ほしくだき: newGame が動きません"); return; }
     }
     if (migrated) {
-      later(() => setHint(HINT_MIGRATED, 5000), 0);
+      // 知らせは遊び方カードの先頭に 1 行（カードの外の #hint は幕の下に隠れるので出さない。UX 4）。カードを閉じたら消す（この回だけ）
+      if (el.helpMig) { el.helpMig.textContent = HINT_MIGRATED + "。"; el.helpMig.hidden = false; }
       if (saveBlocked) tellSaveFail(5000);
     }
     if (state.cleared && best < (L.ENDING_STAR || 30)) writeBest(L.ENDING_STAR || 30);

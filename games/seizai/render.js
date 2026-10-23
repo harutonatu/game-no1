@@ -677,6 +677,7 @@
     }
     // 今のお金で買えるものがある部署か（名札の「＋」。main.js の canBuyAny と同じ見方）
     let memoState = null, memo = { buy: {} };
+    let maxedKey = null, maxedVal = false;   // つまりの部署の maxedOut を「部署・人数・台数・Lv・マネージャー・段」の組で覚える（S2）
     function canBuyAny(s, d) {
       if (memoState === s && d in memo.buy) return memo.buy[d];
       const v = canBuyAnyRaw(s, d);
@@ -1256,8 +1257,15 @@
       const t = num(s.t, 0);
       // logic の関数は state を写すので、同じ state（step は 0.1 秒ごと）の間は 1 回だけ求める（性能 §6.4）
       if (memoState !== s) { memoState = s; memo = { buy: {} }; try { memo.bn = typeof Lg().bottleneck === "function" ? Lg().bottleneck(s) : null; } catch (e) { memo.bn = null; }
-        // つまりの部署が もう強くできない（SZ-08・契約 §23）：黄色の点線と「ここが おそい！」の代わりに「ぜんぶ さいだい！」
-        try { memo.maxed = !!memo.bn && typeof Lg().maxedOut === "function" && Lg().maxedOut(s, memo.bn) === true; } catch (e) { memo.maxed = false; } }
+        // つまりの部署が もう強くできない（SZ-08・契約 §23）：黄色の点線と「ここが おそい！」の代わりに「ぜんぶ さいだい！」。
+        // maxedOut は state を写すので、「部署・人数・台数・Lv・マネージャー・段」の組が変わったときだけ聞き直す（S2）
+        const bx = memo.bn && depts[memo.bn] ? depts[memo.bn] : null;
+        const mk = memo.bn ? [memo.bn, bx && bx.staff, bx && bx.lines, bx && bx.level, bx && bx.mgr, s.stage].join("|") : "";
+        if (mk !== maxedKey) {
+          maxedKey = mk;
+          try { maxedVal = !!memo.bn && typeof Lg().maxedOut === "function" && Lg().maxedOut(s, memo.bn) === true; } catch (e) { maxedVal = false; }
+        }
+        memo.maxed = maxedVal; }
       const bn = memo.bn;
       jamTag = null;
       const L = Lg();

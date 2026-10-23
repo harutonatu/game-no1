@@ -979,7 +979,7 @@ export const tests = [
     },
   },
   {
-    id: 'KL17', tier: 'smoke', node: true, title: 'ほしくだき：ひかえと入れ替え（reserveSwap の理由・持ったことが無い武器は選べない・取り消し・星の途中では替わらない・次の星の始めで替わる・Lv は武器ごと・ひかえは撃たない・強くできない・保存して残る）',
+    id: 'KL17', tier: 'smoke', node: true, title: 'ほしくだき：ひかえと入れ替え（reserveSwap の理由・持ったことが無い武器は選べない・取り消し・星の途中では替わらない・次の星の始めで替わる・Lv は武器ごと・ひかえは撃たない・強くできない・保存して残る・はね返し／2択の間に閉じても予約が当たる）',
     run({ check, root }) {
       const L = load(root);
       let s = mk(L, { star: 4, kakera: 1e6, slots: [{ id: 'shot', lv: 7 }, { id: 'bolt', lv: 3 }], bench: [{ id: 'fire', lv: 5 }, { id: 'beam', lv: 1 }] });
@@ -1005,6 +1005,17 @@ export const tests = [
       // 保存して開き直しても、予約と ひかえ が残る
       const ld = L.loadSave(L.makeSave(mid.s));
       check('保存して開き直しても、予約と ひかえ（覚えている Lv）が残る', J(ld.swap) === J(mid.s.swap) && J(ld.bench) === J(mid.s.bench) && J(ld.slots) === J(mid.s.slots), [ld.swap, ld.bench]);
+      // はね返しの 2 秒の間・2択の間（戻り先 bounce／clear）に閉じても、予約は やり直し／次の星 に当たる（§3.7・§8.2）
+      const sb0 = R(mk(L, { star: 4, kakera: 1e9, tries: 1, slots: [{ id: 'shot', lv: 7 }, { id: 'bolt', lv: 3 }], bench: [{ id: 'fire', lv: 5 }] }), 0, 'fire').state;
+      const sb1 = L.step({ ...sb0, rock: { ...sb0.rock, y: sb0.rock.y + 1000 } }, L.STEP).state;
+      const okSl = J([{ id: 'fire', lv: 5 }, { id: 'bolt', lv: 3 }]), okBe = J([{ id: 'shot', lv: 7 }]);
+      const ob1 = JSON.parse(L.makeSave(sb1)), lb1 = L.loadSave(L.makeSave(sb1)), rb1 = run(L, sb1, 2.1).s;
+      check('はね返しの間の保存は、やり直しの始めの予約を当てた形（星 4・tries 2 のまま・ほのお Lv5 が砲台・swap []）。開き直すと、閉じずに待ったときと同じ砲台', sb1.phase === 'bounce' && J(sb1.swap) === J([{ slot: 0, id: 'fire' }]) && ob1.star === 4 && ob1.tries === 2 && ob1.mid === undefined && J(ob1.slots) === okSl && J(ob1.bench) === okBe && J(ob1.swap) === J([]) && lb1.phase === 'fly' && lb1.star === 4 && lb1.tries === 2 && J(lb1.slots) === okSl && J(rb1.slots) === okSl, [ob1.star, ob1.tries, ob1.slots, ob1.swap]);
+      const ub = L.unlock(sb1), obc = ub.ok && JSON.parse(L.makeSave(ub.state)), lbc = ub.ok && L.loadSave(L.makeSave(ub.state));
+      check('2択の間（戻り先 bounce）の保存も、予約を当てた形（星 4・tries 2・swap []・2択は残る）', ub.ok && ub.state.phase === 'choose' && ub.state.back === 'bounce' && obc.star === 4 && obc.tries === 2 && J(obc.slots) === okSl && J(obc.bench) === okBe && J(obc.swap) === J([]) && Array.isArray(obc.offer) && lbc.phase === 'choose' && J(lbc.slots) === okSl, ub.ok && [ub.state.back, obc.star, obc.slots, obc.swap]);
+      const cc = until(L, lastCell(L, sb0), (e) => e.kind === 'clear', 3).s;
+      const uc = L.unlock(cc), occ = uc.ok && JSON.parse(L.makeSave(uc.state)), lcc = uc.ok && L.loadSave(L.makeSave(uc.state));
+      check('2択の間（戻り先 clear）の保存は、クリアと同じく次の星（星 5・tries 1・mid なし・予約を当てた形・2択は残る。クリアした星をもう一度遊ばない）', uc.ok && uc.state.back === 'clear' && occ.star === 5 && occ.tries === 1 && occ.mid === undefined && J(occ.ms) === J([]) && J(occ.slots) === okSl && J(occ.bench) === okBe && J(occ.swap) === J([]) && Array.isArray(occ.offer) && lcc.star === 5 && lcc.phase === 'choose', uc.ok && [uc.state.back, occ.star, occ.tries, occ.slots]);
       // 次の星の始めで替わる：2 つの予約が両方当たる
       const c1 = until(L, lastCell(L, two), (e) => e.kind === 'clear', 3);
       const c2 = run(L, c1.s, 1.6);

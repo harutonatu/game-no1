@@ -258,13 +258,25 @@
   const ratesOf = () => (state ? safeCall(() => L.rates(state), {}) || {} : {});
   const bottleneck = () => (state ? safeCall(() => L.bottleneck(state), null) : null);
   // つまりの部署が もう強くできない（logic の maxedOut。SZ-08・契約 §23）：「ここが おそい」を出さず「ぜんぶ さいだい！」にし、
-  // 「〇〇を ふやそう」とも言わない。state は毎回新しいオブジェクトなので、同じ state と部署の間は 1 回だけ聞く（maxedOut は state を写す）
-  let maxedMemo = { s: null, d: null, v: false };
-  function bnMaxed(bn) {
-    if (!state || !bn || typeof L.maxedOut !== "function") return false;
-    if (maxedMemo.s !== state || maxedMemo.d !== bn) maxedMemo = { s: state, d: bn, v: safeCall(() => L.maxedOut(state, bn), false) === true };
-    return maxedMemo.v;
+  // 「〇〇を ふやそう」とも言わない。maxedOut・moreNextStage は state を写すので、「部署・人数・台数・Lv・マネージャー・段」の組が
+  // 変わったときだけ聞き直す（state は 0.1 秒ごとに新しくなるが、この組はめったに変わらない。S2）
+  let maxedMemo = { k: null, v: false, more: false };
+  function maxedKey(bn) {
+    const x = state.depts && state.depts[bn];
+    return x ? [bn, x.staff, x.lines, x.level, x.mgr, state.stage].join("|") : bn + "|-|" + state.stage;
   }
+  function maxedLook(bn) {
+    if (!state || !bn || typeof L.maxedOut !== "function") return null;
+    const k = maxedKey(bn);
+    if (maxedMemo.k !== k) {
+      const v = safeCall(() => L.maxedOut(state, bn), false) === true;
+      maxedMemo = { k, v, more: v && typeof L.moreNextStage === "function" && safeCall(() => L.moreNextStage(state, bn), false) === true };
+    }
+    return maxedMemo;
+  }
+  function bnMaxed(bn) { const m = maxedLook(bn); return !!m && m.v; }
+  // もう強くできないが、次の段で上限が増える・マネージャーが雇える（S1。「これいじょう はやく できない」とは言わない）
+  function bnMoreNext(bn) { const m = maxedLook(bn); return !!m && m.v && m.more; }
   const productOf = (stage) => safeCall(() => L.productOf(stage), null) || (stage >= 4 ? "smooth" : stage === 3 ? "planks" : stage === 2 ? "beams" : "peeled");
   // 道具（logic の toolOf。名前の表は logic だけが持つ §19.2.1）：{ tier, name, next: null | { name, lv } } | null
   // toolOf は state を写すので、部署の Lv と段が変わったときだけ聞き直す（毎コマ呼ばない。性能 §6.4）
@@ -897,7 +909,7 @@
       infoEl.append(sw, wp[1]);
     } else setText(infoEl, !unlocked ? `${stageName(deptUnlock(d))}に なると つかえるよ`
       : stuck ? "もりの きが たりないよ。なえぎを ふやすと きが そだつよ"
-      : `1ぷんに ${perMinText}${unit}${jam ? "。ここが おそいよ" : full ? "。ぜんぶ さいだい！ これいじょう はやく できないよ" : ""}`);
+      : `1ぷんに ${perMinText}${unit}${jam ? "。ここが おそいよ" : full ? (bnMoreNext(bnS) ? "。いまは さいだい！ つぎの だんで もっと ふやせるよ" : "。ぜんぶ さいだい！ これいじょう はやく できないよ") : ""}`);
     const sheetRate = $("sheetRate"); if (sheetRate) setText(sheetRate, unlocked ? `1ぷんに ${perMinText}${unit}` : "");
     const sheetJam = $("sheetJam"); if (sheetJam) { setText(sheetJam, jam ? "ここが おそいよ" : ""); sheetJam.hidden = !jam; }
     el.sheet.dataset.jam = jam ? "1" : "0";
@@ -1383,7 +1395,7 @@
     const s = state || {};
     const st = render.stats ? safeCall(() => render.stats(), {}) || {} : {};
     return {
-      phase, stage: s.stage | 0, money: Number(s.money) || 0, rates: ratesOf(), bottleneck: bottleneck(), bottleneckMaxed: bnMaxed(bottleneck()), goal: goalOf(),
+      phase, stage: s.stage | 0, money: Number(s.money) || 0, rates: ratesOf(), bottleneck: bottleneck(), bottleneckMaxed: bnMaxed(bottleneck()), bottleneckMoreNext: bnMoreNext(bottleneck()), goal: goalOf(),
       order: s.order ? Object.assign({}, s.order) : null, ships: s.ships | 0, cleared: !!s.cleared,
       sheet: sheetDept, overlay, queue: cardQueue.slice(),
       actors: st.actors | 0, frames: st.frames | 0, slowFrames: st.slowFrames | 0, bgRedraws: st.bgRedraws | 0,
