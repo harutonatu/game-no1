@@ -16,7 +16,8 @@
 <style>
   /* 配置（契約 docs/asteroid-contract.md §5.1）
      縦向き：上から #hud（← メニュー｜題名｜？ ♪ ／ かけら・ほし ／ 壊した割合）→ #field（場。押しても何も起きない）→ #weapons（最大4行＋あたらしい ぶき）。
-     場（canvas）は #field の箱いっぱいに広がり、render.js が小惑星を場の幅の 7 割前後まで寄せて描く（上の空は切る。地球・バリア・戦闘機は必ず見える。§18.1 A）。
+     場（canvas）は #field の箱いっぱいに広がり、render.js が小惑星を場の幅の 7 割前後まで寄せて描く（上の空は切る。地球・バリア・砲台は必ず見える。§18.1 A）。
+     下のボタンの行（.btnrow）：#unlockBtn（広い）と #swapBtn（いれかえ・ひかえの数。88px 以上）を横に並べる（§5.1。行を増やさない）。
      低い画面（縦で高さ 620px 以下・横で高さ 300px 以下）は武器の行を 1 行構成 44px にする（§18.1 A）。
      #hud は 3 段（← メニュー｜題名｜？ ♪ ／ かけら・ほし N ／ 壊した割合・星の札）で、札が出ても高さが変わらない（U9）。
      横向きで背が低い（高さ 500px 以下）：左に #field、右の列に #hud・#weapons。 */
@@ -70,8 +71,8 @@
     padding-right: max(8px, env(safe-area-inset-right, 0px));
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    grid-template-areas: "hud" "field" "weapons";
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "hud" "field" "weapons" "btns";
     gap: var(--app-gap);
     max-width: 600px;
     margin: 0 auto;
@@ -311,7 +312,7 @@
     background-repeat: no-repeat;
     background-position: center;
     background-size: 26px 26px;
-    box-shadow: inset 0 0 0 1px var(--line);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
   }
   /* 行の中身は 2 段（なまえ・Lv・◎・得意 ／ 1びょうに N）。どの画面でも同じ構成で、低い画面は行の高さだけ 44px に詰める */
   .winfo { min-width: 0; display: flex; flex-direction: column; gap: 0; }
@@ -398,10 +399,43 @@
   .shake { animation: shake 0.3s ease-in-out; }
   @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
 
+  /* 入れ替えの予約「つぎから いなずま Lv12」（§5.2）。行の 2 段目。せまい行では「1びょうに N」の代わりに出す */
+  .wl2 .next { display: inline-flex; align-items: center; gap: 3px; min-width: 0; padding: 0 4px; border-radius: 6px; background: rgba(255, 216, 77, 0.16); color: var(--gold); font: 800 12px/1.2 var(--font-text); white-space: nowrap; }
+  .wl2 .next[hidden] { display: none; }
+  @container (max-width: 229px) { .wrow[data-has-next="1"] .wl2 .dps { display: none; } }
+
+  /* 下のボタンの行：あたらしい ぶき（広い）＋ いれかえ（88px 以上）。6 種類そろって #unlockBtn が消えたら #swapBtn が行の全部 */
+  .btnrow { grid-area: btns; display: flex; gap: 6px; min-width: 0; }
+  #swapBtn {
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    min-width: 88px;
+    min-height: 46px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    border: 2px solid #7fd6ff;
+    background: #13284a;
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    font: 800 15px/1.15 var(--font-display);
+    white-space: nowrap;
+  }
+  #swapBtn #benchCount { font: 700 12px/1.15 var(--font-text); color: #bfeeff; }
+  #swapBtn[aria-disabled="true"] { border-color: var(--line); background: transparent; color: var(--muted); }
+  #swapBtn[aria-disabled="true"] #benchCount { color: var(--muted); }
+  #swapBtn[data-wide="1"] { flex: 1 1 auto; flex-direction: row; gap: 10px; }
+  #swapBtn:active:not([aria-disabled="true"]) { filter: brightness(1.2); }
+  #swapBtn.flash { animation: swapFlash 0.9s ease-out; }
+  @keyframes swapFlash { 0%, 40% { box-shadow: 0 0 0 4px rgba(127, 214, 255, 0.7); } 100% { box-shadow: none; } }
   #unlockBtn {
     box-sizing: border-box;
     min-height: 46px;
     min-width: 44px;
+    flex: 1 1 auto;
     width: 100%;
     padding: 4px 12px;
     border-radius: 12px;
@@ -418,6 +452,10 @@
     overflow-wrap: anywhere;
   }
   #unlockBtn .cost { white-space: nowrap; }
+  /* 4 台のあと「あたらしい ぶき（ひかえへ）」：1 段目に名前（折らない）、2 段目に値段（44px の高さに 2 段で入る） */
+  #unlockBtn[data-bench="1"] { flex-direction: column; flex-wrap: nowrap; gap: 0; line-height: 1.15; }
+  #unlockBtn .ul { white-space: nowrap; }
+  #unlockBtn[data-bench="1"] .ul { font-size: 13px; }
   #unlockBtn .cost b { font-variant-numeric: tabular-nums; }
   #unlockBtn .cost .unit { font-size: 13px; }
   #unlockBtn:not([aria-disabled="true"]) { border-style: solid; background: var(--gold); color: #2a1f00; animation: glow 1.6s ease-in-out infinite; }
@@ -425,16 +463,18 @@
   #unlockBtn:active:not([aria-disabled="true"]) { filter: brightness(1.1); }
   @keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 216, 77, 0); } 50% { box-shadow: 0 0 0 4px rgba(255, 216, 77, 0.45); } }
 
-  /* 買った行から戦闘機へ飛ぶ光（main.js が body に足し、Web Animations で動かして消す。押せない Q3） */
+  /* 買った行から、その武器の砲台へ飛ぶ光（main.js が body に足し、Web Animations で動かして消す。押せない Q3） */
   .zap { position: fixed; left: 0; top: 0; z-index: 12; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: radial-gradient(#fff 25%, #ffd84d 60%, rgba(255, 216, 77, 0) 72%); pointer-events: none; }
 
   /* ===== 武器の絵（data-w）とマスの印（data-mat）。形と模様でも分かる（色覚 §6.2） ===== */
-  [data-w="shot"] > .wicon, .wicon[data-w="shot"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='11' y='10' width='2' height='11' rx='1' fill='%23ffffff' opacity='.45'/%3E%3Ccircle cx='12' cy='7' r='4' fill='%23ffffff'/%3E%3C/svg%3E"); }
-  [data-w="spread"] > .wicon, .wicon[data-w="spread"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='%23ffd84d'%3E%3Ccircle cx='3.5' cy='11' r='2.2'/%3E%3Ccircle cx='7' cy='5.5' r='2.2'/%3E%3Ccircle cx='12' cy='3.5' r='2.2'/%3E%3Ccircle cx='17' cy='5.5' r='2.2'/%3E%3Ccircle cx='20.5' cy='11' r='2.2'/%3E%3C/g%3E%3Ccircle cx='12' cy='19' r='2.6' fill='%23ffffff'/%3E%3C/svg%3E"); }
-  [data-w="bomb"] > .wicon, .wicon[data-w="bomb"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='%23ff9a3c' stroke-width='1.6' stroke-dasharray='3 2'/%3E%3Ccircle cx='12' cy='12' r='5.5' fill='%23ff9a3c'/%3E%3Ccircle cx='10.3' cy='10.3' r='1.6' fill='%23ffe0b8'/%3E%3C/svg%3E"); }
-  [data-w="bolt"] > .wicon, .wicon[data-w="bolt"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M14 1 L5 13 H11 L9 23 L19 9 H13 Z' fill='%23bfeeff' stroke='%23ffffff' stroke-width='1' stroke-linejoin='round'/%3E%3C/svg%3E"); }
-  [data-w="beam"] > .wicon, .wicon[data-w="beam"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='7' y='1' width='10' height='22' rx='3' fill='%237fd6ff' opacity='.45'/%3E%3Crect x='10' y='1' width='4' height='22' rx='2' fill='%23ffffff'/%3E%3C/svg%3E"); }
-  [data-w="fire"] > .wicon, .wicon[data-w="fire"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1 C14 6 19 8 19 14 A7 7 0 0 1 5 14 C5 10 8 8 8 4 C10 6 11 7 12 1 Z' fill='%23ff5a3c'/%3E%3Cpath d='M12 10 C13 13 15 14 15 16.5 A3 3 0 0 1 9 16.5 C9 14.5 11 13.5 12 10 Z' fill='%23ffd84d'/%3E%3C/svg%3E"); }
+  /* 武器の絵：地の色は、その武器の砲台の窓の色（＝弾の色。§5.2・§21.3）、絵は紺。形でも分かる（色覚 §6.2） */
+  [data-w="shot"] > .wicon, .wicon[data-w="shot"] { background-color: #ffffff; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='11' y='10' width='2' height='11' rx='1' fill='%230e1430' opacity='.5'/%3E%3Ccircle cx='12' cy='7' r='4' fill='%230e1430'/%3E%3C/svg%3E"); }
+  [data-w="spread"] > .wicon, .wicon[data-w="spread"] { background-color: #ffd84d; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='%230e1430'%3E%3Ccircle cx='3.5' cy='11' r='2.2'/%3E%3Ccircle cx='7' cy='5.5' r='2.2'/%3E%3Ccircle cx='12' cy='3.5' r='2.2'/%3E%3Ccircle cx='17' cy='5.5' r='2.2'/%3E%3Ccircle cx='20.5' cy='11' r='2.2'/%3E%3Ccircle cx='12' cy='19' r='2.6'/%3E%3C/g%3E%3C/svg%3E"); }
+  [data-w="bomb"] > .wicon, .wicon[data-w="bomb"] { background-color: #ff9a3c; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='%230e1430' stroke-width='1.6' stroke-dasharray='3 2'/%3E%3Ccircle cx='12' cy='12' r='5.5' fill='%230e1430'/%3E%3Ccircle cx='10.3' cy='10.3' r='1.6' fill='%23ffffff' opacity='.7'/%3E%3C/svg%3E"); }
+  [data-w="bolt"] > .wicon, .wicon[data-w="bolt"] { background-color: #bfeeff; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M14 1 L5 13 H11 L9 23 L19 9 H13 Z' fill='%230e1430' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+  [data-w="beam"] > .wicon, .wicon[data-w="beam"] { background-color: #7fd6ff; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='7' y='1' width='10' height='22' rx='3' fill='%230e1430' opacity='.35'/%3E%3Crect x='10' y='1' width='4' height='22' rx='2' fill='%230e1430'/%3E%3C/svg%3E"); }
+  [data-w="fire"] > .wicon, .wicon[data-w="fire"] { background-color: #ff5a3c; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1 C14 6 19 8 19 14 A7 7 0 0 1 5 14 C5 10 8 8 8 4 C10 6 11 7 12 1 Z' fill='%230e1430'/%3E%3Cpath d='M12 10 C13 13 15 14 15 16.5 A3 3 0 0 1 9 16.5 C9 14.5 11 13.5 12 10 Z' fill='%23ffd84d'/%3E%3C/svg%3E"); }
+  .wicon.mini { display: inline-block; flex: 0 0 auto; width: 14px; height: 14px; border-radius: 4px; background-size: 12px 12px; box-shadow: none; vertical-align: middle; }
 
   .mat { display: inline-block; flex: 0 0 auto; width: 13px; height: 13px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45); vertical-align: middle; position: relative; }
   .mat[data-mat="rock"] { background: #9a6542; }
@@ -532,10 +572,66 @@
   .choice[aria-disabled="true"] { opacity: 0.6; }
   .choice-note { color: var(--muted); font-size: 13px; }
 
-  /* エンディングの絵：地球のまわりを戦闘機が一周する */
+  /* 入れ替えのカード（§5.3）：上に砲台（枠）のボタン 4 つ、下に ひかえ の武器のボタン */
+  .swapslots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .sslot {
+    position: relative;
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 56px;
+    padding: 4px 2px;
+    border-radius: 12px;
+    border: 2px solid var(--line);
+    background: var(--panel2);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font: 700 12px/1.2 var(--font-text);
+  }
+  .sslot .wicon { width: 26px; height: 26px; background-size: 21px 21px; }
+  .sslot .sname { white-space: nowrap; }
+  .sslot .wicon.nx { position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; background-size: 13px 13px; box-shadow: 0 0 0 2px var(--gold); }
+  .sslot[aria-pressed="true"] { border-color: var(--gold); background: #3a3a22; }
+  .sslot[aria-pressed="true"]::after { content: "▼"; position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); font: 10px/1 sans-serif; color: var(--gold); }
+  .benchlist { display: flex; flex-direction: column; gap: 6px; }
+  .bench {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 48px;
+    padding: 4px 8px;
+    border-radius: 12px;
+    border: 2px solid var(--line);
+    background: var(--panel2);
+    color: var(--ink);
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+    grid-template-areas: "icon name tag" "icon good tag";
+    column-gap: 8px;
+    align-items: center;
+    text-align: left;
+  }
+  .bench .wicon { grid-area: icon; width: 32px; height: 32px; background-size: 26px 26px; }
+  .bench .bname { grid-area: name; font: 800 15px/1.2 var(--font-display); white-space: nowrap; display: flex; align-items: center; gap: 4px; min-width: 0; }
+  .bench .bname .lv { font-size: 13px; color: var(--gold); }
+  .bench .fit { font: 900 14px/1 var(--font-display); color: var(--good); }
+  .bench .good { grid-area: good; font-size: 12px; }
+  .bench .good:empty { display: none; }
+  .bench .good .gt { display: inline; }
+  .bench .btag { grid-area: tag; padding: 2px 6px; border-radius: 8px; font: 800 12px/1.2 var(--font-text); background: rgba(255, 255, 255, 0.1); color: var(--muted); white-space: nowrap; }
+  .bench[aria-pressed="true"] { border-color: var(--gold); }
+  .bench[aria-pressed="true"] .btag { background: var(--gold); color: #2a1f00; }
+  .bench:active:not([aria-disabled="true"]) { filter: brightness(1.2); }
+  .bench[aria-disabled="true"], .sslot[aria-disabled="true"] { opacity: 0.6; }
+  .bench-empty { margin: 0; color: var(--muted); font: 600 13px/1.4 var(--font-text); }
+
+  /* エンディングの絵：砲台がそろって空へ光を打ち上げる（§3.11） */
   .endpic { display: block; margin: 0 auto; width: 140px; height: 124px; overflow: visible; }
-  .endpic .orbit { transform-origin: 70px 62px; animation: orbit 4s linear infinite; }
-  @keyframes orbit { to { transform: rotate(360deg); } }
+  .endpic .sh { animation: endShot 1.2s ease-in-out infinite; }
+  .endpic .s2 { animation-delay: 0.3s; } .endpic .s3 { animation-delay: 0.6s; } .endpic .s4 { animation-delay: 0.9s; }
+  @keyframes endShot { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
 
   /* ===== 幅の狭い画面（SE 縦 320px）：題名は 14px で「ちきゅうを守れ！」／「ほしくだき」の2行 ===== */
   @media (max-width: 380px) {
@@ -548,8 +644,9 @@
   @media (min-width: 500px) { :root { --up-w: 150px; } }
   @media (max-width: 380px) { :root { --up-w: 104px; } }
 
-  /* ===== 低い画面（SE 縦・Safari 縦／横の低い画面）：武器の行を 1 行構成 44px に詰め、場を広く（§18.1 A・U1・U2） ===== */
-  @media (orientation: portrait) and (max-height: 620px), (orientation: landscape) and (max-height: 300px) {
+  /* ===== 低い画面（SE 縦・Safari 縦／横の低い画面）：武器の行を 1 行構成 44px に詰め、場を広く（§18.1 A・U1・U2） =====
+     横は高さ 360px 以下（SE 横 568×320 も）：4 行＋下のボタンの行（あたらしい ぶき・いれかえ）を入れるため */
+  @media (orientation: portrait) and (max-height: 620px), (orientation: landscape) and (max-height: 360px) {
     :root { --row-h: 44px; --app-gap: 2px; --app-pad-y: 2px; }
     .weapons { gap: 2px; }
     .wrow { padding: 0 4px 0 6px; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: 5px; border-radius: 10px; }
@@ -558,7 +655,9 @@
     .wl1 .lv { line-height: 1.15; }
     .wl2 { line-height: 1.15; }
     .up { min-height: 44px; height: 44px; padding: 1px 4px; line-height: 1.12; }
-    #unlockBtn { min-height: 44px; height: 44px; padding: 2px 10px; }
+    #unlockBtn { min-height: 44px; height: 44px; padding: 1px 8px; font-size: 14px; line-height: 1.12; row-gap: 0; column-gap: 6px; }
+    #unlockBtn .cost .unit { font-size: 12px; }
+    #swapBtn { min-height: 44px; height: 44px; }
     #kakera { font-size: 18px; line-height: 1.15; }
   }
   @media (orientation: portrait) and (max-height: 620px) {
@@ -568,14 +667,24 @@
     .card ol.rules { font-size: 14px; line-height: 1.45; gap: 4px; }
     .choice { min-height: 60px; padding: 6px 8px; }
   }
+  /* Safari 縦 320×454 など、さらに低い縦：遊び方が「さいしょから あそぶ」までスクロールなしで入るように詰める */
+  @media (orientation: portrait) and (max-height: 500px) {
+    .card { padding: 10px 12px; gap: 6px; }
+    .card h2 { font-size: 17px; }
+    .card ol.rules { font-size: 13px; line-height: 1.38; gap: 2px; }
+    .card .btns { gap: 4px; }
+    .card .btns button { min-height: 44px; padding: 4px 10px; }
+    .sslot { min-height: 50px; }
+    .bench { min-height: 44px; }
+  }
 
   /* ===== 横向きで背が低い：左に #field、右の列に #hud・#weapons ===== */
   @media (orientation: landscape) and (max-height: 500px) {
     .app {
       max-width: none;
       grid-template-columns: minmax(0, 1fr) minmax(0, 312px);
-      grid-template-rows: auto minmax(0, 1fr);
-      grid-template-areas: "field hud" "field weapons";
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      grid-template-areas: "field hud" "field weapons" "field btns";
       gap: var(--app-gap) 8px;
     }
     /* 場は左の列いっぱい（render.js が小惑星に寄せて描く） */
@@ -603,11 +712,24 @@
     .choice .good { font-size: 12px; }
     .choice-note { font-size: 12px; }
     .endpic { width: 90px; height: 80px; }
+    .sslot { min-height: 44px; flex-direction: row; gap: 4px; }
+    .sslot .wicon { width: 22px; height: 22px; background-size: 18px 18px; }
+    .sslot[aria-pressed="true"]::after { display: none; }
+    .benchlist { flex-direction: row; flex-wrap: wrap; }
+    .bench { flex: 1 1 150px; width: auto; min-height: 44px; padding: 2px 6px; grid-template-columns: 26px minmax(0, 1fr) auto; }
+    .bench .wicon { width: 26px; height: 26px; background-size: 21px 21px; }
+    .bench .bname { font-size: 14px; }
+    #swapBtn { font-size: 14px; }
+    #unlockBtn { font-size: 14px; line-height: 1.15; padding: 2px 8px; column-gap: 6px; row-gap: 0; }
+    #unlockBtn .cost .unit { font-size: 12px; }
     .overlay { padding-top: calc(max(4px, env(safe-area-inset-top, 0px)) + var(--head-h) + 4px); padding-bottom: max(4px, env(safe-area-inset-bottom, 0px)); }
   }
 
   /* 横の低い画面（Safari 横 568×270）：行の間を詰めて、1 行目の札の 6px を空ける（行どうしは 1px の枠で区切る） */
   @media (orientation: landscape) and (max-height: 300px) {
+    /* 4 行＋下のボタンの行が右の列に入らないので、下のボタンの行は左の列（場の下）へ */
+    .app { grid-template-areas: "field hud" "field weapons" "btns weapons"; }
+    #unlockBtn .to { display: none; }   /* 左の列は幅が 140px ほどなので「（ひかえへ）」は省く（aria-label と 2択の案内で伝える） */
     .weapons { gap: 0; }
     .endpic { width: 56px; height: 50px; }
     .card { gap: 4px; padding: 6px 12px; }
@@ -643,7 +765,7 @@
   </header>
 
   <main class="field" id="field" aria-label="うちゅう">
-    <div class="stage" id="stage"><canvas id="fieldCanvas" role="img" aria-label="ほしと せんとうき。みているだけで いいよ"></canvas></div>
+    <div class="stage" id="stage"><canvas id="fieldCanvas" role="img" aria-label="ほしと ほうだい。おしても うごかないよ"></canvas></div>
     <span class="dist-ic top" aria-hidden="true">とおい</span>
     <div id="distance" role="progressbar" aria-label="ちきゅうまでの ちかさ" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="distanceFill"></span></div>
     <span class="dist-ic bot" aria-hidden="true">ちかい</span>
@@ -659,7 +781,7 @@
       <span class="wicon" data-part="icon" aria-hidden="true"></span>
       <div class="winfo">
         <div class="wl1"><b data-part="name">たま</b><span class="lv" data-part="lv">Lv1</span><span class="fit" data-part="fit" aria-hidden="true">◎</span><span class="good" data-part="good"></span></div>
-        <div class="wl2"><span data-part="dps">1びょうに 10</span></div>
+        <div class="wl2"><span class="dps" data-part="dps">1びょうに 10</span><span class="next" data-next hidden></span></div>
       </div>
       <button class="up" type="button" data-up="0"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost">5</b><span class="unit">かけら</span></span></button>
       <span class="evo" data-part="note"></span>
@@ -669,7 +791,7 @@
       <span class="wicon" data-part="icon" aria-hidden="true"></span>
       <div class="winfo">
         <div class="wl1"><b data-part="name"></b><span class="lv" data-part="lv"></span><span class="fit" data-part="fit" aria-hidden="true">◎</span><span class="good" data-part="good"></span></div>
-        <div class="wl2"><span data-part="dps"></span></div>
+        <div class="wl2"><span class="dps" data-part="dps"></span><span class="next" data-next hidden></span></div>
       </div>
       <button class="up" type="button" data-up="1"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost"></b><span class="unit">かけら</span></span></button>
       <span class="evo" data-part="note"></span>
@@ -679,7 +801,7 @@
       <span class="wicon" data-part="icon" aria-hidden="true"></span>
       <div class="winfo">
         <div class="wl1"><b data-part="name"></b><span class="lv" data-part="lv"></span><span class="fit" data-part="fit" aria-hidden="true">◎</span><span class="good" data-part="good"></span></div>
-        <div class="wl2"><span data-part="dps"></span></div>
+        <div class="wl2"><span class="dps" data-part="dps"></span><span class="next" data-next hidden></span></div>
       </div>
       <button class="up" type="button" data-up="2"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost"></b><span class="unit">かけら</span></span></button>
       <span class="evo" data-part="note"></span>
@@ -689,14 +811,17 @@
       <span class="wicon" data-part="icon" aria-hidden="true"></span>
       <div class="winfo">
         <div class="wl1"><b data-part="name"></b><span class="lv" data-part="lv"></span><span class="fit" data-part="fit" aria-hidden="true">◎</span><span class="good" data-part="good"></span></div>
-        <div class="wl2"><span data-part="dps"></span></div>
+        <div class="wl2"><span class="dps" data-part="dps"></span><span class="next" data-next hidden></span></div>
       </div>
       <button class="up" type="button" data-up="3"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost"></b><span class="unit">かけら</span></span></button>
       <span class="evo" data-part="note"></span>
       <span class="plus" data-part="plus" aria-hidden="true"></span>
     </div>
-    <button id="unlockBtn" type="button" aria-disabled="true"><span data-part="label">あたらしい ぶき</span><span class="cost"><b data-part="cost">150</b><span class="unit">かけら</span></span></button>
   </section>
+  <div class="btnrow" id="btnrow">
+    <button id="unlockBtn" type="button" aria-disabled="true"><span class="ul"><span data-part="label">あたらしい ぶき</span><span class="to" data-part="to" hidden>（ひかえへ）</span></span><span class="cost"><b data-part="cost">40</b><span class="unit">かけら</span></span></button>
+    <button id="swapBtn" type="button" aria-disabled="true" aria-label="いれかえ（ひかえ なし）"><span class="sl">いれかえ</span><span id="benchCount">ひかえ なし</span></button>
+  </div>
 </div>
 
 <!-- 2択（閉じる操作は無い。選ぶまで場は止まる。#back でメニューへは戻れる） -->
@@ -718,7 +843,23 @@
         <span class="good" data-part="good"><i class="mat" data-mat="iron"></i><span class="gt">てつに つよい</span></span>
       </button>
     </div>
-    <p class="choice-note">えらんだ ぶきは いれかえられないよ</p>
+    <p class="choice-note" id="choiceNote">てにいれた ぶきは「いれかえ」で つかいわけ できるよ</p>
+  </div>
+</div>
+
+<!-- 入れ替え（§3.6・§5.3）：上で砲台（枠）を選び、下の ひかえ の武器を押すと予約。替わるのは つぎの ほしか、はねかえされた あと -->
+<div class="overlay" id="swapCard" role="dialog" aria-modal="true" aria-labelledby="swapTitle" hidden>
+  <div class="card">
+    <h2 id="swapTitle" tabindex="-1">どの ぶきに かえる？</h2>
+    <p class="small" id="swapText">つぎの ほしか、はねかえされた あとから かわるよ</p>
+    <div class="swapslots" role="group" aria-label="ほうだい">
+      <button type="button" class="sslot" data-swap-slot="0" aria-pressed="true"></button>
+      <button type="button" class="sslot" data-swap-slot="1" aria-pressed="false" hidden></button>
+      <button type="button" class="sslot" data-swap-slot="2" aria-pressed="false" hidden></button>
+      <button type="button" class="sslot" data-swap-slot="3" aria-pressed="false" hidden></button>
+    </div>
+    <div class="benchlist" id="benchList" role="group" aria-label="ひかえの ぶき"></div>
+    <div class="btns"><button type="button" id="swapDone" class="primary">とじる</button></div>
   </div>
 </div>
 
@@ -727,8 +868,8 @@
   <div class="card">
     <h2 id="helpTitle">あそびかた</h2>
     <ol class="rules">
-      <li>せんとうきは じぶんで うつよ。みているだけで いいよ。ほしを ぜんぶ こわすと クリア。</li>
-      <li>したの ボタンを おすと ぶきが つよくなるよ。がめんの ほしは おしても うごかないよ。あたらしい ぶきは 2つから えらべるよ。</li>
+      <li>ほうだいは じぶんで うつよ。みているだけで いいよ。ほしを ぜんぶ こわすと クリア。</li>
+      <li>したの ボタンを おすと ぶきが つよくなるよ。ぶきには とくいな いわが あるよ。てにいれた ぶきは「いれかえ」で かえられるよ。がめんの ほしは おしても うごかないよ。</li>
       <li>ほしが ちきゅうに とどいても バリアが まもるよ。つよくして もういちど！</li>
     </ol>
     <div class="btns">
@@ -759,13 +900,18 @@
       <path d="M52 50 C58 44 66 46 64 54 C62 60 54 62 50 58 Z M74 66 C80 60 90 64 88 72 C85 80 76 80 74 74 Z M70 40 C74 38 80 40 78 44 C75 46 70 45 70 40 Z" fill="#4cbf6a"/>
       <circle cx="70" cy="62" r="38" fill="none" stroke="#9fe6ff" stroke-width="2" opacity="0.7"/>
       <g fill="#ffd84d"><circle cx="16" cy="16" r="1.6"/><circle cx="122" cy="22" r="1.4"/><circle cx="128" cy="96" r="1.6"/><circle cx="12" cy="92" r="1.3"/><circle cx="104" cy="8" r="1.2"/></g>
-      <g class="orbit">
-        <g transform="translate(70 14)">
-          <path d="M-7 0 C-7 -4 -3 -6 4 -6 C9 -6 12 -3 13 0 C12 3 9 6 4 6 C-3 6 -7 4 -7 0 Z" fill="#ffffff"/>
-          <path d="M-2 -6 L-7 -11 L-9 -11 L-6 -5 Z M-2 6 L-7 11 L-9 11 L-6 5 Z" fill="#ff9a3c"/>
-          <path d="M-7 -3 L-14 0 L-7 3 Z" fill="#ffb35c"/>
-          <circle cx="5" cy="0" r="2.2" fill="#7fd6ff"/>
-        </g>
+      <!-- 砲台がそろって空へ光を打ち上げる（§3.11） -->
+      <g class="shots" stroke-linecap="round" stroke-width="3">
+        <line class="sh s1" x1="46" y1="40" x2="22" y2="6" stroke="#ffffff"/>
+        <line class="sh s2" x1="62" y1="33" x2="56" y2="2" stroke="#ffd84d"/>
+        <line class="sh s3" x1="78" y1="33" x2="84" y2="2" stroke="#bfeeff"/>
+        <line class="sh s4" x1="94" y1="40" x2="118" y2="6" stroke="#7fd6ff"/>
+      </g>
+      <g>
+        <g transform="translate(48 41) rotate(-35)"><rect x="-1.6" y="-9" width="3.2" height="8" rx="1.2" fill="#ff9a3c"/><path d="M-5 1 A5 5 0 0 1 5 1 Z" fill="#ffffff"/><circle cx="0" cy="-1" r="1.4" fill="#ffffff"/></g>
+        <g transform="translate(63 34) rotate(-10)"><rect x="-1.6" y="-9" width="3.2" height="8" rx="1.2" fill="#ff9a3c"/><path d="M-5 1 A5 5 0 0 1 5 1 Z" fill="#ffffff"/><circle cx="0" cy="-1" r="1.4" fill="#ffd84d"/></g>
+        <g transform="translate(77 34) rotate(10)"><rect x="-1.6" y="-9" width="3.2" height="8" rx="1.2" fill="#ff9a3c"/><path d="M-5 1 A5 5 0 0 1 5 1 Z" fill="#ffffff"/><circle cx="0" cy="-1" r="1.4" fill="#bfeeff"/></g>
+        <g transform="translate(92 41) rotate(35)"><rect x="-1.6" y="-9" width="3.2" height="8" rx="1.2" fill="#ff9a3c"/><path d="M-5 1 A5 5 0 0 1 5 1 Z" fill="#ffffff"/><circle cx="0" cy="-1" r="1.4" fill="#7fd6ff"/></g>
       </g>
     </svg>
     <p id="endText">30この ほしを くだいて、ちきゅうを まもったよ！</p>
