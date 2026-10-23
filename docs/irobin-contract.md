@@ -336,6 +336,7 @@ IrobinInput.attach({ board, root = document }, {
 - 既存のトークン（`--bg #1b1f2e`・`--panel`・`--well`・`--line`・`--ink`・`--muted #9aa1b8`・`--accent`）とフォント、safe-area、ダブルタップ抑止の作りはハシわたりに準じる。`[hidden] { display: none !important; }`
 - 瓶のボタンは**幅 44px 以上・高さ 44px 以上**（瓶の見た目は縦長、押せる矩形も同じ）。文字は 12px 以上（V11）、本文 16px 以上。ひらがな中心。
 - `#level` は 16 桁（9007199254740991）でもはみ出さない（字を縮める。「…」で省略しない）。
+- 面の番号の字の大きさ：4 桁まで s（20px）・5 桁 m（16px）・6〜8 桁 t（1 段のまま、番号と「めん」を 12px にしてすき間を詰める）・9 桁から l（14px、縦では番号を下の段に回す）（v35、IB-30、ユーザー「字を小さくする」、BW21）。
 - **配置**：縦向きは上から `.head`・`#shop`・`#board`・`#hint`・`#tools`。**横向き**（`(orientation: landscape) and (max-height: 500px)`）は、`#shop`・`#hint`・`#tools` を左の縦列、`#board` を右。`.head`・`#shop`・`#board`・`#hint`・`#tools` の矩形は、iPhone SE（320×568・568×320）から iPad まで、どの向きでも重ならず画面からはみ出さない（11本の面でも）。
 - `prefers-reduced-motion: reduce` で CSS のアニメーションを止める（render も §7.4 で従う）。
 

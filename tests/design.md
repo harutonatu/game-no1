@@ -132,6 +132,8 @@
 - **時計の指定**：`newPage` のオプションは opts の1オブジェクトに入れる（`{ initScript, clock: true }`）。第5引数に書くと無視され、実時間で待つことになる（D7・P5・A3 で見つかり、直した。D6 は早送りしても合否が変わらないことを確認して clock を opts に入れた）。日付を使うテストは `clockTime`（時刻を固定）と `timezoneId` を渡し、期待値は固定した時刻から作る。決まりは README「日付・時計」。
 - **サーバーとテストは同じ機械で動かす**（S4 の x-served-at をテストの実時計と比べるため。別の機械だと時計のずれで崩れる）。
 - `CLOCK=0` で早送りを止められる。早送りあり／なしで合否が同じことを確認済み（README の所要時間の表）。
+- **solo の段（T-02・T-09、v35）**：速さを測る項目（A5・WW10・KW10・FW18・HW19）には `solo: true` を付け、run.mjs は WORKERS が 2 以上のとき、ほかのグループが全部終わってから 1 つずつ流す（出力に「（速さ・1 つずつ）」）。並列の負荷で速さの測定が落ちるのを防ぐ。WORKERS=1 は今までどおり。
+- **ページ・ブラウザが落ちたときだけ 1 回流し直す（MT-14・T-09、v35。ユーザー「v35 で入れる」）**：項目が `Target crashed`・`Page crashed`・`Browser has been closed`・`browser has disconnected` の例外で止まったときだけ、その項目を 1 回流し直し、2 回目を合否にする（結果に「↻ 流し直し 1 回」、最後にまとめの行）。ふつうの不合格・ほかの例外・時間切れは流し直さない（確かめを弱めない）。コンソールエラー（X1）は 1 回目の分も数える。落ちる原因は WebKit 側でテストの待ち方ではないため、直さず流し直す。
 
 ## 8. WebKit
 
@@ -257,6 +259,8 @@ v31 のレビュー後の直し（MH28・MP13・MP14）：MH28（cancelHold で�
 - **効果音（BW10）**：動きを減らす設定（演出が極端に短い）で全体を通し、1手ごとに実時間で待つ（そろった後は 0.9 秒）。同時発音の上限（36）に当たると、そろった直後の栓の音が落ちるため。`seal`・`cork`・`deliver`・`clear` は「すべての呼び出しで音の部品が start」を要求する。
 - **中断（BW9）**：hidden を再現し、`document.getAnimations()` の running が 0、実時間 2.8 秒待っても `busy` のまま（止めていなければ演出が終わってしまう）。MB8 の検出に使う。
 
+- **v35（2026-10-23）**：BW21（full）は、面の番号（`#level`）の字の大きさを 4 桁まで s（20px）・5 桁 m（16px）・6〜8 桁 t（1 段のまま 12px）・9 桁から l に分けた表のとおりに、SE 縦などで省略されず欄に収まることを見る（IB-30。ユーザー「字を小さくする」＝2 段にせず 1 段のまま。直す前は SE 縦の 999999・12345678 が `size m・fit false`）。BL5・BL13（irobin-logic.mjs）の「面の生成が重くない」は、壁の時計ではなく `process.threadCpuUsage()`（このスレッドの CPU 時間）で測る（T-21。GC・JIT の裏のスレッドと、CPU が混んで待たされた時間を数えない）。
+
 ## 10.65 まとめてポン（games/matomete/）
 
 元はさめがめ（docs/game-plan.md）。契約は `docs/matomete-contract.md`。計算は Node で直接（QL、`matomete-logic.mjs`）、画面は契約の DOM と `window.MatometeGame`（`state()`・`tapCell`・`select`・`remove`（演出を最後まで終わらせて返す）・`undo`・`restart`・`newSeed(seed, mode)`（確認なしで始める）・`cellRect(x, y)`・`isAnimating()`・`skip()`）で（QW、`matomete-ui.mjs`）。
@@ -276,6 +280,8 @@ v31 のレビュー後の直し（MH28・MP13・MP14）：MH28（cancelHold で�
 - **明滅・fx（QW18）**：`state().frames`（描いたコマの数）と `fxDraws`（fx を描き直した回数）を見て、選んで 3.5 秒後からコマが増えないこと、選んでいる間・粒が消えたあとに fx を描き直さないことを確かめる。
 - **カードの文が帯に隠れない（QW8）**：遊び方はスクロールせずに、見出し・項目が画面の中かつ下のボタンの帯より上にあること（SE 縦・SE 縦 Safari・SE 横・568×270・iPad 縦）。
 
+- **v35 の小さな直し（2026-10-23。QW23・QW19）**：QW23（full）は 2 つ見る。(1) MT-17：本当の「のこり」は 200 こまでなので、`MatometeLogic.remaining` を差し替える initScript で `window.__left` を 200・9999・99999 にし、`main.js` の表示（`setNum`・`data-size`）を通して、SE 縦・SE 縦 Safari・SE 横・13 縦・iPad の 5 画面で省略されず欄に収まる（`scrollWidth <= clientWidth`・`.stat` の中・12px 以上・横スクロールなし）。(2) MT-18：SE 縦 Safari（320×454）の終わりのカード（`matomete.least` があって「まえの いちばん すくない」「さいこう きろく！」も出る、いちばん行の多い形）を `overlayProbe(noScroll)` で見て、スクロールなし・文が下の帯に隠れない・ボタン 44px 以上・文字 12px 以上。QW19 の「消して 0.175 秒」は、ページの時計を `frozen` で止めて `wait` でだけ進めて見る（T-08。止めないと、負荷で遅れた実時間のぶん演出が先へ進み、WebKit で「まだある」が落ちた）。**直す前に落ちたこと**：QW23 の 1 つ目は SE 縦・SE 縦 Safari の 99999 が `size s・fit false`、2 つ目は `scrollHeight 529・高さ 454`（隠れ：まえの いちばん すくない／さいこう きろく！）で不合格（計画のときの確認。担当の実際の数は v35 の関門の報告）。QW19 は WebKit で直す前に 1 回目で落ちた。
+
 ## 10.66 ミチビキ空港（games/michibiki/）
 
 契約は `docs/michibiki-contract.md`（§13 がテストの約束）。計算は Node で直接（FL、`michibiki-logic.mjs`）、画面は契約の DOM と `window.MichibikiGame`（`getState`・`manual`・`tick`・`drawPath`・`guide`・`spawn`・`restart`・`pause`・`resume`・`toScreen`・`toField`・`planeRect`・`setSlowmo`）で（FW、`michibiki-ui.mjs`）。
@@ -294,6 +300,8 @@ v31 のレビュー後の直し（MH28・MP13・MP14）：MH28（cancelHold で�
 - **レビュー後の直し（契約 §19、2026-10-20）**：難しさ（`COLOR_STEPS` [0, 4, 12]・`spawnInterval` の下限 2.0 秒と 10 機からの縮み方）と、回の1機目（左の辺の tall y 270〜310・wide y 200〜240 から手前の点へ）を FL1・FL6・FL7 に入れた。FL6 の出る間隔は `spawnInterval` 自身とではなく契約の値（6.5・2.0 秒）と比べる（式ごと変える変異 MF7 を見逃さないように）。FW13 は open が 4 機目の着陸と同じコマであることも見る（MF6）。
 - **§19 の確認**：FW20（A1 うしろ 30 をつかんで前へ・A4 少し動かして長押しはタップ）、FW21（A2 着陸したらすぐ保存・B2 さいしょからの確認カード・回を始めたときのベストと比べる・B9 #overTip）、FW22（A3 終わって 0.6 秒以内の pagehide → pageshow）、FW23（A7 2本目の指は無視、CDP）。確認カードはヘッダーを覆うので、確認中の Ⅱ はページの中で押す。A3 の横展開は BW19（いろびん）・QW20（まとめてポン）。
 - **ほかの機体がぶつかってくる**：FW1 の逆向き・FW19 は、テストの機体がほかの機体とぶつかったときだけ次の種（`REV_SEEDS`）でやり直す（ぶつからなければ最初の種で判定）。FW19 の「ヒントは回で 3 回まで」は、ほかの機体の逆向きも数える。
+
+- **FW4 も時計を止めて待つ（T-16、v35）**：終わりのカードが出るのを待つ FW4 は、FW2 と同じく `frozen` で時計を止めて見る。WebKit ではメニューとの行き来のあと、ページの時刻と早送りがずれ、0.7 秒の時点でまだ出ていない回があった（あと 0.3 秒で必ず出る。ゲームの不具合ではなく、テストの待ち方）。確かめの中身は変えない。同じ形の FW10・FW13 は T-22（full だけ・WebKit の公開の条件に入らないので v35 では直さない）。
 
 ## 10.67 もくもくこうば（games/seizai/）
 
@@ -319,6 +327,8 @@ v31 のレビュー後の直し（MH28・MP13・MP14）：MH28（cancelHold で�
 - **性能（WW10、CDP）**：ページの時計を早送りしない（実時間）。みなとで全部最大にして CPU 4 倍遅くで 6 秒、`slowFrames`（前のコマから 34ms を超えた数）の増え方が `frames` の増え方の 5% 以下、人 40〜60。1 コマの描画の時間（render の `drawMs`）は `getState` に出ていないので見ていない。
 - **もうかる／はやい の ✓（WW28、X-25、v34）**：seizai の `.mgr-switch` の ✓ は `content: "✓ " / ""` にして読み上げの名前に入れない。WW28 は `ariaSnapshot` に ✓ が出ないこと、押すと `[pressed]` が入れ替わること、見た目の ✓（`::before` の content）は残ることを見る。直す前は「✓ はやい…」で不合格になる見込み（実際の数は PM が追記）。
 - **効果音（WW14）**：作業音 chop・saw は合わせて 0.4 秒に 1 回まで（間引かれた回は音の部品が動かない）なので、「どの名前も 1 回以上は音の部品が start した」の確認では、作業音はどちらか一方でよい。
+
+- **WL7 の重さ（T-21、v35）**：catchUp だけを `process.threadCpuUsage()`（このスレッドの CPU 時間。古い Node は `process.cpuUsage`）で測る。並列のテストで CPU が混んでも、待たされた時間を数えない。
 
 ## 10.68 ちきゅうを守れ！ほしくだき（games/asteroid/）
 
