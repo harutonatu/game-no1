@@ -44,7 +44,7 @@ export const GROUPS = [
   { key: 'WL', title: 'WL もくもくこうば 計算ロジック(Node)', file: 'seizai-logic.mjs', weight: { smoke: 0, full: 0 } },
   { key: 'WW', title: 'WW もくもくこうば 画面（育てる・買う・節目・注文・るすの あいだ・時計・保存・戻る・画面内・横向き・性能・キーボード・音・オフライン・メニュー）', file: 'seizai-ui.mjs', weight: { smoke: 8, full: 45 } },
   { key: 'KL', title: 'KL ほしくだき 計算ロジック(Node)', file: 'asteroid-logic.mjs', weight: { smoke: 0, full: 0 } },
-  { key: 'KW', title: 'KW ほしくだき 画面（壊れる・強くする・2択・はね返し・クリア・保存・戻る・中断・画面内・横向き・性能・キーボード・音・オフライン・メニュー）', file: 'asteroid-ui.mjs', weight: { smoke: 8, full: 45 } },
+  { key: 'KW', title: 'KW ほしくだき 画面（壊れる・強くする・2択・はね返し・クリア・保存・戻る・中断・画面内・横向き・性能・キーボード・音・オフライン・メニュー）', file: 'asteroid-ui.mjs', weight: { smoke: 8, full: 84 } },
 ];
 
 const args = process.argv.slice(2);
