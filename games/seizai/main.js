@@ -257,6 +257,14 @@
   const goalOf = () => (state ? safeCall(() => L.goalOf(state), null) : null);
   const ratesOf = () => (state ? safeCall(() => L.rates(state), {}) || {} : {});
   const bottleneck = () => (state ? safeCall(() => L.bottleneck(state), null) : null);
+  // つまりの部署が もう強くできない（logic の maxedOut。SZ-08・契約 §23）：「ここが おそい」を出さず「ぜんぶ さいだい！」にし、
+  // 「〇〇を ふやそう」とも言わない。state は毎回新しいオブジェクトなので、同じ state と部署の間は 1 回だけ聞く（maxedOut は state を写す）
+  let maxedMemo = { s: null, d: null, v: false };
+  function bnMaxed(bn) {
+    if (!state || !bn || typeof L.maxedOut !== "function") return false;
+    if (maxedMemo.s !== state || maxedMemo.d !== bn) maxedMemo = { s: state, d: bn, v: safeCall(() => L.maxedOut(state, bn), false) === true };
+    return maxedMemo.v;
+  }
   const productOf = (stage) => safeCall(() => L.productOf(stage), null) || (stage >= 4 ? "smooth" : stage === 3 ? "planks" : stage === 2 ? "beams" : "peeled");
   // 道具（logic の toolOf。名前の表は logic だけが持つ §19.2.1）：{ tier, name, next: null | { name, lv } } | null
   // toolOf は state を写すので、部署の Lv と段が変わったときだけ聞き直す（毎コマ呼ばない。性能 §6.4）
@@ -311,7 +319,7 @@
     if (!state || deptUnlock(d) > state.stage || countOf(d) < 1 || !waitSeen[d]) return null;
     if (bn === d) return null;
     const why = waitSeen[d].kind === "out" ? "おきばが いっぱいだよ" : waitWhy(d) || "まっているよ";
-    const fix = !bn ? "" : d === "plant" && bn === "cut" ? "きこりを ふやすと うえられるよ" : `${deptName(bn)}を ふやそう`;
+    const fix = !bn || bnMaxed(bn) ? "" : d === "plant" && bn === "cut" ? "きこりを ふやすと うえられるよ" : `${deptName(bn)}を ふやそう`;
     return [why, fix];
   }
   function waitAdvice(d, bn) {
@@ -876,9 +884,10 @@
     const perMin = rate * 60 * mul;
     const perMinText = perMin < 10 ? (Math.floor(perMin * 10) / 10).toString() : Math.floor(perMin).toLocaleString("ja-JP");
     const bnS = bottleneck();
-    const jam = bnS === d;
+    const full = bnS === d && bnMaxed(bnS);   // つまりだが もう強くできない（SZ-08）
+    const jam = bnS === d && !full;
     const stuck = forestStuck() && (d === "cut" || d === "plant");   // なえぎが 0 人で森の木が尽きている
-    const wp = unlocked && !stuck && !jam ? waitParts(d, bnS) : null;
+    const wp = unlocked && !stuck && bnS !== d ? waitParts(d, bnS) : null;
     const waitTxt = wp ? (wp[1] ? `${wp[0]}。${wp[1]}` : wp[0]) : "";
     const infoEl = $("sheetInfo");
     if (wp && infoEl) {
@@ -888,11 +897,11 @@
       infoEl.append(sw, wp[1]);
     } else setText(infoEl, !unlocked ? `${stageName(deptUnlock(d))}に なると つかえるよ`
       : stuck ? "もりの きが たりないよ。なえぎを ふやすと きが そだつよ"
-      : `1ぷんに ${perMinText}${unit}${jam ? "。ここが おそいよ" : ""}`);
+      : `1ぷんに ${perMinText}${unit}${jam ? "。ここが おそいよ" : full ? "。ぜんぶ さいだい！ これいじょう はやく できないよ" : ""}`);
     const sheetRate = $("sheetRate"); if (sheetRate) setText(sheetRate, unlocked ? `1ぷんに ${perMinText}${unit}` : "");
     const sheetJam = $("sheetJam"); if (sheetJam) { setText(sheetJam, jam ? "ここが おそいよ" : ""); sheetJam.hidden = !jam; }
     el.sheet.dataset.jam = jam ? "1" : "0";
-    const info = $("sheetInfo"); if (info) { info.dataset.jam = jam ? "1" : "0"; info.dataset.wait = waitTxt ? "1" : "0"; }   // CSS は #sheetInfo[data-jam="1"]（§17.1 A9）
+    const info = $("sheetInfo"); if (info) { info.dataset.jam = jam ? "1" : "0"; info.dataset.maxed = full ? "1" : "0"; info.dataset.wait = waitTxt ? "1" : "0"; }   // CSS は #sheetInfo[data-jam="1"]（§17.1 A9）
     const q = (w) => el.sheet.querySelector(`[data-buy="${w}"]`);
     const labels = {
       staff: "＋1にん",
@@ -1283,6 +1292,7 @@
     if (!el.scene || !state) return;
     const t = Number(state.t) || 0;
     const jam = bnIn !== undefined ? bnIn : bottleneck();
+    const full = bnMaxed(jam);   // つまりの部署が もう強くできない（SZ-08）
     el.scene.querySelectorAll(".zone[data-dept]").forEach((b) => {
       const d = b.dataset.dept;
       let label, cool = 0, boost = 0;
@@ -1298,7 +1308,7 @@
         else {
           const wt = jam === d ? "" : waitAdvice(d, jam);
           const tl = toolOf(d);
-          label = `${deptName(d)}：${countOf(d)}${isLineDept(d) ? "だい" : "にん"}${tl && tl.name ? "・" + tl.name : ""}。${jam === d ? "ここが おそいよ。" : ""}${wt ? wt + "。" : ""}${canBuyAny(d) ? "かえるものが あるよ。" : ""}おすと がんばるよ`;
+          label = `${deptName(d)}：${countOf(d)}${isLineDept(d) ? "だい" : "にん"}${tl && tl.name ? "・" + tl.name : ""}。${jam === d ? (full ? "ぜんぶ さいだい。" : "ここが おそいよ。") : ""}${wt ? wt + "。" : ""}${canBuyAny(d) ? "かえるものが あるよ。" : ""}おすと がんばるよ`;
           const left = (Number(ds.cooldownUntil) || 0) - t;
           cool = left > 0 ? Math.min(1, left / (L.BOOST_COOLDOWN || 15)) : 0;
           boost = (Number(ds.boostUntil) || 0) > t ? 1 : 0;
@@ -1308,7 +1318,9 @@
       if (b.getAttribute("aria-label") !== label) b.setAttribute("aria-label", label);
       if (b.dataset.cool !== String(c)) { b.dataset.cool = String(c); b.style.setProperty("--cool", String(c)); }
       if (b.dataset.boost !== String(boost)) b.dataset.boost = String(boost);
-      if ((b.dataset.jam === "1") !== (jam === d)) b.dataset.jam = jam === d ? "1" : "0";
+      const jd = jam === d && !full, md = jam === d && full;
+      if ((b.dataset.jam === "1") !== jd) b.dataset.jam = jd ? "1" : "0";
+      if ((b.dataset.maxed === "1") !== md) b.dataset.maxed = md ? "1" : "0";
     });
   }
   if (window.ResizeObserver && el.scene) new ResizeObserver(() => relayout(false)).observe(el.scene);
@@ -1371,10 +1383,11 @@
     const s = state || {};
     const st = render.stats ? safeCall(() => render.stats(), {}) || {} : {};
     return {
-      phase, stage: s.stage | 0, money: Number(s.money) || 0, rates: ratesOf(), bottleneck: bottleneck(), goal: goalOf(),
+      phase, stage: s.stage | 0, money: Number(s.money) || 0, rates: ratesOf(), bottleneck: bottleneck(), bottleneckMaxed: bnMaxed(bottleneck()), goal: goalOf(),
       order: s.order ? Object.assign({}, s.order) : null, ships: s.ships | 0, cleared: !!s.cleared,
       sheet: sheetDept, overlay, queue: cardQueue.slice(),
       actors: st.actors | 0, frames: st.frames | 0, slowFrames: st.slowFrames | 0, bgRedraws: st.bgRedraws | 0,
+      jamTag: st.jamTag ? Object.assign({}, st.jamTag) : null,
       wallLast, lastAway: lastAway ? JSON.parse(JSON.stringify(lastAway)) : null, saveCount, calm, timers: timers.size,
       sleeping, hint: el.hint ? el.hint.textContent : "", best,
       scrollCue: cue ? { dir: cue.dir, dept: cue.dept, text: cue.text } : null,

@@ -319,6 +319,9 @@ const M = [
   ['MW65 もくもくこうば：表に戻ったとき保存がほかで変わっていても開き直さない（X-20）', '保存', 'games/seizai/main.js', '    if (!stale && !changedElsewhere()) return false;', '    return false;'],
   ['MW66 もくもくこうば：開き直す前（stale）でも保存を書く（X-20）', '保存', 'games/seizai/main.js', '  function writeKey(key, val) {\n    if (stale) return false;\n', '  function writeKey(key, val) {\n'],
   ['MW67 もくもくこうば：裏へ回る・閉じるときの保存で比べ直さない（storage イベントが届く前に古い状態を書き戻す。X-20）', '保存', 'games/seizai/main.js', '    if (!stale && changedElsewhere()) stale = true;\n    return stale;', '    return stale;'],
+  // かんな の直し（契約 §23・SZ-08）。流すときは ONLY=WL14,WW27,X1
+  ['MW68 もくもくこうば：かんな の baseTime を 5 に戻す（全部さいだい・はやい でも かんな が いちばん遅いまま。SZ-08）', '計算', 'games/seizai/logic.js', 'plank: 2.5, plane: 2.5, shop: 3 });', 'plank: 2.5, plane: 5, shop: 3 });'],
+  ['MW69 もくもくこうば：もう強くできない部署にも「ここが おそい！」の札を出す（SZ-08）', '表示', 'games/seizai/render.js', 'if (bn === d && memo.maxed) {', 'if (false) {'],
   // ---- ちきゅうを守れ！ほしくだき（games/asteroid/）。中身の仕組みを変えたときだけ、このゲームの分だけ流す（契約 §11.4）。----
   //      数値（星の時間・値段・体力）の調整中なので、数値を変える変異は KL に任せ、ここは画面・保存・中断・オフライン・場を押す・ルールの流れを中心にする
   ['MK1 ほしくだき：2択の間も場が進む（choose でも step が進み、fly に戻る）', 'ルール', 'games/asteroid/logic.js', 'if (s.phase === "choose" || s.phase === "end") return;', 'if (s.phase === "end") return;'],

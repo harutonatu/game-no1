@@ -12,7 +12,7 @@
 //   るすの あいだ（§4.3・§7.1）は、ページの時計を clockTime で決まった瞬間に固定して確かめる（日本・ロサンゼルスの2つのタイムゾーン）。
 //   期待値は Node で読んだ logic.js（同じ root）から作る。半分の速さの 45 秒・上限の 7200 秒は決め打ちの値で比べる（logic が変わっても見逃さない）。
 //   無いときに合格にしない（空振りの合格を作らない）：SeizaiGame・YubiDebug が無ければ例外で不合格にする。
-//   smoke：WW1〜WW6。full：WW7〜WW26（WW18 はレビュー後の直し §17.1、WW19 は §17.3 の B、WW20 は §18 待つ理由（SZ-03）、WW21〜23 は §19（新しい工程・道具・画面を広く）、WW24 は §20 はこぶ人の往復と「まち」（SZ-04・SZ-05）、WW25 は §21 さいしょから（SZ-07）、WW26 は §22 古いページから書き戻さない（X-20）。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
+//   smoke：WW1〜WW6。full：WW7〜WW27（WW18 はレビュー後の直し §17.1、WW19 は §17.3 の B、WW20 は §18 待つ理由（SZ-03）、WW21〜23 は §19（新しい工程・道具・画面を広く）、WW24 は §20 はこぶ人の往復と「まち」（SZ-04・SZ-05）、WW25 は §21 さいしょから（SZ-07）、WW26 は §22 古いページから書き戻さない（X-20）、WW27 は §23 もう強くできない つまり（SZ-08）。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -1569,6 +1569,44 @@ export const tests = [
       const rE2 = await nav5;
       const sE2 = await after();
       check(`storage イベントが届かないまま（見えている間に書かれて hidden の保存）：書き戻さず（${hideE2}）、表に戻ると開き直して（${rE2}）続ける（段 ${sE2.stage}・お金 ${sE2.money}）`, hideE2 && rE2 && sE2.stage === 3 && sE2.money >= 13579 && sE2.money < 13579 + 2000, { hideE2, rE2, sE2 });
+      check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
+      await ctx.close();
+    },
+  },
+  {
+    id: 'WW27', tier: 'full', title: 'もくもくこうば もう強くできない つまり（§23・SZ-08）：ユーザーの録画と同じ みなと・全部の部署を上限・Lv50・はやい で、つまりは かんな でなく、かんな のシートは「1ぷんに 849まい」。つまりの部署が もう強くできないときは「ここが おそい！」の札（jamTag）・シートと読み上げの「ここが おそいよ」を出さず、「ぜんぶ さいだい！」（シート「これいじょう はやく できないよ」・data-maxed=1・data-jam=0）、ほかの場所に「〇〇を ふやそう」を出さない。マネージャーを「もうかる」にすると（まだ速くできる）「ここが おそい」に戻る',
+    async run({ browser, check, root, errors }) {
+      const L = logicOf(root);
+      const e0 = errors.length;
+      const st = mkState(L, 4, { goal: { done: 0 } });
+      for (const [k, d] of Object.entries(st.depts)) { const cap = L.CAPS[3][k]; d.level = 50; d.mgr = 'fast'; if ('lines' in d) d.lines = cap; else d.staff = cap; }
+      const { ctx, page } = await openW(browser, 'WW27', { v: SMOKE_V(), items: { 'seizai.save': saveOf(L, st, T0) }, opts: { clockTime: new Date(T0 + 1000) } });
+      await closeCards(page);
+      // 場所を押してシートを開くと応援（2 倍）になり つまりが動くので、先に全部を応援して 5 秒の効き目が切れるのを待つ
+      // （そのあと 10 秒は応援を使えない間で、押してもシートが開くだけ。下の確かめは その間に終える）
+      await page.evaluate(() => { for (const d of window.SeizaiLogic.DEPTS) window.SeizaiGame.tapZone(d.id); });
+      await wait(page, 5600);
+      const zoneInfo = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.zone[data-dept]')].filter((b) => !b.hidden).map((b) => [b.dataset.dept, { jam: b.dataset.jam, maxed: b.dataset.maxed, label: b.getAttribute('aria-label') || '' }])));
+      const sheetOf = async (d) => { await page.evaluate((x) => document.querySelector(`.zone[data-dept="${x}"]`).click(), d); await wait(page, 150); const r = await page.evaluate(() => { const e = document.querySelector('#sheetInfo'); return { t: e.textContent.replace(/\s+/g, ' ').trim(), jam: e.dataset.jam, maxed: e.dataset.maxed }; }); await page.click('#sheetClose'); await wait(page, 60); return r; };
+      const g = await gs(page);
+      const bn = g.bottleneck;
+      check(`全部さいだい・はやい：つまりは かんな でない（${bn}）・もう強くできない（bottleneckMaxed ${g.bottleneckMaxed}）`, bn && bn !== 'plane' && g.bottleneckMaxed === true, { bn, maxed: g.bottleneckMaxed });
+      const pl = await sheetOf('plane');
+      const want = Math.floor(L.rates(await lg(page)).plane * 60);
+      check(`かんな のシート「${pl.t}」が 1ぷんに ${want}まい（849。録画の 424 ではない）で、「おそい」が無い`, want === 849 && pl.t.includes('1ぷんに 849まい') && !/おそい/.test(pl.t), pl);
+      const tag = g.jamTag;
+      check(`つまりの札（${tag && tag.dept}：「${tag && tag.text}」）は「ぜんぶ さいだい！」で「おそい」ではない`, tag && tag.dept === bn && /さいだい！/.test(tag.text) && !/おそい/.test(tag.text), tag);
+      const z = await zoneInfo();
+      check(`${bn} の場所：data-jam 0・data-maxed 1、読み上げ「${z[bn] && z[bn].label}」に「ぜんぶ さいだい」があり「おそい」が無い`, z[bn] && z[bn].jam !== '1' && z[bn].maxed === '1' && /ぜんぶ さいだい/.test(z[bn].label) && !/おそい/.test(z[bn].label), z[bn]);
+      const bad = Object.entries(z).filter(([, v]) => /おそい|を ふやそう/.test(v.label));
+      check('ほかの場所の読み上げにも「おそい」「〇〇を ふやそう」（強くできない部署を すすめる）が無い', bad.length === 0, bad);
+      const sb = await sheetOf(bn);
+      check(`${bn} のシート「${sb.t}」：「ぜんぶ さいだい！」「これいじょう はやく できないよ」、「ここが おそいよ」は無い（data-jam 0・data-maxed 1）`, /ぜんぶ さいだい！/.test(sb.t) && /これいじょう はやく できないよ/.test(sb.t) && !/おそい/.test(sb.t) && sb.jam === '0' && sb.maxed === '1', sb);
+      // マネージャーを「もうかる」にすると、まだ「はやい」で速くできる → 「ここが おそい」に戻る
+      const sm = await page.evaluate((d) => window.SeizaiGame.setMgr(d, 'gain'), bn);
+      await wait(page, 400);
+      const g2 = await gs(page), z2 = await zoneInfo(), s2 = await sheetOf(g2.bottleneck);
+      check(`${bn} を「もうかる」に（${JSON.stringify(sm && sm.ok !== undefined ? sm.ok : sm)}）：つまり ${g2.bottleneck}・bottleneckMaxed false、札「${g2.jamTag && g2.jamTag.text}」、場所 data-jam 1、シート「${s2.t}」に「ここが おそいよ」`, g2.bottleneck === bn && g2.bottleneckMaxed === false && g2.jamTag && /おそい！/.test(g2.jamTag.text) && z2[bn].jam === '1' && z2[bn].maxed === '0' && /ここが おそいよ/.test(z2[bn].label) && /ここが おそいよ/.test(s2.t) && s2.jam === '1', { g2: { bn: g2.bottleneck, m: g2.bottleneckMaxed, tag: g2.jamTag }, z: z2[bn], s2 });
       check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
       await ctx.close();
     },

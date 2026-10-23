@@ -640,6 +640,35 @@ export const tests = [
     },
   },
   {
+    id: 'WL14', tier: 'smoke', node: true, title: 'もくもくこうば：かんな の直し（SZ-08・契約 §23）みなと で全部さいだい・はやい でも つまりは かんな でない、かんな の速さ（1ぷんに N まい）の式、もう強くできない部署（maxedOut）の判定',
+    run({ check, root }) {
+      const L = load(root);
+      // ユーザーの録画の形：みなと で全部の部署を 上限・Lv50・はやい
+      const allFast = (stage) => { const depts = {}; for (const id of IDS) { const cap = L.CAPS[stage - 1][id]; depts[id] = LINE[id] ? { lines: Math.max(1, cap), level: 50, mgr: stage >= 2 ? 'fast' : null } : { staff: cap, level: 50, mgr: stage >= 2 ? 'fast' : null }; } return mk(L, stage, { depts }); };
+      const s4 = allFast(4), r = L.rates(s4), bn = L.bottleneck(s4);
+      check(`みなと で全部さいだい・はやい：つまりは かんな でない（${bn}）`, bn && bn !== 'plane', { bn, rates: r });
+      // かんな の速さ：台数 × (1 ÷ 2.5 秒) × speedMul(Lv) × はやい 1.5。4台・Lv50・はやい で 1ぷんに 849まい（直す前は 424まい）
+      const perMin = (lines, lv, mgr) => { const st = { ...s4, depts: { ...s4.depts, plane: { ...s4.depts.plane, lines, level: lv, mgr } } }; return L.rates(st).plane * 60; };
+      const want = (lines, lv, mgr) => lines * (60 / 2.5) * (1 + 0.1 * (lv - 1)) * (mgr === 'fast' ? 1.5 : 1);
+      const cases = [[4, 50, 'fast'], [1, 1, null], [2, 10, 'gain'], [3, 30, 'fast']].map(([a, b, c]) => ({ lines: a, lv: b, mgr: c, got: perMin(a, b, c), want: want(a, b, c) }));
+      check('かんな の速さ（1ぷんに N まい）＝ 台数 × 60 ÷ 2.5 × speedMul(Lv) × はやい 1.5（BASE_TIME.plane 2.5）', L.BASE_TIME.plane === 2.5 && cases.every((x) => Math.abs(x.got - x.want) < 1e-6), cases);
+      check(`4台・Lv50・はやい の かんな は 1ぷんに ${Math.floor(cases[0].got)}まい（849。録画の 424 ではない）`, Math.floor(cases[0].got) === 849, cases[0]);
+      check('全部さいだい・はやい の かんな の流れ（丸太に直して）は かくざい より速い', r.plane / L.PLANKS_PER_BEAM > r.beam, { plane: r.plane / 2, beam: r.beam });
+      // もう強くできない部署
+      check('maxedOut：全部さいだい・はやい の つまりの部署は true、ほかの部署も true（どれも もう買えない）', L.maxedOut(s4, bn) === true && IDS.every((id) => L.maxedOut(s4, id) === true), IDS.map((id) => L.maxedOut(s4, id)));
+      const tweak = (id, o) => ({ ...s4, depts: { ...s4.depts, [id]: { ...s4.depts[id], ...o } } });
+      const nots = { gain: L.maxedOut(tweak(bn, { mgr: 'gain' }), bn), noMgr: L.maxedOut(tweak(bn, { mgr: null }), bn), lv49: L.maxedOut(tweak(bn, { level: 49 }), bn), line3: L.maxedOut(tweak('beam', { lines: 3 }), 'beam'), staff7: L.maxedOut(tweak('cut', { staff: 7 }), 'cut') };
+      check('maxedOut は まだ強くできれば false（もうかる・マネージャー無し・Lv49・台が上限未満・人が上限未満）', Object.values(nots).every((v) => v === false), nots);
+      const s3 = allFast(3);
+      check('みなと より前の段：こうじょう で かんな（使えない部署）は false、かんそう さいだい・はやい は true', L.maxedOut(s3, 'plane') === false && L.maxedOut(s3, 'dry') === true, [L.maxedOut(s3, 'plane'), L.maxedOut(s3, 'dry')]);
+      const s1 = allFast(1);
+      const s1lv = { ...s1, depts: { ...s1.depts, cut: { ...s1.depts.cut, level: 49 } } };
+      check('こや（マネージャーを雇えない）では 上限・Lv50 なら true、Lv49 なら false', L.maxedOut(s1, 'cut') === true && L.maxedOut(s1lv, 'cut') === false, [L.maxedOut(s1, 'cut'), L.maxedOut(s1lv, 'cut')]);
+      check('maxedOut はおかしな引数でも例外を出さず false', [L.maxedOut(null, 'cut'), L.maxedOut({}, 'cut'), L.maxedOut(s4, 'nope'), L.maxedOut(s4)].every((v) => v === false), null);
+      check('maxedOut は渡した state を変えない', J(s4) === J(allFast(4)), null);
+    },
+  },
+  {
     id: 'WL11', tier: 'full', node: true, title: 'もくもくこうば：自動プレイ（§3.8・§3.9・§19.1.4 の目安）greedy の節目とエンディングの時間・最初の買い物・買い物の間隔・節目の直後の稼ぎ・2時間の るす・tapper との差・エンディング後の船 10 せき・idle 10 時間・daily3',
     run({ check, root }) {
       const L = load(root);
