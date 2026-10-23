@@ -13,7 +13,7 @@
  *   const sfx = YubiSfx.create("matomete"); // まとめてポン（select(n)/pop(n)/fall/allclear/over/deny/undo/blast(r)/streak(n)）
  *   const sfx = YubiSfx.create("michibiki"); // ミチビキ空港（warn/pick/lock/land(n)/near/crash/bounce/open(color)/over）
  *   const sfx = YubiSfx.create("seizai");   // もくもくこうば（chop/saw/sell/buy/hire/tool/cheer/deny/order/deliver(kind)/stage(n)/away）
- *   const sfx = YubiSfx.create("asteroid"); // ちきゅうを守れ！ほしくだき（shot(w)/crack(n)/break(mat)/chunk(n)/absorb/up/evolve/unlock/clear/bounce/boss/deny）
+ *   const sfx = YubiSfx.create("asteroid"); // ちきゅうを守れ！ほしくだき（shot(w)/crack(n)/break(mat)/chunk(n)/absorb/up/evolve/unlock/swap/clear/bounce/boss/deny）
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -37,7 +37,7 @@
   const GROUP_SEIZAI = { chop: "work", saw: "work" };
   // ちきゅうを守れ！ほしくだきだけの間引き（約束 §9）。shot は全武器を合わせて 0.12 秒に 1 回（名前が1つなので自然に合わさる）、
   // break は 0.05 秒・absorb は 0.1 秒に 1 回まで。clear・bounce・deny は ほかのゲームにも同じ名前があるので、このゲームだけに効かせる
-  const GAP_ASTEROID = { shot: 0.12, crack: 0.08, break: 0.05, chunk: 0.12, absorb: 0.1, up: 0.05, bounce: 0.3, deny: 0.2, boss: 1, evolve: 0.2, unlock: 0.3, clear: 0.5 };
+  const GAP_ASTEROID = { shot: 0.12, crack: 0.08, break: 0.05, chunk: 0.12, absorb: 0.1, up: 0.05, bounce: 0.3, deny: 0.2, boss: 1, evolve: 0.2, unlock: 0.3, swap: 0.1, clear: 0.5 };
 
   function create(game, opts) {
     opts = opts || {};
@@ -676,6 +676,15 @@
         [G5, G5, C6].forEach((f, i) => mallet(f, t + i * 0.09, { vol: 0.1 + i * 0.015, decay: i === 2 ? 0.45 : 0.1 }));
         [C5, E5, G5].forEach((f) => partial(f, t + 0.18, 0.5, { vol: 0.03, a: 0.01 }));
         bell(E6, t + 0.24, { vol: 0.04, decay: 0.4 });
+      },
+      // 入れ替え「かちゃっ」：短い機械の音 2 つ（unlock より控えめ。約 0.1 秒。予約の取り消しは共通の toggle）
+      swap: () => {
+        const t = N();
+        noise(t, 0.015, { freq: 2600, q: 3, vol: 0.03, a: 0.001 });
+        partial(1320, t, 0.03, { vol: 0.03, a: 0.001 });
+        noise(t + 0.06, 0.02, { freq: 1800, q: 3, vol: 0.035, a: 0.001 });
+        partial(880, t + 0.06, 0.045, { vol: 0.035, a: 0.001 });
+        partial(880 * 2.4, t + 0.06, 0.025, { vol: 0.01, a: 0.001 });
       },
       // 星をクリア：大きなお祝い（約 1.2 秒）
       clear: () => {
