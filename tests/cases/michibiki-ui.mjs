@@ -491,8 +491,11 @@ export const tests = [
       check(`着陸 4 で あおの滑走路が開くと open（引数 ${op && op.a}）`, !!op && op.a === 1, op);
       // crash・over
       let s = await gs(page);
-      for (let i = 0; i < 4 && !s.over; i++) { s = await crashOnce(page); await sleep(250); }
-      await wait(page, 700);
+      // ページの時計を止めて wait でだけ進める（FW4・FW2 と同じ。止めないと WebKit ではページの時刻がずれる。T-22）
+      await frozen(page, async () => {
+        for (let i = 0; i < 4 && !s.over; i++) { s = await crashOnce(page); await sleep(250); }
+        await wait(page, 700);
+      });
       const ps2 = await plays(page);
       const ic = ps2.findIndex((p) => p.n === 'crash'), io = ps2.findIndex((p) => p.n === 'over');
       check(`ぶつかると crash、終わると over（crash の後）`, s.over && ic >= 0 && io > ic, ps2.map((p) => p.n).slice(-12));
@@ -790,8 +793,10 @@ export const tests = [
         lits.push(st.drawLog.arrows.find((a) => a.color === 0).lit);
         landed = st.landed;
         if (k === 0) {
-          await wait(page, 700); await T(page, 0);
-          lits.push((await gs(page)).drawLog.arrows.find((a) => a.color === 0).lit);
+          await frozen(page, async () => {   // 0.7 秒ちょうどで見る（T-22）
+            await wait(page, 700); await T(page, 0);
+            lits.push((await gs(page)).drawLog.arrows.find((a) => a.color === 0).lit);
+          });
         }
         // 区域を出たら、また逆向きに入る道（ヒントが消える 3 秒を待つ）
         const out = await until(page, `s.planes.some((x) => x.id === ${q.id} && x.x < 72) || evs.some((e) => e.type === 'crash' && e.ids.includes(${q.id}))`, 600);

@@ -25,6 +25,9 @@
   const KEY = "blockpuzzle.sound";      // ゲーム集で共通の効果音設定
   const PENTA = [0, 2, 4, 7, 9];        // ド・レ・ミ・ソ・ラ（どの順に鳴っても濁らない音階）
   const MAX_VOICES = 36;                // 同時に鳴らす部品の上限（連打で濁らないように）
+  // 結果の音は、連打で上限を使い切った直後でも鳴らす（上限の外に PRIORITY_EXTRA 個まで。over＋allclear の 2 つぶん。MT-03）
+  const PRIORITY = { over: 1, allclear: 1, clear: 1, best: 1, win: 1 };
+  const PRIORITY_EXTRA = 48;
   // 同じ音を続けて鳴らす最短の間隔（秒）。長押しの連続移動（45ms 間隔）は通す
   // 同じ処理の中で続けて鳴らすとき、鳴らす時刻をこの秒数ずつずらす（currentTime は1つの処理の中では進まないため、間引かずに順に鳴らす）
   const STAGGER = { slice: 0.03 };
@@ -46,6 +49,7 @@
     if (!opts.ignoreSetting) { try { on = localStorage.getItem(KEY) !== "off"; } catch (e) { /* 読めなければオン */ } }
     const last = {}, nextAt = {};
     let voices = [];
+    let prio = false;                   // 結果の音を鳴らしている間だけ true（slot が上限の外も使う。MT-03）
 
     function ensure() {
       if (!ctx) {
@@ -89,7 +93,7 @@
     function slot(end) {
       const now = ctx.currentTime;
       if (voices.length > 8) voices = voices.filter((e) => e > now);
-      if (voices.length >= MAX_VOICES) return false;
+      if (voices.length >= MAX_VOICES + (prio ? PRIORITY_EXTRA : 0)) return false;
       voices.push(end);
       return true;
     }
@@ -740,7 +744,8 @@
             off = Math.min(STAGGER_MAX, Math.max(0, (nextAt[name] || 0) - base));
             nextAt[name] = base + off + STAGGER[name];
           }
-          table[name](arg, off);
+          prio = !!PRIORITY[name];
+          try { table[name](arg, off); } finally { prio = false; }
         } catch (e) { /* 音が出なくてもゲームは続ける */ }
       },
       // 振動は Android のみ（iPhone の Safari には振動の機能がない）

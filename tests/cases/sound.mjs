@@ -289,4 +289,27 @@ export const tests = [
       await ctx.close();
     },
   },
+  {
+    id: 'A8', tier: 'smoke', node: true, title: '効果音（MT-03）：同時発音の上限（36）を連打で使い切った直後でも、結果の音（まとめてポンの over・allclear）は鳴る。ふつうの音は上限で止まる',
+    run({ check, root }) {
+      const src = fs.readFileSync(path.join(root, 'common/sfx.js'), 'utf8');
+      const made = { n: 0 };
+      const param = () => ({ value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {}, setTargetAtTime() {}, cancelScheduledValues() {} });
+      const node = () => ({ connect(t) { return t || node(); }, disconnect() {}, start() {}, stop() {}, frequency: param(), gain: param(), Q: param(), detune: param(), threshold: param(), knee: param(), ratio: param(), attack: param(), release: param(), playbackRate: param(), pan: param() });
+      class AC { constructor() { this.currentTime = 1; this.state = 'running'; this.sampleRate = 8000; this.destination = node(); }
+        resume() { return Promise.resolve(); } createGain() { return node(); } createBiquadFilter() { return node(); } createDynamicsCompressor() { return node(); } createWaveShaper() { return node(); } createStereoPanner() { return node(); }
+        createOscillator() { made.n++; return node(); } createBufferSource() { made.n++; return node(); } createBuffer(c, n) { return { getChannelData: () => new Float32Array(n) }; } }
+      const sb = { localStorage: { getItem: () => null, setItem() {} }, navigator: {}, AudioContext: AC, console };
+      sb.globalThis = sb; sb.window = sb; vm.createContext(sb); vm.runInContext(src, sb);
+      const sfx = sb.YubiSfx.create('matomete');
+      sfx.unlock();
+      for (let i = 0; i < 60; i++) sfx.play('fall');      // 時計が進まないので、上限（36）まで埋まる
+      const filled = made.n;
+      sfx.play('fall'); const more = made.n - filled;
+      const b1 = made.n; sfx.play('over'); const over = made.n - b1;
+      const b2 = made.n; sfx.play('allclear'); const ac = made.n - b2;
+      check(`上限まで埋まったら（${filled} 個）ふつうの音 fall は増えない（${more} 個）`, filled === 36 && more === 0, { filled, more });
+      check(`その直後でも over（${over} 個）と allclear（${ac} 個）は鳴る`, over > 0 && ac > 0, { over, ac });
+    },
+  },
 ];

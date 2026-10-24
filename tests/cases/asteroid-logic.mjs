@@ -10,6 +10,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+// 重さを測る CPU 時間（このスレッドだけ。GC・JIT の裏のスレッドと、CPU が混んで待たされた時間を数えない。古い Node は process.cpuUsage。T-21・T-23）
+const cpuOf = (prev) => (process.threadCpuUsage ? process.threadCpuUsage(prev) : process.cpuUsage(prev));
 
 function load(root) {
   const f = path.join(root, 'games/asteroid/logic.js');
@@ -1081,9 +1083,9 @@ export const tests = [
       }
       check('48×41（GRID_MAX 48 の列）の星・4 台（ちらし・どかん・いなずま・ビーム）Lv30 と Lv80（よく欠ける）で、1 step の中央が 1ms 以下・stepCells の最大が 6000 以下', out.every((o) => o.grid === '48x41' && o.median <= 1 && o.cells > 0 && o.cells <= 6000 && !o.err) && out[2].brk > 50, out);
       // 重さは CPU 時間で見る（ほかのテストや変異テストを並列に流して CPU が混んでも、待たされた時間を数えない。T-20）。壁の時計の時間は参考に出すだけ
-      const c0 = process.cpuUsage(), t0 = Date.now();
+      const c0 = cpuOf(), t0 = Date.now();
       const g = L.simulate('greedy', { seed: 1 });
-      const cu = process.cpuUsage(c0), ms = Math.round((cu.user + cu.system) / 1000), wall = Date.now() - t0;
+      const cu = cpuOf(c0), ms = Math.round((cu.user + cu.system) / 1000), wall = Date.now() - t0;
       check(`greedy で星 30 まで 1 本が CPU 時間 10 秒以内（Node。CPU ${ms}ms・壁の時計 ${wall}ms）・stepCells の最大 6000 以下`, !g.error && g.stars.length === 30 && ms <= 10000 && g.stepCells <= 6000, [ms, wall, g.stepCells, g.stars.length]);
     },
   },

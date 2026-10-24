@@ -413,6 +413,8 @@
   .card p.res { color: var(--ink); }
   .card .stars { font-size: 34px; letter-spacing: 0.1em; }
   .card .btns { display: flex; flex-direction: column; gap: 10px; }
+  /* 閉じるボタンは、カードが長くてもスクロールしなくても押せるよう、画面の下に見えたままにする（いろびんと同じ。X-15） */
+  .card .btns { position: sticky; bottom: 0; z-index: 1; background: var(--panel); padding-top: 6px; margin-bottom: -6px; padding-bottom: 6px; }
   .card .row { display: flex; gap: 10px; }
   .card .howto { margin: 0; text-align: left; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; font: 13px/1.5 var(--font-text); }
   .card .howto dt { font-weight: 700; color: var(--accent); white-space: nowrap; }

@@ -448,4 +448,40 @@ export const tests = [
       }
     },
   },
+  {
+    id: 'V14', tier: 'full', title: '最初のカード（遊び方・タイトル・あそびかたの選択）：全部のゲームで、SE 縦横（ホーム画面・Safari）の 4 画面とも、スクロールしなくても全部のボタンに届き 44px 以上（ボタンの帯は画面の下に残る）、見出しが切れず、いちばん下までスクロールしても最後の文がボタンに隠れない。遊び方の表（dl.howto）の説明の欄が潰れない（X-15・PK-39）',
+    async run({ browser, check }) {
+      const rows = [];
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari')]) {
+        for (const url of GAME_URLS) {
+          const { ctx, page } = await newPage(browser, v, `V14 ${url} ${v.label}`, { clock: true });
+          await seed(page, {});
+          await page.goto(BASE + url); await wait(page, 800);
+          const r = await page.evaluate(() => {
+            const vis = (e) => { const q = e.getBoundingClientRect(), cs = getComputedStyle(e); return q.width > 0 && q.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && !e.closest('[hidden]'); };
+            const ov = [...document.querySelectorAll('.overlay')].find(vis);
+            if (!ov) return null;
+            const card = ov.querySelector('.card, [role=dialog]') || ov.firstElementChild;
+            ov.scrollTop = 0;
+            const head = card.querySelector('h1, h2');
+            const headTop = head ? Math.round(head.getBoundingClientRect().top) : -1;
+            const all = [...card.querySelectorAll('button')].filter(vis);
+            const btns = all.map((b) => { const q = b.getBoundingClientRect(), t = document.elementFromPoint(q.left + q.width / 2, Math.min(innerHeight - 1, q.top + q.height / 2)); return { t: b.textContent.trim().slice(0, 10), h: Math.round(q.height), hit: !!t && (t === b || b.contains(t)) && q.bottom <= innerHeight + 0.5 }; });
+            const dd = [...card.querySelectorAll('dl.howto dd')].map((d) => Math.round(d.getBoundingClientRect().width));
+            ov.scrollTop = ov.scrollHeight;
+            const texts = [...card.querySelectorAll('p, dd, li')].filter((e) => vis(e) && !e.closest('button'));
+            const last = texts.pop(), first = all[0];
+            const covered = !!(last && first && (last.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING) && last.getBoundingClientRect().bottom > first.getBoundingClientRect().top + 1);
+            ov.scrollTop = 0;
+            return { title: head ? head.textContent.trim().slice(0, 12) : null, headTop, btns, dd, covered };
+          });
+          if (r) rows.push({ v: v.label, url, ...r });
+          await ctx.close();
+        }
+      }
+      const bad = rows.filter((x) => x.headTop < 0 || x.btns.length === 0 || x.btns.some((b) => !b.hit || b.h < 43.5) || x.covered || x.dd.some((w) => w < 80));
+      check(`SE 縦横 4 画面 × ${GAME_URLS.length} 本：最初のカード ${rows.length} 枚の全部のボタンにスクロールなしで届き 44px 以上、見出しが切れない、最後の文がボタンに隠れない、遊び方の表の説明の欄が 80px 以上（だめ：${bad.map((x) => `${x.url} ${x.v}`).join('、') || 'なし'}）`,
+        rows.length === (GAME_URLS.length - 1) * 4 && bad.length === 0, bad.map((x) => ({ url: x.url, v: x.v, headTop: x.headTop, btns: x.btns, covered: x.covered, dd: x.dd })));
+    },
+  },
 ];

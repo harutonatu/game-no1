@@ -4,7 +4,7 @@
 //   テスト用の公開 API（契約 §12）：window.HashiGame = { getState, holdFor(ms), lenToCross, setRandom(seq), skip }
 //   計算ロジックは HL（hashi-logic.mjs）で確かめ済み。ここでは画面の中の HashiLogic を「期待値の計算機」として使う。
 //   無いときに合格にしない（空振りの合格を作らない。契約 §12・§13-9）：HashiGame が無ければ例外で不合格にする。
-//   smoke：HW1〜HW4。full：HW5〜HW13（HW11 は CDP のタッチ操作なので Chromium だけ）。
+//   smoke：HW1〜HW4・HW16（ステージ）・HW18（旗）。full：HW5〜HW15・HW17・HW19〜HW22（HW11 は CDP のタッチ操作なので Chromium だけ、HW10 は AudioContext が要る、HW19 は solo＝最後に 1 つずつ）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { BASE, view, custom, newPage, seed, wait, frozen, layoutProbe, swInfo, sleep, touch, SFX_SPY, plays, IS_CHROMIUM, x20Run, x20Text } from '../lib.mjs';
@@ -1490,6 +1490,29 @@ export const tests = [
       { const B = hx(c.C.leaf); rows.push(['影のふち/leaf', cr(mix(hx(c.C.well), B, c.ea), B)]); }
       rows.push(['ぴったり印のふち/leaf', cr(hx(c.C.perfectEdge), hx(c.C.leaf))], ['ぴったり印/ふち', cr(hx(c.C.perfect), hx(c.C.perfectEdge))]);
       check(`HS-08：${rows.map(([n, v]) => `${n} ${v.toFixed(2)}`).join('・')}（すべて 3:1 以上）、ぴったり印の暗いふち ${c.ring}px（2 以上）`, rows.every(([, v]) => v >= 3) && c.ring >= 2, rows);
+    },
+  },
+  {
+    id: 'HW22', tier: 'full', title: 'ハシわたり v36（HS-10）：茎を 1 秒伸ばす間、空と水のグラデーション（createLinearGradient）を作り直さない（直す前は約 120 回）。画面の大きさが変わったら作り直す',
+    async run({ browser, check }) {
+      const SPY = () => { window.__lg = 0; const o = CanvasRenderingContext2D.prototype.createLinearGradient; CanvasRenderingContext2D.prototype.createLinearGradient = function (...a) { window.__lg++; return o.apply(this, a); }; };
+      const { ctx, page } = await openH(browser, 'HW22', { opts: { touch: false, initScript: SPY } });
+      const [cx, cy] = await stageCenter(page);
+      const r = await frozen(page, async () => {
+        await page.evaluate(() => { window.__lg = 0; });
+        await page.mouse.move(cx, cy); await page.mouse.down();
+        await page.clock.runFor(1000); await sleep(30);
+        const x = await page.evaluate(() => ({ lg: window.__lg, phase: window.HashiGame.getState().phase }));
+        await page.mouse.up();
+        return x;
+      });
+      check(`1 秒伸ばす間の createLinearGradient が 2 回以下（${r.lg} 回・phase ${r.phase}）`, r.phase === 'growing' && r.lg <= 2, r);
+      await settle(page);
+      await page.evaluate(() => { window.__lg = 0; });
+      await page.setViewportSize({ width: 844, height: 390 }); await wait(page, 300);
+      const lg2 = await page.evaluate(() => window.__lg);
+      check(`画面の大きさが変わると作り直す（${lg2} 回）`, lg2 >= 1, lg2);
+      await ctx.close();
     },
   },
 ];

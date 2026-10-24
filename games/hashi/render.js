@@ -131,6 +131,8 @@
     if (!ctx) throw new Error("HashiRender.create: 2D の描画面を取得できませんでした");
 
     var W = 320, H = 240, dpr = 1;
+    // 空と水のグラデーションは、高さが変わったときだけ作り直す（毎フレーム作らない。HS-10）
+    var skyG = null, skyKey = "", waterG = null, waterKey = "";
     var calm = reduced();
     try {
       var mq = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
@@ -153,10 +155,13 @@
 
     /* ---------- 背景（夜空と池） ---------- */
     function drawSky(deckY, camPx, t) {
-      var g = ctx.createLinearGradient(0, 0, 0, deckY);
-      g.addColorStop(0, C.well);
-      g.addColorStop(1, C.bg);
-      ctx.fillStyle = g;
+      if (!skyG || skyKey !== String(deckY)) {
+        skyG = ctx.createLinearGradient(0, 0, 0, deckY);
+        skyG.addColorStop(0, C.well);
+        skyG.addColorStop(1, C.bg);
+        skyKey = String(deckY);
+      }
+      ctx.fillStyle = skyG;
       ctx.fillRect(0, 0, W, deckY + 1);
 
       // 月（動かない）
@@ -184,10 +189,13 @@
     }
 
     function drawWater(waterY, camPx, t, s) {
-      var g = ctx.createLinearGradient(0, waterY, 0, H);
-      g.addColorStop(0, C.water);
-      g.addColorStop(1, C.waterDeep);
-      ctx.fillStyle = g;
+      if (!waterG || waterKey !== waterY + "," + H) {
+        waterG = ctx.createLinearGradient(0, waterY, 0, H);
+        waterG.addColorStop(0, C.water);
+        waterG.addColorStop(1, C.waterDeep);
+        waterKey = waterY + "," + H;
+      }
+      ctx.fillStyle = waterG;
       ctx.fillRect(0, waterY, W, H - waterY);
 
       // 月の映り込み
