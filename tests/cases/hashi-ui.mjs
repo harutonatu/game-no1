@@ -32,9 +32,14 @@ async function gotoH(page, extra = {}, { help = true, mode = 'endless' } = {}) {
 }
 // 「どっちで あそぶ？」のカードで遊び方を選ぶ（カードを閉じた直後 300ms は池の押下を受けないので待つ）
 async function pickMode(page, mode) {
-  const ok = await page.evaluate((m) => { const b = document.querySelector(`#overlay:not([hidden]) [data-cmd="${m}"]`); if (!b) return false; b.click(); return true; }, mode);
-  if (!ok) throw new Error(`「どっちで あそぶ？」のカードに data-cmd="${mode}" が無い（overlay=${(await page.evaluate(() => window.HashiGame.getState().overlay))}）`);
-  await wait(page, 350);
+  const t0 = await page.evaluate((m) => { const b = document.querySelector(`#overlay:not([hidden]) [data-cmd="${m}"]`); if (!b) return null; b.click(); return performance.now(); }, mode);
+  if (t0 === null) throw new Error(`「どっちで あそぶ？」のカードに data-cmd="${mode}" が無い（overlay=${(await page.evaluate(() => window.HashiGame.getState().overlay))}）`);
+  await wait(page, 350); await passBlock(page, t0);
+}
+// カードを閉じた直後の 300ms（池の押下を受けない）を、ページの時刻 t0（閉じたときの performance.now）から ms たつまで確かに待つ。
+// 重いとき Playwright の時計が実時間に合わせる途中の古い値で巻き戻り、wait の分だけ進まないことがある（T-25・T-05）。足りない分を足す（3 回まで）
+async function passBlock(page, t0, ms = 350) {
+  for (let i = 0; i < 3; i++) { const dt = await page.evaluate((t) => performance.now() - t, t0); if (dt >= ms) return; await wait(page, Math.ceil(ms - dt)); }
 }
 
 // ---------- 読む ----------
@@ -862,7 +867,7 @@ export const tests = [
       await page.click('#helpBtn'); await wait(page, 200);
       const p2 = Object.fromEntries((await overlayInfo(page)).sets.map((x) => [x.set, x.pressed]));
       check(`開き直しても残る（slow ${s2.slow}・guide ${s2.guide}、aria-pressed ${p2.slow}/${p2.guide}）`, s2.slow === true && s2.guide === true && p2.slow === 'true' && p2.guide === 'true', { s2, p2 });
-      await clickCmd(page, 'close'); await wait(page, 400);
+      { const tc = await page.evaluate(() => performance.now()); await clickCmd(page, 'close'); await wait(page, 400); await passBlock(page, tc, 400); }   // 閉じた直後の 300ms を確かに過ぎてから押す（T-05）
       // ガイド点線：押している間、guideTipX = 今の葉の右端 + 今の長さ
       const [cx, cy] = await stageCenter(page);
       const right = (await lens(page)).right;
@@ -877,7 +882,7 @@ export const tests = [
       await page.click('#helpBtn'); await wait(page, 200);
       await page.click('#overlay [data-set="slow"]'); await page.click('#overlay [data-set="guide"]'); await wait(page, 100);
       const ls3 = [await stored(page, 'hashi.slow'), await stored(page, 'hashi.guide')];
-      await clickCmd(page, 'close'); await wait(page, 400);
+      { const tc = await page.evaluate(() => performance.now()); await clickCmd(page, 'close'); await wait(page, 400); await passBlock(page, tc, 400); }   // 閉じた直後の 300ms を確かに過ぎてから押す（T-05）
       await page.mouse.move(cx, cy); await page.mouse.down(); await wait(page, 300);
       const gv2 = await page.evaluate(() => ({ g: window.__hrView ? window.__hrView.guideTipX : 'no-view', phase: window.HashiGame.getState().phase }));
       await page.mouse.up(); await settle(page);
@@ -1509,9 +1514,16 @@ export const tests = [
       check(`1 秒伸ばす間の createLinearGradient が 2 回以下（${r.lg} 回・phase ${r.phase}）`, r.phase === 'growing' && r.lg <= 2, r);
       await settle(page);
       await page.evaluate(() => { window.__lg = 0; });
-      await page.setViewportSize({ width: 844, height: 390 }); await wait(page, 300);
-      const lg2 = await page.evaluate(() => window.__lg);
-      check(`画面の大きさが変わると作り直す（${lg2} 回）`, lg2 >= 1, lg2);
+      // 対照：大きさを変えずに同じだけ待つと 0 回（下の待ち方で、大きさの変化がなくても作り直してしまう、を見逃さない。T-25）
+      for (let i = 0; i < 10; i++) { await sleep(50); await wait(page, 50); }
+      const lg0 = await page.evaluate(() => window.__lg);
+      check(`大きさを変えずに待つ間は作り直さない（${lg0} 回）`, lg0 === 0, lg0);
+      await page.setViewportSize({ width: 844, height: 390 });
+      // 大きさの変化（resize・ResizeObserver）と、そのあとの描画（rAF）は実時間で届く。重いときは早送りのあとに届くので、
+      // 実時間と早送りを交互に、作り直すまで最大 40 回（約 4.6 秒）待つ（以前は wait 300 の 1 回だけで、並列 3 の重さで 0 回になった。T-25）
+      let lg2 = 0, rounds = 0;
+      for (; rounds < 40 && lg2 < 1; rounds++) { await sleep(50); await wait(page, 50); lg2 = await page.evaluate(() => window.__lg); }
+      check(`画面の大きさが変わると作り直す（${lg2} 回・待った回数 ${rounds}）`, lg2 >= 1, { lg2, rounds });
       await ctx.close();
     },
   },

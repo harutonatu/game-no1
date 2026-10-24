@@ -123,6 +123,7 @@ const M = [
   ['MH30 ハシわたり：いのちが上限を超えて戻る（HS-09）', 'ルール', 'games/hashi/logic.js', '&& state.lives < LIVES;', ';'],
   ['MH31 ハシわたり：ステージでも いのちが戻る（HS-09）', 'ルール', 'games/hashi/logic.js', 'const heal = !stageMode && perfect', 'const heal = perfect'],
   ['MH32 ハシわたり：案内に倍々・回復の言葉を出さない（HS-09）', '表示', 'games/hashi/main.js', '${gainWord}${perfectTail(o)}', '${gainWord}'],
+  ['MH33 ハシわたり：画面の大きさが変わっても空と水のグラデーションを作り直さない（HS-10・T-25）', '表示', 'games/hashi/render.js', /if \(!skyG \|\| skyKey !== String\(deckY\)\) \{([\s\S]*?)if \(!waterG \|\| waterKey !== waterY \+ "," \+ H\) \{/, (_, mid) => `if (!skyG) {${mid}if (!waterG) {`],
   // ---- 版の表示（メニュー）。版を上げる手順が崩れたときの検出 ----
   // MV1・MV3 は正規表現で今の版・日付を読み、1つずらす（版を上げるたびに直さなくてよい）
   ['MV1 版の数字だけ上げ忘れる（version.js が1つ前の版のまま。sw.js は今の版）', '更新', 'common/version.js', /version: "v(\d+)"/, (_, n) => `version: "v${Number(n) - 1}"`],

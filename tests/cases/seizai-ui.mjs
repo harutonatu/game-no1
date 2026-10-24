@@ -1290,7 +1290,12 @@ export const tests = [
         const st = mkState(L, 2, { goal: { done: L.STAGES[1].goal }, money: L.STAGES[1].cost + 10 });
         const { ctx, page } = await openW(browser, 'WW23', { v: SMOKE_V(), items: { 'seizai.save': saveOf(L, st, T0) }, opts: { clockTime: new Date(T0 + 1000), reducedMotion: 'reduce' } });
         await page.click('#expandBtn'); await waitOverlay(page, 'stage', 2500);
-        check('節目カードの間は案内を出さない', (await gs(page)).scrollCue === null && (await page.evaluate(() => document.querySelector('#scrollCue').hidden)), null);
+        // 案内はカードが開いた次の描画（rAF）で消える。rAF は実時間で届くので、重いときはカードが見えた直後にまだ残っている（T-25 の横展開）。
+        // 実時間と早送りを交互に最大 20 回（約 2.3 秒）待ってから見る（カードの間ずっと出ている不具合なら、待っても消えないので見つかる）
+        const cueOff = () => page.evaluate(() => ({ cue: window.SeizaiGame.getState().scrollCue, hidden: document.querySelector('#scrollCue').hidden }));
+        let co = await cueOff();
+        for (let i = 0; i < 20 && !(co.cue === null && co.hidden); i++) { await sleep(50); await wait(page, 50); co = await cueOff(); }
+        check('節目カードの間は案内を出さない', co.cue === null && co.hidden && (await gs(page)).overlay === 'stage', co);
         await pressCard(page, '#stageOk');
         await page.evaluate(() => { document.querySelector('#scene').scrollTop = 0; }); await wait(page, 150);
         const cn = (await gs(page)).scrollCue, isNew = await page.evaluate(() => document.querySelector('#scrollCue').dataset.new);
