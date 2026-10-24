@@ -258,7 +258,7 @@ const M = [
   ['MB29 いろびん：ちいさい びんにも 4 段入る（注ぐ量の上限を瓶ごとに見ない）', 'ルール', 'games/irobin/logic.js', 'const cap = td === SMALL_TAG ? SMALL_CAP : CAP;', 'const cap = CAP;'],
   ['MB30 いろびん：ちいさい びんを短く描かない（data-cap をいつも 4 にする）', '見た目', 'games/irobin/render.js', 'btn.dataset.cap = String(bcap);', 'btn.dataset.cap = "4";'],
   ['MB31 いろびん：いろ きまりの びんに ほかの色も入る', 'ルール', 'games/irobin/logic.js', 'if (td !== 0 && td !== SMALL_TAG && td !== c + 1) return R_ONLY;', 'if (false) return R_ONLY;'],
-  ['MB32 いろびん：いろ きまりの びんの札（色と記号）を描かない', '見た目', 'games/irobin/render.js', 'gt.innerHTML = lock !== null ? lockHtml(lock) : only !== null && !sealed ? onlyHtml(only) : "";', 'gt.innerHTML = lock !== null ? lockHtml(lock) : "";'],
+  ['MB32 いろびん：いろ きまりの びんの札（色と記号）を描かない', '見た目', 'games/irobin/render.js', 'only !== null && !sealed ? onlyHtml(only) : bcap === 3', 'bcap === 3'],
   ['MB33 いろびん：鍵の色をそろえても かぎの びんが開かない', 'ルール', 'games/irobin/logic.js', 'if (tagOf(x) === c + 1 && coverOf(x) === KEY_COVER) {', 'if (false) {'],
   ['MB34 いろびん：かぎの びんを押すと選べる（main の かぎの判定を外す）', '操作', 'games/irobin/main.js', '    if (Number.isSafeInteger(b.lock)) {\n      setHint(lockHint(b.lock));', '    if (false) {\n      setHint(lockHint(b.lock));'],
   ['MQ41 まとめてポン：pageshow で終わりのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/matomete/main.js', '    if (overlayKind !== "over") return;\n    const unlock', '    return;\n    const unlock'],
