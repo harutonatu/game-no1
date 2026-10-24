@@ -180,7 +180,7 @@ IrobinLogic = {
   //     2) order 'easy'：solve(state, { anyOrder: true }) で解き、そろった色の順を queue にする。
   //        order 'random'：queue を乱数で並べ、solve(state) で解けるか確かめる。
   //     3) 解けなければ配り直す（GEN_TRIES 回まで）。合計の局面数が GEN_NODE_BUDGET を超えたら fallback 1、
-  //        それでもだめなら fallback 2（logic.js の中に書いた、必ず解ける固定の面）。
+  //        それでもだめなら fallback 2（logic.js の中に書いた、必ず解ける固定の面）。fallback 2 も verify を通す。通らなければ例外（IB-11）。
   //     4) 最後に、画面と同じ applyMove で solution を再生し、won になることを確かめてから返す。
   //   瓶の並び順も乱数で混ぜてよい（空き瓶が必ず右端、にしない）。
 
@@ -227,7 +227,7 @@ IrobinLogic = {
   //   moves が配列でない／長さが MAX_MOVES_SAVED を超える／各要素が [整数, 整数] でない → null
   //   古い v:1（位置の手・届けると空き瓶が出てきた前のルール）は、level が正しければ { level, moves: [] }（手を捨てて面の最初から）
   //   （手が今の面で注げるかは validateSave では見ない。main が replay で確かめ、ok:false なら面の最初から）
-  makeSave(level, moves) → string         // JSON.stringify({ v: 2, level, moves })。moves は瓶の id の組
+  makeSave(level, moves) → string         // JSON.stringify({ v: 3, level, moves })。moves は瓶の id の組。最初の MAX_MOVES_SAVED（2000）手までしか書かない（IB-09。それより後は書かない）
   recordBest(prevBest, clearedLevel) → { best, improved }
   //   best = max(validateBest(prevBest), clearedLevel)。improved は clearedLevel > validateBest(prevBest) のときだけ true
   validateFlag(raw) → boolean             // '1' のときだけ true
@@ -257,7 +257,7 @@ IrobinInput.attach({ board, root = document }, {
 - **キーボード**（`document` の `keydown`。入力欄・カードが開いているとき〈`#overlay` が見えている〉は Esc 以外を無視）：
   - `←` `→`：フォーカスを左右の瓶へ（端で止まる）。`↑` `↓`：上下の段の瓶へ（render の並びの列数を `board.dataset.cols` から読む）
   - `Enter`・`Space`：フォーカスのある瓶を選ぶ（`<button>` の標準の click に任せ、二重にしない）
-  - `1`〜`9`・`0`：その番号の瓶を選ぶ（`0` は10本目、11本目はキーなし）。番号は、いま並んでいる瓶（`data-gone` を除く）の何本目か
+  - `1`〜`9`・`0`：その番号の瓶を選ぶ（`0` は10本目、11本目は `-`。IB-10）。番号は、いま並んでいる瓶（`data-gone` を除く）の何本目か
   - `U` または `Backspace`：`onCommand('undo')`。`R`：`onCommand('restart')`（確認カードが出る）
   - `Esc`：選んでいれば `onCommand('deselect')`、カードが開いていれば `onCommand('close')`
   - `M`：`onCommand('sound')`。`?`（`/`）：`onCommand('help')`
@@ -328,7 +328,7 @@ IrobinInput.attach({ board, root = document }, {
 | `.cork` | 栓（sealed のときだけ見える） |
 | `canvas#fx` | 光と粒（ポインターを通す。`pointer-events: none`） |
 | `#hint` | 1行の案内。2行分の高さに固定し、文言が変わっても配置が動かない |
-| `#undoBtn`・`#restartBtn` | お助け。最初の状態では「1手もどす」は `disabled`。詰み・詰み予備軍のとき、押して意味のあるほうに `data-attention="1"`（目立たせる。disabled の「1手もどす」と手が0の「やりなおし」には付けない） |
+| `#undoBtn`・`#restartBtn` | お助け。最初の状態では「1手もどす」は `disabled`。詰み・詰み予備軍のとき、押して意味のあるほうに `data-attention="1"`（目立たせる。disabled の「1手もどす」と手が0の「やりなおし」には付けない）。「やりなおし」は手が0なら `disabled`（IB-13） |
 | `#overlay`・`#card` | 遊び方・面クリア・やりなおしの確認のカード |
 | `.overlay [data-cmd="next"/"menu"/"close"/"restartYes"]` | つぎの めんへ・メニューへ・とじる・やりなおす |
 
@@ -370,7 +370,7 @@ IrobinRender.drawAnimal(ctx, kind, { w, h, mood, t })   // メニューの絵で
 ### 7.2 お客さん（動物）
 - `ANIMALS` の6種を**プログラムで描く**（丸い頭・耳の形・模様の違いで見分けられる、やさしい線の絵。既存の有名キャラクターに似せない）。
 - 各お客さんは注文の色のトレイを両手で持つ。トレイには色と記号。
-- `mood`：`enter`（下からぴょこっと出てくる 0.35 秒）・`wait`（ゆっくりまばたき。calm のときは止める）・`happy`（目を細めて跳ねる＋ハート 0.6 秒）・`leave`（手を振って下へ 0.3 秒）・`empty`（誰もいない。うすい点線の枠）。
+- `mood`：`enter`（下からぴょこっと出てくる 0.35 秒）・`wait`（ゆっくりまばたき。calm のときは止める。4 秒ごとに 0.15 秒目を閉じる。止まっている間に描くのはその間だけ。pause（裏・遊び方・確認）の間もしない。IB-16、ユーザー「足す」、BW24）・`happy`（目を細めて跳ねる＋ハート 0.6 秒）・`leave`（手を振って下へ 0.3 秒）・`empty`（誰もいない。うすい点線の枠）。
 
 ### 7.3 注ぐ演出の順（`pour` が行う。ここが一番作り込むところ）
 
@@ -391,12 +391,12 @@ IrobinRender.drawAnimal(ctx, kind, { w, h, mood, t })   // メニューの絵で
 ### 7.4 動きを減らす・裏に回す・性能
 - `calm`（`prefers-reduced-motion: reduce`、main が渡す）：移動・傾き・揺れ・粒・跳ねをやめ、各段階を 0.05 秒以下の切り替えにする。光の輪は静かな縁取りを 0.3 秒だけ。音は鳴らす。
 - `pause()` で Web Animations をすべて一時停止し、rAF を止める。`resume()` で続きから。
-- devicePixelRatio は最大 2。粒は最大 48 個。動いていない間は rAF を回さない（iPhone SE 相当で重くしない）。
+- devicePixelRatio は最大 2。粒は最大 48 個。動いていない間は rAF を回さない（iPhone SE 相当で重くしない）。例外：待っているお客さんのまばたき（IB-16）の間だけ描く。動きを減らす設定・pause の間はしない。
 
 ## 8. 進行（`games/irobin/main.js`、担当B）
 
 ### 8.1 状態の流れ
-- 起動：`validateSave(localStorage['irobin.save'])` → `replay(level, moves)`（手は瓶の id）。ok でなければ同じ面の最初から（手は捨てる）。古い `v:1` も同じ面の最初から。保存が無い・壊れているなら、`level = validateBest(best) + 1`（なければ 1）の最初から。初回（`irobin.help` が無い）は遊び方カードを出す。
+- 起動：`validateSave(localStorage['irobin.save'])` → `replay(level, moves)`（手は瓶の id）。ok でなければ同じ面の最初から（手は捨てる）。古い `v:1` も同じ面の最初から。保存の手を全部当てると won（クリアの記録の前に閉じた）なら、その面のクリアのカードから（ベストと保存を書く。IB-22）。保存が無い・壊れているなら、`level = validateBest(best) + 1`（なければ 1）の最初から。初回（`irobin.help` が無い）は遊び方カードを出す。
 - `idle` で瓶を押す：注げる中身がある瓶なら `selected`（音 `pick`）。空・栓の瓶はヒントだけ（「からの びんは えらべないよ」「せんを した びんは うごかせないよ」）。
 - `selected` で：同じ瓶 → 選ぶのをやめる（音 `drop`、`idle`）。別の瓶 → `applyMove`：
   - `invalid` → `render.deny`、音 `deny`、ヒント（`mismatch`＝「いろが ちがうよ」、`full`＝「いっぱいだよ」、`sealed`＝「せんを した びんには いれられないよ」）、選ぶのをやめる。
@@ -407,7 +407,7 @@ IrobinRender.drawAnimal(ctx, kind, { w, h, mood, t })   // メニューの絵で
 
 ### 8.2 お助け
 - **1手もどす**：履歴の1つ前の state に戻す（回数制限なし。面の最初まで）。演出中なら `finishAll()` してから。選択は解除。音 `undo`。保存も1手減らす。
-- **やりなおし**：手が1つ以上あれば確認カード（「さいしょから やりなおす？」［やりなおす `restartYes`］［やめる `close`］）。手が0なら何もしない。
+- **やりなおし**：手が1つ以上あれば確認カード（「さいしょから やりなおす？」［やりなおす `restartYes`］［やめる `close`］）。手が0なら押せない（`disabled`。IB-13）。
 
 ### 8.3 保存
 - 注ぐたび・もどすたびに `irobin.save` へ `makeSave(level, moves)` を書く（手は `outcome.fromId`・`toId` の組）。クリアしたら `irobin.best` を `recordBest` で更新し、`irobin.save` を次の面・手0にする。
