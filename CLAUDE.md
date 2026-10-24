@@ -102,7 +102,7 @@ $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 ```
 
 - WebKit は初回だけ `node "$(npm root -g)/playwright/cli.js" install webkit` が必要です。
-- 並列数の目安（以下は私の推測）：クラウドの4コアでは Chromium は `WORKERS=2` で公開の条件を確かめていました。自宅 PC（6コア12スレッド・メモリ16GB）は Chromium で `WORKERS=4` 前後から試し、不合格が増えたら下げる。WebKit は常に1。
+- 並列数の目安：クラウドの4コアでは Chromium は `WORKERS=3`（run.mjs の既定。v38 で 2 から上げた。full 542 秒 → 約 410 秒）で公開の条件を確かめる。以下は私の推測：自宅 PC（6コア12スレッド・メモリ16GB）は Chromium で `WORKERS=4` 前後から試し、不合格が増えたら下げる。WebKit は常に1。
 
 ## 6. git の決まり
 

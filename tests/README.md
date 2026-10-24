@@ -23,8 +23,8 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | 変数 | 既定 | 意味 |
 |---|---|---|
 | `BROWSER` | `chromium` | `chromium` か `webkit`（Safari と同じエンジン）。WebKit は `node "$(npm root -g)/playwright/cli.js" install webkit` で入れる（足りないライブラリは `install-deps webkit`） |
-| `WORKERS` | `4` | グループ単位で並列に流す数。`1` で順番に |
-| `PORT` | `8800` | サーバーのポート。並列の i 番目は `PORT+i` を使う（既定なら 8800〜8803） |
+| `WORKERS` | `3` | グループ単位で並列に流す数。`1` で順番に（v38 で 4→3。クラウドの 4 コアで公開の条件を確かめる数） |
+| `PORT` | `8800` | サーバーのポート。並列の i 番目は `PORT+i` を使う（既定なら 8800〜8802） |
 | `PORT`（同時に流すとき） | — | 別々のテストを同時に流すとき（例：2 人の担当が同じ作業フォルダで）は、`PORT` を WORKERS ぶん以上離す（例 9100・9200・9300）。6 コアでは Chromium 2 本＋WebKit 1 本程度まで（T-04） |
 | `ONLY` | — | 項目を絞る（例 `ONLY=D2,S1`） |
 | `VERBOSE` | — | `1` で合格した確認も表示 |
@@ -79,7 +79,7 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 | 変更 | 流すもの |
 |---|---|
 | どんな変更でも（コミット前） | `node tests/run.mjs smoke` |
-| CSS・HTML の配置・文字の大きさ | smoke ＋ `ONLY=V1,V2,V3,V4,V5,V6,V7,V8,V12,V13,E4,E5 node tests/run.mjs full`（ブロックのスコア欄の 5 桁は V12。変異は `ONLY=V12,X1 M=M27`） |
+| CSS・HTML の配置・文字の大きさ | smoke ＋ `ONLY=V1,V2,V3,V4,V5,V6,V7,V12,V13,E4,E5 node tests/run.mjs full`（ブロックのスコア欄の 5 桁は V12。変異は `ONLY=V12,X1 M=M27`） |
 | sw.js・manifest・ファイルの追加や改名（CACHE_VERSION を上げたとき） | smoke ＋ `ONLY=L5,L10,S8,S1,S2,S3,S4,S5,S6,S7 node tests/run.mjs full` |
 | 保存データ（localStorage）・2048 のロジック | smoke ＋ `ONLY=D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,P10 node tests/run.mjs full`（古いページから書き戻さない P10 は X-20。変異は `ONLY=P10 M=M24,M25,M26`） |
 | メニュー（index.html）の並び・カード | smoke ＋ `ONLY=E1,E7,E8,D9,A4,A5,T3,V13 node tests/run.mjs full`（メニューのベストの長い記録は V13。MT-02）（並びの保存を変えたら `ONLY=E1,E7,E8,X1 M=MR1,MR2,MR3,MR4,MR5,MR6 node tests/mutants/mutate.mjs both`。MR5・MR6 は修飾キーつきのクリック（X-23）） |
@@ -89,7 +89,7 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 | いろコード（games/irocode/）の変更 | smoke ＋ `ONLY=I10,I11,I12,I13,I14,I15,I16,I17,I18,I20 node tests/run.mjs full`（ロジックだけなら `ONLY=I1,I2,I3 node tests/run.mjs smoke`、0 秒） |
 | ゼンマイさんぽ（games/zenmai/）の変更 | smoke ＋ `ONLY=ZL1,ZL2,ZL3,ZL4,ZL5,ZL6,ZL7,ZU6,ZU7,ZU8,ZU9,ZU10,ZU11,ZU12,ZU13,ZU14,ZU16 node tests/run.mjs full`（ステージの数値は ZL、画面は ZU） |
 | ピカッと早押し（games/pikatto/）の変更 | smoke ＋ `ONLY=PK5,PK6,PK7,PK8,PK9,PK12,PK14,PK16,PK17,PK18,PK19,PK20,PK21,PK22 node tests/run.mjs full`（ルール・保存を変えたら `ONLY=PK1,PK3,PK9,PK15,PK16 M=MP1,MP2,MP3,MP4,MP5,MP6,MP7 node tests/mutants/mutate.mjs both`。「メニューへ」の確認（PK-33）を変えたら `ONLY=PK4,PK20,X1 M=MP11,MP12 node tests/mutants/mutate.mjs both`） |
-| ハシわたり（games/hashi/）の変更 | smoke ＋ `ONLY=HW5,HW6,HW7,HW8,HW9,HW10,HW11,HW12,HW13,HW14,HW15,HW17,HW19,HW20,HW21,HW22,HW23 node tests/run.mjs full`（ロジックだけなら `ONLY=HL1,HL2,HL3,HL4,HL5,HL6,HL7,HL8,HL9,HL10,HL11,HL12,HL13 node tests/run.mjs smoke`、0 秒。ルール・保存を変えたら `PORT=9900 ONLY=HL1,…,HL13,HW1,…,HW19,HW23 M=MH1,…,MH20,MH29,MH30,MH31,MH32 node tests/mutants/mutate.mjs both`（10 個ずつに分けて流す）。古いページから書き戻さない（X-20）を変えたら `ONLY=HW20 M=MH21,MH22,MH23 PORT=9900 node tests/mutants/mutate.mjs both`。v31 の直しを変えたら `ONLY=HW21 M=MH24,MH25,MH26,MH27 node tests/mutants/mutate.mjs both`） |
+| ハシわたり（games/hashi/）の変更 | smoke ＋ `ONLY=HW5,HW6,HW7,HW8,HW9,HW10,HW11,HW12,HW13,HW14,HW15,HW17,HW19,HW20,HW21,HW22,HW23 node tests/run.mjs full`（ロジックだけなら `ONLY=HL1,HL2,HL3,HL4,HL5,HL6,HL7,HL8,HL9,HL10,HL11,HL12,HL13 node tests/run.mjs smoke`、0 秒。ルール・保存を変えたら `PORT=9900 ONLY=HL1,…,HL13,HW1,…,HW19,HW23 M=MH1,…,MH20,MH29,MH30,MH31,MH32 node tests/mutants/mutate.mjs both`（10 個ずつに分けて流す）。古いページから書き戻さない（X-20）を変えたら `ONLY=HW20 M=MH21,MH22,MH23 PORT=9900 node tests/mutants/mutate.mjs both`。v31 の直しを変えたら `ONLY=HW21 M=MH24,MH25,MH26,MH27 node tests/mutants/mutate.mjs both`。HW22 を変えたら ONLY=HW22,X1 M=MH33） |
 | いろびん（games/irobin/）の変更 | smoke ＋ `ONLY=BW5,BW6,BW7,BW8,BW9,BW10,BW11,BW12,BW13,BW14,BW15,BW16,BW20,BW21,BW22,BW23,BW24,BW25,BW26,BW27,BW28 node tests/run.mjs full`（ロジックだけなら `ONLY=BL1,BL2,BL3,BL4,BL5,BL6,BL7,BL8,BL9,BL10,BL11,BL12,BL13,BL14,BL15,BL16,BL17,BL18,BL19 node tests/run.mjs smoke`、約 9 秒。ルール・保存・生成を変えたら `ONLY=BL1,…,BL19,BW1,…,BW18,BW25,BW26,BW27 M=MB1,…,MB17,MB19,MB20,MB21,MB26,MB27,MB28,MB29,MB30,MB31,MB32,MB33,MB34 node tests/mutants/mutate.mjs both`。MB18 は欠番。古いページから書き戻さない（X-20）を変えたら `ONLY=BW20 M=MB23,MB24,MB25 PORT=9900 node tests/mutants/mutate.mjs both`） |
 | まとめてポン（games/matomete/）の変更 | smoke ＋ `ONLY=QW4,QW5,QW6,QW7,QW8,QW9,QW10,QW11,QW12,QW13,QW14,QW15,QW18,QW19,QW21,QW22,QW23 node tests/run.mjs full`（ロジックだけなら `ONLY=QL1,QL2,QL3,QL4,QL5,QL6,QL7,QL8,QL9,QL10,QL11 node tests/run.mjs full`、数秒。ルール・保存・2回タップを変えたら `ONLY=QL1,…,QL11,QW1,…,QW19 M=MQ1,MQ2,…,MQ40 node tests/mutants/mutate.mjs both`。古いページから書き戻さない（X-20）を変えたら `ONLY=QW21 M=MQ42,MQ43,MQ44 PORT=9950 node tests/mutants/mutate.mjs both`） |
 | ミチビキ空港（games/michibiki/）の変更 | smoke ＋ `ONLY=FW6,FW7,FW8,FW9,FW10,FW11,FW12,FW13,FW14,FW15,FW16,FW17,FW18,FW19,FW22,FW23,FW24 node tests/run.mjs full`（ロジックだけなら `ONLY=FL1,FL2,FL3,FL4,FL5,FL6,FL7,FL8,FL9,FL10,FL11,FL12,FL13 node tests/run.mjs full`、約 20 秒。ルール・保存・出現を変えたら `ONLY=FL1,…,FL13,FW1,…,FW24 M=MF1,…,MF32 node tests/mutants/mutate.mjs both`） |
@@ -99,7 +99,7 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
 | テストを変えたとき・中身の仕組み（点数計算・保存・日付・ルール）を変えたとき | `node tests/mutants/mutate.mjs both`（そのゲームの分だけ。テストがわざと入れた不具合を見つけられるか） |
 
-- **公開の条件**は Chromium smoke・full（WORKERS=2）と WebKit smoke（WORKERS=1）の合格。変異テストは中身の仕組み（点数計算・保存・日付・ルール）を変えたときだけ、そのゲームの分だけ流す。表示・見た目・文言だけの修正では流さない。
+- **公開の条件**は Chromium smoke・full（WORKERS=3。v38 から。自宅 PC は CLAUDE.md 5 章の目安）と WebKit smoke（WORKERS=1）の合格。変異テストは中身の仕組み（点数計算・保存・日付・ルール）を変えたときだけ、そのゲームの分だけ流す。表示・見た目・文言だけの修正では流さない。
 - **smoke**（約 110 確認）：データが消えない・メニューへ戻れる・ボタンが画面内（最も狭い／最も低い画面）・オフラインで開く・更新で旧キャッシュが消える・基本操作・効果音のオン/オフ・ダブルタップ抑止など、壊れると困るもの。
 - **full**（約 280 確認）：smoke ＋ 境界値（CSS の切り替わり・桁数・0.8 秒・3 秒）、ペアワイズの 12 画面、操作の細部、全部の効果音、タッチ操作一式。
 
@@ -111,7 +111,7 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 | D | データ保護・互換 | 途中経過・ベストの保存（キリトリは D10）、壊れた／古い保存データ |
 | E | 閉じ込めなし | どの画面・カードからもメニューへ戻れる（キリトリは E6）、低い画面でカードのボタンに届く、メニューが最近遊んだ順に並ぶ（E7・E8。X-21。Ctrl・Meta・Shift・Alt つき・中ボタンのクリックでは入れない。X-23） |
 | S | オフライン・更新 | Service Worker：オフライン起動、旧版からの更新、遅い回線・無応答（3画面）、新しい版との食い違い |
-| V | 画面外・押せる・桁数 | 端末×向き×起動方法×画面（4画面）のペアワイズ、CSS の境界、7 桁のスコア。V2 は SE 横 Safari（568×270）のブロック・ピカッと 4 人が重ならない（X-17）。V8・V1 のスコア欄は文字の範囲の縦を行の高さで切り詰めて測る（T-13）。V12 はブロックの LEVEL・LINES 5 桁（99999）を 15 画面で確かめる（X-18。高さ 319 以下の横持ちはスコア欄を 162px に広げる）。V13 はメニューのベストの最大の桁（全部のゲームの「ありうる長い記録」が SE 縦・SE 横・iPhone 13 縦で「…」で切れず 2 行まで、ゼンマイの「45 / 45」は行の途中で割れない。MT-02）。V14 は最初のカードが SE 縦横 4 画面でスクロールなしで押せる・遊び方の表の説明の欄が潰れない（X-15・PK-39） |
+| V | 画面外・押せる・桁数 | 端末×向き×起動方法×画面（4画面）のペアワイズ、CSS の境界、7 桁のスコア。V2 は SE 横 Safari（568×270）のブロック・ピカッと 4 人が重ならない（X-17）。V1・V12 のスコア欄は文字の範囲の縦を行の高さで切り詰めて測る（T-13）。V12 はブロックの LEVEL・LINES 5 桁（99999）を 15 画面で確かめる（X-18。高さ 319 以下の横持ちはスコア欄を 162px に広げる）。V13 はメニューのベストの最大の桁（全部のゲームの「ありうる長い記録」が SE 縦・SE 横・iPhone 13 縦で「…」で切れず 2 行まで、ゼンマイの「45 / 45」は行の途中で割れない。MT-02）。V14 は最初のカードが SE 縦横 4 画面でスクロールなしで押せる・遊び方の表の説明の欄が潰れない（X-15・PK-39）。V8（ブロックのスコア欄 4 桁・13 画面）は V12 と同じ画面・もっと長い桁で確かめているので v38 で消した（欠番） |
 | P | 遊べること | キー・ボタン・スワイプ、0.8 秒の待ち、クリア、演出、キリトリの切る・落とす・爆弾・コンボ（P8・P9） |
 | A | 効果音 | 音名の一致、操作で鳴る（キリトリは A6）、オフなら鳴らない、メニューの tap。A7 は♪の読み上げの名前（全部のゲームで aria-label は状態によらず同じ・オン／オフは aria-pressed だけ・ariaSnapshot にも オン／オフ が出ない。X-25）。A8 は同時発音の上限を使い切っても結果の音は鳴る（MT-03。smoke・node） |
 | T | タッチ操作 | ダブルタップ拡大の抑止、タッチでの音の準備（unlock）、操作一式（キリトリは T6） |
@@ -152,7 +152,7 @@ tests/
 ## 速くするしくみ
 
 - **外部フォントの遮断**：Google Fonts は空の応答で即答（Service Worker の通信も）。ネットワークに左右されない。
-- **グループ単位の並列**：既定 4 並列。グループごとに別のプロセス・別のポート・別のブラウザなので、オフラインや遅い回線の再現が他に影響しない。
+- **グループ単位の並列**：既定 3 並列（v38 から）。グループごとに別のプロセス・別のポート・別のブラウザなので、オフラインや遅い回線の再現が他に影響しない。
 - **待ち時間の早送り**：Playwright の `page.clock` でページ内のタイマーを置き換え、`wait(page, ms)` で一気に進める。**0.8 秒の境界（P2 前半）・Service Worker の 3 秒（S）・音の同時発音数（A2・A5）・スクロール（E5・P7）は実時間**のまま。
 
 所要時間（この環境の Chromium、4 コア。同じ版で計測）：
@@ -171,6 +171,8 @@ A5（メニューの pointerdown の処理 ≤16ms）は、負荷の高い並列
 
 項目ごとの秒数の取り方：`JSON=<ファイル>` を付けて流すと、JSON の `items[].ms` に項目ごとの時間が入る（出力の `PASS  WW24  37.0s` と同じ）。遅い順に並べるには `node -e "const j=require('<ファイル>');for(const i of j.items.sort((a,b)=>b.ms-a.ms).slice(0,10))console.log(i.id,(i.ms/1000).toFixed(1))"`。
 v37 の計画の結果（4 コアのクラウド、full 385 項目）：WORKERS=2 で 506 秒・WORKERS=3 で 381 秒（25% 短い。ただし HW22 が 1 回落ちた。T-25）。遅い上位 10 個と重なりの候補 31 個の秒数は docs/plans/v37.md 4 章。
+v38（4 コアのクラウド、full 398 項目）：WORKERS=3 を既定に（直した写しで 413・408 秒。v37 の関門 WORKERS=2 は 542 秒）。並列 3 の重さで落ちた HW22・HW10・HW12・WW23 は、描き直し（rAF）が実時間で届くのを待つ・Playwright の時計の巻き戻りでカードを閉じた直後の 300ms に押さない、に直した（T-25。docs/plans/v38.md 1 章）。
+重なりの候補 11 個は V8 だけ消した（ほかの 10 個は、その項目にしかない確かめ（文言・44px・音・性能・保存）を持つ。docs/plans/v38.md 3 章）。
 
 ## キリトリ道場のテストのしかた
 
@@ -228,6 +230,7 @@ sw.js にも版を直接書く二重持ちにしているのは、import 先だ�
 8. 外部（インターネット）に出ない・リポジトリや作業ツリーに書き込まない・決まったポート以外を使わない（ただし RL は、中継を空いているポート（`--port 0`）で起動する）。
 9. **古いページから書き戻さない（X-20）**：途中の保存を持つゲームは、表に戻ったとき（visibilitychange・pageshow）に保存が自分の覚えた文字と違えば、書かずに `location.reload()` する。裏へ回る（hidden）・閉じる（pagehide）ときの保存の前にも `staleOnHide()` で比べ直し、storage イベントが届く前に古い状態を書かない。reload は1回だけ。テストは pageshow を `new PageTransitionEvent('pageshow', { persisted: true })` で送って再現し、別のタブは同じ context の 2 つ目のページから書く（本物の storage イベント）。storage イベントが届かない場合は、同じページから localStorage を直接書き換えて再現する（各ゲームの X-20 の項目の (d)。もくもくこうば WW26 は (e)）。QW2 は setItem を見張る形に変えた。確かめる手順は `lib.mjs` の `x20Run(page, ctx, { key, newer, fp, hiddenWrite })` と、合否の文を作る `x20Text(r)` の1か所にある（T-14。以前は6ファイルに同じ写しがあった）。ゲームごとの違い（保存のキー・新しい保存4つ・中身の印・裏での自分の保存）は引数で渡す。
 10. **メニューのカードは `nth()` でなく href で押す**：メニューは最近遊んだ順に並びが変わる（X-21）ので、`a.game[href="…"]` で押す。
+11. ハシわたりで、カードを閉じた直後に池を押すときは passBlock（閉じたときのページの時刻から 350ms を確かに過ぎるまで待つ）を使う。重いと Playwright の時計が巻き戻り、wait の分だけ進まないことがある（T-25・T-26）。
 
 ## Chromium・WebKit と実機の違い
 
@@ -410,14 +413,14 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | M3 ブロックのベストを低い得点でも上書きする | 検出（D5） | 検出（D5, D7） |
 | M4 2048 の保存データで負のスコアを受け入れる | 検出（D2） | 検出（D2） |
 | M5 2048 のゲームオーバー画面から「メニューへ」が消える | 検出（E2） | 検出（E2, P2） |
-| M6 ブロックが safe-area 上端を空けない | 検出（V1） | 検出（V1, V3, V8） |
+| M6 ブロックが safe-area 上端を空けない | 検出（V1） | （関門のあとに記入） |
 | M7 事前キャッシュに存在しないファイル（install 失敗） | 検出（L5, S1, S2） | 検出（L5, S1〜S6） |
 | M8 更新時に古いアプリ用キャッシュを消さない | 検出（S2） | 検出（S2） |
 | M9 詰んでから結果カードまでの待ちが 0.3 秒 | 見逃し（設計どおり full のみ） | 検出（P2） |
 | M10 ブロックの盤面で touchend を止めない | 検出（T5） | 検出（T5） |
 | M11 common/sfx.js を事前キャッシュから外す | 検出（L5, S1, X1） | 検出（L5, S1, S3, X1） |
 | M12 効果音オフの設定を読まない | 検出（D4, A4） | 検出（D4, A4） |
-| M13 ブロックのスコア欄の数字を縮めない（「…」で省略） | 検出（V1） | 検出（V1, V8） |
+| M13 ブロックのスコア欄の数字を縮めない（「…」で省略） | 検出（V1） | （関門のあとに記入） |
 | M14 sfx.js などをネットワーク優先・打ち切りなしに戻す（K2） | 見逃し（遅い回線は full のみ） | 検出（S4, S6） |
 | M15 新しい版が出ていても古い sfx.js をキャッシュから返す | 見逃し（full のみ） | 検出（S7） |
 | M16 中身の違う新しい版のファイルを旧キャッシュに混ぜる | 見逃し（full のみ） | 検出（S7） |
@@ -737,9 +740,12 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | MH30 ハシわたり：いのちが上限を超えて戻る（HS-09） | smoke は流していない | 検出（v37 の関門） |
 | MH31 ハシわたり：ステージでも いのちが戻る（HS-09） | smoke は流していない | 検出（v37 の関門） |
 | MH32 ハシわたり：案内に倍々・回復の言葉を出さない（HS-09） | smoke は流していない | 検出（v37 の関門） |
+| MH33 ハシわたり：画面の大きさが変わっても空と水のグラデーションを作り直さない（HS-10・T-25） | （関門のあとに記入） | （関門のあとに記入） |
 | MF30 ミチビキ空港：newGame が置き方を見ない（MC-15） | smoke は流していない | 検出（v37 の関門） |
 | MF31 ミチビキ空港：着陸の判定だけ置き方 0 の滑走路で見る（MC-15） | smoke は流していない | 検出（v37 の関門） |
 | MF32 ミチビキ空港：毎回同じ置き方を選ぶ（MC-15） | smoke は流していない | 検出（v37 の関門） |
+
+v38（2026-10-24）：V8 を消したあと M6・M13、HW22 の直しの MH33（関門のあとに記入）。
 
 v37（2026-10-24）：新しい変異 13 個（v37 の関門で full 13/13 検出。MB32 は置換元をレビューの直しに合わせて検出）。MB2・MB15・MB16 は置換前の文字を新しいコードに合わせた。局面のキーの 3 文字目（仕掛けの印）を落とす変異は、瓶が印ごとに分かれて並び、落としても局面が重ならないので作らない。
 
