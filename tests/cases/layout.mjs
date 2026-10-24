@@ -314,26 +314,6 @@ export const tests = [
     },
   },
   {
-    id: 'V8', tier: 'full', title: 'ブロックのスコア欄の桁数：14 画面（iPhone 縦横・SE の Safari 横・iPad 縦横）で SCORE/BEST 7桁・LINES 4桁・LEVEL 2桁が省略されない',
-    async run({ browser, check }) {
-      const cases = [
-        [320, 568, [20, 0, 0, 0]], [375, 667, [20, 0, 0, 0]], [390, 844, [47, 0, 34, 0]], [430, 932, [59, 0, 34, 0]],
-        [568, 320, [0, 0, 0, 0]], [667, 375, [0, 0, 0, 0]], [844, 390, [0, 47, 21, 47]], [932, 430, [0, 59, 21, 59]],
-        [768, 1024, [24, 0, 20, 0]], [1024, 768, [24, 0, 20, 0]], [810, 1080, [24, 0, 20, 0]], [1080, 810, [24, 0, 20, 0]],
-        [568, 270, null], [568, 300, null],                  // K1：SE を Safari で横持ち
-      ];
-      const bad = [];
-      for (const [w, h, safe] of cases) {
-        if (w === 320 && h === 568) continue;              // smoke の V1 で確認済み
-        const { ctx, page } = await newPage(browser, custom(w, h, safe), `V8 ${w}x${h}`, { clock: true });
-        const d = await blocksStatsProbe(page, safe);
-        if (!d.ok) bad.push({ v: `${w}x${h}`, bad: d.bad });
-        await ctx.close();
-      }
-      check(`${cases.length - 1} 画面すべてで数字が省略されず、重なり・safe-area 外・横スクロールなし、ボタン 44px 以上`, bad.length === 0, bad);
-    },
-  },
-  {
     id: 'V12', tier: 'full', title: 'ブロックの上の帯（X-18）：LEVEL・LINES 5桁（99999）と SCORE/BEST 7桁を同時に入れても、15 画面（SE 縦・iPhone 縦横・SE の Safari 横・切り欠きのある低い横・iPad 縦横）で「…」にならず、はみ出し・重なり・高さの変化なし',
     async run({ browser, check }) {
       const vals = [['score', '1,234,567'], ['best', '1,234,567'], ['lines', '99999'], ['level', '99999']];

@@ -3,7 +3,7 @@
 //   node tests/run.mjs full  [配信ディレクトリ]   … 公開前に（目標 60 秒以内）
 // 配信ディレクトリ：引数 > 環境変数 GAME_ROOT > 既定（tests/ の1つ上＝リポジトリのルート）
 // 環境変数：
-//   BROWSER=chromium|webkit（既定 chromium）  WORKERS=4（グループ単位の並列数）  PORT=8800（並列 i 番目は PORT+i を使う）
+//   BROWSER=chromium|webkit（既定 chromium）  WORKERS=3（グループ単位の並列数。クラウドの 4 コアで公開の条件を確かめる数。v38）  PORT=8800（並列 i 番目は PORT+i を使う）
 //   ONLY=D2,S1（項目を絞る）  JSON=path（結果を JSON で書き出す）  VERBOSE=1（合格した確認も表示）
 //   CLOCK=0（待ち時間の早送りを止める）  TEST_TIMEOUT=60000（1項目の上限 ms）
 //   HEADED=1（画面を出してブラウザを起動。Linux で画面が無いときは xvfb-run -a を前につける）
@@ -136,7 +136,7 @@ async function worker(key) {
 async function main() {
   const T0 = Date.now();
   const PORT = Number(process.env.PORT || 8800);
-  const WORKERS = Math.max(1, Number(process.env.WORKERS || 4));
+  const WORKERS = Math.max(1, Number(process.env.WORKERS || 3));
   const mods = {};
   for (const g of GROUPS) mods[g.key] = (await import('./cases/' + g.file)).tests;
   const plan = GROUPS.filter((g) => mods[g.key].some(pick));
