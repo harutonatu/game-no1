@@ -50,6 +50,7 @@
   const HINT_NEAR = "あかく ひかったら ぶつかりそう！";
   const HINT_TAP = "かっそうろを タップしても いいよ";
   const HINT_PORTRAIT = "たてむきの ほうが あそびやすいよ";
+  const HINT_PLAN = "こんかいは かっそうろの ならびが ちがうよ";   // 置き方が前の回と違う回の はじめだけ（MC-15）
   const HINT_CLOSED = "その いろの かっそうろは まだ ひらいて いないよ";
 
   const now = () => performance.now();
@@ -554,13 +555,14 @@
   function startGame(seed, layout, plan) {
     stopAll();
     hideOverlay();
+    const prevPlan = lastPlan;
     if (!makeGame(Number.isFinite(seed) ? seed : newSeed(), layout, plan)) return false;
     best = readBest();
     startBest = best;
     render.resume();
     setPhase("playing");
     hud();
-    setHint("");
+    setHint(prevPlan >= 0 && (state.plan | 0) !== prevPlan ? HINT_PLAN : "", 3000);
     sfx.play("start");
     lastOrient = orientNow();
     lastScale = render.scale;

@@ -922,7 +922,7 @@ export const tests = [
     },
   },
   {
-    id: 'FW24', tier: 'full', title: 'ミチビキ空港 滑走路の置き方（MC-15）：restart(seed, layout) は置き方 0、restart() を続けると前の回と違う置き方（2 種類以上）、getState().runways・#field[data-plan]・描いた矢印が置き方の表と同じ、置き方 1 でも おまかせで着陸できる',
+    id: 'FW24', tier: 'full', title: 'ミチビキ空港 滑走路の置き方（MC-15）：restart(seed, layout) は置き方 0、restart() を続けると前の回と違う置き方（2 種類以上）、getState().runways・#field[data-plan]・描いた矢印が置き方の表と同じ、置き方 1 でも おまかせで着陸できる、置き方が前の回と変わった回の はじめだけ「こんかいは かっそうろの ならびが ちがうよ」（最初の回・同じ置き方では出ない）',
     async run({ browser, check }) {
       const { ctx, page } = await openM(browser, 'FW24');
       const table = (layout, plan) => page.evaluate(([l, p]) => window.MichibikiLogic.RUNWAY_PLANS[l][p].map((r) => [r.ex, r.ey, r.dx, r.dy]), [layout, plan]);
@@ -952,7 +952,32 @@ export const tests = [
       await page.evaluate((id) => window.MichibikiGame.guide(id), q.id);
       const u = await until(page, 's.landed >= 1', 1500);
       check(`restart(5, 'tall', 1)：plan ${s1.plan}・あか (220,170)←、1 機目に おまかせの道を付けると着陸（landed ${u.s.landed}）`, s1.plan === 1 && s1.runways[0].ex === 220 && s1.runways[0].dx === -1 && u.ok && u.s.landed === 1, { s1: s1.runways, u: u.s });
+      // 案内：置き方が前の回と違う回の はじめだけ出る（最初の回・同じ置き方では出ない）
+      const MSG = 'こんかいは かっそうろの ならびが ちがうよ';
+      let pg;
+      const startP = (plan) => pg.evaluate((p) => { window.MichibikiGame.restart(7, 'tall', p); window.MichibikiGame.manual(true); }, plan);
       await ctx.close();
+      const c2 = await openM(browser, 'FW24 plan-hint', { start: false });
+      pg = c2.page;
+      const h1 = await hintText(pg);   // 開いた直後の最初の回
+      check(`最初の回では案内が出ない（「${h1}」）`, h1 !== MSG, h1);
+      const p0 = (await gs(pg)).plan;
+      await startP(p0);
+      const h0 = await hintText(pg);
+      check(`同じ置き方で始め直しても出ない（置き方 ${p0}・「${h0}」）`, h0 !== MSG, h0);
+      await startP((p0 + 1) % 3);
+      const h2 = await hintText(pg);
+      check(`置き方が 違う置き方に変わった回の はじめに案内が出る（「${h2}」）`, h2 === MSG, h2);
+      await startP((p0 + 1) % 3);
+      const h3 = await hintText(pg);
+      check(`同じ置き方（続けて）では出ない（「${h3}」）`, h3 !== MSG, h3);
+      await startP(p0);
+      const h4 = await hintText(pg);
+      check(`元の置き方に変わるとまた出る（「${h4}」）`, h4 === MSG, h4);
+      await pg.evaluate(() => window.MichibikiGame.tick(300));
+      const h5 = await hintText(pg);
+      check(`3 秒ほどで消える（「${h5}」）`, h5 !== MSG, h5);
+      await c2.ctx.close();
     },
   },
 ];

@@ -1516,7 +1516,7 @@ export const tests = [
     },
   },
   {
-    id: 'HW23', tier: 'full', title: 'ハシわたり v37（HS-09）：どこまでもで落ちたあと、ぴったりを 3 回続けると ♥ が 1 つ戻る（案内「あと 2かいで ♥」「ぴったり 2れんぞく！」「♥ が 1つ もどった！」・bloom・読み上げ）。満タンでは戻らず「つぎは ボーナス 16」。案内は SE 縦横で 2 行以内。遊び方に倍々と回復の言葉',
+    id: 'HW23', tier: 'full', title: 'ハシわたり v37（HS-09）：どこまでもで落ちたあと、ぴったりを 3 回続けると ♥ が 1 つ戻る（案内「あと 2かいで ♥」「ぴったり 2れんぞく！」「♥ もどった！」・bloom・読み上げ）。満タンでは戻らず「つぎは ボーナス 16」。案内は SE 縦横で 2 行以内。遊び方に倍々と回復の言葉',
     async run({ browser, check }) {
       const { ctx, page } = await openH(browser, 'HW23', { v: SMOKE_V(), opts: { initScript: SFX_SPY } });
       // 1 回落ちる（lives 2）
@@ -1534,8 +1534,8 @@ export const tests = [
       const r3 = await step();
       const d3 = await heartsOf();
       const pl = (await plays(page)).map((p) => p.n);
-      check(`3 回目：「♥ が 1つ もどった」・lives 3・#hearts ♥♥♥・#lives 3・読み上げ「いのちが 1つ もどった」（${r3.hints.join(' / ')}）`,
-        r3.hints.some((h) => h.includes('♥ が 1つ もどった')) && r3.s.lives === 3 && d3.hearts === '♥♥♥' && d3.lives === '3' && d3.sr.includes('いのちが 1つ もどった'), { hints: r3.hints, d3 });
+      check(`3 回目：「♥ もどった！」（短く）・lives 3・#hearts ♥♥♥・#lives 3・読み上げ「いのちが 1つ もどった」（${r3.hints.join(' / ')}）`,
+        r3.hints.some((h) => h.includes('♥ もどった！') && !h.includes('1つ')) && r3.s.lives === 3 && d3.hearts === '♥♥♥' && d3.lives === '3' && d3.sr.includes('いのちが 1つ もどった'), { hints: r3.hints, d3 });
       check(`bloom が鳴る（${[...new Set(pl)].join(',')}）`, pl.includes('bloom'), pl);
       const r4 = await step();
       const d4 = await heartsOf();
@@ -1544,7 +1544,7 @@ export const tests = [
       // 遊び方カード
       await page.evaluate(() => document.querySelector('#helpBtn').click()); await wait(page, 350);
       const ov = await overlayInfo(page);
-      check('遊び方に「ばいに なる」と「3かい つづけると」', ov.shown && ov.text.includes('ばいに なる') && ov.text.includes('3かい つづけると'), ov.text);
+      check('遊び方に「ぴったりを つづけると …ばいに なる」（条件が先）と「3かい つづけると」', ov.shown && ov.text.includes('ぴったりを つづけると 1→2→4→8→16 と ばいに なる') && ov.text.includes('3かい つづけると'), ov.text);
       await ctx.close();
       // SE 縦・横：一番長い案内でも #hint が 2 行以内（はみ出さない）
       for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app')]) {
@@ -1553,7 +1553,7 @@ export const tests = [
         await holdLen(c2.page, L.short); await settle(c2.page);
         for (let i = 0; i < 3; i++) { const Li = await lens(c2.page); await holdLen(c2.page, Li.perfect); await settle(c2.page); }
         const h = await c2.page.evaluate(() => { const e = document.querySelector('#hint'); const cs = getComputedStyle(e); const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.3; return { text: e.textContent.trim(), h: e.getBoundingClientRect().height, sh: e.scrollHeight, ch: e.clientHeight, lh }; });
-        check(`${v.label}：3 回目の案内が はみ出さず 2 行以内（高さ ${h.h.toFixed(0)}px・行 ${h.lh.toFixed(0)}px）「${h.text}」`, h.text.includes('もどった') && h.sh <= h.ch + 1 && h.h <= h.lh * 3 + 1, h);
+        check(`${v.label}：3 回目の案内が はみ出さず 2 行以内（高さ ${h.h.toFixed(0)}px・行 ${h.lh.toFixed(0)}px）「${h.text}」`, h.text.includes('もどった') && h.sh <= h.ch + 1 && h.h <= h.lh * 2 + 1, h);
         await c2.ctx.close();
       }
     },
