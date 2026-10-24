@@ -873,6 +873,8 @@
       acc.nodes += r.nodes;
       const queue = r.solved ? sealOrderOf(c, r.moves) : [0, 1, 2];
       got = { bots, queue, solution: r.solved ? r.moves : [] };
+      // 予備の面も、解いた手順を画面と同じ applyMove で再生して won になるかを確かめる（IB-11）。通らなければ面を作れない（main.js は「よみこみに しっぱいしました」を出す）
+      if (!verify(lv, params, got)) throw new Error("いろびん: 予備の面が解けません（" + lv + " 面）");
     }
 
     const state = buildState(lv, params, got.bots, got.queue);
@@ -958,8 +960,9 @@
     return { level: o.level, moves: o.moves.map((m) => [m[0], m[1]]) };
   }
 
+  // 手は最初の MAX_MOVES_SAVED 手まで書く（validateSave が読める長さ。超えた分は保存しないので、開き直すとその手の局面から。IB-09）
   function makeSave(level, moves) {
-    const mv = Array.isArray(moves) ? moves.map((m) => (Array.isArray(m) ? [m[0], m[1]] : m)) : [];
+    const mv = Array.isArray(moves) ? moves.slice(0, MAX_MOVES_SAVED).map((m) => (Array.isArray(m) ? [m[0], m[1]] : m)) : [];
     return JSON.stringify({ v: SAVE_V, level, moves: mv });
   }
 

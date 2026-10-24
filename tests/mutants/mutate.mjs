@@ -243,6 +243,10 @@ const M = [
   ['MB23 いろびん：表に戻ったとき保存がほかで変わっていても開き直さない（契約 §18・X-20）', '保存', 'games/irobin/main.js', '    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;', '    return false;'],
   ['MB24 いろびん：開き直す前（stale）でも保存を書く（契約 §18・X-20）', '保存', 'games/irobin/main.js', '  function writeKey(key, val) {\n    if (stale) return false;\n', '  function writeKey(key, val) {\n'],
   ['MB25 いろびん：裏へ回る・閉じるときの保存で比べ直さない（storage イベントが届く前に古い面・手を書き戻す。契約 §18・X-20）', '保存', 'games/irobin/main.js', '    if (!stale && changedElsewhere()) stale = true;\n    return stale;', '    return stale;'],
+  // いろびん v36（IB-09・IB-11・IB-22）。流すときは ONLY に BL・BW の全項目と X1
+  ['MB26 いろびん：makeSave が上限を超えた手も書く（読むときに捨てられ面の最初に戻る。IB-09）', '保存', 'games/irobin/logic.js', 'moves.slice(0, MAX_MOVES_SAVED).map(', 'moves.map('],
+  ['MB27 いろびん：予備の固定面（fallback 2）を verify に通さない（IB-11）', '生成', 'games/irobin/logic.js', '      if (!verify(lv, params, got)) throw new Error("いろびん: 予備の面が解けません（" + lv + " 面）");\n', ''],
+  ['MB28 いろびん：最後の手まで保存された面を、クリアのカードなしで次の面にする（IB-22）', '保存', 'games/irobin/main.js', '      hud();\n      onClear();\n      return true;', '      const r = L.recordBest(best, level);\n      best = r.best; writeKey(KEY_BEST, String(best));\n      return startLevel(level + 1, []);'],
   ['MQ41 まとめてポン：pageshow で終わりのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/matomete/main.js', '    if (overlayKind !== "over") return;\n    const unlock', '    return;\n    const unlock'],
   ['MQ42 まとめてポン：表に戻ったとき保存がほかで変わっていても開き直さない（契約 §11・X-20）', '保存', 'games/matomete/main.js', '    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;', '    return false;'],
   ['MQ43 まとめてポン：裏で別のタブが書いても保存を止めない（storage を見ない。契約 §11・X-20）', '保存', 'games/matomete/main.js', 'if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true;', 'if (false) stale = true;'],

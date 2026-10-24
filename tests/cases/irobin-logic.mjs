@@ -674,4 +674,30 @@ export const tests = [
       }
     },
   },
+  {
+    id: 'BL15', tier: 'smoke', node: true, title: 'いろびん v36（IB-09・IB-11）：makeSave は最初の MAX_MOVES_SAVED 手だけ書き、何手でも validateSave が読める。予備の固定面（fallback 2）も解けて won、予備の面が解けなければ createLevel は例外',
+    run({ check, root }) {
+      const L = load(root);
+      // ---- IB-09 ----
+      const N = L.MAX_MOVES_SAVED;
+      const bad = [0, 1, N - 1, N, N + 1, N * 3].filter((n) => {
+        const raw = L.makeSave(1, Array.from({ length: n }, (_, i) => [i % 7, (i + 1) % 7]));
+        const sv = L.validateSave(raw);
+        return !(sv && sv.level === 1 && sv.moves.length === Math.min(n, N) && (n === 0 || J(sv.moves[0]) === J([0, 1])));
+      });
+      check(`makeSave → validateSave が 0・1・${N - 1}・${N}・${N + 1}・${N * 3} 手で読め、手は最初の ${N} 手まで（読めない：${bad.join('・') || 'なし'}）`, bad.length === 0, bad);
+      // ---- IB-11：上書きの params で fallback 2（固定の予備の面）を出す ----
+      const P2 = { colors: 2, empties: 1, hidden: true, order: 'random', cloths: 1, clothEmpty: 0, clothCover: 'late' };
+      const rows = [1, 2, 3, 50].map((lv) => { const c = L.createLevel(lv, { params: P2 }); let s = c.state; for (const [a, b] of c.info.solution) s = L.applyMove(s, a, b).state; return { lv, fb: c.info.fallback, n: c.info.solution.length, won: s.won }; });
+      check(`予備の固定面（fallback 2）：1・2・3・50 面で solution を applyMove で再生すると won（${rows.map((r) => `${r.lv}:fb${r.fb}・${r.n}手・${r.won}`).join('、')}）`, rows.every((r) => r.fb === 2 && r.n > 0 && r.won === true), rows);
+      // 予備の面を解けない形にした logic.js（このテストの中だけ。ファイルは変えない）では createLevel が例外になる＝ fallback 2 も verify を通している
+      const src = fs.readFileSync(path.join(root, 'games/irobin/logic.js'), 'utf8');
+      const FROM = 'cells: [[0, 1, 2, 0], [1, 2, 0, 1], [2, 0, 1, 2], [], []],';
+      const sb = { console }; sb.globalThis = sb; vm.createContext(sb);
+      vm.runInContext(src.replace(FROM, 'cells: [[0, 1, 2, 0], [1, 2, 0, 1], [2, 0, 1, 2]],'), sb);
+      let thrown = null;
+      try { sb.IrobinLogic.createLevel(1, { params: P2 }); } catch (e) { thrown = String(e && e.message); }
+      check(`予備の面が解けない形なら createLevel(1, fallback 2) は例外（${thrown || '例外なし'}）`, src.includes(FROM) && !!thrown && /予備の面/.test(thrown), { found: src.includes(FROM), thrown });
+    },
+  },
 ];

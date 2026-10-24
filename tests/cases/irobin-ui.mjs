@@ -4,7 +4,7 @@
 //   テスト用の公開 API（契約 §8.6）：window.IrobinGame = { getState, pick, pour, solution, skip, setLevel, setState }
 //   計算ロジックは BL（irobin-logic.mjs）で確かめ済み。ここでは画面の中の IrobinLogic を「期待値の計算機」として使う。
 //   無いときに合格にしない（空振りの合格を作らない）：IrobinGame が無ければ例外で不合格にする。
-//   smoke：BW1〜BW4・BW17・BW18（布の瓶）。full：BW5〜BW16（BW14 は CDP のタッチ操作なので Chromium だけ、BW10 は AudioContext が要る）。
+//   smoke：BW1〜BW4・BW17・BW18（布の瓶）。full：BW5〜BW16・BW19〜BW23（BW14 は CDP のタッチ操作なので Chromium だけ、BW10 は AudioContext が要る）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -384,8 +384,10 @@ export const tests = [
       check('手の数だけ押すと最初の局面（瓶・お客さん・列が最初と同じ）・moves 0・もう戻せない（disabled）', s3.moves === 0 && J(s3.bottles) === J(s0.bottles) && J(s3.slots) === J(s0.slots) && J(s3.queue) === J(s0.queue) && s3.canUndo === false && (await page.evaluate(() => document.querySelector('#undoBtn').disabled)), { moves: s3.moves });
       check(`戻した後の保存も 0 手（irobin.save ${await stored(page, 'irobin.save')}）`, JSON.parse((await stored(page, 'irobin.save')) || '{"moves":[1]}').moves.length === 0, await stored(page, 'irobin.save'));
       // やりなおし
-      const noOv = await (async () => { await page.click('#restartBtn').catch(() => {}); await wait(page, 80); return overlayInfo(page); })();
-      check('手が 0 のときの「やりなおし」は何も起こさない（確認カードを出さない）', !noOv.shown, noOv);
+      const rDis = await page.evaluate(() => document.querySelector('#restartBtn').disabled);
+      await page.click('#restartBtn', { force: true }).catch(() => {}); await wait(page, 80);
+      const noOv = await overlayInfo(page);
+      check(`手が 0 のときの「やりなおし」は押せない見た目（disabled ${rDis}）で、押しても確認カードを出さない（IB-13）`, rDis === true && !noOv.shown, { rDis, noOv });
       await playMoves(page, sol.slice(0, 2));
       await page.click('#restartBtn'); await wait(page, 100);
       const cf = await overlayInfo(page), sc = await gs(page);
@@ -1230,6 +1232,73 @@ export const tests = [
       }
       const bad = rows.filter((r) => r.t !== r.lv || !r.fit || !r.unitIn || !r.inHead || r.overlap || r.px < 12 || r.unitPx < 12 || r.hs || r.long !== '0' || r.headH !== r.h4);
       check(`面の番号 4〜8 桁が ${rows.length / 4} 画面で、1 段のまま（上の帯の高さが 4 桁と同じ）省略されず上の帯に収まり重ならない、字 12px 以上（SE 縦：${rows.filter((r) => r.v.startsWith('SE縦・ホーム')).map((r) => `${r.lv}→${r.size} ${r.px}px`).join('、')}）`, rows.length === 20 && bad.length === 0, bad);
+    },
+  },
+  {
+    id: 'BW22', tier: 'full', title: 'いろびん v36（IB-22）：最後の手まで保存されて閉じた面（クリアの記録の前）を開くと、その面のクリアのカードが出て、ベストと保存（次の面・手 0）が書かれ、「つぎの めんへ」で次の面',
+    async run({ browser, check, root }) {
+      const f = path.join(root, 'games/irobin/logic.js');
+      const L = createRequire(f)(f);
+      const raw = L.makeSave(3, L.createLevel(3).info.solutionIds.map((m) => [m[0], m[1]]));
+      const { ctx, page } = await openG(browser, 'BW22', { extra: { 'irobin.best': '2', 'irobin.save': raw } });
+      const s = await toClear(page);
+      const ov = await overlayInfo(page);
+      const best = await stored(page, 'irobin.best'), sv = JSON.parse((await stored(page, 'irobin.save')) || 'null');
+      check(`開くと 3 面のクリアのカード（overlay ${s.overlay}・level ${s.level}・「${ov.text.slice(0, 16)}」）`, s.overlay === 'clear' && s.level === 3 && /3 めん クリア/.test(ov.text) && ov.cmds.includes('next'), { overlay: s.overlay, level: s.level, ov });
+      check(`ベスト 3・保存は 4 面の手 0（best ${best}・save ${J(sv)}）`, best === '3' && !!sv && sv.level === 4 && Array.isArray(sv.moves) && sv.moves.length === 0, { best, sv });
+      await wait(page, 500);
+      await clickCmd(page, 'next'); await wait(page, 200);
+      const s2 = await gs(page);
+      check(`「つぎの めんへ」で 4 面（level ${s2.level}・moves ${s2.moves}・overlay ${s2.overlay}）`, s2.level === 4 && s2.moves === 0 && s2.overlay === null, s2);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'BW23', tier: 'full', title: 'いろびん v36 の小さな直し（IB-10・IB-17・IB-19・IB-21）：- キーで 11 本目を選べる、選んだときのヒントが「もういちど」、SE 横ホーム画面の遊び方カードがスクロールなしで全部見えクリアのカードも収まる、11 本の面（40 面）で記号が 12px 以上',
+    async run({ browser, check }) {
+      // ---- IB-10：11 本の局面。置き場所 11（- キー）に色、10（0 キー）は から ----
+      const ELEVEN = { level: 40, bottles: [[0], [1], [2], [3], [4], [5], [6], [7], [8], [], [0]].map((c) => ({ cells: c, hidden: c.map(() => false), sealed: false })), slots: [null, null], queue: [1], served: 0, total: 1 };   // 届けるお客さんが 1 人いる（0 人だと最初から「クリア」の局面になる）
+      const k = await openG(browser, 'BW23 キー', { opts: { touch: false } });
+      const okSet = await k.page.evaluate((s) => window.IrobinGame.setState(s), ELEVEN);
+      await k.page.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
+      await k.page.keyboard.press('-'); await wait(k.page, 80);
+      const k1 = await gs(k.page);
+      await k.page.keyboard.press('0'); await wait(k.page, 80);
+      await k.page.evaluate(() => window.IrobinGame.skip()); await wait(k.page, 80);
+      const k2 = await gs(k.page);
+      check(`11 本の局面で - キーは 11 本目を選び（selected ${k1.selected}）、0 キーの 10 本目（から）へ注げる（moves ${k2.moves}）`, okSet === true && k1.selected === 10 && k2.moves === 1 && k2.bottles[9].cells.length === 1 && k2.bottles[10].cells.length === 0, { okSet, sel: k1.selected, moves: k2.moves });
+      // ---- IB-17：選んだときのヒント ----
+      await k.page.evaluate(() => window.IrobinGame.pick(0)); await wait(k.page, 80);
+      const h17 = await hintText(k.page);
+      check(`瓶を選んだときのヒントがひらがな（${h17}）`, h17 === 'どの びんに そそぐ？（もういちど おすと やめる）', h17);
+      await k.page.keyboard.press('Escape'); await wait(k.page, 80);
+      await k.page.keyboard.press('Shift+/'); await wait(k.page, 100);
+      const help = await overlayInfo(k.page);
+      check('遊び方に「- は 11ぽんめ」がある', help.shown && /- は 11ぽんめ/.test(help.text), help.text);
+      await k.ctx.close();
+      // ---- IB-19：SE 横ホーム画面の遊び方とクリアのカード ----
+      const v = view('SE', 'l', 'app');
+      const h = await openG(browser, 'BW23 カード SE横', { v, help: false });
+      const fitOf = (p) => p.evaluate(() => { const ov = document.querySelector('#overlay'), c = document.querySelector('#card'); return { sh: ov.scrollHeight, ch: ov.clientHeight, small: [...c.querySelectorAll('li, p, h2, button')].filter((e) => !e.closest('[hidden]') && parseFloat(getComputedStyle(e).fontSize) < 12).length }; });
+      const f1 = await fitOf(h.page), o1 = await overlayProbe(h.page, v.safe);
+      check(`${v.label}：遊び方カードがスクロールなしで全部見える（scrollHeight ${f1.sh}・高さ ${f1.ch}）、字 12px 以上、ボタン 44px 以上`, f1.sh <= f1.ch + 1 && f1.small === 0 && overlayOk(o1), { f1, o1 });
+      await clickCmd(h.page, 'close'); await wait(h.page, 400);
+      await solveToClear(h.page); await wait(h.page, 500);
+      const f2 = await fitOf(h.page), o2 = await overlayProbe(h.page, v.safe);
+      check(`${v.label}：クリアのカードもスクロールなしで収まる（${f2.sh}/${f2.ch}）`, f2.sh <= f2.ch + 1 && f2.small === 0 && overlayOk(o2), { f2, o2 });
+      await h.ctx.close();
+      // ---- IB-21：40 面（11 本）の記号の大きさ ----
+      for (const vv of [view('SE', 'p', 'app'), view('SE', 'p', 'safari')]) {
+        const g = await openG(browser, `BW23 記号 ${vv.label}`, { v: vv, extra: { 'irobin.best': '39' } });
+        const m = await g.page.evaluate(() => {
+          const segs = [...document.querySelectorAll('#board .seg')].filter((s) => s.querySelector('.mark'));
+          const hs = segs.map((s) => s.querySelector('.mark').getBoundingClientRect().height);
+          const out = segs.filter((s) => { const a = s.getBoundingClientRect(), b = s.querySelector('.mark').getBoundingClientRect(); return b.left < a.left - 0.5 || b.right > a.right + 0.5 || b.top < a.top - 0.5 || b.bottom > a.bottom + 0.5; }).length;
+          return { n: document.querySelectorAll('#board .bottle').length, min: hs.length ? Math.min(...hs) : 0, out };
+        });
+        check(`${vv.label}・40 面（${m.n} 本）：記号がいちばん小さくても ${m.min.toFixed(1)}px（12px 以上）で、段からはみ出さない`, m.n === 11 && m.min >= 12 && m.out === 0, m);
+        await g.ctx.close();
+      }
     },
   },
 ];

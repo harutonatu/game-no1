@@ -28,7 +28,7 @@
 
   const HINT_IDLE = "びんを えらんで、べつの びんに そそいでね";
   const HINT_FIRST = "うえの トレイと おなじ いろを、1ぽんに 4つ あつめよう。びんを おしてね";
-  const HINT_SELECTED = "どの びんに そそぐ？（もう一度 おすと やめる）";
+  const HINT_SELECTED = "どの びんに そそぐ？（もういちど おすと やめる）";
   const HINT_STUCK = "うごかせる びんが ないよ。「1手もどす」か「やりなおし」を おしてね";
   // 手は残っているが、もう全部は届けられない（ソルバーが上限内で「解けない」と言い切れたときだけ）
   const HINT_DOOMED = "この ままだと ぜんぶは とどけられないよ。「1手もどす」を おしてみてね";
@@ -189,6 +189,7 @@
   }
   function renderTools() {
     el.undoBtn.disabled = !(history.length > 0) || phase === "clear";
+    el.restartBtn.disabled = !(moves.length > 0) || phase === "clear";   // 手が 0 なら押しても何も起きないので、押せない見た目に（IB-13）
     const need = phase === "stuck" || (doomed && phase !== "clear" && phase !== "pouring");
     // 押しても何も起きないボタンは目立たせない（戻す履歴が無い・手が0でやりなおす意味が無い）
     el.undoBtn.dataset.attention = need && !el.undoBtn.disabled ? "1" : "0";
@@ -265,10 +266,10 @@
     if (clothTip) { clothTipLevel = n; if (!clothSeen) writeKey(KEY_CLOTH, "1"); }
     render.build(state, { orders: ordersOf(b.base), places: b.base.bottles.length });
     render.update(state, { selected: null });
-    if (state.won) {   // 最後の手まで保存されていた（クリアの記録の前に閉じた）
-      const r = L.recordBest(best, level);
-      best = r.best; writeKey(KEY_BEST, String(best));
-      return startLevel(level + 1, []);
+    if (state.won) {   // 最後の手まで保存されていた（クリアの記録の前に閉じた）：その面のクリアのカードから続ける（IB-22）
+      hud();
+      onClear();
+      return true;
     }
     save();
     hud();
@@ -535,7 +536,7 @@
         <li>4つ そろうと <b>せん</b>。うえの <b>トレイと おなじ いろ</b>なら おきゃくさんに とどくよ。まだ いない いろは、その ばしょで まつよ。</li>
         <li>「？」は うえを どかすと みえるよ。<b>ぬのの びん</b>は、とどけた にんずで あくよ。</li>
       </ol>
-      <p class="note">こまったら「1手もどす」「やりなおし」。キー：やじるし・エンター・すうじ（10ぽんめまで）で えらぶ。U もどす、M おと。</p>
+      <p class="note">こまったら「1手もどす」「やりなおし」。キー：やじるし・エンター・すうじ（0 は 10ぽんめ、- は 11ぽんめ）で えらぶ。U もどす、M おと。</p>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");
   }
   function closeCard() {
