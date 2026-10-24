@@ -822,7 +822,7 @@ export const tests = [
       const G = (lv) => { const p = L.paramsFor(lv); return [p.smalls, p.onlys, p.keys, p.pick].join(','); };
       // 表（契約 §19.2）
       const want = { 1: '0,0,0,soft', 40: '0,0,0,soft', 41: '1,0,0,soft', 42: '0,0,0,soft', 43: '0,0,0,soft', 49: '1,0,0,soft', 50: '1,0,0,soft', 51: '1,0,0,soft', 54: '1,0,0,soft', 55: '2,0,0,soft', 56: '0,0,0,soft',
-        70: '0,0,0,soft', 71: '0,1,0,soft', 72: '0,0,0,soft', 73: '0,1,0,hard', 74: '1,0,0,soft', 76: '1,0,0,hard', 77: '2,0,0,soft', 100: '1,0,0,hard', 101: '0,0,1,soft', 103: '1,1,0,soft', 104: '2,0,0,soft', 105: '1,0,1,soft', 107: '0,0,1,hard',
+        70: '0,0,0,soft', 71: '0,1,0,soft', 72: '0,0,0,soft', 73: '0,1,0,hard', 74: '1,0,0,soft', 76: '1,0,0,soft', 77: '2,0,0,soft', 100: '1,0,0,soft', 101: '0,0,1,soft', 103: '1,1,0,soft', 104: '2,0,0,soft', 105: '1,0,1,soft', 107: '0,0,1,hard',
         150: '2,0,0,soft', 151: '1,1,0,soft', 152: '1,0,0,soft', 153: '0,0,1,hard', 154: '0,0,0,soft', 155: '1,1,0,hard', 157: '0,1,0,hard', 2001: '0,0,1,hard' };
       const tb = Object.entries(want).filter(([lv, w]) => G(Number(lv)) !== w).map(([lv, w]) => ({ lv, want: w, got: G(Number(lv)) }));
       check('paramsFor の仕掛けの表（[ちいさい, いろ きまり, かぎ, 色の選び方]）が契約 §19.2 のとおり', tb.length === 0, tb);

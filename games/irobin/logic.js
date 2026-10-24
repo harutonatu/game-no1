@@ -193,9 +193,9 @@
   const GIM_BANDS = Object.freeze([
     { from: 41,  odd: [A1S, __, __, __],          even: [__, __, __, __] },       // 41・49 面：ちいさい びんの登場
     { from: 50,  odd: [A1S, A1S, A1S, A2S],       even: [__, A1S, __, A1S] },     // 55 面から 2 本・布の面にも 1 本
-    { from: 70,  odd: [B1H, A1S, A2S, B1S],       even: [__, A1S, A1H, __] },     // 71 面：いろ きまりの登場
-    { from: 100, odd: [A1C1S, C1H, C1S, A1B1S],   even: [A2S, A1S, A1H, __] },    // 101 面：かぎの登場。104 面から布の面に 2 本
-    { from: 150, odd: [C1H, A1B1H, B1H, A1B1S],   even: [A1S, __, A1H, A2S] }     // ここから先は同じ（上限）
+    { from: 70,  odd: [B1H, A1S, A2S, B1S],       even: [__, A1S, A1S, __] },     // 71 面：いろ きまりの登場
+    { from: 100, odd: [A1C1S, C1H, C1S, A1B1S],   even: [A2S, A1S, A1S, __] },    // 101 面：かぎの登場。104 面から布の面に 2 本
+    { from: 150, odd: [C1H, A1B1H, B1H, A1B1S],   even: [A1S, __, A1S, A2S] }     // ここから先は同じ（上限）
   ].map((r) => Object.freeze({ from: r.from, odd: Object.freeze(r.odd), even: Object.freeze(r.even) })));
   function gimmicksFor(n, cloths) {
     if (n < SMALL_FROM) return GIM_NONE;

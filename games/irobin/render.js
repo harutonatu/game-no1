@@ -88,11 +88,12 @@
     return `<svg class="${cls || "mark"}" data-mark="${c.mark}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g ${attrs}>${body}</g></svg>`;
   }
   // v37 の仕掛け（契約 §19.4）：かぎの びんの錠（つるの形＋鍵の色の箱に記号）と、いろ きまりの びんの札（その色と記号）
-  const SHACKLE_SVG = '<svg class="shackle" viewBox="0 0 24 14" aria-hidden="true" focusable="false"><path d="M5.5 14V8.5a6.5 6.5 0 0 1 13 0V14" fill="none" stroke="#eef1f8" stroke-width="3.4" stroke-linecap="round"/></svg>';
+  const SHACKLE_SVG = '<svg class="shackle" viewBox="0 -1 24 15" aria-hidden="true" focusable="false"><path d="M5.5 14V8.5a6.5 6.5 0 0 1 13 0V14" fill="none" stroke="#eef1f8" stroke-width="4.5" stroke-linecap="round"/></svg>';
   function lockHtml(colorId) {
     const c = colorInfo(colorId);
     return `<span class="lockbox" style="--c:${c.hex}">${SHACKLE_SVG}<span class="lockbody">${markSvg(colorId, "lockmark")}</span></span>`;
   }
+  function capHtml() { return '<span class="capbox"><b>3</b></span>'; }
   function onlyHtml(colorId) {
     const c = colorInfo(colorId);
     return `<span class="onlybox" style="--c:${c.hex}">${markSvg(colorId, "onlymark")}</span>`;
@@ -560,7 +561,7 @@
         if (lock !== null) btn.dataset.lock = String(lock); else delete btn.dataset.lock;
         if (only !== null) btn.style.setProperty("--only", colorInfo(only).hex); else btn.style.removeProperty("--only");
         const gt = btn.querySelector(".gimtag");
-        if (gt) gt.innerHTML = lock !== null ? lockHtml(lock) : only !== null && !sealed ? onlyHtml(only) : "";
+        if (gt) gt.innerHTML = lock !== null ? lockHtml(lock) : only !== null && !sealed ? onlyHtml(only) : bcap === 3 ? capHtml() : "";
         const glass = btn.querySelector(".glass");
         glass.innerHTML = cells.map((c, j) => segHtml(c, !!hid[j])).join("") + '<span class="shine"></span>';
         btn.dataset.sealed = sealed ? "1" : "0";
@@ -892,7 +893,11 @@
         // 布が取れる瓶は、届けの演出が終わるまで布をかぶったまま（取れる演出は最後）
         if (unv.has(btn._id) && btn._b && coverOf(btn._b) !== null) return Object.assign({}, now.get(btn._id) || btn._b, { cover: btn._b.cover });
         if (now.has(btn._id)) return now.get(btn._id);
-        if (gone.has(btn._id)) { const c = gone.get(btn._id); return { cells: Array(c4).fill(c), hidden: Array(c4).fill(false), sealed: true }; }
+        if (gone.has(btn._id)) {
+          const c = gone.get(btn._id), ob = btn._b || {};
+          // いろ きまり・ちいさい びんの形も写す（届ける途中で普通の瓶に戻らないように）
+          return { cells: Array(c4).fill(c), hidden: Array(c4).fill(false), sealed: true, only: isColor(ob.only) ? ob.only : null, cap: ob.cap };
+        }
         return btn._b || { cells: [], hidden: [], sealed: false };
       });
     }
@@ -1150,8 +1155,7 @@
           return Promise.resolve();
         }
         fly.classList.add("lockfly");
-        const gt = btn.querySelector(".gimtag");
-        if (gt) gt.appendChild(fly);
+        btn.appendChild(fly);   // .gimtag は開いた後は display:none なので、布の clothfly と同じく瓶に直接つける
         const gr = rectOf(btn);
         const c = centerOf(gr);
         addRing({ x: c.x, y: gr.top + gr.height * 0.42, r0: gr.width * 0.2, r1: gr.width * 0.95, sx: 1, color: colorInfo(u.color).hex, width: 4, blur: 12, dur: 480, alpha: 0.95 });
@@ -1160,7 +1164,7 @@
           addPart({ x: c.x, y: gr.top + gr.height * 0.42, vx: Math.cos(a) * 80, vy: Math.sin(a) * 110, g: 160, life: 0.55, size: 2.2 + Math.random() * 1.4, color: k % 2 ? "#ffffff" : "#ffe6a8", shape: "star", vr: 5 });
         }
         return tween(480, (e, k) => {
-          fly.style.transform = `translate(-50%, calc(-50% - ${(26 * e).toFixed(1)}px)) rotate(${(-14 * e).toFixed(1)}deg)`;
+          fly.style.transform = `translate(-50%, ${(-26 * e).toFixed(1)}px) rotate(${(-14 * e).toFixed(1)}deg)`;
           fly.style.opacity = String(Math.max(0, 1 - Math.pow(k, 1.5)));
         }, ease.out).then(() => { if (fly.parentNode) fly.parentNode.removeChild(fly); });
       }));

@@ -1349,11 +1349,21 @@ export const tests = [
       const vw = await page.evaluate(() => [innerWidth, innerHeight]);
       check(`SE 縦：ちいさい びんが画面の中・押せる大きさ（${ds[0] && Math.round(ds[0].w)}×${ds[0] && Math.round(ds[0].h)}px）`, !!ds[0] && ds[0].w >= 44 && ds[0].h >= 44 && ds[0].left >= 0 && ds[0].right <= vw[0] && ds[0].top >= 0 && ds[0].bottom <= vw[1], { b: ds[0], vw });
       const flag = await stored(page, 'irobin.small'), tip = await page.evaluate(() => document.querySelector('#board').dataset.gimTip);
-      check(`はじめての ちいさい びん：ヒント「${h0}」、#board[data-gim-tip="small"]（${tip}）、irobin.small が "1"（${flag}）`, /ちいさい びんには 3つ までしか/.test(h0 || '') && tip === 'small' && flag === '1', { h0, tip, flag });
-      // 開き直すと説明は出ない（irobin.small が "1"）
+      check(`はじめての ちいさい びん：ヒント「${h0}」、#board[data-gim-tip="small"]（${tip}）、まだ 1 手も指していないので irobin.small は既読にしない（${flag}）`, /ちいさい びんには 3つ までしか/.test(h0 || '') && tip === 'small' && flag === null, { h0, tip, flag });
+      // 常設の「3」の札：ちいさい びんだけにあり、12px 以上で瓶の中に収まる（形だけに頼らない）
+      const capInfo = await page.evaluate(() => [...document.querySelectorAll('#board .bottle')].map((b) => { const t = b.querySelector('.capbox'), r = b.getBoundingClientRect(), tr = t ? t.getBoundingClientRect() : null;
+        return { cap: b.dataset.cap, text: t ? t.textContent.trim() : null, fs: t ? parseFloat(getComputedStyle(t.querySelector('b') || t).fontSize) : 0, w: tr ? tr.width : 0, h: tr ? tr.height : 0, inside: !!tr && tr.left >= r.left - 0.5 && tr.right <= r.right + 0.5 && tr.top >= r.top - 0.5 }; }));
+      const capTag = capInfo.filter((c) => c.text !== null);
+      check(`ちいさい びんにだけ常設の「3」の札（${capTag.length} 個・「${capTag[0] && capTag[0].text}」・字 ${capTag[0] && capTag[0].fs}px・${capTag[0] && Math.round(capTag[0].w)}×${capTag[0] && Math.round(capTag[0].h)}px）、瓶の中に収まる`,
+        capTag.length === 1 && capTag[0].cap === '3' && capTag[0].text === '3' && capTag[0].fs >= 12 && capTag[0].w >= 20 && capTag[0].h >= 16 && capTag[0].inside, capInfo);
+      // 開き直しても、まだ 1 手も指していなければ同じ説明が出る
       await page.reload(); await wait(page, 300);
       const h1 = await hintText(page), tip1 = await page.evaluate(() => document.querySelector('#board').dataset.gimTip), s1 = await gs(page);
-      check(`開き直すと説明は出ない（${h1}・tip "${tip1}"）・同じ局面`, !/ちいさい びん/.test(h1 || '') && !tip1 && J(s1.bottles) === J(s0.bottles), { h1, tip1 });
+      check(`1 手も指さず開き直すと同じ説明がまた出る（${h1}・tip "${tip1}"）・同じ局面`, /ちいさい びんには 3つ までしか/.test(h1 || '') && tip1 === 'small' && J(s1.bottles) === J(s0.bottles), { h1, tip1 });
+      // 最初の 1 手を指したら既読（irobin.small が "1"）
+      await playMoves(page, (await solutionOf(page)).slice(0, 1)); await wait(page, 200);
+      const flag2 = await stored(page, 'irobin.small');
+      check(`最初の 1 手を指したら irobin.small が "1"（${flag2}）`, flag2 === '1', flag2);
       // 手で組んだ盤：ちいさい びん（2 段）へ 2 段注ぐと 1 段だけ。満杯へは注げずヒントと deny
       await page.evaluate(() => window.IrobinGame.setState({ level: 41, params: { colors: 3, empties: 1, hidden: false, order: 'random' }, bottles: [{ cells: [1, 0, 0] }, { cells: [0, 0], cap: 3 }, { cells: [2, 2, 1, 2] }, { cells: [1, 1, 2] }, { cells: [] }], slots: [0, 1], queue: [2] }));
       await wait(page, 100);
@@ -1390,7 +1400,15 @@ export const tests = [
         !!x && !!col && x.mark === col.mark && x.bg === hex2rgb(col.hex) && x.border === hex2rgb(col.hex) && x.label.startsWith(`${ob[0].id + 1}ばん：いろ きまりの びん（${col.name}だけ）。`), x);
       check(`SE 縦：札が瓶の幅の中で 16px 以上（${x && x.box && Math.round(x.box.w)}px）`, !!x && !!x.box && x.box.w >= 16 && x.box.h >= 16 && x.box.l >= x.b.l - 0.5 && x.box.r <= x.b.r + 0.5, x && x.box);
       const flag = await stored(page, 'irobin.only'), tip = await page.evaluate(() => document.querySelector('#board').dataset.gimTip);
-      check(`はじめての いろ きまりの びん：ヒント「${h0}」、data-gim-tip="only"（${tip}）、irobin.only が "1"（${flag}）`, /いろ きまりの びんには/.test(h0 || '') && tip === 'only' && flag === '1', { h0, tip, flag });
+      check(`はじめての いろ きまりの びん：ヒント「${h0}」（くちの しるしと おなじ いろ だけ はいるよ）、data-gim-tip="only"（${tip}）、まだ 1 手も指していないので irobin.only は既読にしない（${flag}）`, /^くちの しるしと おなじ いろ だけ はいるよ/.test(h0 || '') && tip === 'only' && flag === null, { h0, tip, flag });
+      await playMoves(page, (await solutionOf(page)).slice(0, 1)); await wait(page, 200);
+      const flag2 = await stored(page, 'irobin.only');
+      check(`最初の 1 手を指したら irobin.only が "1"（${flag2}）`, flag2 === '1', flag2);
+      // 1 手指した後で開き直すと、同じ局面・説明は出ない
+      const s1m = await gs(page);
+      await page.reload(); await wait(page, 300);
+      const s3 = await gs(page), h3 = await hintText(page);
+      check(`1 手指した後で開き直すと同じ局面・説明は出ない（${h3}）`, J(s3.bottles) === J(s1m.bottles) && s3.moves === 1 && !/くちの しるし/.test(h3 || ''), h3);
       // ちがう色を注ぐと注げない／同じ色は注げる（手で組んだ盤）
       await page.evaluate(() => window.IrobinGame.setState({ level: 71, params: { colors: 3, empties: 1, hidden: false, order: 'random' }, bottles: [{ cells: [1, 0, 0] }, { cells: [], only: 1 }, { cells: [2, 2, 0, 1] }, { cells: [2, 1, 2] }, { cells: [0, 1] }], slots: [0, 1], queue: [2] }));
       await wait(page, 100);
@@ -1401,10 +1419,6 @@ export const tests = [
       const pr = await page.evaluate(() => window.IrobinGame.pour(4, 1)); await wait(page, 80);
       const s2 = await gs(page);
       check(`同じ色（みずいろ）は注げる（${pr}・${J(s2.bottles[1].cells)}・only ${s2.bottles[1].only}）`, pr === 'pour' && J(s2.bottles[1].cells) === '[1]' && s2.bottles[1].only === 1, s2.bottles[1]);
-      // 再読み込み：71 面の最初から（説明は出ない）
-      await page.reload(); await wait(page, 300);
-      const s3 = await gs(page), h3 = await hintText(page);
-      check(`開き直すと同じ局面・説明は出ない（${h3}）`, J(s3.bottles) === J(s0.bottles) && !/いろ きまりの びんには/.test(h3 || ''), h3);
       await ctx.close();
     },
   },
@@ -1417,7 +1431,7 @@ export const tests = [
       const lb = s0.bottles.filter((b) => b.lock !== null);
       const lockDom = () => page.evaluate(() => [...document.querySelectorAll('#board .bottle')].map((b) => {
         const r = b.getBoundingClientRect(), t = b.querySelector('.lockbox'), tr = t ? t.getBoundingClientRect() : null, m = t && t.querySelector('.lockbody svg');
-        return { id: b.dataset.id, lock: b.dataset.lock ?? null, label: b.getAttribute('aria-label') || '', mark: m ? m.dataset.mark : null, segs: b.querySelectorAll('.seg').length,
+        return { id: b.dataset.id, lock: b.dataset.lock ?? null, label: b.getAttribute('aria-label') || '', mark: m ? m.dataset.mark : null, segs: b.querySelectorAll('.seg').length, segTop: Math.min(...[...b.querySelectorAll('.seg')].map((q) => q.getBoundingClientRect().top)),
           box: tr && { w: tr.width, h: tr.height, l: tr.left, r: tr.right, t: tr.top, b: tr.bottom }, bt: { l: r.left, r: r.right, t: r.top, b: r.bottom } };
       }));
       const C = await page.evaluate(() => window.IrobinLogic.COLORS);
@@ -1425,9 +1439,10 @@ export const tests = [
       check(`101 面：かぎの びんが 1 本（state ${lb.length}・DOM ${d0.filter((y) => y.lock !== null).length}）`, s0.level === 101 && lb.length === 1 && d0.filter((y) => y.lock !== null).length === 1 && x.id === String(lb[0].id) && x.lock === String(lb[0].lock), d0.filter((y) => y.lock !== null));
       check(`錠の絵は鍵の色の記号（${x && x.mark}＝${col && col.mark}）、中身の段は見える（${x && x.segs} 段）、aria-label「${x && x.label}」`,
         !!x && !!col && x.mark === col.mark && x.segs === lb[0].cells.length && x.label.startsWith(`${lb[0].id + 1}ばん：かぎの びん（${col.name}を 1ぽん そろえると あく）。`), x);
-      check(`SE 縦：錠が瓶の中で 16px 以上（${x && x.box && Math.round(x.box.w)}×${x && x.box && Math.round(x.box.h)}px）`, !!x && !!x.box && x.box.w >= 16 && x.box.h >= 16 && x.box.l >= x.bt.l - 0.5 && x.box.r <= x.bt.r + 0.5 && x.box.t >= x.bt.t && x.box.b <= x.bt.b, x && x.box);
+      check(`SE 縦：錠が 16px 以上（${x && x.box && Math.round(x.box.w)}×${x && x.box && Math.round(x.box.h)}px）で瓶の幅の中、口の上にあって中身のマスと重ならない（錠の下 ${x && x.box && Math.round(x.box.b)} ≦ 一番上の段の上 ${x && Math.round(x.segTop)}）`,
+        !!x && !!x.box && x.box.w >= 16 && x.box.h >= 16 && x.box.l >= x.bt.l - 0.5 && x.box.r <= x.bt.r + 0.5 && x.box.b <= x.segTop + 0.5, x && { box: x.box, segTop: x.segTop });
       const flag = await stored(page, 'irobin.lock'), tip = await page.evaluate(() => document.querySelector('#board').dataset.gimTip);
-      check(`はじめての かぎの びん：ヒント「${h0}」、data-gim-tip="lock"（${tip}）、irobin.lock が "1"（${flag}）`, /かぎの びんは/.test(h0 || '') && tip === 'lock' && flag === '1', { h0, tip, flag });
+      check(`はじめての かぎの びん：ヒント「${h0}」、data-gim-tip="lock"（${tip}）、まだ 1 手も指していないので irobin.lock は既読にしない（${flag}）`, /かぎの びんは/.test(h0 || '') && tip === 'lock' && flag === null, { h0, tip, flag });
       // 押すと選べない。選んでいた瓶はそのまま
       const li = s0.bottles.findIndex((b) => b.lock !== null);
       const before = (await plays(page)).length;
@@ -1444,8 +1459,19 @@ export const tests = [
       check(`101 面の解の途中で鍵が開く（${plan && plan.at + 1} 手目）`, !!plan, plan && plan.at);
       if (plan) {
         await playMoves(page, plan.sol.slice(0, plan.at));
+        const flagL = await stored(page, 'irobin.lock');
+        check(`最初の 1 手を指したら irobin.lock が "1"（${flagL}）`, plan.at === 0 || flagL === '1', flagL);
         const b3 = (await plays(page)).length;
         await page.evaluate(([f, t]) => { window.IrobinGame.pick(f); window.IrobinGame.pick(t); }, plan.sol[plan.at]);
+        // 開く演出の途中で、持ち上がる錠（.lockfly）が見えている（大きさが 0 でなく、display:none の中でもない）
+        let fly = null;
+        for (let i = 0; i < 160; i++) {
+          const f = await page.evaluate(() => { const e = document.querySelector('#board .lockfly'); if (!e) return null; const r = e.getBoundingClientRect(), cs = getComputedStyle(e); return { w: r.width, h: r.height, vis: cs.visibility, op: parseFloat(cs.opacity), disp: cs.display }; });
+          if (f && f.w > 0 && f.h > 0 && f.op > 0.05 && f.vis === 'visible' && f.disp !== 'none') { fly = f; break; }
+          await wait(page, 30);
+          if (!(await gs(page)).busy) break;
+        }
+        check(`開く演出の途中で錠（.lockfly）が見えている（${fly && Math.round(fly.w)}×${fly && Math.round(fly.h)}px・不透明度 ${fly && fly.op.toFixed(2)}）`, !!fly, fly);
         for (let i = 0; i < 160; i++) { await wait(page, 50); if (!(await gs(page)).busy) break; }
         await wait(page, 100);
         const s4 = await gs(page), d4 = await lockDom(), h4 = await hintText(page), pl4 = (await plays(page)).slice(b3);
@@ -1494,11 +1520,11 @@ export const tests = [
           const bt = ov.querySelector('[data-cmd="close"]'); const rr = bt.getBoundingClientRect();
           const t = document.elementFromPoint(rr.left + rr.width / 2, rr.top + rr.height / 2);
           const small = [...ov.querySelectorAll('li, p, h2, button')].filter((e) => parseFloat(getComputedStyle(e).fontSize) < 12).length;
-          return { bottom: Math.round(rr.bottom), ih: innerHeight, hit: !!t && (t === bt || bt.contains(t)), sh: ov.scrollHeight, ch: ov.clientHeight, small };
+          return { li: Math.min(...[...ov.querySelectorAll('ol.rules li')].map((e) => parseFloat(getComputedStyle(e).fontSize))), bottom: Math.round(rr.bottom), ih: innerHeight, hit: !!t && (t === bt || bt.contains(t)), sh: ov.scrollHeight, ch: ov.clientHeight, small };
         });
         // 縦は BW16 と同じ（閉じるボタンは下に貼りついて見えたまま）、横は BW23 と同じ（カードが全部収まる）
-        check(`${v.label}・121 面：仕掛けの行に 3 つ（「${r.gim}」）、「わかった」がスクロールなしで押せる（${vis.bottom}/${vis.ih}）${o === 'l' ? `・カードが全部収まる（scrollHeight ${vis.sh}/${vis.ch}）` : ''}、字 12px 以上`,
-          r.items === 4 && /ちいさい びん/.test(r.gim) && /いろ きまりの びん/.test(r.gim) && /かぎの びん/.test(r.gim) && vis.hit && vis.bottom <= vis.ih && (o === 'p' || vis.sh <= vis.ch + 1) && vis.small === 0, { r, vis });
+        check(`${v.label}・121 面：仕掛けの行に 3 つ（「${r.gim}」）、「わかった」がスクロールなしで押せる（${vis.bottom}/${vis.ih}）${o === 'l' ? `・カードが全部収まる（scrollHeight ${vis.sh}/${vis.ch}）` : ''}、字 12px 以上、項目の字 ${vis.li}px（縦は 14px 以上・横は 13px 以上）`,
+          r.items === 4 && /ちいさい びん/.test(r.gim) && /いろ きまりの びん/.test(r.gim) && /かぎの びん/.test(r.gim) && vis.hit && vis.bottom <= vis.ih && (o === 'p' || vis.sh <= vis.ch + 1) && vis.small === 0 && vis.li >= (o === 'p' ? 14 : 13), { r, vis });
         await c.ctx.close();
       }
     },

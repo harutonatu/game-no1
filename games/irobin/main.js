@@ -43,7 +43,7 @@
   // v37 の仕掛け（§19.4）。はじめて出た面の最初のヒント（横向きで背が低い画面は短い文）と、注げないときの一言
   const GIM_TIP = {
     small: ["ちいさい びんには 3つ までしか はいらないよ。そろえる ばしょには ならないよ", "ちいさい びんは 3つ まで"],
-    only: ["いろ きまりの びんには、しるしと おなじ いろ しか いれられないよ", "しるしの いろ だけ はいるよ"],
+    only: ["くちの しるしと おなじ いろ だけ はいるよ", "しるしと おなじ いろ だけ"],
     lock: ["かぎの びんは、かぎと おなじ いろを 1ぽん そろえると あくよ", "かぎの いろを そろえると あくよ"]
   };
   const HINT_SMALL_FULL = "ちいさい びんには 3つ までしか はいらないよ";
@@ -297,7 +297,7 @@
         const seen = safeCall(() => L.validateFlag(readKey(GIM_KEYS[k])), false);
         if ((gimTipLevel === n && gimTipKind === k) || (!seen && moves.length === 0)) { gimTip = k; break; }
       }
-      if (gimTip) { gimTipLevel = n; gimTipKind = gimTip; writeKey(GIM_KEYS[gimTip], "1"); }
+      if (gimTip) { gimTipLevel = n; gimTipKind = gimTip; }   // 既読にするのは最初の 1 手を指した時（doMove）
     }
     render.build(state, { orders: ordersOf(b.base), places: b.base.bottles.length });
     render.update(state, { selected: null });
@@ -399,6 +399,7 @@
     flush();
     history.push(state);
     moves.push([o.fromId, o.toId]);
+    if (gimTip && moves.length === 1) writeKey(GIM_KEYS[gimTip], "1");   // 説明を見て最初の 1 手を指した：既読にする（出した瞬間でなく）
     state = res.state;
     const wasDoomed = doomed;
     doomed = false;
