@@ -9,7 +9,7 @@
  *   finishAll, pause, resume, setCalm, busy }
  *   - sfx（任意）：YubiSfx.create("irobin") の戻り値。演出の段ごとに音を鳴らす（無ければ鳴らさない）。
  *   - 演出は自前の時計（requestAnimationFrame で進める）で動かす。pause で時計ごと止まり、resume で続きから。
- *     動いていない間は rAF を回さない。setTimeout は使わない（main の timers に数えない）。
+ *     動いていない間は rAF を回さない（待っているお客さんのまばたきの 0.15 秒だけは回す。IB-16）。setTimeout は、まばたきを待つ 1 本と札の小さな演出だけ（main の timers に数えない）。
  *   - finishAll：動いている演出を一瞬で終わらせ、待っている Promise をすぐ resolve する。
  *     そろった瞬間の光と粒・音は、まだなら finishAll のときに出す（いちばん気持ちいい瞬間を飛ばさない）。
  *   - 瓶のボタンは、瓶の固定の番号 id（state.bottles[i].id）と結びつける（btn._id・data-id）。届けた瓶は消えるので、
@@ -319,7 +319,11 @@
     // ---------- 時計と演出の進め方（rAF 1本。止めている間は進まない） ----------
     let clock = 0, lastT = 0, raf = 0, paused = false;
     const tweens = new Set();
-    const ticks = new Set();        // 毎フレーム呼ぶ（お客さんの跳ねる絵など）
+    const ticks = new Set();        // 毎フレーム呼ぶ（お客さんのまばたきなど）
+    // まばたき（IB-16）：待っているお客さんが BLINK_EVERY ミリ秒ごとに BLINK_MS だけ目を閉じる。止まっている間に rAF を回すのは、この BLINK_MS の間だけ。
+    // 動きを減らす設定（calm）と、止めている間（pause。裏に回ったとき・遊び方を開いたとき）はしない。待つのは win.setTimeout 1 本（main の timers に数えない）
+    const BLINK_EVERY = 4000, BLINK_MS = 150;
+    let blinkTimer = 0, blinkEnd = -1;   // blinkEnd：目を開ける時刻（clock の ms）。-1 はまばたきしていない
     const parts = [];
     const rings = [];
     let stream = null;
@@ -574,6 +578,7 @@
       for (const btn of buttons) btn.style.transition = "";
       stream = null;
       ticks.clear();
+      if (blinkEnd >= 0) endBlink();   // まばたきの途中で片付けたら、目を開けて描き直す（IB-16）
     }
 
     // opts.orders：面の最初の注文の順（[...slots, ...queue]）。省くと、渡された state から作る
@@ -713,6 +718,7 @@
       c.mood = mood;
       c.el.dataset.mood = mood;
       drawCust(i);
+      scheduleBlink();
     }
     function setCustomer(i, color, lv) {
       const c = custs[i];
@@ -737,6 +743,32 @@
       if (c.sr) c.sr.textContent = has ? `${colorInfo(c.color).name}の びんが ほしい ${ANIMAL_NAMES[c.kind] || "おきゃくさん"}` : "おきゃくさんは いない";
       c.sig = "";
       drawCust(i);
+      scheduleBlink();
+    }
+    // ---------- まばたき（IB-16） ----------
+    const waitingCusts = () => custs.filter((c) => c.el && c.kind && c.color !== null && c.color !== undefined && c.mood === "wait");
+    function scheduleBlink() {
+      if (blinkTimer || blinkEnd >= 0 || calm || paused || !waitingCusts().length || typeof win.setTimeout !== "function") return;
+      blinkTimer = win.setTimeout(startBlink, BLINK_EVERY);
+    }
+    function stopBlinkTimer() { if (blinkTimer) { win.clearTimeout(blinkTimer); blinkTimer = 0; } }
+    function startBlink() {
+      blinkTimer = 0;
+      if (calm || paused || doc.hidden) return;   // 戻ったとき（resume・setCalm）に、また待ち始める
+      const list = waitingCusts();
+      if (!list.length) return;                    // 次にお客さんが来たとき（setCustomer・setMood）に、また待ち始める
+      blinkEnd = clock + BLINK_MS;
+      custs.forEach((c, i) => { if (list.includes(c)) drawCust(i, 0.05); });   // t = 0.05 秒は drawEyes で目を閉じた形
+      ticks.add(blinkTick);
+      kick();
+    }
+    function blinkTick() { if (clock >= blinkEnd) endBlink(); }
+    function endBlink() {
+      ticks.delete(blinkTick);
+      if (blinkEnd < 0) return;
+      blinkEnd = -1;
+      custs.forEach((c, i) => drawCust(i));      // 目を開けた形に描き直す（形が変わったお客さんだけ描く）
+      scheduleBlink();
     }
 
     // ---------- 演出なしで今の状態に合わせる ----------
@@ -1294,6 +1326,7 @@
       paused = true;
       if (raf) { caf_(raf); raf = 0; }
       lastT = 0;
+      stopBlinkTimer();   // 止めている間はまばたきを待たない（IB-16）
       shop.dataset.paused = "1";
     }
     function resume() {
@@ -1302,11 +1335,13 @@
       lastT = 0;
       shop.dataset.paused = "0";
       kick();
+      scheduleBlink();
     }
     function setCalm(v) {
       calm = !!v;
       shop.dataset.calm = calm ? "1" : "0";
       board.dataset.calm = calm ? "1" : "0";
+      if (calm) { stopBlinkTimer(); if (blinkEnd >= 0) endBlink(); } else scheduleBlink();   // 動きを減らす設定ではまばたきしない（IB-16）
     }
     setCalm(calm);
 

@@ -1301,4 +1301,33 @@ export const tests = [
       }
     },
   },
+  {
+    id: 'BW24', tier: 'full', title: 'いろびん v36（IB-16）：待っているお客さんが数秒に 1 回まばたきする。止まっている間に描くのはまばたきの間だけ（10 秒でお客さんの描き直し 12 回以下・描くコマ 40 以下）。裏に回っている間と、動きを減らす設定ではまばたきしない',
+    async run({ browser, check }) {
+      const SPY = () => { window.__cr = { animal: 0, fx: 0 }; const o = CanvasRenderingContext2D.prototype.clearRect; CanvasRenderingContext2D.prototype.clearRect = function (...a) { const cl = this.canvas && this.canvas.classList; if (cl && cl.contains('animal')) window.__cr.animal++; else if (cl && cl.contains('fx')) window.__cr.fx++; return o.apply(this, a); }; };
+      // ページの時計を止めて ms だけ進め、その間の描き直しとコマを数える
+      const count = (page, ms) => frozen(page, async () => {
+        await page.evaluate(() => { window.__cr.animal = 0; window.__cr.fx = 0; });
+        await wait(page, ms);
+        return page.evaluate(() => ({ ...window.__cr, waiting: document.querySelectorAll('.customer[data-mood="wait"]').length }));
+      });
+      const a = await openG(browser, 'BW24', { opts: { initScript: SPY } });
+      await wait(a.page, 1000);
+      const r1 = await count(a.page, 10000);
+      check(`待っているお客さん ${r1.waiting} 人が 10 秒の間にまばたきする（お客さんの描き直し ${r1.animal} 回：2 回以上 12 回以下）`, r1.waiting >= 1 && r1.animal >= 2 && r1.animal <= 12, r1);
+      check(`止まっている間に描くのはまばたきの間だけ（10 秒で描いたコマ ${r1.fx}：40 以下。描き続けると約 600）`, r1.fx <= 40, r1);
+      await setHidden(a.page, true);
+      const r2 = await count(a.page, 10000);
+      check(`裏に回っている 10 秒はまばたきせず、描かない（描き直し ${r2.animal}・コマ ${r2.fx}）`, r2.animal === 0 && r2.fx === 0, r2);
+      await setHidden(a.page, false);
+      const r3 = await count(a.page, 6000);
+      check(`表に戻ると、またまばたきする（6 秒で描き直し ${r3.animal} 回）`, r3.animal >= 2, r3);
+      await a.ctx.close();
+      const b = await openG(browser, 'BW24 動きを減らす', { opts: { initScript: SPY, reducedMotion: 'reduce' } });
+      await wait(b.page, 1000);
+      const r4 = await count(b.page, 10000);
+      check(`動きを減らす設定ではまばたきしない（10 秒で描き直し ${r4.animal}・コマ ${r4.fx}）`, r4.animal === 0 && r4.fx <= 2, r4);
+      await b.ctx.close();
+    },
+  },
 ];
