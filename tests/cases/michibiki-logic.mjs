@@ -27,8 +27,8 @@ function P(L, id, color, x, y, dx, dy, o = {}) {
   return { id, color, kind, x, y, dx, dy, speed: L.SPEED[kind], path: null, pathI: 0, guided: false, near: false, wrongIn: null, phase: 'fly', landTick: null, ...o };
 }
 // 機体だけの場（予告なし・次の予告はずっと先）。landed から colors を決める（colors を渡せば上書き）
-function world(L, planes, { layout = 'tall', landed = 0, colors, lives = 3, tick = 0, nextSpawnTick = 1e8, warns = [], seed = 1 } = {}) {
-  const b = L.newGame(seed, layout);
+function world(L, planes, { layout = 'tall', plan, landed = 0, colors, lives = 3, tick = 0, nextSpawnTick = 1e8, warns = [], seed = 1 } = {}) {
+  const b = L.newGame(seed, layout, plan);
   const maxId = Math.max(-1, ...planes.map((p) => p.id), ...warns.map((w) => w.id));
   return { ...b, tick, landed, lives, over: false, colors: colors ?? L.colorsFor(landed), nextId: maxId + 1, nextSpawnTick, planes, warns, stats: { crashes: 0, guidedLandings: 0, freeLandings: 0, bounces: 0, wrongWays: 0 } };
 }
@@ -67,6 +67,36 @@ function rayHitsBox(x, y, dx, dy, x0, x1, y0, y1) {
     t0 = Math.max(t0, a); t1 = Math.min(t1, b);
   }
   return t0 <= t1;
+}
+// 置き方の決まり 1〜4（§3.3）を破っている所の一覧。FL1（RUNWAYS）と FL13（置き方 3 通り）が使う
+function runwayRuleBad(L, layout, rw) {
+  const { w, h } = L.LAYOUTS[layout];
+  const Z = L.ZONE_R, bad = [];
+  for (let i = 0; i < 3; i++) {
+    const a = rw[i];
+    // 決まり 1：区域の外側が端から 40 以上、区域の外側どうしで 60 以上
+    const edge = Math.min(a.ex, w - a.ex, a.ey, h - a.ey) - Z;
+    if (edge < 40) bad.push(`${i}: 区域の外側が端から ${edge}`);
+    for (let j = i + 1; j < 3; j++) { const b = rw[j], g = hyp(a.ex, a.ey, b.ex, b.ey) - 2 * Z; if (g < 60) bad.push(`${i}-${j}: 区域の外側どうし ${g.toFixed(1)}`); }
+    // 決まり 2：手前の通り道（入り口から向きの逆へ APPROACH_ROOM）が場の内側（端から PLANE_R 以上）。向きの逆側の端まで 80 以上
+    const ax = a.ex - a.dx * L.APPROACH_ROOM, ay = a.ey - a.dy * L.APPROACH_ROOM;
+    if (ax < L.PLANE_R || ax > w - L.PLANE_R || ay < L.PLANE_R || ay > h - L.PLANE_R) bad.push(`${i}: 手前の通り道の端 (${ax}, ${ay}) が場の外`);
+    const back = a.dx > 0 ? a.ex : a.dx < 0 ? w - a.ex : a.dy > 0 ? a.ey : h - a.ey;
+    if (back < 80) bad.push(`${i}: 向きの逆側の端まで ${back}`);
+    // 決まり 3：手前の通り道が、ほかの滑走路の帯（幅の外側）と区域の中心から ZONE_R + PLANE_R 以上
+    for (let j = 0; j < 3; j++) {
+      if (j === i) continue;
+      const b = rw[j];
+      const strip = segSeg([a.ex, a.ey], [ax, ay], [b.ex, b.ey], [b.ex + b.dx * L.RUNWAY_LEN, b.ey + b.dy * L.RUNWAY_LEN]) - L.RUNWAY_W / 2;
+      const zone = segPt(a.ex, a.ey, ax, ay, b.ex, b.ey);
+      if (strip < Z + L.PLANE_R) bad.push(`${i}→${j}: 通り道と帯の外側 ${strip.toFixed(1)}`);
+      if (zone < Z + L.PLANE_R) bad.push(`${i}→${j}: 通り道と区域の中心 ${zone.toFixed(1)}`);
+    }
+    // 決まり 4：奥（入り口から向きへ RUNWAY_LEN）が場の内側
+    const fx = a.ex + a.dx * L.RUNWAY_LEN, fy = a.ey + a.dy * L.RUNWAY_LEN;
+    if (fx < 0 || fx > w || fy < 0 || fy > h) bad.push(`${i}: 奥 (${fx}, ${fy}) が場の外`);
+  }
+  return bad;
 }
 const RW_TABLE = { tall: [[100, 170, 1, 0], [220, 330, -1, 0], [70, 300, 0, 1]], wide: [[130, 100, 1, 0], [410, 220, -1, 0], [260, 210, 0, -1]] };
 const median = (a) => { const b = [...a].sort((x, y) => x - y); const n = b.length; return n ? (n % 2 ? b[(n - 1) / 2] : (b[n / 2 - 1] + b[n / 2]) / 2) : NaN; };
@@ -124,31 +154,7 @@ export const tests = [
         check(`${layout}：RUNWAYS に 3 本、runwaysFor は色 id の順で { color, ex, ey, dx, dy, open }`, Array.isArray(L.RUNWAYS[layout]) && L.RUNWAYS[layout].length === 3 && rw.length === 3 && rw.every((r, i) => r.color === i && r.open === true && ['ex', 'ey', 'dx', 'dy'].every((k) => typeof r[k] === 'number')), rw);
         check(`${layout}：入り口と向きが契約 §3.3 の表のとおり`, J(rw.map((r) => [r.ex, r.ey, r.dx, r.dy])) === J(RW_TABLE[layout]), rw.map((r) => [r.ex, r.ey, r.dx, r.dy]));
         check(`${layout}：向きは上下左右どれかの単位ベクトル`, rw.every((r) => Math.abs(Math.hypot(r.dx, r.dy) - 1) < 1e-12 && (r.dx === 0 || r.dy === 0)), rw);
-        const Z = L.ZONE_R, bad = [];
-        for (let i = 0; i < 3; i++) {
-          const a = rw[i];
-          // 決まり 1：区域の外側が端から 40 以上、区域の外側どうしで 60 以上
-          const edge = Math.min(a.ex, w - a.ex, a.ey, h - a.ey) - Z;
-          if (edge < 40) bad.push(`${i}: 区域の外側が端から ${edge}`);
-          for (let j = i + 1; j < 3; j++) { const b = rw[j], g = hyp(a.ex, a.ey, b.ex, b.ey) - 2 * Z; if (g < 60) bad.push(`${i}-${j}: 区域の外側どうし ${g.toFixed(1)}`); }
-          // 決まり 2：手前の通り道（入り口から向きの逆へ APPROACH_ROOM）が場の内側（端から PLANE_R 以上）。向きの逆側の端まで 80 以上
-          const ax = a.ex - a.dx * L.APPROACH_ROOM, ay = a.ey - a.dy * L.APPROACH_ROOM;
-          if (ax < L.PLANE_R || ax > w - L.PLANE_R || ay < L.PLANE_R || ay > h - L.PLANE_R) bad.push(`${i}: 手前の通り道の端 (${ax}, ${ay}) が場の外`);
-          const back = a.dx > 0 ? a.ex : a.dx < 0 ? w - a.ex : a.dy > 0 ? a.ey : h - a.ey;
-          if (back < 80) bad.push(`${i}: 向きの逆側の端まで ${back}`);
-          // 決まり 3：手前の通り道が、ほかの滑走路の帯（幅の外側）と区域の中心から ZONE_R + PLANE_R 以上
-          for (let j = 0; j < 3; j++) {
-            if (j === i) continue;
-            const b = rw[j];
-            const strip = segSeg([a.ex, a.ey], [ax, ay], [b.ex, b.ey], [b.ex + b.dx * L.RUNWAY_LEN, b.ey + b.dy * L.RUNWAY_LEN]) - L.RUNWAY_W / 2;
-            const zone = segPt(a.ex, a.ey, ax, ay, b.ex, b.ey);
-            if (strip < Z + L.PLANE_R) bad.push(`${i}→${j}: 通り道と帯の外側 ${strip.toFixed(1)}`);
-            if (zone < Z + L.PLANE_R) bad.push(`${i}→${j}: 通り道と区域の中心 ${zone.toFixed(1)}`);
-          }
-          // 決まり 4：奥（入り口から向きへ RUNWAY_LEN）が場の内側
-          const fx = a.ex + a.dx * L.RUNWAY_LEN, fy = a.ey + a.dy * L.RUNWAY_LEN;
-          if (fx < 0 || fx > w || fy < 0 || fy > h) bad.push(`${i}: 奥 (${fx}, ${fy}) が場の外`);
-        }
+        const bad = runwayRuleBad(L, layout, rw);
         check(`${layout}：置き方の決まり 1〜4（区域どうし 60・端から 40・手前の通り道 ${L.APPROACH_ROOM} が場の内側・通り道がほかの滑走路から 34 以上・奥が場の内側）`, bad.length === 0, bad);
         const r1 = L.runwaysFor(s);
         check(`${layout}：はじめ（colors 1）は あかだけ open、あお・きいろは open: false`, J(r1.map((r) => r.open)) === J([true, false, false]), r1);
@@ -589,6 +595,14 @@ export const tests = [
       }
       check(`最初の5機（straight・${N} 回）のうち、ぶつからずに着陸した割合 ${(firstLanded / first * 100).toFixed(1)}% ≥ 80%`, first > 0 && firstLanded / first >= 0.8, { first, firstLanded });
       check(`各 ${N} 回 × 4 つの遊び方が Node で 30 秒以内（${sec.toFixed(1)} 秒）`, sec <= 30, sec);
+      // 置き方 1・2（MC-15）：straight の着陸の中央が 12〜50 で、同じ種の置き方 0 の中央との差が 4 以内
+      const planBad = [];
+      for (const layout of ['tall', 'wide']) {
+        const med = (plan) => median(Array.from({ length: 40 }, (_, i) => L.autoplay(i + 1, { policy: 'straight', layout, plan }).landed));
+        const m0 = med(0);
+        for (const plan of [1, 2]) { const m = med(plan); if (!(m >= 12 && m <= 50 && Math.abs(m - m0) <= 4)) planBad.push({ layout, plan, m, m0 }); }
+      }
+      check('置き方 1・2（左右・上下を裏返す）の straight（tall・wide 各 40 回）の着陸の中央が 12〜50 で、置き方 0 との差が 4 以内（MC-15）', planBad.length === 0, planBad);
     },
   },
   {
@@ -682,6 +696,62 @@ export const tests = [
       check(`${cases} 通り（曲がりを見たのは ${turnCases}）で、道の形の決まりを満たし、その道で必ず着陸する（wrongway なし）`, bad.length === 0 && cases === 240 && turnCases > 50, bad.slice(0, 12));
       const s = world(L, [P(L, 0, 1, 160, 460, 1, 0)], { landed: 0 });
       check('閉じた色（colors 1 で あお）・無い id・着陸中は null、color を指定すると その色の滑走路へ', L.suggestPath(s, 0) === null && L.suggestPath(s, 0, 1) === null && L.suggestPath(s, 9) === null && Array.isArray(L.suggestPath(s, 0, 0)), null);
+    },
+  },
+  {
+    id: 'FL13', tier: 'smoke', node: true, title: 'ミチビキ空港 滑走路の置き方 3 通り（MC-15）：PLAN_COUNT・RUNWAY_PLANS（凍結・0 番は RUNWAYS と同じ・1 左右を裏返す・2 上下を裏返す）、6 つとも置き方の決まり 1〜4、newGame の plan（変な値は 0）と runwaysFor、回の 1 機目の出る辺と向き、各置き方で suggestPath の道を進めると着陸',
+    run({ check, root }) {
+      const L = load(root);
+      const PLANS = {
+        tall: [RW_TABLE.tall, [[220, 170, -1, 0], [100, 330, 1, 0], [250, 300, 0, 1]], [[100, 350, 1, 0], [220, 190, -1, 0], [70, 220, 0, -1]]],
+        wide: [RW_TABLE.wide, [[390, 100, -1, 0], [110, 220, 1, 0], [260, 210, 0, -1]], [[130, 220, 1, 0], [410, 100, -1, 0], [260, 110, 0, 1]]],
+      };
+      const tbl = (list) => list.map((r) => [r.ex, r.ey, r.dx, r.dy].map((v) => v + 0));
+      check('PLAN_COUNT は 3、RUNWAY_PLANS は凍結で各 layout に 3 つ', L.PLAN_COUNT === 3 && Object.isFrozen(L.RUNWAY_PLANS) && ['tall', 'wide'].every((k) => Object.isFrozen(L.RUNWAY_PLANS[k]) && L.RUNWAY_PLANS[k].length === 3 && L.RUNWAY_PLANS[k].every((list) => Object.isFrozen(list) && list.length === 3 && list.every((r) => Object.isFrozen(r)))), null);
+      const tBad = [];
+      for (const layout of ['tall', 'wide']) for (let p = 0; p < 3; p++) if (J(tbl(L.RUNWAY_PLANS[layout][p])) !== J(PLANS[layout][p])) tBad.push({ layout, p, got: tbl(L.RUNWAY_PLANS[layout][p]) });
+      check('0 番は RUNWAYS と同じ値、1 番は左右を裏返す、2 番は上下を裏返す（計画書 3.1 の表のとおり）', tBad.length === 0 && ['tall', 'wide'].every((k) => J(tbl(L.RUNWAY_PLANS[k][0])) === J(tbl(L.RUNWAYS[k]))), tBad);
+      const rBad = [];
+      for (const layout of ['tall', 'wide']) for (let p = 0; p < 3; p++) { const b = runwayRuleBad(L, layout, L.runwaysFor({ ...L.newGame(1, layout, p), colors: 3 })); if (b.length) rBad.push({ layout, p, b }); }
+      check('6 つの置き方すべてが、置き方の決まり 1〜4 を満たす', rBad.length === 0, rBad);
+      const pBad = [];
+      for (const layout of ['tall', 'wide']) {
+        for (let p = 0; p < 3; p++) {
+          const s = L.newGame(7, layout, p);
+          if (s.plan !== p) pBad.push({ layout, p, plan: s.plan });
+          if (J(tbl(L.runwaysFor({ ...s, colors: 3 }))) !== J(PLANS[layout][p])) pBad.push({ layout, p, runways: tbl(L.runwaysFor({ ...s, colors: 3 })) });
+        }
+        for (const bad of [-1, 3, 1.5, '1', null, undefined, NaN, Infinity]) { const s = L.newGame(7, layout, bad); if (s.plan !== 0) pBad.push({ layout, bad, plan: s.plan }); }
+        if (L.newGame(7, layout).plan !== 0) pBad.push({ layout, none: true });
+      }
+      check('newGame(seed, layout, p).plan === p（0〜2）、変な値（−1・3・1.5・"1"・null・無し ほか）は 0、runwaysFor が置き方の表と同じ', pBad.length === 0, pBad);
+      // 回の 1 機目：あかの手前側の辺から、手前の点（入り口から向きの逆へ APPROACH_D）へ
+      const fBad = [];
+      for (let seed = 1; seed <= 50; seed++) for (const layout of ['tall', 'wide']) for (const plan of [1, 2]) {
+        const { w, h } = L.LAYOUTS[layout];
+        const rw = L.RUNWAY_PLANS[layout][plan][0];
+        const wn = L.newGame(seed, layout, plan).warns[0];
+        const ax = rw.ex - rw.dx * L.APPROACH_D, ay = rw.ey - rw.dy * L.APPROACH_D;
+        const ux = ax - wn.x, uy = ay - wn.y, ul = Math.hypot(ux, uy);
+        const edgeOk = rw.dx > 0 ? Math.abs(wn.x - L.PLANE_R) < 0.5 : rw.dx < 0 ? Math.abs(wn.x - (w - L.PLANE_R)) < 0.5 : rw.dy > 0 ? Math.abs(wn.y - L.PLANE_R) < 0.5 : Math.abs(wn.y - (h - L.PLANE_R)) < 0.5;
+        const side = rw.dx !== 0 ? (rw.ey < h / 2 ? 1 : -1) * (wn.y - rw.ey) : (rw.ex < w / 2 ? 1 : -1) * (wn.x - rw.ex);
+        if (!(wn.id === 0 && wn.color === 0 && wn.kind === 'normal' && edgeOk && side >= 99.5 && side <= 140.5 && Math.abs(wn.dx - ux / ul) < 1e-6 && Math.abs(wn.dy - uy / ul) < 1e-6)) fBad.push({ seed, layout, plan, wn });
+      }
+      check('置き方 1・2 の回の 1 機目（50 種 × 2 layout）は、あかの手前側の辺（plan 1 は右・plan 2 は左）の、入り口の線から中央の側へ 100〜140 の所から、手前の点へ向かう', fBad.length === 0, fBad.slice(0, 4));
+      // 各置き方で suggestPath の道を進めると着陸
+      const lBad = [];
+      for (const layout of ['tall', 'wide']) for (let plan = 0; plan < 3; plan++) for (const color of [0, 1, 2]) {
+        const rw = L.RUNWAY_PLANS[layout][plan][color];
+        const { w, h } = L.LAYOUTS[layout];
+        const px = Math.max(30, Math.min(w - 30, rw.ex - rw.dx * 130)), py = Math.max(30, Math.min(h - 30, rw.ey - rw.dy * 130));
+        const s = world(L, [P(L, 0, color, px, py, rw.dx || 0, rw.dy || 0)], { layout, plan, landed: 18 });
+        const pts = L.suggestPath(s, 0);
+        const sp = pts && L.setPath(s, 0, pts);
+        if (!sp || !sp.ok) { lBad.push({ layout, plan, color, why: 'setPath' }); continue; }
+        const r = run(L, sp.state, 3600, (x) => x.landed > 18);
+        if (r.s.landed !== 19 || ofType(r.evs, 'wrongway').length) lBad.push({ layout, plan, color, landed: r.s.landed, wrong: ofType(r.evs, 'wrongway').length });
+      }
+      check('3 通り × 2 layout × 3 色で、suggestPath の道に沿って進めると着陸する（wrongway なし）', lBad.length === 0, lBad);
     },
   },
 ];

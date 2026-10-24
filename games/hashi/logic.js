@@ -6,6 +6,7 @@
  *   渡る先の葉 target について target.x <= tipX <= target.x + target.w なら渡れる（閉区間）。
  *   |tipX - 葉の中心| <= PERFECT_HALF なら「ぴったり」。連続回数 streak でボーナス min(2^(streak-1), 16)。
  *   落ちたら いのち -1・streak 0。葉の並びは変えない（同じ間にもう一度）。いのち 0 で回が終わる。
+ *   どこまでもでは、ぴったりを HEAL_EVERY 回続けるごとに いのち +1（上限 LIVES。HS-09）。
  *   ひとつ飛ばし：渡る先の葉に乗らず、2つ先の葉 after に after.x <= tipX <= after.x + after.w なら、
  *   2つ先へ渡れる（crossed +2、点は 2 + SKIP_BONUS、ぴったりなら perfectBonus も足す）。
  *   ステージ：5 枚ごとの葉に旗（course.js の lastFlag）。旗を越えると checkpoint になり、落ちたらそこから（並びは同じ）。
@@ -32,6 +33,7 @@
   const CAMERA_LEFT = 200;    // 渡り終えたとき、今の葉の右端を画面左から何単位に置くか
   const LIVES = 3;            // いのちの数
   const BONUS_CAP = 16;       // ぴったりボーナスの上限
+  const HEAL_EVERY = 3;       // どこまでも：ぴったりを この回数 続けるごとに いのち +1（上限 LIVES。HS-09）
   const SKIP_BONUS = 1;       // ひとつ飛ばし（2つ先の葉へ渡る）のおまけ。2つ分の +2 に足す
   const FIRST_W = 160;        // 最初の葉の幅（x=0 から）
   const SAVE_KEY_BEST = "hashi.best";
@@ -202,6 +204,8 @@
       const perfect = Math.abs(tipX - (land.x + land.w / 2)) <= PERFECT_HALF;
       const streak = perfect ? state.streak + 1 : 0;
       const bonus = perfect ? perfectBonus(streak) : 0;
+      // どこまでも：ぴったりを HEAL_EVERY 回 続けるごとに いのちが 1つ もどる（最初の数まで。ステージは いのちを使わない。HS-09）
+      const heal = !stageMode && perfect && streak % HEAL_EVERY === 0 && state.lives < LIVES;
       const skipBonus = onAfter ? SKIP_BONUS : 0;
       const gain = (onAfter ? 2 : 1) + skipBonus + bonus;
       const score = addScore(state.score, gain);
@@ -212,6 +216,7 @@
       const flag = stageMode && !cleared && checkpoint > state.checkpoint;
       const outcome = Object.freeze({
         kind: "cross", tipX, tipY, angle, perfect, gain, bonus, skip: onAfter, skipBonus, landX: land.x + land.w, score, streak,
+        heal, nextBonus: perfectBonus(streak + 1), healIn: stageMode ? 0 : HEAL_EVERY - (streak % HEAL_EVERY),
         cleared, stage: state.stage, flag, checkpoint
       });
       let platforms;
@@ -230,7 +235,7 @@
         perfects: state.perfects + (perfect ? 1 : 0),
         streak,
         bestStreak: Math.max(state.bestStreak, streak),
-        lives: state.lives, over: false, lastOutcome: outcome,
+        lives: state.lives + (heal ? 1 : 0), over: false, lastOutcome: outcome,
         mode: state.mode, stage: state.stage, goal: state.goal, cleared, checkpoint
       }, random);
       return { state: next, outcome };
@@ -321,7 +326,7 @@
   }
 
   const api = Object.freeze({
-    VIEW_W, GROW_PER_MS, SLOW_FACTOR, MAX_LEN, MIN_HOLD_MS, PERFECT_HALF, NEAR, CAMERA_LEFT, LIVES, BONUS_CAP,
+    VIEW_W, GROW_PER_MS, SLOW_FACTOR, MAX_LEN, MIN_HOLD_MS, PERFECT_HALF, NEAR, CAMERA_LEFT, LIVES, BONUS_CAP, HEAL_EVERY,
     SKIP_BONUS, FIRST_W, SAVE_KEY_BEST, SAVE_KEY_STAGE, STAGE_MAX,
     lengthFromHold, holdForLength, perfectBonus, createRun, resolve, hud, reachX,
     validateBest, recordBest, validateStage, recordStage, validateFlag

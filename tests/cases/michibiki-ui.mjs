@@ -5,7 +5,7 @@
 //   時間はページの時計ではなく manual(true) と tick(n) で進める（§14 の 11）。カードのロック・ヒントの 3 秒などのタイマーだけ page.clock（wait）で進める。
 //   機体は spawn({ color, kind, x, y, dx, dy })（forceSpawn。x・y・dx・dy はロジック担当の拡張）で決まった所に出し、出るまで（WARN_S = 120 コマ）tick で待つ。
 //   無いときに合格にしない（空振りの合格を作らない）：MichibikiGame が無ければ例外で不合格にする。
-//   smoke：FW1〜FW5・FW20・FW21。full：FW6〜FW19・FW22・FW23（FW15・FW18・FW23 は CDP なので Chromium だけ、FW10 は AudioContext が要る）。
+//   smoke：FW1〜FW5・FW20・FW21。full：FW6〜FW19・FW22〜FW24（FW15・FW18・FW23 は CDP なので Chromium だけ、FW10 は AudioContext が要る）。
 //   FW20〜FW23 は契約 §19（レビュー後の直し）の確認。
 import fs from 'node:fs';
 import path from 'node:path';
@@ -918,6 +918,40 @@ export const tests = [
       await T(page, 20);
       const q = (await gs(page)).planes.find((x) => x.id === id);
       check(`2本目の指は無視され、機体は1本目の指の道（右上）へ進む（向き ${q && q.dx.toFixed(2)}, ${q && q.dy.toFixed(2)}）`, !!q && q.dx > 0 && q.dy < 0, q);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'FW24', tier: 'full', title: 'ミチビキ空港 滑走路の置き方（MC-15）：restart(seed, layout) は置き方 0、restart() を続けると前の回と違う置き方（2 種類以上）、getState().runways・#field[data-plan]・描いた矢印が置き方の表と同じ、置き方 1 でも おまかせで着陸できる',
+    async run({ browser, check }) {
+      const { ctx, page } = await openM(browser, 'FW24');
+      const table = (layout, plan) => page.evaluate(([l, p]) => window.MichibikiLogic.RUNWAY_PLANS[l][p].map((r) => [r.ex, r.ey, r.dx, r.dy]), [layout, plan]);
+      await fresh(page, 3, 'tall');
+      await T(page, 1);
+      const s0 = await gs(page), d0 = await page.evaluate(() => document.querySelector('#field').dataset.plan);
+      check(`restart(3, 'tall') は置き方 0（今のテストのまま）：runways が あか (100,170)→・data-plan ${d0}`, s0.plan === 0 && d0 === '0' && s0.runways[0].ex === RED.ex && s0.runways[0].ey === RED.ey && s0.runways[0].dx === RED.dx, { plan: s0.plan, d0, runways: s0.runways });
+      // restart()（種なし）を 7 回：続けて同じ置き方にならない・2 種類以上
+      const plans = [], bad = [];
+      for (let i = 0; i < 7; i++) {
+        await page.evaluate(() => { const G = window.MichibikiGame; G.restart(); G.manual(true); });
+        await T(page, 1);
+        const s = await gs(page), d = await page.evaluate(() => document.querySelector('#field').dataset.plan);
+        const want = await table(s.layout, s.plan);
+        const rwOk = JSON.stringify(s.runways.map((r) => [r.ex, r.ey, r.dx, r.dy])) === JSON.stringify(want);
+        const ar = s.drawLog.arrows;
+        const arOk = ar.length === 3 && s.runways.every((r) => { const a = ar.find((x) => x.color === r.color); return a && a.dx === r.dx && a.dy === r.dy && Math.hypot(a.x - r.ex, a.y - r.ey) <= 22; });
+        if (!(rwOk && arOk && d === String(s.plan))) bad.push({ i, plan: s.plan, d, rwOk, arOk });
+        plans.push(s.plan);
+      }
+      check(`restart() を 7 回：getState().runways・#field[data-plan]・描いた矢印が置き方の表と同じ（${plans.join(',')}）`, bad.length === 0, bad);
+      check(`続く 2 回で同じ置き方にならず、2 種類以上出る（${plans.join(',')}）`, plans.every((p, i) => i === 0 || p !== plans[i - 1]) && new Set(plans).size >= 2, plans);
+      // 置き方 1 で、1 機目におまかせの道を付けると着陸
+      await page.evaluate(() => { const G = window.MichibikiGame; G.restart(5, 'tall', 1); G.manual(true); });
+      const s1 = await gs(page);
+      const q = await firstPlane(page);
+      await page.evaluate((id) => window.MichibikiGame.guide(id), q.id);
+      const u = await until(page, 's.landed >= 1', 1500);
+      check(`restart(5, 'tall', 1)：plan ${s1.plan}・あか (220,170)←、1 機目に おまかせの道を付けると着陸（landed ${u.s.landed}）`, s1.plan === 1 && s1.runways[0].ex === 220 && s1.runways[0].dx === -1 && u.ok && u.s.landed === 1, { s1: s1.runways, u: u.s });
       await ctx.close();
     },
   },

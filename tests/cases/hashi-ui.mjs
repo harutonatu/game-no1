@@ -4,7 +4,7 @@
 //   テスト用の公開 API（契約 §12）：window.HashiGame = { getState, holdFor(ms), lenToCross, setRandom(seq), skip }
 //   計算ロジックは HL（hashi-logic.mjs）で確かめ済み。ここでは画面の中の HashiLogic を「期待値の計算機」として使う。
 //   無いときに合格にしない（空振りの合格を作らない。契約 §12・§13-9）：HashiGame が無ければ例外で不合格にする。
-//   smoke：HW1〜HW4・HW16（ステージ）・HW18（旗）。full：HW5〜HW15・HW17・HW19〜HW22（HW11 は CDP のタッチ操作なので Chromium だけ、HW10 は AudioContext が要る、HW19 は solo＝最後に 1 つずつ）。
+//   smoke：HW1〜HW4・HW16（ステージ）・HW18（旗）。full：HW5〜HW15・HW17・HW19〜HW23（HW11 は CDP のタッチ操作なので Chromium だけ、HW10 は AudioContext が要る、HW19 は solo＝最後に 1 つずつ）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { BASE, view, custom, newPage, seed, wait, frozen, layoutProbe, swInfo, sleep, touch, SFX_SPY, plays, IS_CHROMIUM, x20Run, x20Text } from '../lib.mjs';
@@ -1513,6 +1513,49 @@ export const tests = [
       const lg2 = await page.evaluate(() => window.__lg);
       check(`画面の大きさが変わると作り直す（${lg2} 回）`, lg2 >= 1, lg2);
       await ctx.close();
+    },
+  },
+  {
+    id: 'HW23', tier: 'full', title: 'ハシわたり v37（HS-09）：どこまでもで落ちたあと、ぴったりを 3 回続けると ♥ が 1 つ戻る（案内「あと 2かいで ♥」「ぴったり 2れんぞく！」「♥ が 1つ もどった！」・bloom・読み上げ）。満タンでは戻らず「つぎは ボーナス 16」。案内は SE 縦横で 2 行以内。遊び方に倍々と回復の言葉',
+    async run({ browser, check }) {
+      const { ctx, page } = await openH(browser, 'HW23', { v: SMOKE_V(), opts: { initScript: SFX_SPY } });
+      // 1 回落ちる（lives 2）
+      const L0 = await lens(page);
+      await holdLen(page, L0.short);
+      const f = await settle(page);
+      const heartsOf = () => page.evaluate(() => ({ hearts: document.querySelector('#hearts').textContent.trim(), lives: document.querySelector('#lives').textContent.trim(), sr: document.querySelector('#sr').textContent }));
+      const d0 = await heartsOf();
+      check(`1 回落ちて lives 2・#hearts が ♥♥♡（${d0.hearts}）`, f.s.lives === 2 && d0.hearts === '♥♥♡' && d0.lives === '2', { lives: f.s.lives, d0 });
+      const step = async () => { const L = await lens(page); await holdLen(page, L.perfect); return settle(page); };
+      const r1 = await step();
+      check(`1 回目：案内に「あと 2かいで ♥」、「つぎは ボーナス」は出ない（${r1.hints.join(' / ')}）`, r1.hints.some((h) => h.includes('あと 2かいで ♥')) && !r1.hints.some((h) => h.includes('つぎは ボーナス')) && r1.s.lives === 2, r1.hints);
+      const r2 = await step();
+      check(`2 回目：「ぴったり 2れんぞく！」「あと 1かいで ♥」（${r2.hints.join(' / ')}）`, r2.hints.some((h) => h.includes('ぴったり 2れんぞく！') && h.includes('あと 1かいで ♥')) && r2.s.lives === 2, r2.hints);
+      const r3 = await step();
+      const d3 = await heartsOf();
+      const pl = (await plays(page)).map((p) => p.n);
+      check(`3 回目：「♥ が 1つ もどった」・lives 3・#hearts ♥♥♥・#lives 3・読み上げ「いのちが 1つ もどった」（${r3.hints.join(' / ')}）`,
+        r3.hints.some((h) => h.includes('♥ が 1つ もどった')) && r3.s.lives === 3 && d3.hearts === '♥♥♥' && d3.lives === '3' && d3.sr.includes('いのちが 1つ もどった'), { hints: r3.hints, d3 });
+      check(`bloom が鳴る（${[...new Set(pl)].join(',')}）`, pl.includes('bloom'), pl);
+      const r4 = await step();
+      const d4 = await heartsOf();
+      check(`4 回目（満タン）：「ぴったり 4れんぞく！」「つぎは ボーナス 16」、回復の言葉は出ない・lives 3（${r4.hints.join(' / ')}）`,
+        r4.hints.some((h) => h.includes('ぴったり 4れんぞく！') && h.includes('つぎは ボーナス 16')) && !r4.hints.some((h) => h.includes('もどった') || h.includes('あと ')) && r4.s.lives === 3 && !d4.sr.includes('もどった'), { hints: r4.hints, d4 });
+      // 遊び方カード
+      await page.evaluate(() => document.querySelector('#helpBtn').click()); await wait(page, 350);
+      const ov = await overlayInfo(page);
+      check('遊び方に「ばいに なる」と「3かい つづけると」', ov.shown && ov.text.includes('ばいに なる') && ov.text.includes('3かい つづけると'), ov.text);
+      await ctx.close();
+      // SE 縦・横：一番長い案内でも #hint が 2 行以内（はみ出さない）
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app')]) {
+        const c2 = await openH(browser, 'HW23 ' + v.label, { v });
+        const L = await lens(c2.page);
+        await holdLen(c2.page, L.short); await settle(c2.page);
+        for (let i = 0; i < 3; i++) { const Li = await lens(c2.page); await holdLen(c2.page, Li.perfect); await settle(c2.page); }
+        const h = await c2.page.evaluate(() => { const e = document.querySelector('#hint'); const cs = getComputedStyle(e); const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.3; return { text: e.textContent.trim(), h: e.getBoundingClientRect().height, sh: e.scrollHeight, ch: e.clientHeight, lh }; });
+        check(`${v.label}：3 回目の案内が はみ出さず 2 行以内（高さ ${h.h.toFixed(0)}px・行 ${h.lh.toFixed(0)}px）「${h.text}」`, h.text.includes('もどった') && h.sh <= h.ch + 1 && h.h <= h.lh * 3 + 1, h);
+        await c2.ctx.close();
+      }
     },
   },
 ];

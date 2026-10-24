@@ -530,4 +530,62 @@ export const tests = [
       check('2つ先が無いときの行き過ぎは long', noAfter.zone === 'long', noAfter);
     },
   },
+  {
+    id: 'HL13', tier: 'smoke', node: true, title: 'ハシわたり：どこまでもで、ぴったりを 3 回続けるごとに いのち +1（上限 3・ステージは無し）と、案内用の nextBonus・healIn（HS-09）',
+    run({ check, root }) {
+      const { L } = load(root);
+      check('HEAL_EVERY は 3', L.HEAL_EVERY === 3, L.HEAL_EVERY);
+      const need = (st, i = 1) => { const a = st.platforms[0], b = st.platforms[i]; return Math.hypot(center(b) - right(a), (b.y || 0) - (a.y || 0)); };
+      const mk = () => L.createRun({ random: seeded(11) });
+      const fallOnce = (s) => L.resolve(s, 0).state;
+      // (1) 1 回落ちて lives 2 → ぴったり 3 回で 3 回目に heal
+      let s = fallOnce(mk());
+      const o1 = [];
+      for (let i = 0; i < 3; i++) { const r = L.resolve(s, need(s)); o1.push({ heal: r.outcome.heal, healIn: r.outcome.healIn, lives: r.state.lives, perfect: r.outcome.perfect }); s = r.state; }
+      check('(1) 落ちて lives 2 → ぴったり 3 回：1・2 回目は heal false・healIn 2・1、3 回目は heal true・lives 3',
+        s.lives === 3 && o1.every((o) => o.perfect) && o1[0].heal === false && o1[1].heal === false && o1[2].heal === true && o1[0].healIn === 2 && o1[1].healIn === 1 && o1[0].lives === 2 && o1[1].lives === 2 && o1[2].lives === 3, o1);
+      // (2) 満タンのときは戻らない（上限）
+      let f = mk();
+      const o2 = [];
+      for (let i = 0; i < 3; i++) { const r = L.resolve(f, need(f)); o2.push({ heal: r.outcome.heal, lives: r.state.lives }); f = r.state; }
+      check('(2) lives 3 のまま 3 回ぴったり：3 回目でも heal false・lives 3（上限）', o2[2].heal === false && f.lives === 3 && o2.every((o) => o.lives === 3), o2);
+      // (3) lives 1 → 6 回で 3 回目 2・6 回目 3
+      let t = fallOnce(fallOnce(mk()));
+      const o3 = [];
+      for (let i = 0; i < 6; i++) { const r = L.resolve(t, need(t)); o3.push({ heal: r.outcome.heal, lives: r.state.lives }); t = r.state; }
+      check('(3) lives 1 → ぴったり 6 回：3 回目で 2・6 回目で 3', t.lives === 3 && o3[2].heal === true && o3[2].lives === 2 && o3[5].heal === true && o3[5].lives === 3 && o3.filter((o) => o.heal).length === 2, o3);
+      // (4) ぴったりでない渡りで streak 0 → その後は 3 回目まで戻らない
+      let u = fallOnce(mk());
+      for (let i = 0; i < 2; i++) u = L.resolve(u, need(u)).state;
+      const a0 = u.platforms[0], b0 = u.platforms[1];
+      const off = L.resolve(u, Math.hypot(center(b0) - right(a0) + Math.min(b0.w / 2 - 1, 15), (b0.y || 0) - (a0.y || 0)));
+      check('(4a) ぴったりでない渡り（中心から 15 ずれ）：perfect false・streak 0・heal false', off.outcome.kind === 'cross' && off.outcome.perfect === false && off.state.streak === 0 && off.outcome.heal === false, off.outcome);
+      let w = off.state;
+      const o4 = [];
+      for (let i = 0; i < 3; i++) { const r = L.resolve(w, need(w)); o4.push({ heal: r.outcome.heal, healIn: r.outcome.healIn, lives: r.state.lives }); w = r.state; }
+      check('(4b) その後は 3 回目まで戻らない：1・2 回目 heal false（healIn 2・1）、3 回目 heal true', o4[0].heal === false && o4[1].heal === false && o4[2].heal === true && o4[0].healIn === 2 && o4[1].healIn === 1 && w.lives === 3, o4);
+      // (5) ひとつ飛ばしのぴったりも 1 回に数える
+      let x = fallOnce(mk());
+      const r51 = L.resolve(x, need(x)); x = r51.state;
+      const r52 = L.resolve(x, need(x, 2)); x = r52.state;
+      const r53 = L.resolve(x, need(x));
+      check('(5) ぴったり → ひとつ飛ばしのぴったり → ぴったり：飛ばしも 1 回に数え、3 回目で heal',
+        r52.outcome.skip === true && r52.outcome.perfect === true && r52.outcome.streak === 2 && r52.outcome.heal === false && r53.outcome.streak === 3 && r53.outcome.heal === true && r53.state.lives === 3, [r51.outcome, r52.outcome, r53.outcome]);
+      // (6) ステージでは heal false・lives そのまま・healIn 0
+      let g = L.createRun({ mode: 'stage', stage: 1 });
+      const o6 = [];
+      for (let i = 0; i < 3; i++) { const r = L.resolve(g, need(g)); o6.push({ heal: r.outcome.heal, healIn: r.outcome.healIn, lives: r.state.lives }); g = r.state; }
+      check('(6) ステージ：3 回ぴったりでも heal false・healIn 0・lives そのまま', o6.every((o) => o.heal === false && o.healIn === 0 && o.lives === L.LIVES), o6);
+      // ステージは いのちを使わないので、手で lives 2 にした局面でも 3 回ぴったりで戻らない
+      let g2 = { ...L.createRun({ mode: 'stage', stage: 1 }), lives: 2 };
+      const o6b = [];
+      for (let i = 0; i < 3; i++) { const r = L.resolve(g2, need(g2)); o6b.push({ heal: r.outcome.heal, lives: r.state.lives }); g2 = r.state; }
+      check('(6b) ステージで lives を 2 にした局面でも、3 回ぴったりで heal false・lives 2 のまま', o6b.every((o) => o.heal === false && o.lives === 2), o6b);
+      // (7) nextBonus は 2・4・8・16・16
+      let n = mk();
+      const nb = [];
+      for (let i = 0; i < 5; i++) { const r = L.resolve(n, need(n)); nb.push(r.outcome.nextBonus); n = r.state; }
+      check('(7) nextBonus は streak 1〜5 で 2・4・8・16・16', nb.join() === '2,4,8,16,16', nb);
+    },
+  },
 ];

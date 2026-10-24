@@ -119,6 +119,10 @@ const M = [
   ['MH26 ハシわたり：茎が最大になっても知らせない（grow が鳴り続ける。HS-02）', '操作', 'games/hashi/main.js', 'if (bridgeLen >= L.MAX_LEN) {', 'if (false) {'],
   ['MH27 ハシわたり：カードの間、うしろのプレイ画面を inert にしない（HS-07）', '操作', 'games/hashi/main.js', 'el.playView.setAttribute("inert", "");', ''],
   ['MH28 ハシわたり：茎が最大のまま押下が取り消されても案内を戻さない（隠すと「いちばん ながい！ はなしてね」が残る。R1）', '表示', 'games/hashi/main.js', '    if (maxed) { maxed = false; setHint(hintReady()); }\n', ''],
+  ['MH29 ハシわたり：ぴったりを続けても いのちが戻らない（HS-09）', '遊べること', 'games/hashi/logic.js', 'const heal = !stageMode && perfect && streak % HEAL_EVERY === 0 && state.lives < LIVES;', 'const heal = false;'],
+  ['MH30 ハシわたり：いのちが上限を超えて戻る（HS-09）', 'ルール', 'games/hashi/logic.js', '&& state.lives < LIVES;', ';'],
+  ['MH31 ハシわたり：ステージでも いのちが戻る（HS-09）', 'ルール', 'games/hashi/logic.js', 'const heal = !stageMode && perfect', 'const heal = perfect'],
+  ['MH32 ハシわたり：案内に倍々・回復の言葉を出さない（HS-09）', '表示', 'games/hashi/main.js', '${gainWord}${perfectTail(o)}', '${gainWord}'],
   // ---- 版の表示（メニュー）。版を上げる手順が崩れたときの検出 ----
   // MV1・MV3 は正規表現で今の版・日付を読み、1つずらす（版を上げるたびに直さなくてよい）
   ['MV1 版の数字だけ上げ忘れる（version.js が1つ前の版のまま。sw.js は今の版）', '更新', 'common/version.js', /version: "v(\d+)"/, (_, n) => `version: "v${Number(n) - 1}"`],
@@ -238,6 +242,9 @@ const M = [
   ['MF27 ミチビキ空港：pageshow で終わりのカードを出し直さない（§19 A3）', '閉じ込め', 'games/michibiki/main.js', 'window.addEventListener("pageshow", () => {\n    if (hintTimer', 'window.addEventListener("pageshow-x", () => {\n    if (hintTimer'],
   ['MF28 ミチビキ空港：同じ機体を2本目の指でもなぞれる（§19 A7）', '操作', 'games/michibiki/main.js', 'for (const d of drawings.values()) if (d.id === id) return false;', ''],
   ['MF29 ミチビキ空港：「さいしょから」が確認なしで始め直す（§19 B2）', '誤タップ', 'games/michibiki/main.js', 'else if (cmd === "restart") showRestartConfirm();', 'else if (cmd === "restart") startGame(newSeed());'],
+  ['MF30 ミチビキ空港：newGame が置き方を見ない（MC-15）', 'ルール', 'games/michibiki/logic.js', 'const pl = normPlan(plan);', 'const pl = 0;'],
+  ['MF31 ミチビキ空港：着陸の判定だけ置き方 0 の滑走路で見る（MC-15）', 'ルール', 'games/michibiki/logic.js', 'const rws = runwayListOf(s.layout, s.plan);', 'const rws = runwayListOf(s.layout, 0);'],
+  ['MF32 ミチビキ空港：毎回同じ置き方を選ぶ（MC-15）', '表示', 'games/michibiki/main.js', 'return lastPlan < 0 ? Math.floor(Math.random() * n) : (lastPlan + 1 + Math.floor(Math.random() * (n - 1))) % n;', 'return 0;'],
   ['MB22 いろびん：pageshow でクリアのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/irobin/main.js', '    if (overlayKind !== "clear") return;\n    const unlock', '    return;\n    const unlock'],
   // 古いページから書き戻さない（X-20。いろびん §18・まとめてポン §11）。流すときは ONLY=BW20,QW21,X1
   ['MB23 いろびん：表に戻ったとき保存がほかで変わっていても開き直さない（契約 §18・X-20）', '保存', 'games/irobin/main.js', '    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;', '    return false;'],
