@@ -150,7 +150,7 @@ const M = [
   // ---- いろびん（games/irobin/）。注ぐ規則・そろい判定・届ける・隠れ・ソルバー・保存・中断の仕組みを変えたときだけ流す ----
   //      届けた瓶は消える（2026-10-19 のルール変更）。MB4＝消えない、MB13＝旧仕様（空き瓶に置き換わる）、MB14＝瓶の番号のずれ
   ['MB1 いろびん：色違いの瓶にも注げる（mismatch の判定を外す）', 'ルール', 'games/irobin/logic.js', 'if (dl > 0 && col(d, dl - 1) !== c) return R_MISMATCH;', ''],
-  ['MB2 いろびん：注ぐ量が相手の空きを超える（空きで丸めない）', 'ルール', 'games/irobin/logic.js', 'return Math.min(run, CAP - dl);', 'return run;'],
+  ['MB2 いろびん：注ぐ量が相手の空きを超える（空きで丸めない）', 'ルール', 'games/irobin/logic.js', 'return Math.min(run, cap - dl);', 'return run;'],
   ['MB3 いろびん：そろった瓶を、注文の色と違うお客さんにも届ける', 'ルール', 'games/irobin/logic.js', 'if (x !== GONE && isSealedP(x) && col(x, 0) === want) {', 'if (x !== GONE && isSealedP(x)) {'],
   ['MB4 いろびん：届けた瓶が消えない（栓をしたまま残る）', 'ルール', 'games/irobin/logic.js', 'bots[b] = GONE;                                      // 届けた瓶は消える（空の瓶は出てこない）', 'bots[b] = bots[b];                                   // (変異)'],
   ['MB5 いろびん：注いでも隠れた段が見えるようにならない', 'ルール', 'games/irobin/logic.js', 'ns &= ~(1 << (8 + 5 * (nsl - 1)));', ''],
@@ -164,8 +164,8 @@ const M = [
   ['MB13 いろびん：届けたあと空き瓶を足す（旧仕様に戻す：届けた瓶が同じ場所の空の瓶に置き換わる）', 'ルール', 'games/irobin/logic.js', 'bots[b] = GONE;                                      // 届けた瓶は消える（空の瓶は出てこない）', 'bots[b] = 0;                                         // (変異) 旧仕様'],
   ['MB14 いろびん：演出中に押した瓶を、押したボタンの位置で選ぶ（届けて詰めた後の並びとずれる）', '操作', 'games/irobin/main.js', 'if (Number.isSafeInteger(id)) {\n      i = safeCall', 'if (false) {\n      i = safeCall'],
   //      布の瓶（2026-10-20、契約 §17）。MB18（新しい色）はユーザー決定 §17.8 で作らない
-  ['MB15 いろびん：布が1人早く取れる（served >= cover − 1 で取る）', 'ルール', 'games/irobin/logic.js', 'if (k === 0 || ctx.served < k) continue;', 'if (k === 0 || ctx.served < k - 1) continue;'],
-  ['MB16 いろびん：布の瓶に注げる（布を見るのは注ぐ元だけ）', 'ルール', 'games/irobin/logic.js', 'if ((s | d) & COVER_MASK) return R_COVERED;', 'if (s & COVER_MASK) return R_COVERED;'],
+  ['MB15 いろびん：布が1人早く取れる（served >= cover − 1 で取る）', 'ルール', 'games/irobin/logic.js', 'if (k === 0 || ctx.served < k ||', 'if (k === 0 || ctx.served < k - 1 ||'],
+  ['MB16 いろびん：布の瓶に注げる（布を見るのは注ぐ元だけ）', 'ルール', 'games/irobin/logic.js', 'if ((s | d) & COVER_MASK) return isKeyP(s)', 'if (s & COVER_MASK) return isKeyP(s)'],
   ['MB17 いろびん：古い v:2 の手をそのまま再生する（布の前のルールの手を捨てない）', '保存データ互換', 'games/irobin/logic.js', '    if ((o.v === 1 || o.v === 2) && Number.isSafeInteger(o.level) && o.level >= 1) return { level: o.level, moves: [] };\n    if (o.v !== SAVE_V) return null;', '    if (o.v === 1 && Number.isSafeInteger(o.level) && o.level >= 1) return { level: o.level, moves: [] };\n    if (o.v !== SAVE_V && o.v !== 2) return null;'],
   ['MB19 いろびん：布の瓶を押すと選べる（布の判定を外す）', '操作', 'games/irobin/main.js', '    if (coverOf(b) !== null) {\n      const m = Math.max(0, coverOf(b)', '    if (false) {\n      const m = Math.max(0, coverOf(b)'],
   ['MB20 いろびん：届けた瓶の跡を残さず詰める（render の replaceChild(emptyPlace…) を removeChild にする）', '演出', 'games/irobin/render.js', 'btn.parentNode.replaceChild(emptyPlace(btn._id), btn);', 'btn.parentNode.removeChild(btn);'],
@@ -254,6 +254,13 @@ const M = [
   ['MB26 いろびん：makeSave が上限を超えた手も書く（読むときに捨てられ面の最初に戻る。IB-09）', '保存', 'games/irobin/logic.js', 'moves.slice(0, MAX_MOVES_SAVED).map(', 'moves.map('],
   ['MB27 いろびん：予備の固定面（fallback 2）を verify に通さない（IB-11）', '生成', 'games/irobin/logic.js', '      if (!verify(lv, params, got)) throw new Error("いろびん: 予備の面が解けません（" + lv + " 面）");\n', ''],
   ['MB28 いろびん：最後の手まで保存された面を、クリアのカードなしで次の面にする（IB-22）', '保存', 'games/irobin/main.js', '      hud();\n      onClear();\n      return true;', '      const r = L.recordBest(best, level);\n      best = r.best; writeKey(KEY_BEST, String(best));\n      return startLevel(level + 1, []);'],
+  //      v37 の新しい仕掛け（IB-29・契約 §19）。局面のキーの 3 文字目（仕掛けの印）を落とす変異は作らない：瓶は印ごとに分かれて並ぶので、落としても局面が重ならず見つけられない（BL16 の作業で確かめた）
+  ['MB29 いろびん：ちいさい びんにも 4 段入る（注ぐ量の上限を瓶ごとに見ない）', 'ルール', 'games/irobin/logic.js', 'const cap = td === SMALL_TAG ? SMALL_CAP : CAP;', 'const cap = CAP;'],
+  ['MB30 いろびん：ちいさい びんを短く描かない（data-cap をいつも 4 にする）', '見た目', 'games/irobin/render.js', 'btn.dataset.cap = String(bcap);', 'btn.dataset.cap = "4";'],
+  ['MB31 いろびん：いろ きまりの びんに ほかの色も入る', 'ルール', 'games/irobin/logic.js', 'if (td !== 0 && td !== SMALL_TAG && td !== c + 1) return R_ONLY;', 'if (false) return R_ONLY;'],
+  ['MB32 いろびん：いろ きまりの びんの札（色と記号）を描かない', '見た目', 'games/irobin/render.js', 'gt.innerHTML = lock !== null ? lockHtml(lock) : only !== null && !sealed ? onlyHtml(only) : "";', 'gt.innerHTML = lock !== null ? lockHtml(lock) : "";'],
+  ['MB33 いろびん：鍵の色をそろえても かぎの びんが開かない', 'ルール', 'games/irobin/logic.js', 'if (tagOf(x) === c + 1 && coverOf(x) === KEY_COVER) {', 'if (false) {'],
+  ['MB34 いろびん：かぎの びんを押すと選べる（main の かぎの判定を外す）', '操作', 'games/irobin/main.js', '    if (Number.isSafeInteger(b.lock)) {\n      setHint(lockHint(b.lock));', '    if (false) {\n      setHint(lockHint(b.lock));'],
   ['MQ41 まとめてポン：pageshow で終わりのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/matomete/main.js', '    if (overlayKind !== "over") return;\n    const unlock', '    return;\n    const unlock'],
   ['MQ42 まとめてポン：表に戻ったとき保存がほかで変わっていても開き直さない（契約 §11・X-20）', '保存', 'games/matomete/main.js', '    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;', '    return false;'],
   ['MQ43 まとめてポン：裏で別のタブが書いても保存を止めない（storage を見ない。契約 §11・X-20）', '保存', 'games/matomete/main.js', 'if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true;', 'if (false) stale = true;'],

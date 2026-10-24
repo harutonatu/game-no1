@@ -18,10 +18,12 @@ function load(root) {
 }
 
 // ---- 局面を手で組む ----
-// 瓶の指定：色の配列（下→上）。{ c: [...], h: [true,...], sealed: true, cover: k } で隠れ・栓・布（§17）も指定できる
+// 瓶の指定：色の配列（下→上）。{ c: [...], h: [true,...], sealed: true, cover: k } で隠れ・栓・布（§17）も指定できる。
+// v37（§19）：cap: 3＝ちいさい びん、only: 色＝いろ きまりの びん、lock: 色＝かぎの びん
 const B = (spec) => {
   const o = Array.isArray(spec) ? { c: spec } : spec;
-  return { cells: [...o.c], hidden: o.h ? [...o.h] : o.c.map(() => false), sealed: !!o.sealed, ...(o.cover !== undefined ? { cover: o.cover } : {}) };
+  return { cells: [...o.c], hidden: o.h ? [...o.h] : o.c.map(() => false), sealed: !!o.sealed, ...(o.cover !== undefined ? { cover: o.cover } : {}),
+    ...(o.cap !== undefined ? { cap: o.cap } : {}), ...(o.only !== undefined ? { only: o.only } : {}), ...(o.lock !== undefined ? { lock: o.lock } : {}) };   // v37 の仕掛け（契約 §19）
 };
 function mk(bottles, { slots = [null, null], queue = [], served = 0, total, moves = 0, won = false, params = { colors: 3, empties: 1, hidden: false, order: 'random' } } = {}) {
   return { level: 1, params, bottles: bottles.map(B), slots: [...slots], queue: [...queue], served, total: total ?? served + slots.filter((x) => x !== null).length + queue.length, moves, won };
@@ -237,7 +239,8 @@ export const tests = [
         if (!Array.isArray(info.solutionIds) || info.solutionIds.length !== (info.solution || []).length) bad.push(`${lv}: solutionIds が solution と同じ長さでない`);
         const rp = L.replay(lv, info.solutionIds);
         if (!(rp.ok && rp.state.won)) bad.push(`${lv}: solutionIds を replay しても won にならない（ok ${rp.ok}、applied ${rp.applied}/${(info.solutionIds || []).length}）`);
-        else if (info.fallback === 0 && !(rp.state.bottles.length === p.empties + emptyCloth && rp.state.bottles.every((b) => b.cells.length === 0 && b.cover === null))) bad.push(`${lv}: クリアの局面が「空き瓶 ${p.empties + emptyCloth} 本だけ（布はすべて取れている）」でない（${rp.state.bottles.length} 本）`);
+        // v37（§19）：いろ きまりの びんは、その色がそろうと届けて消えることがある（空き瓶が onlys 本まで少なくなる）
+        else if (info.fallback === 0 && !(rp.state.bottles.length <= p.empties + emptyCloth && rp.state.bottles.length >= p.empties + emptyCloth - (p.onlys || 0) && rp.state.bottles.every((b) => b.cells.length === 0 && b.cover === null && b.lock === null))) bad.push(`${lv}: クリアの局面が「空き瓶 ${p.empties + emptyCloth} 本だけ（布はすべて取れている）」でない（${rp.state.bottles.length} 本）`);
         if (!(info.nodes <= L.GEN_NODE_BUDGET * 1.5)) bad.push(`${lv}: nodes ${info.nodes}`);
       }
       check(`${levels.length} 面（1〜60・1000）：決定的・各色4段・最初からそろった瓶なし・隠れの形・注文が各色1つ・id が 0〜・solutionIds を replay すると won、残るのは空き瓶だけ（届けた瓶は全部消える。空き瓶の布の面は 1 本多い）・布の瓶の数と cover が info.cloths と合う`, bad.length === 0, bad.slice(0, 8));
@@ -698,6 +701,231 @@ export const tests = [
       let thrown = null;
       try { sb.IrobinLogic.createLevel(1, { params: P2 }); } catch (e) { thrown = String(e && e.message); }
       check(`予備の面が解けない形なら createLevel(1, fallback 2) は例外（${thrown || '例外なし'}）`, src.includes(FROM) && !!thrown && /予備の面/.test(thrown), { found: src.includes(FROM), thrown });
+    },
+  },
+  // ======================================================================
+  // v37 の新しい仕掛け（IB-29・契約 §19）。ユーザーの答え：「全て採用です。徐々に難易度が上がるよう調整した上で採用します」
+  {
+    id: 'BL16', tier: 'smoke', node: true, title: 'いろびん v37 ちいさい びん：3 段までしか入らない（注ぐ量・full）・3 段そろっても栓にならない・cap の形の検査・ソルバーも 3 段で考える・イミュータブル',
+    run({ check, root }) {
+      const L = load(root);
+      check('SMALL_CAP は 3、SMALL_FROM は 41', L.SMALL_CAP === 3 && L.SMALL_FROM === 41, { SMALL_CAP: L.SMALL_CAP, SMALL_FROM: L.SMALL_FROM });
+      // 0:[1,0,0] 1:ちいさい[0,0] 2:ちいさい[0,0,0] 3:[] 4:ちいさい[] 5:[2,0,0,0]
+      const S = mk([[1, 0, 0], { c: [0, 0], cap: 3 }, { c: [0, 0, 0], cap: 3 }, [], { c: [], cap: 3 }, [2, 0, 0, 0]], { slots: [1, 2], queue: [0] });
+      const snap = J(S);
+      const R = (f, t) => L.pourCheck(S, f, t);
+      check('ちいさい びん（2 段）へ同じ色 2 段を注ぐと 1 段だけ（count 1）', R(0, 1).ok === true && R(0, 1).count === 1, R(0, 1));
+      check('ちいさい びん（3 段）へは full', R(0, 2).ok === false && R(0, 2).reason === 'full', R(0, 2));
+      check('から の ちいさい びんへ 3 段続きを注ぐと 3 段（ふつうの空き瓶へも 3 段）', R(5, 4).ok === true && R(5, 4).count === 3 && R(5, 3).count === 3, [R(5, 4), R(5, 3)]);
+      const r = L.applyMove(S, 0, 1), b1 = r.state.bottles[1];
+      check('注いだ後のちいさい びんは 3 段・cap 3・同じ色 3 段でも栓をしない（sealed false・届けない）', r.outcome.kind === 'pour' && b1.cap === 3 && J(b1.cells) === '[0,0,0]' && b1.sealed === false && r.outcome.sealed === null && r.state.served === 0, { b1, o: r.outcome.sealed });
+      check('ふつうの瓶は cap 4・only/lock は null', r.state.bottles.filter((b) => b.id !== 1 && b.id !== 2 && b.id !== 4).every((b) => b.cap === 4 && b.only === null && b.lock === null), r.state.bottles.map((b) => [b.cap, b.only, b.lock]));
+      const fr = L.pourCheck(r.state, 1, 3);
+      check('ちいさい びんから注ぐのは ふつうと同じ（3 段続きを空き瓶へ count 3）', fr.ok === true && fr.count === 3, fr);
+      check('元の state は変わらない（イミュータブル）', J(S) === snap, null);
+      const lm = L.legalMoves(S);
+      check('legalMoves に満杯のちいさい びん（位置 2）へ注ぐ手が無い', lm.length > 0 && !lm.some(([, t]) => t === 2), lm);
+      // 形の検査
+      const nz = (b) => L.normalizeState(mk([b, []], { slots: [0, null], queue: [], total: 1 }));
+      check('cap 3 で 4 段・cap 3 で栓・cap 5・cap "3"（文字）は normalizeState が null', nz({ c: [0, 1, 0, 1], cap: 3 }) === null && nz({ c: [0, 0, 0, 0], cap: 3, sealed: true }) === null && nz({ c: [0], cap: 5 }) === null && nz({ c: [0], cap: '3' }) === null, null);
+      const ok3 = nz({ c: [0, 1], cap: 3 }), ok4 = nz({ c: [0, 1], cap: 4 }), okN = nz({ c: [0, 1] });
+      check('cap 3 は 3・cap 4 と cap 無しは 4 で読める', ok3 && ok3.bottles[0].cap === 3 && ok4 && ok4.bottles[0].cap === 4 && okN && okN.bottles[0].cap === 4, [ok3 && ok3.bottles[0].cap, ok4 && ok4.bottles[0].cap]);
+      check('ちいさい びんに布・いろ きまり・かぎは重ねられない（null）', nz({ c: [], cap: 3, cover: 1 }) === null && nz({ c: [], cap: 3, only: 0 }) === null && nz({ c: [0, 1], cap: 3, lock: 2 }) === null, null);
+      // ソルバー：ふつうの空き瓶なら解ける盤が、ちいさい びんだと解けない（4 段そろう場所にならない）
+      const board = (cap) => mk([[0, 1, 1, 1], [0, 0, 1, 0], { c: [], cap }], { slots: [0, 1], queue: [] });
+      const p4 = L.solve(board(4)), p3 = L.solve(board(3));
+      check('盤 [0,1,1,1]・[0,0,1,0]・空き瓶：ふつうの空き瓶なら解ける、ちいさい びんだと解けない（solved:false・exhausted:false）', p4.solved === true && p3.solved === false && p3.exhausted === false, { p4: p4.solved, p3 });
+      const stuck = mk([[2, 1, 2, 0], { c: [0, 0, 0], cap: 3 }, [1, 2, 1, 2]], { slots: [0, 1], queue: [2] });
+      check('満杯のちいさい びんにしか注げない局面は isStuck（legalMoves が空）', L.isStuck(stuck) === true && L.legalMoves(stuck).length === 0, L.legalMoves(stuck));
+      let threw = null;
+      const frz = (o) => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); Object.values(o).forEach(frz); } return o; };
+      try { const F = frz(JSON.parse(snap)); L.applyMove(F, 0, 1); L.legalMoves(F); L.solve(F); } catch (e) { threw = String(e); }
+      check('凍結した state でも例外にならない', threw === null, threw);
+    },
+  },
+  {
+    id: 'BL17', tier: 'smoke', node: true, title: 'いろびん v37 いろ きまりの びん：その色しか入らない（reason only）・判定の順・そろえば栓をして届く・only の形の検査・イミュータブル',
+    run({ check, root }) {
+      const L = load(root);
+      check('ONLY_FROM は 71', L.ONLY_FROM === 71, L.ONLY_FROM);
+      // 0:[1,0,0] 1:いろ きまり 0（から） 2:いろ きまり 1（から） 3:[0,1] 4:いろ きまり 0 [0,0,0] 5:[2,2,2]
+      const S = mk([[1, 0, 0], { c: [], only: 0 }, { c: [], only: 1 }, [0, 1], { c: [0, 0, 0], only: 0 }, [2, 2, 2]], { slots: [2, 1], queue: [0] });
+      const snap = J(S);
+      const R = (f, t) => L.pourCheck(S, f, t);
+      check('同じ色の いろ きまりの びんへは注げる（count 2）', R(0, 1).ok === true && R(0, 1).count === 2, R(0, 1));
+      check('ちがう色の いろ きまりの びん（から）へは reason only', R(0, 2).ok === false && R(0, 2).reason === 'only' && R(3, 1).reason === 'only', [R(0, 2), R(3, 1)]);
+      check('中身がある いろ きまりの びんへ ちがう色は mismatch（only より先）', R(3, 4).ok === false && R(3, 4).reason === 'mismatch', R(3, 4));
+      const SS = mk([{ c: [0, 0, 0, 0], sealed: true }, { c: [], only: 1 }, { c: [1, 1, 1], only: 1 }, [1]], { slots: [2, 3], queue: [] });
+      check('判定の順：same → covered/locked → empty（からの いろ きまりの びんから注ぐ）→ sealed（栓の瓶から）→ full → only', R(1, 1).reason === 'same' && R(1, 0).reason === 'empty' && L.pourCheck(SS, 0, 1).reason === 'sealed' && R(5, 1).reason === 'only', [R(1, 1), R(1, 0), L.pourCheck(SS, 0, 1), R(5, 1)]);
+      const r = L.applyMove(S, 0, 4), o = r.outcome;
+      check('いろ きまりの びんで 4 段そろうと栓（待ち瓶。お客さんは 2・1 なので届かない）・only は 0 のまま', o.kind === 'pour' && o.sealed === 4 && r.state.bottles[4].sealed === true && r.state.bottles[4].only === 0, { o: o.sealed, b: r.state.bottles[4] });
+      const S2 = mk([[1, 0, 0], { c: [0, 0], only: 0 }, []], { slots: [0, 1], queue: [], total: 2 });
+      const r2 = L.applyMove(S2, 0, 1);
+      check('そろった いろ きまりの びんは、その色のお客さんに届いて消える（瓶が 1 本減る）', r2.outcome.kind === 'pour' && r2.outcome.deliveries.length === 1 && r2.state.bottles.length === 2 && !r2.state.bottles.some((b) => b.id === 1), r2.outcome.deliveries);
+      check('注いだ後も only は残る（2 段の いろ きまりの びん）', (() => { const x = L.applyMove(S, 0, 1).state.bottles[1]; return x.only === 0 && J(x.cells) === '[0,0]'; })(), L.applyMove(S, 0, 1).state.bottles[1]);
+      check('元の state は変わらない（イミュータブル）', J(S) === snap, null);
+      const lm = L.legalMoves(S);
+      check('legalMoves に ちがう色を いろ きまりの びんへ注ぐ手が無い（同じ色の手 3→2 はある）', !lm.some(([f, t]) => (t === 2 && f === 0) || (t === 1 && f === 3)) && lm.some(([f, t]) => f === 3 && t === 2), lm);
+      const nz = (b) => L.normalizeState(mk([b, []], { slots: [0, null], queue: [], total: 1 }));
+      check('only に ちがう色の中身・only 9・only "0"（文字）・only と布の重ね は normalizeState が null', nz({ c: [1], only: 0 }) === null && nz({ c: [], only: 9 }) === null && nz({ c: [], only: '0' }) === null && nz({ c: [], only: 0, cover: 1 }) === null && nz({ c: [], only: 0, lock: 1 }) === null, null);
+      const ok = nz({ c: [3, 3], only: 3 });
+      check('only 3 で中身が 3 なら読める（only・cap 4・lock null）', ok && ok.bottles[0].only === 3 && ok.bottles[0].cap === 4 && ok.bottles[0].lock === null, ok && ok.bottles[0]);
+      // ソルバー：いろ きまりの びんしか空きが無い盤。0 を入れる手しか無いので、0 を先に出せる並びだけ解ける
+      const good = mk([[1, 1, 1, 0], [0, 0, 0, 1], { c: [], only: 0 }], { slots: [0, 1], queue: [] });
+      const bad = mk([[1, 1, 1, 0], [0, 0, 0, 1], { c: [], only: 2 }], { slots: [0, 1], queue: [] });
+      const sg = L.solve(good), sb = L.solve(bad);
+      const replayWon = (st, mv) => { let s = st; for (const [f, t] of mv) { const x = L.applyMove(s, f, t); if (x.outcome.kind !== 'pour') return false; s = x.state; } return s.won; };
+      check('ソルバー：上の色と同じ いろ きまりの びんなら解けて再生すると won、盤に無い色の いろ きまりの びんだと解けない', sg.solved === true && replayWon(good, sg.moves) && sb.solved === false && sb.exhausted === false, { sg: sg.solved, sb });
+    },
+  },
+  {
+    id: 'BL18', tier: 'smoke', node: true, title: 'いろびん v37 かぎの びん：注ぐ元にも相手にもならない（reason locked）・鍵の色を 1 本そろえた手で開く（outcome.unlocked）・届けた数では開かない・lock の形の検査・ソルバーも鍵を考える',
+    run({ check, root }) {
+      const L = load(root);
+      check('KEY_FROM は 101', L.KEY_FROM === 101, L.KEY_FROM);
+      // 0:かぎ（1 で開く）[0,2,0] 1:[1,1,1] 2:[1] 3:[] 4:布 cover 1 [2,2,2] 5:[0]
+      const S = mk([{ c: [0, 2, 0], lock: 1 }, [1, 1, 1], [1], [], { c: [2, 2, 2], cover: 1 }, [0]], { slots: [2, 0], queue: [1] });
+      const snap = J(S);
+      const R = (f, t) => L.pourCheck(S, f, t);
+      check('かぎの びんから・へは locked（空の瓶からでも）', R(0, 3).reason === 'locked' && R(5, 0).reason === 'locked' && R(3, 0).reason === 'locked', [R(0, 3), R(5, 0), R(3, 0)]);
+      check('布の瓶は今までどおり covered（かぎと分けて言う）', R(4, 3).reason === 'covered' && R(5, 4).reason === 'covered', [R(4, 3), R(5, 4)]);
+      check('はじめは lock 1・cover null・cap 4', S.bottles[0].lock === 1 && L.normalizeState(S).bottles[0].lock === 1 && L.normalizeState(S).bottles[0].cover === null, L.normalizeState(S).bottles[0]);
+      const r = L.applyMove(S, 2, 1), o = r.outcome, k0 = r.state.bottles.find((b) => b.id === 0);
+      check('鍵の色（1）をそろえた手で開く：outcome.unlocked に id 0・bottle は新しい並びの位置・color 1', o.kind === 'pour' && o.sealed === 1 && Array.isArray(o.unlocked) && o.unlocked.length === 1 && o.unlocked[0].id === 0 && o.unlocked[0].color === 1 && r.state.bottles[o.unlocked[0].bottle] && r.state.bottles[o.unlocked[0].bottle].id === 0, o.unlocked);
+      check('開いた瓶は lock null・cover null・中身はそのまま、注ぐ元になる', k0 && k0.lock === null && k0.cover === null && J(k0.cells) === '[0,2,0]' && L.pourCheck(r.state, r.state.bottles.indexOf(k0), r.state.bottles.findIndex((b) => b.id === 3)).ok === true, k0);
+      const r2 = L.applyMove(S, 5, 3);
+      check('鍵の色でない手・そろわない手では開かない（unlocked は空の配列）', r2.outcome.kind === 'pour' && J(r2.outcome.unlocked) === '[]' && r2.state.bottles[0].lock === 1, r2.outcome.unlocked);
+      const many = mk([{ c: [0, 2, 0], lock: 1 }, [2, 2, 2], [2], [], [1, 1, 1, 1]], { slots: [2, 0], queue: [1], served: 5, total: 9 });
+      const r3 = L.applyMove(many, 2, 1);
+      check('届けた数がいくつでも、ほかの色（2）をそろえても開かない', r3.outcome.kind === 'pour' && r3.outcome.sealed !== null && r3.state.bottles[0].lock === 1 && r3.outcome.unlocked.length === 0, r3.outcome);
+      check('元の state は変わらない（イミュータブル）', J(S) === snap, null);
+      const nz = (b) => L.normalizeState(mk([b, []], { slots: [0, null], queue: [], total: 1 }));
+      check('lock と栓・lock と布・lock 9・lock "1"（文字）は normalizeState が null', nz({ c: [0, 0, 0, 0], lock: 1, sealed: true }) === null && nz({ c: [0], lock: 1, cover: 2 }) === null && nz({ c: [0], lock: 9 }) === null && nz({ c: [0], lock: '1' }) === null, null);
+      // ソルバー：鍵を開けないと解けない盤
+      const K = mk([{ c: [0, 0, 0], lock: 1 }, [1, 1, 1], [1], [0]], { slots: [0, 1], queue: [] });
+      const sv = L.solve(K);
+      let st = K, unl = 0, okRun = sv.solved === true;
+      if (okRun) for (const [f, t] of sv.moves) { const x = L.applyMove(st, f, t); if (x.outcome.kind !== 'pour') { okRun = false; break; } unl += x.outcome.unlocked.length; st = x.state; }
+      check('ソルバーは鍵を開ける手順を見つけ、再生すると won（途中で 1 回開く）', okRun && st.won === true && unl === 1, { solved: sv.solved, unl });
+      const dead = mk([{ c: [0, 0, 1], lock: 1 }, [1, 1, 1], [0], []], { slots: [0, 1], queue: [] });
+      check('鍵の色が かぎの びんの中にあって開けられない盤は solved:false', L.solve(dead).solved === false && L.solve(dead).exhausted === false, L.solve(dead));
+      let threw = null;
+      const frz = (o) => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); Object.values(o).forEach(frz); } return o; };
+      try { const F = frz(JSON.parse(snap)); L.applyMove(F, 2, 1); L.legalMoves(F); L.solve(F); L.isStuck(F); } catch (e) { threw = String(e); }
+      check('凍結した state でも例外にならない', threw === null, threw);
+    },
+  },
+  {
+    id: 'BL19', tier: 'smoke', node: true, title: 'いろびん v37 出し方と生成：paramsFor の表（1〜40 面は無し、41・71・101 面で 1 本ずつ登場、布の面は ちいさい びん だけ）・41〜600 面が全部表どおりに作れて解ける（fallback 0）・1 面 50ms 以内・仕掛けの無い面は前と同じ・保存 v:3 で仕掛けの状態も同じ局面',
+    run({ check, root }) {
+      const L = load(root);
+      const G = (lv) => { const p = L.paramsFor(lv); return [p.smalls, p.onlys, p.keys, p.pick].join(','); };
+      // 表（契約 §19.2）
+      const want = { 1: '0,0,0,soft', 40: '0,0,0,soft', 41: '1,0,0,soft', 42: '0,0,0,soft', 43: '0,0,0,soft', 49: '1,0,0,soft', 50: '1,0,0,soft', 51: '1,0,0,soft', 54: '1,0,0,soft', 55: '2,0,0,soft', 56: '0,0,0,soft',
+        70: '0,0,0,soft', 71: '0,1,0,soft', 72: '0,0,0,soft', 73: '0,1,0,hard', 74: '1,0,0,soft', 76: '1,0,0,hard', 77: '2,0,0,soft', 100: '1,0,0,hard', 101: '0,0,1,soft', 103: '1,1,0,soft', 104: '2,0,0,soft', 105: '1,0,1,soft', 107: '0,0,1,hard',
+        150: '2,0,0,soft', 151: '1,1,0,soft', 152: '1,0,0,soft', 153: '0,0,1,hard', 154: '0,0,0,soft', 155: '1,1,0,hard', 157: '0,1,0,hard', 2001: '0,0,1,hard' };
+      const tb = Object.entries(want).filter(([lv, w]) => G(Number(lv)) !== w).map(([lv, w]) => ({ lv, want: w, got: G(Number(lv)) }));
+      check('paramsFor の仕掛けの表（[ちいさい, いろ きまり, かぎ, 色の選び方]）が契約 §19.2 のとおり', tb.length === 0, tb);
+      const first = (k) => { for (let lv = 1; lv <= 400; lv++) if (L.paramsFor(lv)[k] > 0) return lv; return 0; };
+      check(`はじめて出る面：ちいさい ${first('smalls')}・いろ きまり ${first('onlys')}・かぎ ${first('keys')}（41・71・101）`, first('smalls') === 41 && first('onlys') === 71 && first('keys') === 101, null);
+      const intro = [41, 71, 101].map((lv) => { const p = L.paramsFor(lv); return p.smalls + p.onlys + p.keys === 1 && p.pick === 'soft' && p.cloths === 0; });
+      check('はじめて出た面は その仕掛け 1 本だけ（ほかと重ねない・布なし・やさしい色の選び方）', intro.every(Boolean), intro);
+      const two = (() => { for (let lv = 1; lv <= 400; lv++) if (L.paramsFor(lv).smalls >= 2) return lv; return 0; })();
+      const a1 = []; for (let lv = 41; lv < two; lv++) if (L.paramsFor(lv).smalls === 1) a1.push(lv);
+      check(`ちいさい びん 2 本は ${two} 面から（それまでに 1 本の面が ${a1.length} 面）`, two === 55 && a1.length >= 3, { two, a1 });
+      const bad = [];
+      for (let lv = 1; lv <= 2000; lv++) {
+        const p = L.paramsFor(lv), g = p.smalls + p.onlys + p.keys;
+        if (lv <= 40 && g) bad.push(`${lv}: 1〜40 面に仕掛け`);
+        if (p.cloths > 0 && (p.keys > 0 || p.onlys > 0)) bad.push(`${lv}: 布の面に かぎ・いろ きまり`);
+        if (p.smalls + p.onlys > p.empties || p.onlys > 1 || p.keys > 1) bad.push(`${lv}: 本数 ${G(lv)}`);
+        if (lv >= 150 && G(lv) !== G(lv + 8)) bad.push(`${lv}: 150 面からは 8 面ごとに同じ（${G(lv)}・${G(lv + 8)}）`);
+      }
+      check('1〜2000 面：1〜40 面は仕掛け無し・布の面に かぎ・いろ きまり は出ない（ちいさい だけ）・ちいさい＋いろ きまり は空き瓶の本数まで・いろ きまり と かぎ は 1 本まで・150 面からは 8 面の くり返し', bad.length === 0, bad.slice(0, 6));
+      // 生成（41〜600 面）
+      const cpuMs = (c) => { const u = cpuOf(c); return (u.user + u.system) / 1000; };
+      const gb = [], slow = [];
+      let maxMs = 0, maxAt = 0, unl = 0, lv0 = 0, maxNodes = 0, nodesAt = 0;
+      for (let lv = 41; lv <= 600; lv++) {
+        const c0 = cpuOf();
+        const { state: s, info } = L.createLevel(lv);
+        let ms = cpuMs(c0);
+        if (ms > 150) {   // 重い面は測り直して一番短い時間（JIT の温まり・GC を数えない）
+          for (let k = 0; k < 2; k++) { const c1 = cpuOf(); L.createLevel(lv, { params: L.paramsFor(lv) }); ms = Math.min(ms, cpuMs(c1)); }
+        }
+        if (ms > maxMs) { maxMs = ms; maxAt = lv; }
+        if (ms > 150) slow.push({ lv, ms: Math.round(ms) });
+        if (info.nodes > maxNodes) { maxNodes = info.nodes; nodesAt = lv; }
+        const p = L.paramsFor(lv);
+        if (info.fallback !== 0) { gb.push(`${lv}: fallback ${info.fallback}`); continue; }
+        const sm = s.bottles.filter((b) => b.cap === 3), on = s.bottles.filter((b) => b.only !== null), lk = s.bottles.filter((b) => b.lock !== null);
+        if (sm.length !== p.smalls || on.length !== p.onlys || lk.length !== p.keys) gb.push(`${lv}: 仕掛けの本数 ${sm.length},${on.length},${lk.length}≠${G(lv)}`);
+        if (sm.concat(on).some((b) => b.cells.length !== 0)) gb.push(`${lv}: ちいさい・いろ きまりの びんが はじめから から でない`);
+        if (lk.some((b) => b.cells.length !== L.CAP || b.cells.includes(b.lock) || b.cover !== null)) gb.push(`${lv}: かぎの びんの中身・鍵の色`);
+        if (s.bottles.some((b) => [b.cap === 3, b.only !== null, b.lock !== null, b.cover !== null].filter(Boolean).length > 1)) gb.push(`${lv}: 1 本に仕掛けが 2 つ`);
+        let st = s, u = 0;
+        for (const [f, t] of info.solution) { const r = L.applyMove(st, f, t); if (r.outcome.kind !== 'pour') { gb.push(`${lv}: solution が注げない`); break; } u += r.outcome.unlocked.length; st = r.state; }
+        if (!st.won) gb.push(`${lv}: solution で won にならない`);
+        if (u !== p.keys) gb.push(`${lv}: 鍵が ${u}/${p.keys} しか開かない`);
+        unl += u; if (p.smalls + p.onlys + p.keys) lv0++;
+        if (gb.length > 12) break;
+      }
+      check(`41〜600 面：全部 表どおりに作れた（fallback 0）・仕掛けの本数と形が表どおり・solution を再生すると won・鍵は全部開く（仕掛けの面 ${lv0}・開いた鍵 ${unl}）`, gb.length === 0 && lv0 > 300 && unl > 50, gb.slice(0, 8));
+      // 重さ：生成の上限は時間ではなく局面の数（どの端末でも同じ面）。調べた局面が v36 の最大（25,671。1〜2000 面）と同じくらいなら、1 面の時間も v36 と同じくらい
+      // （Node で最大 約 30ms。目安 50ms 以内は scratchpad の台本で静かなときに測る）。CPU 時間は並列のテストで混むと延びるので、ゆるい上限 150ms だけ見る
+      check(`生成で調べた局面が 32,000 以内（v36 の最大 25,671 の 1.25 倍。最大 ${maxNodes}・${nodesAt} 面）`, maxNodes <= 32000, { maxNodes, nodesAt });
+      check(`1 面の生成が CPU 150ms 以内（重い面は 3 回の一番短い時間）：最大 ${Math.round(maxMs)}ms（${maxAt} 面）`, slow.length === 0, slow.slice(0, 6));
+      // 仕掛けの無い面は前（v36）と同じ面（瓶の中身・隠れ・布・注文の列の指紋）
+      const fnv = (str) => { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); };
+      const lvs = []; for (let lv = 1; lv <= 200; lv++) { const p = L.paramsFor(lv); if (!(p.smalls || p.onlys || p.keys)) lvs.push(lv); }
+      const fp = fnv(lvs.map((lv) => { const s = L.createLevel(lv).state; return J([s.bottles.map((b) => [b.cells, b.hidden, b.cover]), s.slots, s.queue]); }).join('|'));
+      check(`1〜200 面のうち仕掛けの無い ${lvs.length} 面は v36 と同じ面（指紋 ${fp}。v36 の logic.js で取った値 6136d248・72 面）`, lvs.length === 72 && fp === '6136d248', { n: lvs.length, fp });
+      // 保存 v:3：途中保存を replay すると、仕掛けの状態（cap・only・lock）も同じ局面
+      const sv = [];
+      for (const lv of [41, 71, 101, 104, 150]) {
+        const { state: s0, info } = L.createLevel(lv);
+        const cut = Math.ceil(info.solution.length / 2);
+        let st = s0; for (const [a, b] of info.solution.slice(0, cut)) st = L.applyMove(st, a, b).state;
+        const raw = L.makeSave(lv, info.solutionIds.slice(0, cut));
+        const v = L.validateSave(raw), rp = v && L.replay(lv, v.moves);
+        if (!(JSON.parse(raw).v === 3 && rp && rp.ok && J(rp.state) === J(st))) sv.push(lv);
+      }
+      check('保存の形は v:3 のまま。41・71・101・104・150 面の途中保存 → validateSave → replay で、仕掛けの状態も含めて同じ局面', sv.length === 0, sv);
+      const l101 = L.createLevel(101), lk = l101.state.bottles.find((b) => b.lock !== null);
+      const rb = L.replay(101, [[lk.id, l101.state.bottles.find((b) => b.cells.length === 0).id]]);
+      check('かぎの びんから注ぐ手（id）を含む保存は replay で止まる（ok:false・applied 0。main.js はその面の最初から）', rb.ok === false && rb.applied === 0, rb.applied);
+    },
+  },
+  {
+    id: 'BL20', tier: 'full', node: true, title: 'いろびん v37 難しさ：わな手の割合（その手で解けなくなる手の割合）が 40〜49・50〜69・70〜99・100〜149・150〜200 面の帯ごとに段々に上がり、どの帯も仕掛けを入れる前より下がらない',
+    run({ check, root }) {
+      const L = load(root);
+      const bands = [[40, 49], [50, 69], [70, 99], [100, 149], [150, 200]];
+      // わな手の割合：解の道の各局面で、合法な手のうち「その手を打つと、もう解けない」とソルバー（3000 局面まで）が言い切れた手の割合
+      const trapOf = (c) => {
+        let st = c.state, doomed = 0, tot = 0;
+        for (const [a, b] of c.info.solution) {
+          for (const [x, y] of L.legalMoves(st)) { const r = L.solve(L.applyMove(st, x, y).state, { nodeLimit: 3000 }); tot++; if (!r.solved && !r.exhausted) doomed++; }
+          st = L.applyMove(st, a, b).state;
+        }
+        return tot ? doomed / tot : 0;
+      };
+      const rows = bands.map(([f, t]) => {
+        let now = 0, before = 0, n = 0, gim = 0;
+        for (let lv = f; lv <= t; lv++) {
+          const p = L.paramsFor(lv);
+          now += trapOf(L.createLevel(lv));
+          // 仕掛けを入れる前の面（同じ面番号・仕掛けだけ 0。仕掛けの無い面は乱数の使い方が同じなので前の面と同じ）
+          before += p.smalls + p.onlys + p.keys ? trapOf(L.createLevel(lv, { params: Object.assign({}, p, { smalls: 0, onlys: 0, keys: 0 }) })) : trapOf(L.createLevel(lv));
+          if (p.smalls + p.onlys + p.keys) gim++;
+          n++;
+        }
+        return { band: `${f}-${t}`, now: +(100 * now / n).toFixed(1), before: +(100 * before / n).toFixed(1), gim, n };
+      });
+      const up = rows.every((r, i) => i === 0 || r.now >= rows[i - 1].now + 0.5);
+      check(`わな手の割合が帯ごとに上がる（前の帯より 0.5 ポイント以上）：${rows.map((r) => `${r.band} ${r.now}%`).join('・')}`, up, rows);
+      check(`どの帯も仕掛けを入れる前より下がらない（前→後：${rows.map((r) => `${r.before}→${r.now}`).join('・')}）`, rows.every((r) => r.now >= r.before), rows);
+      check(`150〜200 面は 40〜49 面より 3 ポイント以上 難しい（${rows[0].now}→${rows[4].now}）`, rows[4].now >= rows[0].now + 3, null);
     },
   },
 ];

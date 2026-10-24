@@ -23,6 +23,8 @@
   const KEY_SAVE = L.SAVE_KEY_SAVE || "irobin.save";
   const KEY_HELP = L.SAVE_KEY_HELP || "irobin.help";
   const KEY_CLOTH = L.SAVE_KEY_CLOTH || "irobin.cloth";
+  // v37 の新しい仕掛け（契約 §19）：はじめて出た面で説明を見たら "1"
+  const GIM_KEYS = { small: L.SAVE_KEY_SMALL || "irobin.small", only: L.SAVE_KEY_ONLY || "irobin.only", lock: L.SAVE_KEY_LOCK || "irobin.lock" };
   const CARD_LOCK_MS = 400;     // カードを出してから押せない時間
   const BOARD_BLOCK_MS = 300;   // カードを閉じた直後、瓶の押下を受けない時間
 
@@ -38,8 +40,19 @@
   // 横向きで背が低い画面（SE 横）はヒントの欄が狭いので、短い文にする
   const shortHint = () => { try { return !!(window.matchMedia && window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches); } catch (e) { return false; } };
   const clothHint = (m) => (shortHint() ? `ぬのの びんは あと ${m} にん とどけると あくよ` : `ぬのの びんは、おきゃくさんに あと ${m} にん とどけると あくよ`);
+  // v37 の仕掛け（§19.4）。はじめて出た面の最初のヒント（横向きで背が低い画面は短い文）と、注げないときの一言
+  const GIM_TIP = {
+    small: ["ちいさい びんには 3つ までしか はいらないよ。そろえる ばしょには ならないよ", "ちいさい びんは 3つ まで"],
+    only: ["いろ きまりの びんには、しるしと おなじ いろ しか いれられないよ", "しるしの いろ だけ はいるよ"],
+    lock: ["かぎの びんは、かぎと おなじ いろを 1ぽん そろえると あくよ", "かぎの いろを そろえると あくよ"]
+  };
+  const HINT_SMALL_FULL = "ちいさい びんには 3つ までしか はいらないよ";
+  const onlyHint = (c) => `この びんには ${colorName(c)} しか いれられないよ`;
+  const lockHint = (c) => (shortHint() ? `${colorName(c)}を そろえると あくよ` : `かぎの びんは、${colorName(c)}を 1ぽん そろえると あくよ`);
   const DENY_HINT = {
     covered: "ぬのの びんは、おきゃくさんに とどけると あくよ",
+    locked: "かぎの びんは、かぎの いろを そろえると あくよ",
+    only: "その びんには しるしの いろ しか いれられないよ",
     mismatch: "いろが ちがうよ。うえの いろが おなじ びんか、からの びんに そそげるよ",
     full: "その びんは いっぱいだよ",
     sealed: "せんを した びんには いれられないよ",
@@ -144,6 +157,9 @@
   let doomed = false;           // 手はあるが、もう解けない（ソルバーが言い切れたとき）
   let clothTipLevel = 0;        // 布の説明を出した面（やりなおしても同じ面なら出す）
   let clothTip = false;         // はじめて布が出た面（面の最初のヒントを布の説明にし、布の瓶を指さす）
+  let gimTipLevel = 0;          // v37 の仕掛けの説明を出した面（やりなおしても同じ面なら出す）
+  let gimTipKind = null;
+  let gimTip = null;            // はじめて出た仕掛け（"small" | "only" | "lock" | null）。面の最初のヒントにし、その瓶を光らせる
 
   const reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
   const render = R.create({ board: el.board, shop: el.shop, fx: el.fx }, { calm: !!reduceMotion.matches, sfx });
@@ -167,7 +183,13 @@
   }
   const coverOf = (b) => (b && Number.isSafeInteger(b.cover) ? b.cover : null);
   const hasCloth = (s) => !!(s && Array.isArray(s.bottles) && s.bottles.some((b) => coverOf(b) !== null));
-  const idleHint = () => (doomed ? HINT_DOOMED : clothTip && moves.length === 0 ? (shortHint() ? "ぬのの びんは とどけると あくよ" : HINT_CLOTH_FIRST) : level <= 2 && moves.length === 0 ? HINT_FIRST : HINT_IDLE);
+  // 面の瓶にある v37 の仕掛け（§19）
+  const gimsOf = (s) => {
+    const bs = s && Array.isArray(s.bottles) ? s.bottles : [];
+    return { small: bs.some((b) => b && b.cap === 3), only: bs.some((b) => b && Number.isSafeInteger(b.only)), lock: bs.some((b) => b && Number.isSafeInteger(b.lock)) };
+  };
+  const idleHint = () => (doomed ? HINT_DOOMED : clothTip && moves.length === 0 ? (shortHint() ? "ぬのの びんは とどけると あくよ" : HINT_CLOTH_FIRST)
+    : gimTip && moves.length === 0 ? GIM_TIP[gimTip][shortHint() ? 1 : 0] : level <= 2 && moves.length === 0 ? HINT_FIRST : HINT_IDLE);
   const isStuckNow = () => !!(state && !state.won && safeCall(() => L.isStuck(state), false));
   const restPhase = () => (state && state.won ? "clear" : isStuckNow() ? "stuck" : selected !== null ? "selected" : "idle");
 
@@ -198,6 +220,8 @@
     el.shop.dataset.tip = level <= 2 && moves.length === 0 && phase !== "clear" ? "1" : "0";
     // はじめて布が出た面は、布の瓶の札を指さす
     el.board.dataset.clothTip = clothTip && moves.length === 0 && phase !== "clear" ? "1" : "0";
+    // はじめて出た v37 の仕掛けの瓶を光らせて指さす（§19.4）
+    el.board.dataset.gimTip = gimTip && moves.length === 0 && phase !== "clear" ? gimTip : "";
   }
   // 手は残っているのに、もう全部は届けられない局面かどうか（注ぎ終わって落ち着いたときに1回だけ調べる）。
   // 上限に届いた（exhausted）ときは言い切れないので何も言わない。setState の局面（テスト用・色が4段そろわないこともある）は調べない
@@ -264,6 +288,17 @@
     const clothSeen = safeCall(() => L.validateFlag(readKey(KEY_CLOTH)), false);
     clothTip = hasCloth(b.base) && (clothTipLevel === n || (!clothSeen && moves.length === 0));
     if (clothTip) { clothTipLevel = n; if (!clothSeen) writeKey(KEY_CLOTH, "1"); }
+    // はじめて v37 の仕掛けが出た面（布の説明の面でなければ）：ちいさい → いろ きまり → かぎ の順に、まだ見ていない 1 つを説明する
+    gimTip = null;
+    if (!clothTip) {
+      const has = gimsOf(b.base);
+      for (const k of ["small", "only", "lock"]) {
+        if (!has[k]) continue;
+        const seen = safeCall(() => L.validateFlag(readKey(GIM_KEYS[k])), false);
+        if ((gimTipLevel === n && gimTipKind === k) || (!seen && moves.length === 0)) { gimTip = k; break; }
+      }
+      if (gimTip) { gimTipLevel = n; gimTipKind = gimTip; writeKey(GIM_KEYS[gimTip], "1"); }
+    }
     render.build(state, { orders: ordersOf(b.base), places: b.base.bottles.length });
     render.update(state, { selected: null });
     if (state.won) {   // 最後の手まで保存されていた（クリアの記録の前に閉じた）：その面のクリアのカードから続ける（IB-22）
@@ -322,6 +357,13 @@
       sfx.play("deny");
       return "covered";
     }
+    // かぎの びん：選べない。揺らして鍵の色を言う。選んでいる瓶があっても、その選びは解除しない（§19.4）
+    if (Number.isSafeInteger(b.lock)) {
+      setHint(lockHint(b.lock));
+      render.deny(i, "locked");
+      sfx.play("deny");
+      return "locked";
+    }
     if (selected === null) {
       if (!b.cells || b.cells.length === 0) { setHint(DENY_HINT.empty); render.deny(i, "empty"); return null; }
       if (b.sealed) { setHint("せんを した びんは うごかせないよ"); render.deny(i, "sealed"); return null; }
@@ -348,7 +390,8 @@
       render.update(state, { selected: null });
       render.deny(i, o && o.reason);
       sfx.play("deny");
-      setHint((o && DENY_HINT[o.reason]) || idleHint());
+      const tb = state.bottles[i];
+      setHint(o && o.reason === "full" && tb && tb.cap === 3 ? HINT_SMALL_FULL : o && o.reason === "only" && tb && Number.isSafeInteger(tb.only) ? onlyHint(tb.only) : (o && DENY_HINT[o.reason]) || idleHint());
       if (phase !== "pouring") setPhase(restPhase());
       return "invalid";
     }
@@ -394,6 +437,8 @@
     if (selected !== null) { setHint(HINT_SELECTED); return; }
     const uh = unveilHint(o);
     if (uh) { setHint(uh); return; }
+    const ul = Array.isArray(o.unlocked) ? o.unlocked : [];
+    if (ul.length) { setHint(`${colorName(ul[0].color)}が そろって、かぎが あいた！`); return; }
     const del = Array.isArray(o.deliveries) ? o.deliveries : [];
     const auto = del.filter((d) => d.bottle !== o.sealed);   // まっていた びんが、来たお客さんに じどうで届いた
     if (auto.length) {
@@ -525,6 +570,15 @@
     const fb = focusBack; focusBack = null;
     if (fb && fb.isConnected && fb !== document.body) { try { fb.focus({ preventScroll: true }); } catch (e) { /* 無視 */ } }
   }
+  // 遊び方カードの v37 の仕掛けの行（§19.4）：もう出てきた（その面まで来た）仕掛けだけ 1 行ずつ。まだの仕掛けは書かない（カードを短く）
+  function gimHelp() {
+    const reach = Math.max(level, (Number(best) || 0) + 1);
+    const parts = [];
+    if (reach >= (L.SMALL_FROM || 41)) parts.push('<b>ちいさい びん</b>は 3つ まで。');
+    if (reach >= (L.ONLY_FROM || 71)) parts.push('<b>いろ きまりの びん</b>は しるしの いろ だけ。');
+    if (reach >= (L.KEY_FROM || 101)) parts.push('<b>かぎの びん</b>は かぎの いろを そろえると あく。');
+    return parts.length ? `<li class="gimhelp">${parts.join("")}</li>` : "";
+  }
   function showHelp() {
     if (overlayKind === "help") return;
     if (overlayKind) return;   // クリア・確認のカードの上には重ねない
@@ -534,7 +588,7 @@
       <ol class="rules">
         <li>びんを おして、べつの びんを おすと <b>そそげる</b>よ（<b>おなじ いろ</b>の うえ か、<b>からの びん</b>に）。</li>
         <li>4つ そろうと <b>せん</b>。うえの <b>トレイと おなじ いろ</b>なら おきゃくさんに とどくよ。まだ いない いろは、その ばしょで まつよ。</li>
-        <li>「？」は うえを どかすと みえるよ。<b>ぬのの びん</b>は、とどけた にんずで あくよ。</li>
+        <li>「？」は うえを どかすと みえるよ。<b>ぬのの びん</b>は、とどけた にんずで あくよ。</li>${gimHelp()}
       </ol>
       <p class="note">こまったら「1手もどす」「やりなおし」。キー：やじるし・エンター・すうじ（0 は 10ぽんめ、- は 11ぽんめ）で えらぶ。U もどす、M おと。</p>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");
@@ -657,7 +711,9 @@
       if (!b || !Array.isArray(b.cells) || b.cells.length > capN || !b.cells.every(okColor)) return null;
       const hidden = Array.isArray(b.hidden) ? b.hidden.map(Boolean) : b.cells.map(() => false);
       if (hidden.length !== b.cells.length) return null;
-      bottles.push({ id: b.id, cells: b.cells.slice(), hidden, sealed: !!b.sealed, cover: Number.isSafeInteger(b.cover) && b.cover >= 0 ? b.cover : null });
+      // v37 の仕掛け（§19）：cap・only・lock はそのまま渡す（形の検査は logic の normalizeState）
+      bottles.push({ id: b.id, cells: b.cells.slice(), hidden, sealed: !!b.sealed, cover: Number.isSafeInteger(b.cover) && b.cover >= 0 ? b.cover : null,
+        cap: b.cap === 3 ? 3 : 4, only: okColor(b.only) ? b.only : null, lock: okColor(b.lock) ? b.lock : null });
     }
     // 瓶の id：無い・重なるときは並び順（0〜）にする（logic と同じ決まり）
     const ids = bottles.map((b) => b.id);
@@ -723,7 +779,7 @@
       render.finishAll();
       custom = st;
       level = st.level;
-      state = st; history = []; moves = []; selected = null; doomed = false; par = 0; clothTip = false;
+      state = st; history = []; moves = []; selected = null; doomed = false; par = 0; clothTip = false; gimTip = null;
       render.build(state, { orders: ordersOf(st), places: placesOf(st) });
       hud();
       setPhase(restPhase());

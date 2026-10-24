@@ -418,6 +418,63 @@
     100% { transform: translate(-50%, -50%) scale(1); }
   }
 
+  /* ===== v37 の新しい仕掛け（契約 §19.4。IB-29） ===== */
+  .gimtag { display: none; }
+  /* ちいさい びん（3 段まで）：ガラスを 4 分の 3 の高さにし、段の大きさはふつうの瓶と同じに。首のふちもガラスの上へ */
+  .bottle[data-cap="3"] .glass { top: 36%; }
+  .bottle[data-cap="3"] .seg { flex-basis: calc(23% * 4 / 3); }
+  .bottle[data-cap="3"]::before { top: 34.5%; }
+  /* いろ きまりの びん：ガラスのふちをその色にし、首に その色と記号の札（栓をしたら札は消す） */
+  .bottle[data-only] .glass { border-color: var(--only, #fff); border-width: 3px; border-top: 0; }
+  .bottle[data-only] .gimtag, .bottle[data-lock] .gimtag { display: block; position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+  .onlybox {
+    position: absolute; left: 50%; top: 1%;
+    transform: translateX(-50%);
+    box-sizing: border-box;
+    width: min(64%, 26px); aspect-ratio: 1;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+    background: var(--c, #888);
+    box-shadow: 0 0 0 2px #fff, 0 2px 3px rgba(0, 0, 0, 0.4);
+  }
+  .onlybox .onlymark { width: 76%; height: 76%; }
+  /* かぎの びん：中身は見えたまま少し暗くし、まん中に錠（つる＋鍵の色の箱に記号） */
+  .bottle[data-lock] .glass { filter: brightness(0.7) saturate(0.75); }
+  .lockbox {
+    position: absolute; left: 50%; top: 60%;
+    transform: translate(-50%, -50%);
+    width: min(76%, 32px);
+    display: flex; flex-direction: column; align-items: center;
+    filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
+  }
+  .lockbox .shackle { display: block; width: 66%; height: auto; margin-bottom: -1px; }
+  .lockbody {
+    box-sizing: border-box; width: 100%; aspect-ratio: 1.15;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 5px;
+    background: var(--c, #888);
+    box-shadow: 0 0 0 2px #eef1f8;
+  }
+  .lockbody .lockmark { width: 64%; height: 76%; }
+  .lockbox.lockfly { z-index: 6; }
+  /* はじめて出た仕掛けの面：その瓶を光らせて指さす（動きを減らす設定では止めて白い縁だけ） */
+  .board[data-gim-tip="small"] .bottle[data-cap="3"] .glass { animation: gimTip 1.6s ease-in-out infinite; }
+  .board[data-gim-tip="only"] .bottle[data-only] .onlybox,
+  .board[data-gim-tip="lock"] .bottle[data-lock] .lockbody { animation: gimTip 1.6s ease-in-out infinite; }
+  .board[data-calm="1"][data-gim-tip="small"] .bottle[data-cap="3"] .glass,
+  .board[data-calm="1"][data-gim-tip="only"] .bottle[data-only] .onlybox,
+  .board[data-calm="1"][data-gim-tip="lock"] .bottle[data-lock] .lockbody { animation: none; box-shadow: 0 0 0 3px #fff; }
+  @keyframes gimTip {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6); }
+    50% { box-shadow: 0 0 0 3px #fff, 0 0 14px 4px rgba(255, 255, 255, 0.75); }
+  }
+  /* 押しても注げないとき：錠・札を一瞬ふくらませる */
+  .board .onlybox.pop { animation: gimPopX 0.5s ease-out 1; }
+  .board .lockbox.pop { animation: gimPopXY 0.5s ease-out 1; }
+  .board[data-calm="1"] .onlybox.pop, .board[data-calm="1"] .lockbox.pop { animation: none; outline: 3px solid #ffd966; }
+  @keyframes gimPopX { 0%, 100% { transform: translateX(-50%) scale(1); } 35% { transform: translateX(-50%) scale(1.35); } }
+  @keyframes gimPopXY { 0%, 100% { transform: translate(-50%, -50%) scale(1); } 35% { transform: translate(-50%, -50%) scale(1.3); } }
+
   canvas.fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 15; }
 
   /* ヒント：2行分の高さに固定し、文言が変わっても配置が動かない */
@@ -561,10 +618,11 @@
   @media (orientation: landscape) and (max-height: 500px) {
     .overlay { padding-top: calc(max(6px, env(safe-area-inset-top, 0px)) + var(--head-h) + 6px); padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)); }
     /* 横向きで背が低い（SE 横など）：遊び方がスクロールなしで収まるよう、幅を広げ、字とすき間を詰める（13px 以上。IB-19） */
-    .card { width: min(640px, 100%); padding: 8px 16px 10px; gap: 4px; }
-    .card h2 { font-size: 18px; line-height: 1.2; }
+    /* v37：仕掛けの行（4 項目目）が入っても収まるよう、遊び方の字を 13px・すき間を 1〜2px に（IB-29） */
+    .card { width: min(640px, 100%); padding: 6px 16px 6px; gap: 2px; }
+    .card h2 { font-size: 17px; line-height: 1.15; }
     .card ol.rules, .card p { font-size: 15px; line-height: 1.5; }
-    .card ol.rules { font-size: 14px; line-height: 1.35; gap: 2px; }
+    .card ol.rules { font-size: 13px; line-height: 1.3; gap: 1px; }
     .card p.note { font-size: 13px; line-height: 1.3; }
     .card .btns { flex-direction: row; }
     .card .btns button { min-height: 44px; }
