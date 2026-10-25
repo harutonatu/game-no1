@@ -70,7 +70,7 @@
   // 1 面は空き瓶 2 本（届けた瓶が消えるルールに合わせて見直し。空き瓶 1 本だと最初の 2 手のうち 1 手で解けなくなった）
   // cloths＝布の瓶の本数、clothEmpty＝布の瓶1本ごとに空き瓶になる確率（それ以外は中身あり＝色水が入っている）
   // clothCover＝中身ありの布の cover（何人届けたら取れるか）の決め方（契約 §17.9）：
-  //   "intro"＝1（8 面だけ。はじめての布は中身あり・すぐ開く）、"early"＝1〜total の 1/3、
+  //   "intro"＝1（5 面（CLOTH_INTRO_LEVEL）だけ。はじめての布は中身あり・すぐ開く）、"early"＝1〜total の 1/3、
   //   "mid"＝total の 1/3〜1/2、"late"＝total の半分前後（9 色で 4〜6）。"late" の面は、布の中の色のお客さんが
   //   前の方に来る列を選び、さらに「cover を 1 にしたときより解く探索量が 1.5 倍以上」の面を優先して選ぶ
   // clothsOn: "even"＝布は偶数面だけ（奇数面は布なし）。9 色の面は瓶が 11 本で空き瓶の布を足せず、中身ありの布だけになる
@@ -79,7 +79,8 @@
     { from: 2,  colors: 3, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0, clothCover: "early" },
     { from: 3,  colors: 4, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0, clothCover: "early" },
     { from: 4,  colors: 5, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0, clothCover: "early" },
-    { from: 6,  colors: 6, empties: 2, hidden: "none", order: "random", cloths: 0, clothEmpty: 0, clothCover: "early" },
+    { from: 5,  colors: 5, empties: 2, hidden: "none", order: "easy",   cloths: 1, clothEmpty: 0.7, clothCover: "early" },   // 5 面＝はじめての布（CLOTH_INTRO_LEVEL。中身あり・cover 1 になる。IB-33）
+    { from: 6,  colors: 6, empties: 2, hidden: "none", order: "random", cloths: 1, clothEmpty: 1, clothCover: "early" },     // 6・7 面＝空き瓶の布（とどけると あく を続けて覚える。IB-33）
     { from: 8,  colors: 6, empties: 2, hidden: "none", order: "random", cloths: 1, clothEmpty: 0.7, clothCover: "early" },
     { from: 10, colors: 7, empties: 2, hidden: Object.freeze([12, 14]), order: "random", cloths: 1, clothEmpty: 0.7, clothCover: "early" },
     { from: 15, colors: 8, empties: 2, hidden: "odd", order: "random",  cloths: 1, clothEmpty: 0.4, clothCover: "mid" },
@@ -87,7 +88,7 @@
     { from: 40, colors: 9, empties: 2, hidden: "all", order: "random",  cloths: 1, clothEmpty: 0, clothCover: "late", clothsOn: "even" }
   ].map((r) => Object.freeze(r)));
 
-  const CLOTH_INTRO_LEVEL = 8;
+  const CLOTH_INTRO_LEVEL = 5;   // はじめての布の面（v40 で 8 から。IB-33）
   const CLOTH_COVERS = Object.freeze(["intro", "early", "mid", "late"]);
 
   // 生成の予算の分け方：表どおり → 易しい側（fallback 1）→ 固定の面（fallback 2）
@@ -166,7 +167,7 @@
     else if (Array.isArray(r.hidden)) hidden = r.hidden.indexOf(n) >= 0;
     else hidden = false;
     const cloths = r.clothsOn === "even" && n % 2 === 1 ? 0 : r.cloths;
-    // 8 面（はじめての布）は中身あり・cover 1 の入門（契約 §17.9）
+    // 5 面（CLOTH_INTRO_LEVEL。はじめての布）は中身あり・cover 1 の入門（契約 §17.9）
     const intro = n === CLOTH_INTRO_LEVEL;
     const g = gimmicksFor(n, cloths);
     return Object.freeze({ colors: r.colors, empties: r.empties, hidden, order: r.order, cloths,
@@ -1102,6 +1103,18 @@
     return { best: improved ? cl : prev, improved };
   }
 
+  // 節目（IB-24）：5 面ごとにクリアのカードで次の予告を出す。news＝次の 5 面の中で最初に出る新しいもの
+  const MILESTONE_EVERY = 5;
+  const NEWS = Object.freeze([[CLOTH_INTRO_LEVEL, "cloth"], [6, "colors"], [10, "colors"], [12, "hidden"], [15, "colors"], [25, "colors"], [40, "hiddenAll"], [SMALL_FROM, "small"], [ONLY_FROM, "only"], [KEY_FROM, "key"]].map((x) => Object.freeze(x)));
+  function milestoneFor(level) {
+    const n = normLevel(level);
+    const milestone = n % MILESTONE_EVERY === 0;
+    const next = n < Number.MAX_SAFE_INTEGER ? n + 1 : n;
+    const hit = milestone ? NEWS.find(([at]) => n < at && at <= n + MILESTONE_EVERY) : null;
+    const news = hit ? Object.freeze({ at: hit[0], kind: hit[1] }) : null;
+    return Object.freeze({ level: n, milestone, next, news, more: n < KEY_FROM });
+  }
+
   function validateFlag(raw) {
     return raw === "1";
   }
@@ -1137,6 +1150,7 @@
     pourCheck, applyMove, legalMoves, isStuck, indexOfId, moveById, toIdMoves,
     solve,
     replay, hud, validateBest, validateSave, makeSave, recordBest, validateFlag,
+    MILESTONE_EVERY, milestoneFor,
     animalFor, colorName,
     normalizeState
   });

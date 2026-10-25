@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>OGP の絵（下書き）</title>
+<!-- 共有の絵 1200x630 を組む下書きのページ。どこからもリンクしない。tests/og/make.mjs が撮る。?p=irobin か ?p=menu -->
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; background: #1b1f2e; color: #eef1f8;
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans CJK JP", "Noto Sans JP", sans-serif; }
+  #root { position: relative; width: 1200px; height: 630px; padding: 56px 64px;
+    background: radial-gradient(900px 500px at 85% 30%, #2b3350 0%, #1b1f2e 70%); }
+  h1 { position: absolute; left: 64px; top: 28px; font-size: 160px; line-height: 1.1; font-weight: 800; letter-spacing: 0; white-space: nowrap; }
+  .sub { position: absolute; left: 68px; top: 236px; font-size: 56px; line-height: 1.3; font-weight: 700; color: #dfe4f5; white-space: nowrap; }
+  .badge { position: absolute; right: 64px; bottom: 56px; font-size: 56px; font-weight: 800; color: #1b1f2e;
+    background: #ffd84a; padding: 10px 36px; border-radius: 16px; }
+  .animals { position: absolute; left: 64px; bottom: 36px; display: flex; gap: 20px; }
+  .animals canvas { width: 190px; height: 200px; background: #2b3350; border-radius: 24px; }
+  .bottles { position: absolute; right: 48px; top: 40px; display: flex; gap: 20px; }
+  .bottle { width: 88px; height: 336px; border: 6px solid #cfd6ee; border-top: 0; border-radius: 0 0 40px 40px;
+    background: rgba(255,255,255,.07); display: flex; flex-direction: column-reverse; padding: 4px; gap: 4px; position: relative; }
+  .bottle::before { content: ""; position: absolute; left: -10px; right: -10px; top: -6px; height: 8px; background: #cfd6ee; border-radius: 4px; }
+  .seg { flex: 0 0 auto; height: 76px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+  .seg:first-child { border-radius: 10px 10px 30px 30px; }
+  .seg svg { width: 50px; height: 50px; }
+  .grid { position: absolute; left: 64px; right: 64px; bottom: 36px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
+  .grid .card { background: #2b3350; border-radius: 20px; padding: 6px; }
+  .grid img { display: block; width: 100%; height: auto; aspect-ratio: 1; border-radius: 14px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="../../games/irobin/logic.js"></script>
+<script src="../../games/irobin/render.js"></script>
+<script>
+(function () {
+  "use strict";
+  var p = new URLSearchParams(location.search).get("p") === "menu" ? "menu" : "irobin";
+  document.body.dataset.p = p;
+  var root = document.getElementById("root");
+  if (p === "irobin") {
+    root.innerHTML = '<h1>いろびん</h1><p class="sub">どうぶつに いろみずを<br>とどける パズル</p><div class="badge">広告なし</div>' +
+      '<div class="animals" id="an"></div><div class="bottles" id="bt"></div>';
+    var an = document.getElementById("an");
+    ["kuma", "neko", "penguin"].forEach(function (k) {
+      var cv = document.createElement("canvas"); cv.width = 570; cv.height = 600; an.appendChild(cv);
+      var ctx = cv.getContext("2d");
+      IrobinRender.drawAnimal(ctx, k, { w: 570, h: 600, mood: "happy", t: 0 });
+    });
+    var bt = document.getElementById("bt");
+    var C = IrobinLogic.COLORS;
+    [[1, 1, 1, 1], [4, 4, 4], [6, 6, 0], [2, 3]].forEach(function (cols, i) {
+      var b = document.createElement("div"); b.className = "bottle";
+      cols.forEach(function (id, j) {
+        var s = document.createElement("div"); s.className = "seg"; s.style.background = C[id].hex;
+        s.innerHTML = IrobinRender.markSvg(id); b.appendChild(s);
+      });
+      bt.appendChild(b);
+    });
+  } else {
+    root.innerHTML = '<h1>ゆびあそび</h1><p class="sub">指で あそぶ 12こ の ゲーム<br>広告なし・登録なし</p><div class="grid" id="gr"></div>';
+    var gr = document.getElementById("gr");
+    var imgs = (window.__menuArt || []);
+    // make.mjs が __menuArt（データURLの配列）を入れてから window.__fill() を呼ぶ
+    window.__fill = function (arr) {
+      gr.innerHTML = "";
+      arr.forEach(function (u) { var d = document.createElement("div"); d.className = "card"; var im = new Image(); im.src = u; d.appendChild(im); gr.appendChild(d); });
+    };
+  }
+})();
+</script>
+</body>
+</html>

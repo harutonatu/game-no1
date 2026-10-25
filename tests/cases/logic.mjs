@@ -294,4 +294,56 @@ export const tests = [
       check('markReload は書けなくても例外を出さない', !mThrew);
     },
   },
+  {
+    id: 'L12', tier: 'smoke', node: true, title: '共有の見た目（IB-32）：メニューといろびんの head に description・og:*・twitter:card が 1 つずつ、og:url・og:image は公開の絶対 URL、絵（1200×630・300KB 以下）が手元にある、meta は title より前、いろびん・メニューの文の決まり',
+    run({ check, root }) {
+      const BASE = 'https://harutonatu.github.io/game-no1/';
+      const rd = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+      const metas = (html) => {
+        const head = html.slice(0, html.indexOf('</head>'));
+        return [...head.matchAll(/<meta\s+([^>]*?)\/?>/g)].map((m) => {
+          const a = {}; for (const x of m[1].matchAll(/([\w:-]+)="([^"]*)"/g)) a[x[1]] = x[2];
+          return { ...a, idx: m.index };
+        });
+      };
+      const pages = [
+        { f: 'index.html', url: BASE },
+        { f: 'games/irobin/index.html', url: BASE + 'games/irobin/' },
+      ];
+      const N = (rd('index.html').match(/\{ name:/g) || []).length;
+      const val = {};
+      for (const pg of pages) {
+        const html = rd(pg.f);
+        const ms = metas(html);
+        const titleAt = html.indexOf('<title>');
+        const by = (k, v) => ms.filter((m) => m[k] === v);
+        const one = (k, v) => { const r = by(k, v); return r.length === 1 ? r[0].content : null; };
+        const V = {
+          description: one('name', 'description'), title: one('property', 'og:title'), desc: one('property', 'og:description'),
+          url: one('property', 'og:url'), image: one('property', 'og:image'), w: one('property', 'og:image:width'),
+          h: one('property', 'og:image:height'), alt: one('property', 'og:image:alt'), card: one('name', 'twitter:card'),
+        };
+        val[pg.f] = V;
+        check(`${pg.f}：description・og:title・og:description・og:url・og:image・幅・高さ・alt・twitter:card が 1 つずつ`, Object.values(V).every((x) => typeof x === 'string' && x.length > 0), V);
+        check(`${pg.f}：og:image の幅 1200・高さ 630、twitter:card は summary_large_image`, V.w === '1200' && V.h === '630' && V.card === 'summary_large_image', V);
+        check(`${pg.f}：og:url は公開の場所で ? を含まず、og:image は公開の絶対 URL`, V.url === pg.url && !String(V.url).includes('?') && String(V.image).startsWith(BASE) && /icons\/og-[a-z]+\.png$/.test(String(V.image)), V);
+        const late = ms.filter((m) => /^og:|^twitter:/.test(m.property || m.name || '') || m.name === 'description').filter((m) => m.idx > titleAt);
+        check(`${pg.f}：共有の meta はどれも <title> より前（DG1 を崩さない）`, titleAt > 0 && late.length === 0, late);
+        const rel = String(V.image).slice(BASE.length);
+        const file = path.join(root, rel);
+        let w = 0, h = 0, size = 0, sig = false;
+        if (fs.existsSync(file)) {
+          const b = fs.readFileSync(file); size = b.length;
+          sig = b.slice(1, 4).toString() === 'PNG' && b.slice(12, 16).toString() === 'IHDR';
+          w = b.readUInt32BE(16); h = b.readUInt32BE(20);
+        }
+        check(`${pg.f}：絵 ${rel} が手元にあり、PNG で 1200×630、300KB 以下`, sig && w === 1200 && h === 630 && size <= 300 * 1024, { rel, sig, w, h, size });
+      }
+      const I = val['games/irobin/index.html'], M = val['index.html'];
+      check('いろびん：description と og:description が「広告なし・登録なし。」で始まり「どうぶつ」を含み、og:title は「いろびん｜」で始まる',
+        [I.description, I.desc].every((x) => x.startsWith('広告なし・登録なし。') && x.includes('どうぶつ')) && I.title.startsWith('いろびん｜'), I);
+      const head = `指で あそぶ ${N}こ の ゲーム。広告なし・登録なし。`;
+      check(`メニュー：description と og:description が「${head}」で始まる（N は GAMES の { name: の数）`, N > 0 && M.description.startsWith(head) && M.desc.startsWith(head), { N, M });
+    },
+  },
 ];

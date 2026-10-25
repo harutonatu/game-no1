@@ -29,7 +29,7 @@
   const BOARD_BLOCK_MS = 300;   // カードを閉じた直後、瓶の押下を受けない時間
 
   const HINT_IDLE = "びんを えらんで、べつの びんに そそいでね";
-  const HINT_FIRST = "うえの トレイと おなじ いろを、1ぽんに 4つ あつめよう。びんを おしてね";
+  const HINT_FIRST = "うえの どうぶつさんが ほしい いろを、1⁠ぽ⁠ん⁠に 4⁠つ あつめよう";   // 「1ぽんに 4つ」は途中で折れないよう、字の間に U+2060（幅 0 の結合）を入れてある
   const HINT_SELECTED = "どの びんに そそぐ？（もういちど おすと やめる）";
   const HINT_STUCK = "うごかせる びんが ないよ。「1手もどす」か「やりなおし」を おしてね";
   // 手は残っているが、もう全部は届けられない（ソルバーが上限内で「解けない」と言い切れたときだけ）
@@ -39,7 +39,8 @@
   const HINT_REWOUND = "ここからなら ぜんぶ とどけられるよ";
   const REWIND_BUDGET = 30000;    // 戻し先を探すときに調べる局面の合計の上限（1 局面ずつは DOOM_NODE_LIMIT まで。超えたら面の最初）
   // 布の瓶（§17.4）
-  const HINT_CLOTH_FIRST = "ぬのの びんは、おきゃくさんに とどけると あくよ。どの いろから とどけるか かんがえよう";
+  const HINT_CLOTH_FIRST = "ぬのの びんは なかが みえないよ。おきゃくさんに とどけると ぬのが とれるよ";
+  const HINT_CLOTH_AGAIN = "おきゃくさんに とどけると ぬのが とれるよ";   // はじめての布の面（CLOTH_INTRO_LEVEL）以外で説明を出すとき
   // 横向きで背が低い画面（SE 横）はヒントの欄が狭いので、短い文にする
   const shortHint = () => { try { return !!(window.matchMedia && window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches); } catch (e) { return false; } };
   const clothHint = (m) => (shortHint() ? `ぬのの びんは あと ${m} にん とどけると あくよ` : `ぬのの びんは、おきゃくさんに あと ${m} にん とどけると あくよ`);
@@ -194,7 +195,7 @@
     const bs = s && Array.isArray(s.bottles) ? s.bottles : [];
     return { small: bs.some((b) => b && b.cap === 3), only: bs.some((b) => b && Number.isSafeInteger(b.only)), lock: bs.some((b) => b && Number.isSafeInteger(b.lock)) };
   };
-  const idleHint = () => (doomed ? HINT_DOOMED : clothTip && moves.length === 0 ? (shortHint() ? "ぬのの びんは とどけると あくよ" : HINT_CLOTH_FIRST)
+  const idleHint = () => (doomed ? HINT_DOOMED : clothTip && moves.length === 0 ? (shortHint() ? "とどけると ぬのが とれるよ" : level === (L.CLOTH_INTRO_LEVEL || 5) ? HINT_CLOTH_FIRST : HINT_CLOTH_AGAIN)
     : gimTip && moves.length === 0 ? GIM_TIP[gimTip][shortHint() ? 1 : 0] : level <= 2 && moves.length === 0 ? HINT_FIRST : HINT_IDLE);
   const isStuckNow = () => !!(state && !state.won && safeCall(() => L.isStuck(state), false));
   const restPhase = () => (state && state.won ? "clear" : isStuckNow() ? "stuck" : selected !== null ? "selected" : "idle");
@@ -472,35 +473,127 @@
     best = r.best;
     writeKey(KEY_BEST, String(best));
     const h = L.hud(state);
-    lastClear = { level, moves: h.moves, improved, par };
+    const ms = safeCall(() => L.milestoneFor(level), null) || { milestone: false, news: null, next: level + 1, more: true };
+    const animals = (safeCall(() => render.animalsSeen(), []) || []).map((k, i) => k || safeCall(() => L.animalFor(level, i), "kuma"));
+    lastClear = { level, moves: h.moves, improved, par, milestone: !!ms.milestone, news: ms.news, next: ms.next, more: ms.more !== false, animals };
     writeKey(KEY_SAVE, L.makeSave(level + 1, []));
     setHint(`${level} めん クリア！`);
     sfx.play("clear");
     const p = setPending(() => showClearCard());
     render.celebrate().then(() => p.run());
   }
+  // 予告の文（節目のカード。IB-24）
+  const NEWS_TEXT = { cloth: "ぬのの びんが でるよ", colors: "いろが ふえるよ", hidden: "かくれた いろが でるよ", hiddenAll: "かくれた いろが ふえるよ", small: "ちいさい びんが でるよ", only: "いろ きまりの びんが でるよ", key: "かぎの びんが でるよ" };
+  function nextNoteText(c) {
+    const next = Number(c.next) || c.level + 1;
+    const news = c.news;
+    if (news && NEWS_TEXT[news.kind]) {
+      return news.at === next ? `つぎは ${next}めん。${NEWS_TEXT[news.kind]}` : `つぎは ${next}めん。${news.at}めんで ${NEWS_TEXT[news.kind]}`;
+    }
+    if (c.more) {
+      const nm = safeCall(() => R.ANIMAL_NAMES[L.animalFor(next, 0)], "") || "おきゃくさん";
+      return `つぎは ${next}めん。${nm}さんが まってるよ`;
+    }
+    return `つぎは ${next}めん`;
+  }
+  // 共有（IB-31）。★3 と節目のカードだけ。回数は測らない・印は付けない（ユーザー決定）
+  const SHARE_URL = "https://harutonatu.github.io/game-no1/games/irobin/";
+  const ANIMAL_EMOJI = { kuma: "🐻", usagi: "🐰", neko: "🐱", penguin: "🐧", risu: "🐿️", hitsuji: "🐑" };
+  let sharing = false;
+  function shareText(c, star) {
+    const stars = star === 3 ? " ★★★" : star === 2 ? " ★★☆" : star === 1 ? " ★☆☆" : "";
+    const faces = (c.animals || []).map((k) => ANIMAL_EMOJI[k] || "").join("");
+    return `いろびん ${c.level}めん クリア！${stars}\n${faces} に とどけたよ（${c.moves}かい）`;
+  }
+  function setShareNote(text, url) {
+    const n = el.card.querySelector(".share-note");
+    if (!n) return;
+    n.textContent = text;
+    if (url) { const u = document.createElement("span"); u.className = "url"; u.textContent = SHARE_URL; n.appendChild(u); }
+  }
+  function doShare() {
+    if (sharing) return;
+    const c = lastClear;
+    if (!c) return;
+    const p = Number(c.par) || 0;
+    const star = !p ? 0 : c.moves <= p ? 3 : c.moves <= Math.ceil(p * 1.5) ? 2 : 1;
+    const text = shareText(c, star);
+    try {
+      if (typeof navigator.share === "function") {
+        sharing = true;
+        let pr;
+        try { pr = navigator.share({ title: "いろびん", text, url: SHARE_URL }); } catch (e) { pr = Promise.reject(e); }
+        Promise.resolve(pr).then(() => {}, (e) => {
+          const name = e && e.name;
+          if (name === "AbortError" || name === "InvalidStateError") return;
+          setShareNote("この あどれすを コピーしてね", true);
+        }).then(() => { sharing = false; });
+      } else if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        const myRun = runId;
+        navigator.clipboard.writeText(`${text}\n${SHARE_URL}`).then(() => {
+          if (overlayKind !== "clear" || myRun !== runId) return;
+          const btn = el.card.querySelector("button.share");
+          if (btn) {
+            btn.textContent = "コピーしました";
+            later(() => { const b = el.card.querySelector("button.share"); if (b) b.textContent = "ともだちに おしえる"; setShareNote("", false); }, 3000);   // 成功の吹き出しは、ボタンの文字が戻るのと同時に消す
+          }
+          setShareNote("LINE などの にゅうりょくらんを ながおしして はりつけてね", false);
+        }, () => { if (overlayKind === "clear") setShareNote("コピーできなかったよ。ながおしで コピーしてね", true); });
+      } else {
+        setShareNote("コピーできなかったよ。ながおしで コピーしてね", true);
+      }
+    } catch (e) {
+      sharing = false;
+      setShareNote("コピーできなかったよ。ながおしで コピーしてね", true);
+    }
+  }
   function showClearCard() {
-    const c = lastClear || { level, moves: moves.length, improved: false, par };
+    sharing = false;   // 共有の返事が来ない端末でも、次のカードでは押せるように戻す
+    const c = lastClear || { level, moves: moves.length, improved: false, par, milestone: false, news: null, next: level + 1, more: true, animals: [] };
     // 上達が見えるように、目安の手数と比べて星1〜3（責めない言い方。目安は最短とは限らないので「めやす」と書く）
     const p = Number(c.par) || 0;
     const star = !p ? 0 : c.moves <= p ? 3 : c.moves <= Math.ceil(p * 1.5) ? 2 : 1;
     const starText = star === 3 ? "★★★ すごい！" : star === 2 ? "★★☆ いいね！" : star === 1 ? "★☆☆ つぎは めやすを めざそう" : "";
+    const showRecord = c.improved && c.milestone;
+    const showQuiet = c.improved && !c.milestone;
+    const canShare = star === 3 || !!c.milestone;
+    const animals = Array.isArray(c.animals) ? c.animals : [];
     showCard(`
       <h2 id="cardTitle" data-f="h"></h2>
       <p class="stars" data-f="s"></p>
-      <p data-f="m"></p>
+      <div class="served" role="img"></div>
+      <p class="moves"><span data-f="m1"></span><span data-f="m2"></span></p>
       <p class="best-new" data-f="b"></p>
+      <p class="next-note" data-f="n"></p>
       <div class="btns">
+        ${canShare ? '<p class="share-note" aria-live="polite"></p>' : ""}
         <button class="cta primary" type="button" data-cmd="next">つぎの めんへ</button>
         <button class="cta" type="button" data-cmd="menu">メニューへ</button>
-      </div>`, { h: `${c.level} めん クリア！`, s: starText, m: p ? `${c.moves}かい そそいで とどけたよ（めやす ${p}かい）` : `${c.moves}かい そそいで とどけたよ`, b: c.improved ? "あたらしい きろく！" : "" }, "clear");
-    if (!c.improved) { const b = el.card.querySelector(".best-new"); if (b) b.hidden = true; }
+        ${canShare ? '<button class="cta share" type="button" data-cmd="share">ともだちに おしえる</button>' : ""}
+      </div>`, { h: `${c.level} めん クリア！`, s: starText, m1: `${c.moves}かい そそいで とどけたよ`, m2: p ? `（めやす ${p}かい）` : "", b: showRecord ? "あたらしい きろく！" : showQuiet ? `ここまで ${c.level}めん` : "", n: c.milestone ? nextNoteText(c) : "" }, "clear");
+    // 動物の顔の列（狭い画面では CSS で隠す）。aria-label は showCard のあとに直接入れる
+    const served = el.card.querySelector(".served");
+    if (served) {
+      const dpr = Math.min(2, Math.max(1, Number(window.devicePixelRatio) || 1));
+      animals.forEach((kind) => {
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(28 * dpr); cv.height = Math.round(28 * dpr);
+        try { const ctx = cv.getContext("2d"); if (ctx) R.drawAnimal(ctx, kind, { w: cv.width, h: cv.height, mood: "happy" }); } catch (e) { /* 絵が描けなくても続ける */ }
+        served.appendChild(cv);
+      });
+      if (animals.length) served.setAttribute("aria-label", `とどけた おきゃくさん：${animals.map((k) => R.ANIMAL_NAMES[k] || "おきゃくさん").join("、")}`);
+      else served.hidden = true;
+    }
+    if (!p) { const m2 = el.card.querySelector('.moves span:last-child'); if (m2) m2.hidden = true; }
+    if (!showRecord && !showQuiet) { const b = el.card.querySelector(".best-new"); if (b) b.hidden = true; }
+    else if (showQuiet) { const b = el.card.querySelector(".best-new"); if (b) b.classList.add("quiet"); }
+    if (!c.milestone) { const nn = el.card.querySelector(".next-note"); if (nn) nn.hidden = true; }
     if (!starText) { const sEl = el.card.querySelector(".stars"); if (sEl) sEl.hidden = true; }
     else { const sEl = el.card.querySelector(".stars"); if (sEl) { sEl.dataset.stars = String(star); sEl.setAttribute("aria-label", `ほし ${star}つ`); } }
     cardShownAt = now();
     el.card.querySelectorAll(".btns button").forEach((btn) => btn.setAttribute("aria-disabled", "true"));
     later(() => el.card.querySelectorAll(".btns button[aria-disabled]").forEach((btn) => btn.removeAttribute("aria-disabled")), CARD_LOCK_MS);
-    if (c.improved) later(() => sfx.play("best"), 450);
+    if (showRecord) later(() => sfx.play("best"), 450);
   }
 
   // ===== お助け =====
@@ -676,6 +769,8 @@
     location.href = "../../";
   }
   el.overlay.addEventListener("click", (e) => {
+    const note = e.target && e.target.closest ? e.target.closest(".share-note") : null;
+    if (note) { note.textContent = ""; return; }   // 吹き出しは押すと閉じる
     const btn = e.target && e.target.closest ? e.target.closest("[data-cmd]") : null;
     if (!btn) return;
     if ((overlayKind === "clear" || overlayKind === "rescue") && now() - cardShownAt < CARD_LOCK_MS) return;   // 出た直後の連打で押し間違えない
@@ -685,6 +780,7 @@
     else if (cmd === "close") closeCard();
     else if (cmd === "restartYes") doRestart();
     else if (cmd === "rewindYes") doRewind();
+    else if (cmd === "share") doShare();
   });
   el.helpBtn.addEventListener("click", () => { sfx.unlock(); showHelp(); });
   // 届ける演出の途中でお客さんを押したら、演出を飛ばす（連鎖が長いときに待たせない）

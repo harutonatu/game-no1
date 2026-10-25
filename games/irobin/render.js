@@ -1454,6 +1454,8 @@
 
     return {
       build, layout, update, pour, deny, celebrate, finishAll, pause, resume, setCalm,
+      // この面の注文の順（0 番から）に、画面で見せた動物（まだ見せていない番号は null）。クリアのカードと共有の文に使う（IB-33・IB-31）
+      animalsSeen() { return orders.map((_, i) => (seenKind.has(i) ? seenKind.get(i) : null)); },
       get busy() { return !!cur; },
       get calm() { return calm; },
       get paused() { return paused; }

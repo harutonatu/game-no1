@@ -7,6 +7,18 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ゆびあそび">
 <meta name="theme-color" content="#1b1f2e">
+<meta name="description" content="広告なし・登録なし。どうぶつが ほしい いろの いろみずを、びんに あつめて とどける パズル（色水ソート）。色に記号つきで、色が見分けにくい人も遊べます。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ゆびあそび">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:title" content="いろびん｜どうぶつに いろみずを とどける パズル">
+<meta property="og:description" content="広告なし・登録なし。どうぶつが ほしい いろの いろみずを、びんに あつめて とどける パズル（色水ソート）。">
+<meta property="og:url" content="https://harutonatu.github.io/game-no1/games/irobin/">
+<meta property="og:image" content="https://harutonatu.github.io/game-no1/icons/og-irobin.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="どうぶつが いろみずの びんを まっている いろびんの絵">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="manifest" href="../../manifest.webmanifest">
 <link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
 <!-- 表示名は main.js が IrobinLogic.NAME で上書きする（ここに書く文字は控え） -->
@@ -609,7 +621,18 @@
   .card p.stars { color: #ffd84d; font-weight: 700; font-size: 20px; letter-spacing: 0.06em; }
   .card ol.rules { margin: 0; padding-left: 1.4em; text-align: left; font: 16px/1.6 var(--font-text); display: flex; flex-direction: column; gap: 4px; }
   .card ol.rules b { color: var(--accent); }
-  .card .btns { display: flex; flex-direction: column; gap: 10px; }
+  .card .btns { display: flex; flex-direction: column; gap: 12px; }
+  .card .btns button.share { background: transparent; }
+  .card .served { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
+  .card .served canvas { width: 28px; height: 28px; }
+  .card p.next-note { color: var(--ink); font-weight: 700; }
+  .card p.best-new.quiet { color: var(--ink); font-weight: 400; font-size: 14px; }
+  /* 共有の知らせは場所を取らない吹き出し（.btns の上にかぶせる）。出ても「つぎの めんへ」は動かない */
+  .card p.share-note { position: absolute; left: 0; right: 0; bottom: 100%; box-sizing: border-box; max-width: 100%; margin-bottom: 4px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; color: var(--ink); min-height: 0; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; z-index: 2; box-shadow: 0 4px 14px rgba(0,0,0,0.4); }
+  .card p.share-note:empty { visibility: hidden; pointer-events: none; }   /* 空のときは見えないだけ（aria-live の読み上げのため display:none にしない） */
+  .card p.share-note .url { display: block; overflow-wrap: anywhere; word-break: normal; }
+  .card p.moves span { white-space: nowrap; display: inline-block; }
+  @media (max-height: 700px) { .card .served { display: none; } }
   /* 閉じるボタンは、カードが長くても画面の下に見えたままにする（スクロールしなくても押せる） */
   .card .btns { position: sticky; bottom: 0; z-index: 1; background: var(--panel); padding-top: 6px; margin-bottom: -6px; padding-bottom: 6px; }
   .card .btns button {
@@ -625,7 +648,7 @@
     font: 700 16px/1.3 var(--font-text);
     touch-action: manipulation;
   }
-  .card .btns button:first-child { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .card .btns button:first-of-type { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
   .card .btns button:active:not(:disabled) { filter: brightness(1.2); }
   .card button[aria-disabled="true"] { opacity: 0.5; }
   @media (orientation: landscape) and (max-height: 500px) {
@@ -637,7 +660,10 @@
     .card ol.rules, .card p { font-size: 15px; line-height: 1.5; }
     .card ol.rules { font-size: 14px; line-height: 1.35; gap: 2px; }
     .card p.note { font-size: 13px; line-height: 1.3; }
-    .card .btns { flex-direction: row; }
+    /* 1 行目：つぎの めんへ・メニューへ（v39 と同じ横並び）、2 行目：ともだちに おしえる（幅いっぱい）。行の間 12px */
+    .card .btns { flex-direction: row; flex-wrap: wrap; gap: 12px; }
+    .card .btns button { flex: 1 1 calc(50% - 6px); width: auto; }
+    .card .btns button.share { flex: 1 1 100%; white-space: nowrap; }
     .card .btns button { min-height: 44px; }
   }
   /* 横でとくに背が低い（SE 横の 320px など）ときだけ 13px・すき間 1px に詰めて、仕掛けの行が入っても収める */
