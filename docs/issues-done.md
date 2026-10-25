@@ -250,6 +250,7 @@
 | T-28 | 低 | 時間切れになった項目が裏で動き続け、その確かめが次の項目の結果に入った（v38 の関門で P9 の時間切れのあと P10 が「爆弾を切ると…」で不合格）。WW12・WW25（Chromium）・QW3（WebKit）は「page.click: Timeout 30000ms」（呼び出しの記録が locator resolved to で終わる＝ページが応答しない） | 済 | v39（2026-10-25）：run.mjs で、時間切れのあとその回の check を記録しない（live）・その項目のページを閉じる。止まった（時間切れ・要素を見つけた所で止まった操作・CDP のタッチの時間切れ）も 1 回だけ流し直す（ユーザー決定「入れる (Recommended)」）。項目ごとの上限（timeout） |
 | T-29 | 低 | WW19（もくもくこうば）の札の数が 10/50 → 40/50 になった（書いてから読むまでに工場が実時間で進んだ。直す前 15 回中 1 回） | 済 | v39（2026-10-25）：書いて読む間を frozen に |
 | T-30 | 低 | BW の項目のグループごと子プロセスが落ちた（route.fetch: read ECONNRESET）。safe-area の route の中の fetch が、サーバーがオフラインの間に失敗し、受け取り手のない例外で子プロセスが終わった | 済 | v39（2026-10-25）：lib.mjs の newPage の route で、失敗したら接続断として返し（route.abort）、fulfill の失敗も外へ出さない |
+| MT-14 | 中 | WebKit（Linux・ヘッドレス）で QW1・WW5・QW3 などが「Target crashed」で落ちる（直す前の 5f23cbc でも 4〜5 回に1回）。流し直しのあとも続けて落ちる回があった（v35・v36・v39） | 済（v40。関門を画面ありに） | 原因（v40 の調査）：画面なしの WebKit の描く仕組み（WPEWebProcess）の不具合。canvas から canvas への `drawImage` が引き金で、dmesg に `trap invalid opcode in libWPEWebKit` が出る（drawImage を何もしない形にすると 40 回中 0 回、そのままだと 60 回中 7 回。WW5 は単独で 20 回中 6〜7 回落ちた）。ゲームのコードの誤りでも、テストの待ち方でもない。画面を出す `HEADED=1` では 40 回中 0 回。対策：公開の条件の WebKit を `HEADED=1 BROWSER=webkit WORKERS=1 xvfb-run -a node tests/run.mjs smoke` に変えた（ユーザー決定 2026-10-25「画面ありに変える」。落ちたときの流し直しは「1回のまま」）。以前の対策：v35 で run.mjs が 1 回だけ自動で流し直す、v39 でブラウザごと起動し直してから流し直す。 |
 
 
 ## 進め方の改善（ワークフロー・サブエージェント）

@@ -82,7 +82,7 @@
 
 詳細は [tests/README.md](tests/README.md)。要点だけ書きます。
 
-- **公開の条件**：Chromium の smoke と full、WebKit の smoke がすべて合格すること。WebKit は並列だとオフライン系が不安定なので `WORKERS=1`。
+- **公開の条件**：Chromium の smoke と full、WebKit の smoke がすべて合格すること。WebKit は並列だとオフライン系が不安定なので `WORKERS=1`。WebKit は画面ありで流す（`HEADED=1`。クラウドは `xvfb-run -a` を前につける。画面なしだと描く仕組みの不具合でブラウザが落ちる。課題 MT-14、ユーザー決定 2026-10-25「画面ありに変える」）。
 - WebKit の合否はクラウド（Linux）の結果を正とする。Windows の WebKit には AudioContext が無く、A4 が「対象外」になるのは既知（不合格ではない）。
 - **変異テスト**（`node tests/mutants/mutate.mjs both`）は、中身の仕組み（点数計算・保存・日付・ルール）を変えたときだけ、**そのゲームの分だけ**流す。表示・見た目・文言の修正では流さない。
 - 日付を扱う処理は、0時またぎ・時計が戻る・保存された日付が壊れている、の3つを同時に検査する。
@@ -92,7 +92,7 @@
 ```sh
 node tests/run.mjs smoke
 node tests/run.mjs full
-BROWSER=webkit WORKERS=1 node tests/run.mjs smoke
+HEADED=1 BROWSER=webkit WORKERS=1 xvfb-run -a node tests/run.mjs smoke
 ```
 
 Windows PowerShell では環境変数を次のように書きます（`VAR=値 コマンド` の形は使えません）。
@@ -101,6 +101,8 @@ Windows PowerShell では環境変数を次のように書きます（`VAR=値 �
 $env:WORKERS=6; node tests/run.mjs full
 $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 ```
+
+Windows の WebKit はそのまま（画面を出すのが既定なので、`HEADED=1` も `xvfb-run` も要らない）。
 
 - 画面の大きさの呼び名：「SE 縦・横（320×568）」は「画面表示を拡大」を使ったときのいちばん小さい iPhone の画面のこと（ユーザー決定 2026-10-25。tests/README.md「画面の大きさの呼び名」）。
 - WebKit は初回だけ `node "$(npm root -g)/playwright/cli.js" install webkit` が必要です。

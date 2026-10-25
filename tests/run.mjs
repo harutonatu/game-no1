@@ -73,7 +73,13 @@ const CRASHED = /Target crashed|Page crashed|Browser has been closed|browser has
 // これも 1 回だけ流し直す（T-27・WW12・WW25・QW3。v39 1 章）
 const STALLED = (m) => /秒以内に終わらない$/.test(m.trim()) || /CDP のタッチが \d+ 秒返らない/.test(m)
   || (/Timeout \d+ms exceeded/.test(m) && /locator resolved to [^\n]*$/.test(m.trim()) && !/attempting|retrying/.test(m)
-    && !/resolved to (hidden|visible)\s*$/.test(m.trim()) && !/\d+ ×[^\n]*$/.test(m.trim()));   // 「hidden / visible」「N ×（くり返し）」で終わるのは、ふつうの不合格（流し直さない）
+    && !/resolved to (hidden|visible)\s*$/.test(m.trim()) && !/\d+ ×[^\n]*$/.test(m.trim()))   // 「hidden / visible」「N ×（くり返し）」で終わるのは、ふつうの不合格（流し直さない）
+  // 押せた（click action done）のに、そのあとのページの移動が終わらない（呼び出しの記録が waiting for scheduled navigations to finish で終わる）＝ブラウザが止まった。
+  // v40 の関門の I8（a#back。オフラインでメニューへ戻る）がこれで 30 秒の時間切れになり、上の形に当たらず流し直されなかった
+  || (/Timeout \d+ms exceeded/.test(m) && /action done[^\n]*\n[^\n]*waiting for scheduled navigations to finish[^\n]*$/.test(m.trim()));
+// 流し直しの回数の上限：落ちた（CRASHED）・止まった（STALLED）どちらも 1 回だけ（v39 と同じ。ユーザー決定 2026-10-25「1回のまま」）。
+// WebKit（Linux・画面なし）の落ちる原因は MT-14（canvas から canvas への drawImage）。公開の条件の WebKit は画面あり（HEADED=1）で流す
+const MAX_RETRY = 1;
 
 if (isWorker) await worker(args[2]); else await main();
 
@@ -105,9 +111,9 @@ async function worker(key) {
       // 効果音の確認（audio: true）は、ブラウザに AudioContext が無い環境（Windows 版 Playwright の WebKit など）では対象外にする。
       // OS 名では決めず、実際に typeof AudioContext / webkitAudioContext を調べる
       if (t.audio && !(await hasAudio())) { out.skipped.push({ id: t.id, title: t.title, why: '環境に AudioContext が無い', env: true }); continue; }
-      // ページ・ブラウザが落ちた例外（WebKit の Target crashed など。MT-14）と、ページが止まった例外（STALLED。v39）のときだけ、その項目を 1 回だけ流し直す。
-      // ふつうの不合格（check の失敗・ほかの例外）は流し直さない。流し直した項目は結果に「流し直し 1 回」と出す
-      let retryWhy = null;
+      // ページ・ブラウザが落ちた例外（WebKit の Target crashed など。MT-14）・ページが止まった例外（STALLED。v39）は、どちらも 1 回だけその項目を流し直す。
+      // ふつうの不合格（check の失敗・ほかの例外）は流し直さない。流し直した項目は結果に「流し直し N 回」と出す
+      const whys = []; let crashes = 0, stalls = 0;
       for (let attempt = 0; ; attempt++) {
         rec.start(t.id, t.title);
         // live：この回の確かめだけを記録する（時間切れのあとも裏で動き続けた run の check が、次の項目の結果に混ざらないように。v39 1 章）
@@ -123,16 +129,17 @@ async function worker(key) {
         srv?.reset();
         const it = rec.end();
         const crash = it.checks.find((c) => c.name === '例外' && CRASHED.test(String(c.detail)));
-        if (attempt === 0 && (crash || stalled)) {
-          rec.items.pop();   // 1 回目の結果は捨てて、落ちた・止まった理由だけ残す
-          retryWhy = crash ? String(crash.detail).split(' | ')[0].slice(0, 120) : stalled;
+        if ((crash && crashes < MAX_RETRY) || (!crash && stalled && stalls < MAX_RETRY)) {
+          if (crash) crashes++; else stalls++;
+          rec.items.pop();   // その回の結果は捨てて、落ちた・止まった理由だけ残す
+          whys.push(crash ? String(crash.detail).split(' | ')[0].slice(0, 120) : stalled);
           for (const c of browser ? browser.contexts() : []) await c.close().catch(() => {});
           // ページが落ちたときは、ブラウザごと起動し直してから流し直す（WebKit で 2 回目も続けて落ちる回があった。MT-14。v39 1 章）
           if (crash && browser) { await browser.close().catch(() => {}); browser = await lib.launchBrowser(); }
           else if (browser && !browser.isConnected()) browser = await lib.launchBrowser();
           continue;
         }
-        if (retryWhy) { it.retry = 1; it.retryWhy = retryWhy; }
+        if (whys.length) { it.retry = whys.length; it.retryWhy = whys.map((w, i) => `${i + 1} 回目：${w}`).join(' / '); }
         break;
       }
     }
@@ -200,7 +207,7 @@ async function main() {
     if (r.log.trim() && (process.env.VERBOSE || r.fatal)) console.log(r.log.trim().split('\n').map((l) => '    | ' + l).join('\n'));
     for (const it of r.items) {
       items.push(it);
-      console.log(`  ${it.ok ? 'PASS' : 'FAIL'}  ${it.id.padEnd(3)} ${(it.ms / 1000).toFixed(1).padStart(5)}s  ${it.title}  (${it.checks.filter((c) => c.ok).length}/${it.checks.length})${it.retry ? `\n        ↻ 流し直し 1 回（1 回目：${it.retryWhy}）` : ''}`);
+      console.log(`  ${it.ok ? 'PASS' : 'FAIL'}  ${it.id.padEnd(3)} ${(it.ms / 1000).toFixed(1).padStart(5)}s  ${it.title}  (${it.checks.filter((c) => c.ok).length}/${it.checks.length})${it.retry ? `\n        ↻ 流し直し ${it.retry} 回（${it.retryWhy}）` : ''}`);
       for (const c of it.checks) {
         if (c.known && !c.ok) console.log(`        △ 既知の不具合（修正待ち・合否に含めない）: ${c.name}\n          ${c.known}`);
         else if (c.known && c.ok) console.log(`        ★ 既知の不具合が解消した: ${c.name} → tests/lib.mjs の KNOWN_ISSUES から外す`);
@@ -224,7 +231,7 @@ async function main() {
   if (knownFail.length) console.log('既知の不具合: ' + [...new Set(knownFail.map((c) => c.known.split(' ')[0]))].join(', ') + '（tests/lib.mjs の KNOWN_ISSUES）');
   if (failed.length) console.log('不合格: ' + failed.map((i) => i.id).join(', '));
   const retried = items.filter((i) => i.retry);
-  if (retried.length) console.log('流し直し 1 回（ページ・ブラウザが落ちた・止まった）: ' + retried.map((i) => `${i.id}（${i.ok ? '2 回目は合格' : '2 回目も不合格'}）`).join(', '));
+  if (retried.length) console.log('流し直し（ページ・ブラウザが落ちた・止まった）: ' + retried.map((i) => `${i.id}（${i.retry} 回。${i.retry + 1} 回目${i.ok ? 'は合格' : 'も不合格'}）`).join(', '));
   if (process.env.JSON) fs.writeFileSync(process.env.JSON, JSON.stringify({ tier, browser: BROWSER, root, totalSec: total, items, skipped }, null, 1));
   process.exit(failed.length ? 1 : 0);
 }

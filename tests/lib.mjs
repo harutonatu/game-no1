@@ -535,6 +535,7 @@ export class Recorder {
   start(id, title) { this.cur = { id, title, checks: [], t0: Date.now() }; }
   // known：既知の不具合（修正待ち）。不合格でもテスト全体は不合格にしないが、毎回「既知」として表示する。直ったら「解消」と表示
   check(name, ok, detail, known) { this.cur.checks.push({ name, ok: !!ok, known: known || undefined, detail: ok ? undefined : detail }); return !!ok; }
-  fail(e) { this.cur.checks.push({ name: '例外', ok: false, detail: String(e && e.stack || e).split('\n').slice(0, 4).join(' | ') }); }
+  // 例外の文は、Playwright の呼び出しの記録（Call log）を全部残す（どこで止まったかで流し直すかを決めるので、あとで確かめられるように。v40）。そのあとに場所を 3 行
+  fail(e) { const msg = String(e && e.message || e).trim().split('\n').slice(0, 16), at = String(e && e.stack || '').split('\n').filter((l) => /^\s+at /.test(l)).slice(0, 3); this.cur.checks.push({ name: '例外', ok: false, detail: [...msg, ...at].join(' | ') }); }
   end() { const c = this.cur; c.ms = Date.now() - c.t0; c.ok = c.checks.length > 0 && c.checks.every((x) => x.ok || x.known); this.items.push(c); this.cur = null; return c; }
 }

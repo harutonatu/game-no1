@@ -714,9 +714,10 @@ export const tests = [
         const a = JSON.stringify((await lg(page)).turrets);
         const c = await page.locator('#fieldCanvas').boundingBox();
         for (const [x, y] of [[c.x + c.width * 0.2, c.y + c.height * 0.4], [c.x + c.width * 0.8, c.y + c.height * 0.4]]) { await page.mouse.click(x, y); await page.touchscreen.tap(x, y); }
-        return a === JSON.stringify((await lg(page)).turrets);
+        const l1 = await lg(page), b = JSON.stringify(l1.turrets);
+        return { same: a === b, ...(a === b ? {} : { a, b, phase: l1.phase, t: l1.t }) };   // 変わったときは前後を残す（v40 の関門で 1 回だけ落ちた。原因を見るため）
       });
-      check('場を押しても砲台の向き・位置は変わらない', tap, null);
+      check('場を押しても砲台の向き・位置は変わらない', tap.same, tap);
       // あたらしい ぶき で砲台が増えて並び直す（UI から）
       await setL(page, "l.slots = [{ id: 'shot', lv: 3 }]; l.bench = []; l.swap = []; l.offer = null; l.kakera = L.slotCostOf(l);");
       await clickAt(page, '#unlockBtn'); await wait(page, 50);
