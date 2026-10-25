@@ -7,7 +7,7 @@
  *   frame(state, events, dtSec),
  *   burst(kind, arg)   // 'up'|'evolve'|'unlock'|'clear'|'bounce'|'end'|'swap'。arg は砲台（枠）の番号
  *   setCalm(bool), setNear(bool), pause(), resume(),
- *   stats() → { particles, shots, frames, slowFrames, rockRedraws, rockFullRedraws, drawMs, calm, cellPx, view }
+ *   stats() → { particles, shots, frames, slowFrames, rockRedraws, rockFullRedraws, drawMs, calm, cellPx, view, turrets, bolt（v40：最後のいなずまの dur・segs・other）, evolve（v40：しんか の 2 行目） }
  * }
  * - 世界は 幅 360 × 高さ 560 の単位（§3.1）。canvas は親の箱いっぱいに広げ、見せる範囲（カメラ）は星の大きさで決める
  *   （§18.1 A）。寄せて上を切った分は、小惑星を見た目だけ下にずらす（バリアに届く所では 0）。ロジックの数は変えない。
@@ -95,6 +95,9 @@
   }
   // しんかで何が変わったか（画面の真ん中の2行目）。数値の正はロジックの EVOLVE。ここは見せ方の言葉だけ
   function evolveLine(id, lv) {
+    // たまは貫通が増える Lv（ロジックの SHOT_UP.pierce。20・40・60・80・99）で「つきぬける」（v40）
+    const pierce = safe(() => Lg().SHOT_UP.pierce, null) || [20, 40, 60, 80, 99];
+    if (id === "shot" && Array.isArray(pierce) && pierce.includes(num(lv, 10))) return num(lv, 10) === 20 ? "3れんで つきぬける ように なった" : "もっと つきぬける ように なった";
     if (Math.floor(num(lv, 10) / 10) > 3) return "つよさが 2ばいに なった";
     const k = clamp(Math.floor(num(lv, 10) / 10), 1, 3);
     const sh = typeof Lg().shapeOf === "function" ? safe(() => Lg().shapeOf(id, num(lv, 10)), null) : null;
@@ -184,6 +187,7 @@
     let barrierWave = 0, slowmo = 0, nearOn = false;
     let rockLift = 0, rockFade = 1, bounceT = -1;
     let evolveText = null;
+    let lastBolt = null;     // 確かめ用：最後のいなずまの { dur, segs, other（てつ 以外へ伝わった枝の数） }
     let lastPhase = "";
     let spawnLeft = SPAWN_BUDGET, hitFxLeft = HIT_FX_BUDGET;
     let lastBreakX = W / 2, lastBreakY = 200;
@@ -708,12 +712,15 @@
               depth.set(b, da + 1);
               if (da + 1 > dmax) dmax = da + 1;
               const pa = cellCenter(rock, a), pb = cellCenter(rock, b);
-              segs.push({ ax: pa.x, ay: pa.y, bx: pb.x, by: pb.y, d: da });
+              // てつ 以外へ伝わった枝は色を変える（v40：てつ から いわ・こおり へ伝わるのが見えるように）。マスはもう欠けているかもしれないので、描いてある材質を先に見る
+              const mb = (known && known[b]) || (rock.mats && rock.mats[b]) || 0;
+              segs.push({ ax: pa.x, ay: pa.y, bx: pb.x, by: pb.y, d: da, o: mb !== 2 });
             }
             const k = slotOfWeapon(state, "bolt");
             const root0 = cellCenter(rock, from | 0);
             const m = k >= 0 && tv[k] ? muzzleOf(k) : { x: root0.x, y: camT };
-            fx.push({ kind: "bolt", t: 0, dur: 0.25, mx: m.x, my: m.y, rx: root0.x, ry: root0.y, segs, dmax, seed: (rnd() * 1e6) | 0, tier: tierOf(state, "bolt") });
+            lastBolt = { dur: 0.35, segs: segs.length, other: segs.filter((g) => g.o).length };
+            fx.push({ kind: "bolt", t: 0, dur: 0.35, mx: m.x, my: m.y, rx: root0.x, ry: root0.y, segs, dmax, seed: (rnd() * 1e6) | 0, tier: tierOf(state, "bolt") });
             break;
           }
           case "boom": {
@@ -997,7 +1004,7 @@
       ctx.beginPath(); ctx.arc(ex, ey, f.w * 0.45, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
     }
-    // いなずま：砲身の先から ねらったマスへ落ち、edges の枝を全部（枝の先ほど細く、0.25 秒）
+    // いなずま：砲身の先から ねらったマスへ落ち、edges の枝を全部（枝の先ほど細く、0.35 秒。てつ 以外へ伝わった枝は黄色の外がわ）
     function drawBolt(f) {
       const k = f.t / f.dur;
       const r = mulberry(f.seed + ((f.t * 30) | 0));
@@ -1019,14 +1026,17 @@
         ctx.moveTo(trunk[0][0], trunk[0][1]);
         for (let j = 1; j < trunk.length; j++) ctx.lineTo(trunk[j][0], trunk[j][1]);
         ctx.stroke();
-        for (let band = 0; band < 3; band++) {
-          ctx.lineWidth = Math.max(pass ? 0.5 : 1, base * (1 - band * 0.3));
+        for (let band = 0; band < 6; band++) {
+          const other = band >= 3, bd = band % 3;
+          if (other && pass) ctx.strokeStyle = "#ffffff";
+          else if (other) ctx.strokeStyle = "#ffd36b";
+          ctx.lineWidth = Math.max(pass ? 0.5 : 1, base * (1 - bd * 0.3));
           ctx.beginPath();
           let any = false;
           for (let s = 0; s < f.segs.length; s++) {
             const g = f.segs[s];
             const b = Math.min(2, Math.floor((g.d / Math.max(1, f.dmax)) * 3));
-            if (b !== band) continue;
+            if (b !== bd || !!g.o !== other) continue;
             any = true;
             ctx.moveTo(g.ax, g.ay);
             ctx.lineTo((g.ax + g.bx) / 2 + jit[s][0], (g.ay + g.by) / 2 + jit[s][1]);
@@ -1279,7 +1289,10 @@
         view: { zoom: Math.round(scale * 1000) / 1000, left: Math.round(camL), top: Math.round(camT), width: Math.round(camW), height: Math.round(camH),
           cssW, cssH, rockPx: Math.round(camCols * C() * scale), rockOffset: Math.round(roff) },
         // 砲台の見た目の位置（世界の単位。確かめ用）
-        turrets: tv.map((v) => ({ x: Math.round(v.x * 10) / 10, y: Math.round(v.y * 10) / 10, ang: Math.round(v.ang * 1000) / 1000 }))
+        turrets: tv.map((v) => ({ x: Math.round(v.x * 10) / 10, y: Math.round(v.y * 10) / 10, ang: Math.round(v.ang * 1000) / 1000 })),
+        // 確かめ用（v40）：最後のいなずま・いま出ている しんか の 2 行目
+        bolt: lastBolt ? Object.assign({}, lastBolt) : null,
+        evolve: evolveText ? evolveText.b : null
       };
     }
 

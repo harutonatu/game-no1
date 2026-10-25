@@ -714,9 +714,10 @@ export const tests = [
         const a = JSON.stringify((await lg(page)).turrets);
         const c = await page.locator('#fieldCanvas').boundingBox();
         for (const [x, y] of [[c.x + c.width * 0.2, c.y + c.height * 0.4], [c.x + c.width * 0.8, c.y + c.height * 0.4]]) { await page.mouse.click(x, y); await page.touchscreen.tap(x, y); }
-        return a === JSON.stringify((await lg(page)).turrets);
+        const l1 = await lg(page), b = JSON.stringify(l1.turrets);
+        return { same: a === b, ...(a === b ? {} : { a, b, phase: l1.phase, t: l1.t }) };   // 変わったときは前後を残す（v40 の関門で 1 回だけ落ちた。原因を見るため）
       });
-      check('場を押しても砲台の向き・位置は変わらない', tap, null);
+      check('場を押しても砲台の向き・位置は変わらない', tap.same, tap);
       // あたらしい ぶき で砲台が増えて並び直す（UI から）
       await setL(page, "l.slots = [{ id: 'shot', lv: 3 }]; l.bench = []; l.swap = []; l.offer = null; l.kakera = L.slotCostOf(l);");
       await clickAt(page, '#unlockBtn'); await wait(page, 50);
@@ -1614,6 +1615,32 @@ export const tests = [
       const re2 = await nav2;
       const e = await page.evaluate(() => ({ same: window.__kw25 === 1, r: window.AsteroidGame.save(), s: window.AsteroidGame.getState() }));
       check(`さいしょからの直後：pageshow で開き直さない（${!re2 && e.same}）・stale ${e.s.stale}・save() ${e.r}・ほし ${e.s.star}`, !re2 && e.same && e.s.stale === false && e.r === true && e.s.star === 1 && JSON.parse(await stored(page, 'asteroid.save')).star === 1, { re2, e: { same: e.same, r: e.r, stale: e.s.stale, star: e.s.star } });
+      await ctx.close();
+    },
+  },
+  {
+    id: 'KW26', tier: 'full', title: 'ほしくだき（v40 レビュー）：いなずまの稲光は 0.35 秒で、てつ から いわ へ伝わった枝（色を変えて描く）が出る。たまを Lv20 にすると しんか の 2 行目に「3れんで つきぬける ように なった」、Lv99 で「もっと つきぬける ように なった」（Lv30 は「4れんに なった」）。いなずまの説明「つながった マスへ えだわかれ。てつは とおくまで とどく」',
+    async run({ browser, check, root }) {
+      const L = logicOf(root);
+      const { ctx, page } = await openK(browser, 'KW26', { v: SMOKE_V() });
+      // てつ を 6 列おきの縦すじにした星（いなずま Lv41＝40 マスは すじ の長さより多いので、いわ へも伝わる）
+      await setL(page, "l.star = 12; l.slots = [{ id: 'bolt', lv: 41 }]; l.bench = []; l.swap = []; l.offer = null; const R = l.rock; R.mats = R.mats.map((m, i) => (m ? ((i % R.cols) % 6 === 0 ? 2 : 1) : 0)); R.hp = R.mats.map((m) => (m ? 1e12 : 0)); R.vy = 0;");
+      let fx = null;
+      for (let k = 0; k < 40 && !fx; k++) { await wait(page, 100); fx = (await gs(page)).boltFx; }
+      check(`いなずまの絵：0.35 秒（${fx && fx.dur}）、枝 ${fx && fx.segs} のうち てつ 以外へ伝わった枝 ${fx && fx.other}（1 つ以上）`, !!fx && fx.dur === 0.35 && fx.segs >= 30 && fx.other >= 1, fx);
+      const evo = async (lv) => {
+        await setL(page, `l.slots = [{ id: 'shot', lv: ${lv - 1} }]; l.kakera = 9e15; l.offer = null;`);
+        await page.evaluate(() => window.AsteroidGame.upgrade(0));
+        let line = null;
+        for (let k = 0; k < 10 && !line; k++) { await wait(page, 50); line = (await gs(page)).evolveLine; }
+        await wait(page, 2000);
+        return line;
+      };
+      const e20 = await evo(20), e30 = await evo(30), e40 = await evo(40), e99 = await evo(99);
+      check(`しんか の 2 行目：Lv20「${e20}」・Lv30「${e30}」・Lv40「${e40}」・Lv99「${e99}」`, e20 === '3れんで つきぬける ように なった' && e30 === '4れんに なった' && e40 === 'もっと つきぬける ように なった' && e99 === 'もっと つきぬける ように なった', [e20, e30, e40, e99]);
+      const bolt = L.WEAPONS.find((w) => w.id === 'bolt');
+      const html = fs.readFileSync(path.join(root, 'games/asteroid/index.html'), 'utf8');
+      check(`いなずまの説明「${bolt.desc}」（index.html の初期の文も同じ）`, bolt.desc === 'つながった マスへ えだわかれ。てつは とおくまで とどく' && html.includes('<span class="cdesc" data-part="desc">' + bolt.desc + '</span>'), bolt.desc);
       await ctx.close();
     },
   },

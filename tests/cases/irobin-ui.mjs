@@ -180,16 +180,20 @@ export const tests = [
     id: 'BW2', tier: 'smoke', title: 'いろびん：solution() の手順を pick で進めるとクリアのカード（next・menu）、irobin.best が更新され、next で面 +1・手 0（カードの直後 400ms は押せない）',
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'BW2', { v: SMOKE_V() });
-      const { sol, s } = await solveToClear(page);
-      const ov = await overlayInfo(page);
-      check(`手順 ${sol.length} 手でクリア：overlay "clear"・won・served = total（${s.served}/${s.total}）・phase ${s.phase}`, s.overlay === 'clear' && s.won === true && s.served === s.total && s.phase === 'clear', s);
-      check(`クリアのカードに「つぎの めんへ」(next)「メニューへ」(menu)・「クリア」の文字（${ov.cmds.join(',')}）`, ov.shown && ov.cmds.includes('next') && ov.cmds.includes('menu') && /クリア/.test(ov.text), ov);
-      check(`クリア後の保存：irobin.best が "1"（${await stored(page, 'irobin.best')}）、irobin.save は次の面（${await stored(page, 'irobin.save')}）`,
-        (await stored(page, 'irobin.best')) === '1' && /"level":\s*2/.test((await stored(page, 'irobin.save')) || '') , { best: await stored(page, 'irobin.best'), save: await stored(page, 'irobin.save') });
-      // カードの直後は押せない（400ms）
-      await clickCmd(page, 'next'); await wait(page, 50);
-      const early = await gs(page);
-      check('カードを出した直後の next は効かない（誤タップ防止 400ms）', early.level === 1 && early.overlay === 'clear', early);
+      // クリアのカードが出てから「直後の next」を押すまでを frozen に入れる（ページの時間は wait の分だけ進む）。
+      // 時計を止めないと、その間の evaluate（読む・保存を見る 6 回）の実時間の分だけページの時計も進み、重い WebKit で 400ms を越えて next が効いてしまった（v40 の関門。T-26 と同じ形）
+      await frozen(page, async () => {
+        const { sol, s } = await solveToClear(page);
+        const ov = await overlayInfo(page);
+        check(`手順 ${sol.length} 手でクリア：overlay "clear"・won・served = total（${s.served}/${s.total}）・phase ${s.phase}`, s.overlay === 'clear' && s.won === true && s.served === s.total && s.phase === 'clear', s);
+        check(`クリアのカードに「つぎの めんへ」(next)「メニューへ」(menu)・「クリア」の文字（${ov.cmds.join(',')}）`, ov.shown && ov.cmds.includes('next') && ov.cmds.includes('menu') && /クリア/.test(ov.text), ov);
+        check(`クリア後の保存：irobin.best が "1"（${await stored(page, 'irobin.best')}）、irobin.save は次の面（${await stored(page, 'irobin.save')}）`,
+          (await stored(page, 'irobin.best')) === '1' && /"level":\s*2/.test((await stored(page, 'irobin.save')) || '') , { best: await stored(page, 'irobin.best'), save: await stored(page, 'irobin.save') });
+        // カードの直後は押せない（400ms）
+        await clickCmd(page, 'next'); await wait(page, 50);
+        const early = await gs(page);
+        check('カードを出した直後の next は効かない（誤タップ防止 400ms）', early.level === 1 && early.overlay === 'clear', early);
+      });
       await wait(page, 600);
       const fo = await overlayInfo(page);
       check(`しばらくたつと next が押せる（フォーカスは ${fo.active}）`, fo.shown && fo.active === 'next', fo);
