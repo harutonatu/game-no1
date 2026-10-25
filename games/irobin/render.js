@@ -317,6 +317,7 @@
     let buttons = [];
     let level = 1;
     let orders = [];                // 面の最初の注文の順（色 id の列）。動物の種類を決めるのに使う
+    const seenKind = new Map();     // この面で一度見せた「注文の番号 → 動物」。もどして戻ってきた人も同じ動物で出す（画面の中だけ。新しい面・局面で空にする。IB-08）
     let places = 0;                 // 置き場所の数（面の最初の瓶の本数。§17.7）
     let servedView = 0;             // 布の札「あと N」に使う届けた数（届けの演出の途中は 1 人ずつ進める）
     const custs = [0, 1].map((i) => {
@@ -657,7 +658,9 @@
       }
       buttons = made;
       board.appendChild(frag);
-      for (const c of custs) c.sig = "";
+      // 新しい面・局面のときは、お客さんの動物を決め直す（keep：並べ直しだけのときは、待っている人の動物をそのまま）
+      if (!(bopts && bopts.keep)) seenKind.clear();
+      for (const c of custs) { c.sig = ""; if (!(bopts && bopts.keep)) c.kind = null; }
       layout();
       if (state) update(state);
       if (focusId !== null) { const f = byId(focusId); if (f) safe(() => f.focus({ preventScroll: true })); }
@@ -709,16 +712,27 @@
     }
 
     // ---------- お客さん ----------
-    function animalKind(lv, color) {
+    // other＝いっしょに見えている もう1つの枠の色（いなければ null）。2 つの枠に同じ動物を並べない（IB-08）
+    function animalKind(lv, color, other) {
       const L = logic();
       const oi = orders.indexOf(color);
       const idx = oi >= 0 ? oi : color;
+      const hasOther = other !== null && other !== undefined && other !== "";
+      const ooi = hasOther ? orders.indexOf(Number(other)) : -1;
       if (L && typeof L.animalFor === "function") {
-        const k = safe(() => L.animalFor(lv, idx));
+        const k = safe(() => (ooi >= 0 ? L.animalFor(lv, idx, ooi) : L.animalFor(lv, idx)));
         if (ANIMALS.includes(k)) return k;
       }
       const n = (Math.abs(Math.floor(Number(lv) || 1)) * 7 + (Number(idx) || 0)) % ANIMALS.length;
       return ANIMALS[n];
+    }
+    // その面の動物の並び（animalFor の 0〜5 番＝perm の順）で、kind の次の動物。logic が無いときは ANIMALS の次
+    function nextAnimal(lv, kind) {
+      const L = logic();
+      const perm = L && typeof L.animalFor === "function" ? ANIMALS.map((_, j) => safe(() => L.animalFor(lv, j))) : [];
+      const list = perm.length && perm.every((k) => ANIMALS.includes(k)) && new Set(perm).size === ANIMALS.length ? perm : ANIMALS;
+      const at = list.indexOf(kind);
+      return list[(at + 1) % list.length];
     }
     function drawCust(i, t) {
       const c = custs[i];
@@ -748,12 +762,22 @@
       drawCust(i);
       scheduleBlink();
     }
-    function setCustomer(i, color, lv) {
+    // other＝同じ時点の もう1つの枠の色（省くと、いま見えている もう1つの枠の色）
+    function setCustomer(i, color, lv, other) {
       const c = custs[i];
       if (!c || !c.el) return;
       const has = color !== null && color !== undefined && color !== "";
+      if (other === undefined) { const oc = custs[1 - i]; other = oc ? oc.color : null; }
+      // 同じ人（色が同じで動物が決まっている）は、気分だけが変わっても動物を決め直さない（待っている間に動物が変わらない。IB-08）
+      const same = has && c.kind && c.color === Number(color);
       c.color = has ? Number(color) : null;
-      c.kind = has ? animalKind(lv, c.color) : null;
+      const oi = has ? orders.indexOf(c.color) : -1;
+      if (!same) c.kind = has ? (oi >= 0 && seenKind.has(oi) ? seenKind.get(oi) : animalKind(lv, c.color, other)) : null;
+      // もう1つの枠に いま見えている お客さん（同じ相手）と同じ動物なら、次の動物にする。先の人が ずらされたまま待っている間に
+      // 新しい人が来ても並ばない（IB-08。動物は見た目だけ。logic の animalFor・保存は変えない）
+      const oc = custs[1 - i];
+      if (!same && c.kind && oc && oc.kind === c.kind && oc.color !== null && other !== null && other !== undefined && other !== "" && Number(other) === oc.color) c.kind = nextAnimal(lv, c.kind);
+      if (!same && c.kind && oi >= 0) seenKind.set(oi, c.kind);
       c.mood = has ? "wait" : "empty";
       c.el.dataset.color = has ? String(c.color) : "";
       c.el.dataset.mood = c.mood;
@@ -809,7 +833,8 @@
       if (state && cur) { latestState = state; }
       if (!state || cur) { applySelection(); return; }
       if (!Array.isArray(state.bottles)) return;
-      if (!aligned(state)) { build(state); return; }
+      // 並べ直しても面の最初の注文の順は引き継ぐ（作り直すと動物を決める番号がずれ、演出を飛ばした・もどしたときに動物が変わる。IB-08）
+      if (!aligned(state)) { build(state, { orders: orders.slice(), keep: true }); return; }
       shown = state;
       level = Number(state.level) || 1;
       servedView = Number(state.served) || 0;
@@ -818,7 +843,7 @@
       for (let i = 0; i < custs.length; i++) {
         const want = slots[i] === undefined ? null : slots[i];
         const c = custs[i];
-        if (c.color !== (want === null ? null : Number(want)) || !c.kind && want !== null || c.mood !== (want === null ? "empty" : "wait")) setCustomer(i, want, level);
+        if (c.color !== (want === null ? null : Number(want)) || !c.kind && want !== null || c.mood !== (want === null ? "empty" : "wait")) setCustomer(i, want, level, slots[1 - i] === undefined ? null : slots[1 - i]);
       }
       applySelection();
     }
@@ -1273,7 +1298,7 @@
       if (!c || !c.el) return;
       const color = a.color === undefined ? null : a.color;
       slotsView[a.slot] = color;
-      setCustomer(a.slot, color, level);
+      setCustomer(a.slot, color, level, slotsView[1 - a.slot] === undefined ? null : slotsView[1 - a.slot]);
       if (color === null) return;
       snd.play("arrive");
       rec.played.add("arrive");
@@ -1358,7 +1383,7 @@
           if (cur !== rec) return;
           lastServed[0] = lastServed[1] = null;
           finalize(rec);
-          for (let i = 0; i < custs.length; i++) { custs[i].sig = ""; if (shown) setCustomer(i, shown.slots ? shown.slots[i] : null, level); }
+          for (let i = 0; i < custs.length; i++) { custs[i].sig = ""; if (shown) setCustomer(i, shown.slots ? shown.slots[i] : null, level, shown.slots ? shown.slots[1 - i] : null); }
         });
       return p;
     }
@@ -1397,7 +1422,8 @@
       const st = latestState || rec.state;
       latestState = null;
       for (const b of buttons) b._sig = "";
-      for (const c of custs) { c.color = undefined; c.sig = ""; }
+      // お客さんは描き直すだけ（mood を空にして update に setCustomer を呼ばせる）。色は消さない：同じ人の動物を決め直さない（IB-08）
+      for (const c of custs) { c.mood = ""; c.sig = ""; }
       if (st) update(st);
       rec.resolve();
     }

@@ -768,7 +768,7 @@ export const tests = [
     },
   },
   {
-    id: 'FW19', tier: 'full', title: 'ミチビキ空港 向きの矢印と逆向き：drawLog.arrows に 3 本の滑走路すべての矢印（閉じた滑走路も open: false）があり、向きが runways と一致・位置が入り口の近く。逆向きで区域に入ると着陸せず通り過ぎ、その滑走路の矢印が lit（0.6 秒後に消える）、#hint「やじるしの むきから はいろう」、同じ回で4回目の逆向きではヒントが出ない（ほかの機体の逆向きも回の3回に数える）',
+    id: 'FW19', tier: 'full', timeout: 120000, title: 'ミチビキ空港 向きの矢印と逆向き：drawLog.arrows に 3 本の滑走路すべての矢印（閉じた滑走路も open: false）があり、向きが runways と一致・位置が入り口の近く。逆向きで区域に入ると着陸せず通り過ぎ、その滑走路の矢印が lit（0.6 秒後に消える）、#hint「やじるしの むきから はいろう」、同じ回で4回目の逆向きではヒントが出ない（ほかの機体の逆向きも回の3回に数える）',
     async run({ browser, check }) {
       const { ctx, page } = await openM(browser, 'FW19');
       await T(page, 1);
@@ -776,6 +776,8 @@ export const tests = [
       const aBad = s.runways.filter((r) => { const a = ar.find((x) => x.color === r.color); return !a || a.dx !== r.dx || a.dy !== r.dy || a.open !== r.open || Math.hypot(a.x - r.ex, a.y - r.ey) > 22 || a.lit; });
       check(`矢印が 3 本（${ar.length}）、向き・open（${ar.map((a) => a.open).join(',')}）が runways と一致、入り口から ZONE_R 以内、はじめは光っていない`, ar.length === 3 && s.runways.length === 3 && aBad.length === 0 && ar.filter((a) => !a.open).length === 2, { ar, runways: s.runways });
       let hints = [], lits = [], landed = 0, lost = false, used = null, cum = 0, expects = [];
+      // 回の間はページの時間を止め、wait の分だけ進める（重いと、長い until の間に実時間で進んだ時計が戻り、ヒントの 3 秒が過ぎないまま次を読んだ。T-24）
+      await frozen(page, async () => {
       for (const sd of REV_SEEDS) {
       await fresh(page, sd);
       const q = await firstPlane(page);
@@ -792,11 +794,9 @@ export const tests = [
         const st = u.s;
         lits.push(st.drawLog.arrows.find((a) => a.color === 0).lit);
         landed = st.landed;
-        if (k === 0) {
-          await frozen(page, async () => {   // 0.7 秒ちょうどで見る（T-22）
-            await wait(page, 700); await T(page, 0);
-            lits.push((await gs(page)).drawLog.arrows.find((a) => a.color === 0).lit);
-          });
+        if (k === 0) {   // 0.7 秒ちょうどで見る（T-22。時間は外側の frozen で止まっている）
+          await wait(page, 700); await T(page, 0);
+          lits.push((await gs(page)).drawLog.arrows.find((a) => a.color === 0).lit);
         }
         // 区域を出たら、また逆向きに入る道（ヒントが消える 3 秒を待つ）
         const out = await until(page, `s.planes.some((x) => x.id === ${q.id} && x.x < 72) || evs.some((e) => e.type === 'crash' && e.ids.includes(${q.id}))`, 600);
@@ -808,6 +808,7 @@ export const tests = [
       }
       if (!crashed) { used = sd; break; }
       }
+      });
       check(`逆向きで区域に4回入っても、その機体は着陸しない（落ちずに残る。種 ${used}）`, used !== null && !lost && landed === 0, { lost, landed, used });
       check(`1回目の逆向きで あかの矢印が lit: true、0.6 秒後に false（${lits.slice(0, 2).join('→')}）`, lits[0] === true && lits[1] === false, lits);
       check(`回の中の wrongway（ほかの機体の分も数える）3 回目までは #hint「${HINT_WRONG}」、それより後は出ない（${hints.map((h, i) => `${expects[i] ? '出る' : '出ない'}:${h || '（なし）'}`).join(' / ')}）`, hints.length === 4 && expects.length === 4 && expects[0] === true && expects[3] === false && hints.every((h, i) => h.includes(HINT_WRONG) === expects[i]), { hints, expects });

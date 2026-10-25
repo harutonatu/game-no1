@@ -240,4 +240,58 @@ export const tests = [
       check('version.js を読むのはメニュー（index.html）だけ', readers.join() === 'index.html', readers);
     },
   },
+  {
+    id: 'L11', tier: 'smoke', node: true, title: '開き直したあとの知らせ（X-24）と 保存の比べ方の注意書き（X-22）：notice.js が事前キャッシュに入り、8 本が読み、reloadIfStale の中（location.reload の前）で 1 回だけ markReload を呼ぶ（さいしょから では呼ばない）。印あり・同じ path のときだけ 1 つ足して印を消し、sessionStorage が例外でも落ちない。8 本の changedElsewhere の前に X-22 の注意書き',
+    run({ check, root }) {
+      const rd = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+      const sw = rd('sw.js');
+      const files = [...(sw.match(/APP_FILES\s*=\s*\[([\s\S]*?)\]/) || [, ''])[1].matchAll(/["']([^"']+)["']/g)].map((m) => m[1]);
+      check('notice.js が事前キャッシュ（APP_FILES）に入っている（オフラインでも知らせが出る）', files.includes('./common/notice.js'), files);
+      const games = [['2048', 'index.html'], ['asteroid', 'main.js'], ['hashi', 'main.js'], ['irocode', 'index.html'], ['irobin', 'main.js'], ['matomete', 'main.js'], ['seizai', 'main.js'], ['zenmai', 'index.html']];
+      const noLoad = games.filter(([g]) => !rd(`games/${g}/index.html`).includes('<script src="../../common/notice.js"></script>')).map(([g]) => g);
+      check('8 本の index.html が notice.js を読む', noLoad.length === 0, noLoad);
+      const badMark = [];
+      const badX22 = [];
+      for (const [g, f] of games) {
+        const src = rd(`games/${g}/${f}`);
+        const calls = src.match(/YubiNotice\.markReload\(\)/g) || [];
+        const fn = src.indexOf('function reloadIfStale');
+        const mk = src.indexOf('YubiNotice.markReload()');
+        const rl = src.indexOf('location.reload()', fn);
+        if (!(calls.length === 1 && fn >= 0 && mk > fn && rl > mk)) badMark.push(g);
+        const i = src.indexOf('const changedElsewhere');
+        const prev = i < 0 ? '' : src.slice(0, i).trimEnd().split('\n').pop();
+        if (!/\/\/ X-22：/.test(prev)) badX22.push(g);
+      }
+      check('8 本とも markReload() は reloadIfStale の中で location.reload() の前に 1 回だけ（さいしょから の開き直しには無い）', badMark.length === 0, badMark);
+      check('8 本の changedElsewhere の前の行に X-22 の注意書きがある', badX22.length === 0, badX22);
+      // notice.js を偽の環境で動かす
+      const code = rd('common/notice.js');
+      const run = (mark, path0, opts = {}) => {
+        const store = new Map(mark === null ? [] : [['yubi.reloadNote', mark]]);
+        let added = 0;
+        const sessionStorage = opts.throws
+          ? { getItem() { throw new Error('x'); }, setItem() { throw new Error('x'); }, removeItem() { throw new Error('x'); } }
+          : { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
+        const el = () => ({ style: {}, setAttribute() {}, set textContent(v) {}, parentNode: null });
+        const box = { sessionStorage, location: { pathname: path0 }, document: { body: { appendChild() { added++; } }, createElement: el }, setTimeout: () => 0 };
+        box.self = box;
+        let threw = false;
+        try { vm.runInNewContext(code, box); } catch (e) { threw = true; }
+        return { threw, added, left: store.has('yubi.reloadNote'), box };
+      };
+      const r1 = run('/games/x/', '/games/x/');
+      check('印あり・同じ path：知らせを 1 つ足して、印を消す', !r1.threw && r1.added === 1 && !r1.left, r1);
+      const r2 = run(null, '/games/x/');
+      check('印なし：足さない', !r2.threw && r2.added === 0, r2);
+      const r3 = run('/games/y/', '/games/x/');
+      check('ちがう path の印：足さない', !r3.threw && r3.added === 0, r3);
+      const r4 = run('/games/x/', '/games/x/', { throws: true });
+      check('sessionStorage が例外を出しても、落ちず・足さない', !r4.threw && r4.added === 0, r4);
+      const mk = { sessionStorage: { setItem() { throw new Error('x'); } }, location: { pathname: '/p' }, document: {}, setTimeout: () => 0 }; mk.self = mk;
+      vm.runInNewContext(code, mk);
+      let mThrew = false; try { mk.YubiNotice.markReload(); } catch (e) { mThrew = true; }
+      check('markReload は書けなくても例外を出さない', !mThrew);
+    },
+  },
 ];

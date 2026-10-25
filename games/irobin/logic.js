@@ -37,7 +37,7 @@
   const MAX_COLORS = 9;
   const MAX_MOVES_SAVED = 2000;
   const SOLVE_NODE_LIMIT = 40000;
-  const GEN_NODE_BUDGET = 200000;
+  const GEN_NODE_BUDGET = 100000;   // 1 面の生成で調べる局面の合計の上限（IB-12：SE で 1 秒より短く。実際の面の最大は 58,457＝4774 面）
   const GEN_TRIES = 40;
   const SAVE_KEY_BEST = "irobin.best";
   const SAVE_KEY_SAVE = "irobin.save";
@@ -91,7 +91,7 @@
   const CLOTH_COVERS = Object.freeze(["intro", "early", "mid", "late"]);
 
   // 生成の予算の分け方：表どおり → 易しい側（fallback 1）→ 固定の面（fallback 2）
-  const RESERVE_FALLBACK1 = 50000;
+  const RESERVE_FALLBACK1 = 20000;
   const RESERVE_FALLBACK2 = 5000;
   const MIN_SOLVE_NODES = 500;   // 残りがこれ未満なら、その段階はあきらめる
 
@@ -1108,16 +1108,20 @@
 
   // ---------------------------------------------------------------- 見た目に使う純粋な値
 
-  // お客さんの動物。orderIndex＝その面の注文の何番目か（0 から）。続く2人は必ず違う動物
-  function animalFor(level, orderIndex) {
+  // お客さんの動物。orderIndex＝その面の注文の何番目か（0 から）。続く2人は必ず違う動物。
+  // otherIndex（省略可）＝いっしょに見えている もう1人の注文の番号。先に来た方（番号が小さい方）はそのまま、
+  // あとの方が同じ動物なら perm の次の動物にする（2 つの枠に同じ動物が並ばない。IB-08）
+  function animalFor(level, orderIndex, otherIndex) {
     const rng = makeRng(seedFor(level) ^ 0xA5A5A5A5);
     const perm = shuffle(rng, ANIMAL_KEYS.slice());
-    let i;
-    try { i = Number(orderIndex); } catch (e) { i = 0; }
-    i = Number.isFinite(i) && i >= 0 ? Math.floor(i) : 0;
-    if (i > 1e9) i = i % 6000000;
     const k = ANIMAL_KEYS.length;
-    return perm[(i + Math.floor(i / k)) % k];
+    const norm = (v) => { let i; try { i = Number(v); } catch (e) { i = 0; } i = Number.isFinite(i) && i >= 0 ? Math.floor(i) : 0; return i > 1e9 ? i % 6000000 : i; };
+    const posOf = (i) => (i + Math.floor(i / k)) % k;
+    const i = norm(orderIndex), p = posOf(i);
+    if (otherIndex === undefined || otherIndex === null) return perm[p];
+    const o = norm(otherIndex);
+    if (o < i && posOf(o) === p) return perm[(p + 1) % k];
+    return perm[p];
   }
 
   function colorName(id) {

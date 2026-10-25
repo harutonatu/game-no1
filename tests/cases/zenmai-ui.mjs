@@ -719,6 +719,81 @@ export const tests = [
       await ctx.close();
     },
   },
+  {
+    id: 'ZU17', tier: 'full', title: 'ゼンマイさんぽ「★3 の範囲を通りすぎた」の知らせ（X-14）：人形が ★3 の範囲の先まで歩いて、この回が ★3 にならないとき、歩いている間に 1 回だけヒントを「★3 の範囲を通りすぎた」に変える（舞台の高さは変えない）。やりなおしで元のヒントに戻る。★3 の回・手前で止まる回では出ない。SE の縦・横で 1 行に収まる',
+    async run({ browser, check }) {
+      const HINT = '★3の はんいを すぎたよ。もう ★3 は とれないよ';
+      const pick = (p) => p.evaluate(() => {
+        const s = ZenmaiStages.find((x) => x.id === 'z01'), L = ZenmaiLogic, b = L.bestTurns(s);
+        const far = s.target.x + s.target.w / 2 + (s.target.w / 2) * L.STAR3;
+        let past = null, pastFall = null, short = null;
+        for (let t = 0; t <= s.maxTurns + 1e-9; t += 0.05) {
+          const r = L.simulate(s, t);
+          if (r.result === 'stop' && r.stars !== 3 && r.x > far + 1 && past === null) past = +t.toFixed(2);
+          if (r.result === 'fall' && pastFall === null) pastFall = +t.toFixed(2);
+          if (r.result === 'stop' && r.x < s.target.x - 5) short = +t.toFixed(2);
+        }
+        return { past, pastFall, short, star3: +((b.min + b.max) / 2).toFixed(2) };
+      });
+      const info = (p) => p.evaluate(() => ({ g: window.ZenmaiGame.getState(), hint: document.getElementById('hint').textContent, hh: document.getElementById('hint').offsetHeight, wh: document.getElementById('canvasWrap').offsetHeight }));
+      // 歩かせながら見て、最初に star3Gone になった時点の様子を返す（最後まで出なければ null）
+      async function walk(p) {
+        let first = null, count = 0, prev = '';
+        for (let i = 0; i < 2000; i++) {
+          await wait(p, 16);
+          const x = await info(p);
+          if (x.hint === HINT && prev !== HINT) count++;
+          prev = x.hint;
+          if (x.g.star3Gone && !first) first = x;
+          if (x.g.overlay === 'result') return { first, count, end: x };
+        }
+        return { first, count, end: await info(p) };
+      }
+      for (const v of [SMOKE_V(), view('SE', 'l', 'app')]) {
+        const { ctx, page } = await newPage(browser, v, `ZU17 ${v.label}`, { clock: true });
+        await openZ(page);
+        await startStage(page, 'z01');
+        const ch = await pick(page);
+        const base = await info(page);
+        const orig = base.hint;
+        check(`${v.label}｜計算：★3 の先に止まる回・落ちる回・手前で止まる回・★3 の回がある`, ch.past !== null && ch.short !== null, ch);
+        check(`${v.label}｜始まりのヒントは元の文で、star3Gone は false`, orig.length > 0 && orig !== HINT && base.g.star3Gone === false, base);
+        // (a) ★3 の先へ行く回
+        await play(page, ch.past);
+        const a = await walk(page);
+        check(`${v.label}｜(a) ★3 の先へ行く回：結果のカードが出る前に「${HINT}」が 1 回出る（phase ${a.first && a.first.g.phase}・回数 ${a.count}）`, !!a.first && ['walking', 'falling', 'stopped'].includes(a.first.g.phase) && a.first.g.overlay === null && a.first.hint === HINT && a.first.g.star3Gone === true && a.count === 1, a);
+        check(`${v.label}｜(a) 舞台の高さ・ヒントの行の高さは変わらず、1 行に収まる`, !!a.first && a.first.wh === base.wh && a.first.hh === base.hh && a.end.wh === base.wh, { base: [base.wh, base.hh], first: a.first && [a.first.wh, a.first.hh], end: [a.end.wh, a.end.hh] });
+        check(`${v.label}｜(a) 止まって結果が出るまでそのまま`, a.end.g.overlay === 'result' && a.end.hint === HINT, a.end);
+        // (b) やりなおし → 元のヒント
+        await page.click('#overlay [data-cmd=retry]'); await wait(page, 300);
+        const b = await info(page);
+        check(`${v.label}｜(b) やりなおしで元のヒントに戻り、star3Gone は false、行の高さの固定も外れる`, b.hint === orig && b.g.star3Gone === false && await page.evaluate(() => document.getElementById('hint').style.minHeight === ''), b);
+        // (c) ★3 の回では出ない
+        await play(page, ch.star3);
+        const c = await walk(page);
+        check(`${v.label}｜(c) ★3 の回では出ない（最後まで元のヒント）`, !c.first && c.count === 0 && c.end.g.overlay === 'result' && c.end.hint === orig, c);
+        await page.click('#overlay [data-cmd=retry]'); await wait(page, 300);
+        // (d) 手前で止まる回
+        await play(page, ch.short);
+        const d = await walk(page);
+        check(`${v.label}｜(d) 手前で止まる回では出ない`, !d.first && d.count === 0 && d.end.g.overlay === 'result' && d.end.hint === orig, d);
+        await ctx.close();
+      }
+      // 落ちる回（★3 の先を通ってから崖）も出る
+      {
+        const { ctx, page } = await newPage(browser, SMOKE_V(), 'ZU17 fall', { clock: true });
+        await openZ(page);
+        await startStage(page, 'z01');
+        const ch = await pick(page);
+        if (ch.pastFall !== null) {
+          await play(page, ch.pastFall);
+          const f = await walk(page);
+          check('落ちる回でも、★3 の先を通ったとき 1 回だけ出る', !!f.first && f.count === 1 && f.first.hint === HINT, f);
+        } else check('落ちる回の巻き数がある', false, ch);
+        await ctx.close();
+      }
+    },
+  },
 ];
 
 // 実時間で結果の画面を待つ（早送りしないページ用）

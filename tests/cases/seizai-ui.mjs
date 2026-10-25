@@ -16,7 +16,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { BASE, view, custom, newPage, seed, wait, sleep, layoutProbe, swInfo, touch, SFX_SPY, plays, TIMEZONES, zonedTime } from '../lib.mjs';
+import { BASE, view, custom, newPage, seed, wait, frozen, sleep, layoutProbe, swInfo, touch, SFX_SPY, plays, TIMEZONES, zonedTime, X24_TEXT, noteText } from '../lib.mjs';
 
 const SZ = BASE + 'games/seizai/';
 const SZD = SZ + '?debug=1';
@@ -786,6 +786,9 @@ export const tests = [
       await gotoW(page, { 'seizai.save': saveOf(L, st, Date.now()) });
       await closeCards(page);
       const t = await touch(ctx, page);
+      // 最初のタッチ（音の準備で AudioContext を作る）を、時計を止める前にふつうのタップで済ませる。
+      // 時計を止めた間の最初の touchend でページが固まり、CDP の touchEnd が返らず 60 秒の時間切れになった（T-27。v39 1 章）
+      await t.tapEl('#money'); await sleep(200);
       const res = {};
       for (const sel of ['.zone[data-dept="cut"]', '#sheet [data-buy="level"]', '#soundBtn']) {
         await sleep(400); await wait(page, 400);            // 前のタップから 350ms 以上あける
@@ -945,10 +948,13 @@ export const tests = [
       // --- 札：とくべつ・受けている間のお金の札 ---
       {
         const { ctx, page } = await OPEN(mkState(L, 2));
-        await setL(page, 'l.order = { id: 1, who: "だいくの おじさん", need: 50, got: 10, reward: 99999, accepted: true, big: true }; l.orderSeq = 3;');
-        const tagBig = await txt(page, '#orderTag');
-        await setL(page, 'l.order = { id: 2, who: "だいくの おじさん", need: 50, got: 10, reward: 99999, accepted: true, big: false }; l.orderSeq = 4;');
-        const tagNor = await txt(page, '#orderTag');
+        // 書いてから読むまでの間に工場が進んで数が変わらないよう、ページの時間を止めて読む（重いと 10/50 が 40/50 になった。v39 1 章）
+        const [tagBig, tagNor] = await frozen(page, async () => {
+          await setL(page, 'l.order = { id: 1, who: "だいくの おじさん", need: 50, got: 10, reward: 99999, accepted: true, big: true }; l.orderSeq = 3;');
+          const a = await txt(page, '#orderTag');
+          await setL(page, 'l.order = { id: 2, who: "だいくの おじさん", need: 50, got: 10, reward: 99999, accepted: true, big: false }; l.orderSeq = 4;');
+          return [a, await txt(page, '#orderTag')];
+        });
         check(`受けた札：とくべつは「${tagBig}」（文字で分かる）、ふつうは「${tagNor}」、どちらも「おかねは おれいで まとめて」の札つき`, /とくべつな ちゅうもん：かくざい 10\/50/.test(tagBig) && /ちゅうもん：かくざい 10\/50/.test(tagNor) && !/とくべつ/.test(tagNor) && /おかねは おれいで まとめて/.test(tagBig) && /おかねは おれいで まとめて/.test(tagNor), { tagBig, tagNor });
         await setL(page, 'l.order = { id: 3, who: "だいくの おじさん", need: 50, got: 0, reward: 99999, accepted: false, big: true }; l.orderSeq = 5;');
         const tagNew = await txt(page, '#orderTag');
@@ -1491,11 +1497,12 @@ export const tests = [
       // 新しい保存（別のページ・さいしょからが書いたもの）。savedAt はページの今（閉じた間 0 秒）
       const newer = async (stage, money) => saveOf(L, mkState(L, stage, { money }), await page.evaluate(() => Date.now()));
       const loaded = () => page.waitForEvent('load', { timeout: 5000 }).then(() => true, () => false);
-      const after = async () => { await wait(page, 300); const l = await lg(page), g = await gs(page); return { stage: l.stage, money: l.money, overlay: g.overlay }; };
+      const after = async () => { await wait(page, 300); const l = await lg(page), g = await gs(page); return { stage: l.stage, money: l.money, overlay: g.overlay, note: await noteText(page) }; };
       // (a) 保存が変わっていなければ、pageshow persisted で開き直さない（今までどおり）
       const nav0 = loaded();
       await page.evaluate(() => { window.__ww26 = 1; window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })); window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); });
       check('保存が変わっていなければ、pageshow persisted でも開き直さない', !(await nav0) && (await page.evaluate(() => window.__ww26 === 1)) && (await lg(page)).stage === 2);
+      check('開き直していなければ、「ほかの タブの つづきから はじめました」は出ない（X-24）', (await noteText(page)) === null);
       // (b) bfcache：入る（pagehide persisted で保存）→ ほかで保存が変わる → pageshow persisted が先 → すぐ pagehide（書き戻すならここ）
       const bRaw = await newer(3, 77777);
       const nav1 = loaded();
@@ -1509,6 +1516,7 @@ export const tests = [
       const rB = await nav1;
       const sB = await after();
       check(`bfcache（pageshow が先）：古い状態（段 2）を書き戻さず（${hideB}）、開き直して（${rB}）今の保存から続ける（段 ${sB.stage}・お金 ${sB.money}・カード ${sB.overlay}）`, hideB && rB && sB.stage === 3 && sB.money >= 77777 && sB.money < 77777 + 2000 && sB.overlay === null, { hideB, rB, sB });
+      check(`開き直したあとに「${X24_TEXT}」が出る（X-24）`, sB.note === X24_TEXT, { note: sB.note });
       // (c) bfcache：visibilitychange（表）が pageshow より先に来ても、wake で保存を書かず開き直す
       await closeCards(page);
       const cRaw = await newer(4, 12345);
@@ -1574,6 +1582,10 @@ export const tests = [
       const rE2 = await nav5;
       const sE2 = await after();
       check(`storage イベントが届かないまま（見えている間に書かれて hidden の保存）：書き戻さず（${hideE2}）、表に戻ると開き直して（${rE2}）続ける（段 ${sE2.stage}・お金 ${sE2.money}）`, hideE2 && rE2 && sE2.stage === 3 && sE2.money >= 13579 && sE2.money < 13579 + 2000, { hideE2, rE2, sE2 });
+      check(`開き直したあとの知らせが出る（c ${sC.note === X24_TEXT}・d ${sD.note === X24_TEXT}・e1 ${sE1.note === X24_TEXT}・e2 ${sE2.note === X24_TEXT}）`, [sC, sD, sE1, sE2].every((x) => x.note === X24_TEXT), { c: sC.note, d: sD.note, e1: sE1.note, e2: sE2.note });
+      // 知らせは 1 回だけ：ふつうに開き直しても出ない
+      await page.reload(); await wait(page, 300);
+      check('ふつうに開き直しても、知らせは出ない（1 回だけ。X-24）', (await noteText(page)) === null);
       check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
       await ctx.close();
     },
@@ -1642,6 +1654,52 @@ export const tests = [
       check(`はやい・もうかる の読み上げの名前に ✓ なし、状態は aria-pressed（${a0.fast} / ${a0.gain} → もうかるを押すと ${a1.fast} / ${a1.gain}）。見た目の ✓ は残る（${a0.vis}）`,
         okOne(a0, 'fast') && okOne(a1, 'gain') && /✓/.test(a0.vis), { a0, a1 });
       await ctx.close();
+    },
+  },
+  {
+    id: 'WW29', tier: 'full', title: 'もくもくこうば 森の置き場の札（SZ-06）：はこぶ が速くて置き場がいつも 0 でも、はこぶ が働いている間は札が「すぐ はこぶ」（こわれていると思われない）。丸太が本当に来ないときは「0」、はこぶ の人がいなくて丸太がたまれば数字。SE の縦・横でも画面内',
+    async run({ browser, check, root, errors }) {
+      const L = logicOf(root);
+      const e0 = errors.length;
+      const TAG = 'すぐ はこぶ';
+      const tagOf = (p) => p.evaluate(() => window.SeizaiGame.getState().yardTag);
+      const rec = { money: 50, forest: { trees: 16, saplings: 0 }, buf: { yard: 0, logs: 0, peeled: 0, goods: 0 }, depts: { cut: { staff: 2, level: 2 }, plant: { staff: 2, level: 3 }, carry: { staff: 3, level: 2 }, peel: { lines: 2, level: 2 }, beam: { lines: 2, level: 2 }, shop: { staff: 1, level: 1 } } };
+      for (const v of [SMOKE_V(), view('SE', 'l', 'app'), view('iPad', 'p', 'app')]) {
+        const { ctx, page } = await openW(browser, 'WW29', { v, items: { 'seizai.save': saveOf(L, mkState(L, 2, rec), T0) }, opts: { clockTime: new Date(T0 + 1000) } });
+        await closeCards(page);
+        await wait(page, 3000);
+        // (a) 録画の局面：置き場が 0 の間、札は「すぐ はこぶ」
+        let zero = 0, tagged = 0, bad = [];
+        for (let i = 0; i < 20; i++) {
+          await wait(page, 1000);
+          const y = Math.floor((await lg(page)).buf.yard), t = await tagOf(page);
+          if (y === 0) { zero++; if (t === TAG) tagged++; }
+          else if (t !== String(y) && t !== TAG) bad.push({ y, t });
+        }
+        check(`${v.label}｜(a) 録画の局面（はこぶ 3にん）：置き場が 0 の ${zero} 回のうち ${tagged} 回で札が「${TAG}」（8 割以上）`, zero >= 5 && tagged >= zero * 0.8 && bad.length === 0, { zero, tagged, bad });
+        // 札の四角が山（丸太の棒）の四角と重ならない・札が世界（幅 360）の中に収まる
+        const bx = (await gs(page)).yardBox;
+        const hit = bx && !(bx.tag.x + bx.tag.w <= bx.pile.x || bx.pile.x + bx.pile.w <= bx.tag.x || bx.tag.y + bx.tag.h <= bx.pile.y || bx.pile.y + bx.pile.h <= bx.tag.y);
+        check(`${v.label}｜札が山と重ならず、世界の中に収まる`, !!bx && !hit && bx.tag.x >= 0 && bx.tag.x + bx.tag.w <= 360, bx);
+        if (process.env.WW29_SHOT) { try { await page.screenshot({ path: `${process.env.WW29_SHOT}/ww29-${v.w}x${v.h}.png` }); } catch (e) { /* 任意 */ } }
+        // 札が画面内：シーン（canvas）が画面の横幅に収まり、横スクロールがない
+        const fit = await page.evaluate(() => { const c = document.querySelector('#scene canvas, canvas'); const r = c.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), w: innerWidth, hs: document.documentElement.scrollWidth > innerWidth }; });
+        check(`${v.label}｜(d) 札のある森の画面が画面内（${fit.l}〜${fit.r} / ${fit.w}）・横スクロールなし`, fit.l >= -0.5 && fit.r <= fit.w + 0.5 && !fit.hs, fit);
+        if (v.label.includes('SE') && v.w < v.h) {
+          // (b) 本当に丸太が来ない（きこり 0 にん・森も置き場も空）→ 猶予のあとは「0」
+          await setL(page, 'l.depts.cut.staff = 0; l.depts.plant.staff = 0; l.forest.trees = 0; l.forest.saplings = 0; for (const k of ["yard", "logs", "peeled"]) l.buf[k] = 0;');
+          await wait(page, 16000);
+          const tb = await tagOf(page);
+          check(`(b) 丸太が本当に来ないときは「0」（札 ${tb}）`, tb === '0', tb);
+          // (c) はこぶ 0 にんで置き場に丸太がたまる → 数字
+          await setL(page, 'l.depts.carry.staff = 0; l.buf.yard = 12;');
+          await wait(page, 1500);
+          const tc = await tagOf(page), yc = Math.floor((await lg(page)).buf.yard);
+          check(`(c) はこぶ 0 にんで置き場に丸太がたまっているときは数字（札 ${tc}・置き場 ${yc}）`, yc >= 12 && tc === String(yc), { tc, yc });
+        }
+        await ctx.close();
+      }
+      check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
     },
   },
 ];

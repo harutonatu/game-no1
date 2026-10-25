@@ -921,13 +921,16 @@ export const tests = [
       const msFor = () => page.evaluate(() => window.HashiLogic.holdForLength(window.HashiGame.lenToCross(), { slow: !!window.HashiGame.getState().slow }));
       let ms = await msFor();
       const before = await gs(page);
-      await page.mouse.click(cx, cy);
-      await wait(page, Math.round(ms / 2));
-      const mid = await gs(page);
-      const holdMid = await holdingAttr(page);
-      await wait(page, ms - Math.round(ms / 2));
-      await page.mouse.click(cx, cy);
-      const after2 = await phaseOf(page);
+      // 1回目から2回目のタップまでは、ページの時間を止めて早送りの分だけ進める（重いとき実時間の分だけ余計に伸びて「ながすぎ」になった。HS-14）
+      const { mid, holdMid, after2 } = await frozen(page, async () => {
+        await page.mouse.click(cx, cy);
+        await wait(page, Math.round(ms / 2));
+        const mid = await gs(page);
+        const holdMid = await holdingAttr(page);
+        await wait(page, ms - Math.round(ms / 2));
+        await page.mouse.click(cx, cy);
+        return { mid, holdMid, after2: await phaseOf(page) };
+      });
       const r1 = await settle(page);
       check(`指：1回目のタップの後、離しても伸び続ける（${mid.phase}・data-holding ${holdMid}・長さ ${mid.bridgeLen?.toFixed?.(1)}）、2回目で倒れ（${after2}）、渡る（${r1.s.lastOutcome?.kind}・score ${before.score}→${r1.s.score}）`,
         mid.phase === 'growing' && holdMid === '1' && mid.bridgeLen > 0 && after2 === 'falling' && r1.s.lastOutcome?.kind === 'cross' && r1.s.score > before.score, { mid, holdMid, after2, r1: r1.s });
@@ -943,10 +946,13 @@ export const tests = [
       await wait(page, 800);
       ms = await msFor();
       const b2 = await gs(page);
-      await page.evaluate(() => document.querySelector('#stageWrap').click());
-      await wait(page, ms);
-      const mid2 = await phaseOf(page);
-      await page.evaluate(() => document.querySelector('#stageWrap').click());
+      const mid2 = await frozen(page, async () => {   // 上と同じく、2回の click の間はページの時間を止める（HS-14）
+        await page.evaluate(() => document.querySelector('#stageWrap').click());
+        await wait(page, ms);
+        const ph = await phaseOf(page);
+        await page.evaluate(() => document.querySelector('#stageWrap').click());
+        return ph;
+      });
       const r2 = await settle(page);
       check(`click だけ（VoiceOver の有効化）：1回目で ${mid2}、2回目で倒れて ${r2.s.lastOutcome?.kind}（crossed ${b2.crossed}→${r2.s.crossed}）`, mid2 === 'growing' && r2.s.lastOutcome?.kind === 'cross' && r2.s.crossed === b2.crossed + 1, { mid2, r2: r2.s });
 

@@ -415,6 +415,10 @@ export const tests = [
       check('注ぐ前は詰みでない（phase idle・お助けは目立たせない）', s0.phase === 'idle' && s0.stuck === false && !a0.includes('1'), { s0: s0.phase, a0 });
       await page.evaluate(() => { window.IrobinGame.pick(0); window.IrobinGame.pick(1); window.IrobinGame.skip(); });
       await wait(page, 150);
+      // 詰むと「とける ところまで もどす」のカードが出る（IB-25）。「このまま つづける」で閉じてから、今までの確かめを続ける
+      const r1 = await gs(page);
+      check(`詰むと「とける ところまで もどす」のカードが出る（overlay ${r1.overlay}）`, r1.overlay === 'rescue', r1.overlay);
+      await wait(page, 450); await clickCmd(page, 'close'); await wait(page, 100);
       const s1 = await gs(page), hint = await hintText(page);
       const a1 = await page.evaluate(() => [document.querySelector('#undoBtn').dataset.attention ?? null, document.querySelector('#restartBtn').dataset.attention ?? null]);
       check(`1手注ぐと phase stuck（data-phase ${await phaseAttr(page)}）・stuck true・ゲームオーバーのカードは出ない（overlay ${s1.overlay}）`, s1.phase === 'stuck' && s1.stuck === true && (await phaseAttr(page)) === 'stuck' && s1.overlay === null && s1.moves === 1, s1);
@@ -821,6 +825,10 @@ export const tests = [
       check(`6 面で「手はあるが解けない」局面までの手が見つかる（${path6 ? path6.length : 'なし'} 手）`, Array.isArray(path6) && path6.length > 0, path6);
       if (path6) {
         await playMoves(page, path6); await wait(page, 100);
+        // 予備軍になると「とける ところまで もどす」のカードが出る（IB-25）。「このまま つづける」で閉じてから確かめる
+        const r1 = await gs(page);
+        check(`予備軍になると「とける ところまで もどす」のカードが出る（overlay ${r1.overlay}）`, r1.overlay === 'rescue', r1.overlay);
+        await wait(page, 450); await clickCmd(page, 'close'); await wait(page, 60);
         const s1 = await gs(page), h1 = await hintText(page);
         const a1 = await page.evaluate(() => [document.querySelector('#undoBtn').dataset.attention, document.querySelector('#restartBtn').dataset.attention]);
         check(`doomed true・stuck false・phase idle（${s1.doomed}・${s1.stuck}・${s1.phase}）、ヒントが「1手もどす」を案内（${h1}）、お助けに data-attention="1"（${a1}）`, s1.doomed === true && s1.stuck === false && s1.phase === 'idle' && /1手もどす/.test(h1 || '') && a1[0] === '1' && a1[1] === '1', { s1, h1, a1 });
@@ -831,6 +839,7 @@ export const tests = [
         check(`戻して解ける局面になると doomed false・目印が消える（moves ${s2.moves}・${a2}）`, s2.doomed === false && solvable && !a2.includes('1'), { s2: s2.moves, a2 });
         // 選んでやめても、ヒントは「解けない」案内のまま戻る（ふつうのヒントで上書きしない）
         await playMoves(page, path6.slice(s2.moves)); await wait(page, 60);
+        await wait(page, 450); await clickCmd(page, 'close'); await wait(page, 60);   // もう一度 予備軍になったときのカードを閉じる（IB-25）
         const sol0 = (await gs(page)).bottles.findIndex((b) => b.cells.length && !b.sealed);
         await page.evaluate((i) => { window.IrobinGame.pick(i); window.IrobinGame.pick(i); }, sol0); await wait(page, 60);
         check(`選んでやめた後もヒントは「1手もどす」（${await hintText(page)}）`, /1手もどす/.test((await hintText(page)) || '') && (await gs(page)).doomed === true, await gs(page));
@@ -1527,6 +1536,217 @@ export const tests = [
           r.items === 4 && /ちいさい びん/.test(r.gim) && /いろ きまりの びん/.test(r.gim) && /かぎの びん/.test(r.gim) && vis.hit && vis.bottom <= vis.ih && (o === 'p' || vis.sh <= vis.ch + 1) && vis.small === 0 && vis.li >= (o === 'p' ? 14 : 13), { r, vis });
         await c.ctx.close();
       }
+    },
+  },
+  {
+    id: 'BW29', tier: 'full', title: 'いろびん IB-25：詰んだ・予備軍になった最初の 1 回だけ「とける ところまで もどす」のカード（44px 以上・出てすぐは押せない）、押すと解ける最後の局面へ戻る（保存も同じ・開き直しても同じ）、「このまま つづける」は閉じるだけ、setState の詰みでも出る、SE 縦・横で収まる',
+    async run({ browser, check }) {
+      // 解ける最後の局面の確かめ：面の最初から手（位置）を当てた局面の列で、k が solved、k+1〜n がどれも solved でない
+      const lastSolvable = (page, lv, path, k) => page.evaluate(([lv, path, k]) => {
+        const L = window.IrobinLogic; const st = [L.createLevel(lv).state];
+        for (const [f, t] of path) st.push(L.applyMove(st[st.length - 1], f, t).state);
+        const sv = (x) => L.solve(x, { nodeLimit: 3000 }).solved === true;
+        const after = st.slice(k + 1).map(sv);
+        return { atK: sv(st[k]), after, ok: sv(st[k]) && after.every((x) => !x) };
+      }, [lv, path, k]);
+      const attn = (p) => p.evaluate(() => [document.querySelector('#undoBtn').dataset.attention, document.querySelector('#restartBtn').dataset.attention]);
+      // (a)〜(c) 6 面：BW16 と同じ探し方で予備軍に入る
+      const { ctx, page } = await openG(browser, 'BW29', { opts: { initScript: SFX_SPY }, extra: { 'irobin.best': '5' } });
+      await page.evaluate(() => window.IrobinGame.setLevel(6)); await wait(page, 100);
+      const path6 = await page.evaluate(() => {
+        const L = window.IrobinLogic;
+        for (let sd = 1; sd <= 50; sd++) {
+          let st = L.createLevel(6).state; const mv = []; let seed = sd;
+          const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+          for (let k = 0; k < 40; k++) {
+            const ms = L.legalMoves(st); if (!ms.length || st.won) break;
+            const m = ms[Math.floor(rnd() * ms.length)]; st = L.applyMove(st, m[0], m[1]).state; mv.push([m[0], m[1]]);
+            if (st.won) break;
+            const r = L.solve(st, { nodeLimit: 3000 });
+            if (!L.isStuck(st) && !r.solved && !r.exhausted) return mv;
+          }
+        }
+        return null;
+      });
+      check(`6 面で予備軍に入る手が見つかる（${path6 ? path6.length : 'なし'} 手）`, Array.isArray(path6) && path6.length > 0, path6);
+      if (path6) {
+        const n = path6.length;
+        const p0 = (await plays(page)).length;
+        await playMoves(page, path6);
+        const s1 = await gs(page), o1 = await overlayInfo(page), pr = await overlayProbe(page, null);
+        const st1 = (await plays(page)).slice(p0).filter((x) => x.n === 'stuck').length;
+        check(`(a) 予備軍になると rescue のカード（overlay ${s1.overlay}）：見出し「もう ぜんぶは とどけられないよ」・「とける ところまで もどす」（主・先）と「このまま つづける」・ボタン 44px 以上・音 stuck が 1 回（${st1}）`,
+          s1.overlay === 'rescue' && /もう ぜんぶは とどけられないよ/.test(o1.text) && /とける ところまで もどす？/.test(o1.text) && J(o1.cmds) === J(['rewindYes', 'close']) && o1.active === 'rewindYes'
+          && /このまま つづける/.test(o1.text) && overlayOk(pr) && st1 === 1, { s1: s1.overlay, o1, pr, st1 });
+        await clickCmd(page, 'rewindYes'); await wait(page, 60);
+        const s2 = await gs(page);
+        check(`(b) 出てすぐ（400ms 以内）押しても戻らない（moves ${s2.moves}・overlay ${s2.overlay}）`, s2.moves === n && s2.overlay === 'rescue', s2);
+        await wait(page, 450); await clickCmd(page, 'rewindYes'); await wait(page, 150);
+        const s3 = await gs(page), h3 = await hintText(page), a3 = await attn(page);
+        const ls = await lastSolvable(page, 6, path6, s3.moves);
+        const sv = await stored(page, 'irobin.save');
+        let svMoves = -1; try { svMoves = JSON.parse(sv).moves.length; } catch { /* 下で不合格 */ }
+        check(`(c) 押すと解ける最後の局面へ（moves ${n}→${s3.moves}・k が解ける ${ls.atK}・k+1〜n は解けない ${J(ls.after)}）、カードが閉じ、doomed false・目印なし・ヒント「ここからなら」（${h3}）・保存の手も ${svMoves} 手`,
+          s3.moves < n && ls.ok && s3.overlay === null && s3.doomed === false && !a3.includes('1') && /ここからなら/.test(h3 || '') && svMoves === s3.moves && s3.canUndo === (s3.moves > 0), { s3: { moves: s3.moves, overlay: s3.overlay, doomed: s3.doomed }, ls, a3, h3, svMoves });
+        const b3 = J(s3.bottles);
+        await page.reload(); await wait(page, 300);
+        const s4 = await gs(page);
+        check(`(c) 開き直しても同じ局面（moves ${s4.moves}）`, s4.moves === s3.moves && J(s4.bottles) === b3, { m: s4.moves });
+      }
+      await ctx.close();
+      // (d) 「このまま つづける」→ そのまま遊んで詰む → もう一度カード → 押すと何手も戻る（1 手もどすと同じではない）
+      const c2 = await openG(browser, 'BW29 つづける', { extra: { 'irobin.best': '7' } });
+      const plan = await c2.page.evaluate(() => {
+        const L = window.IrobinLogic;
+        for (const lv of [8, 12]) for (let sd = 1; sd <= 50; sd++) {
+          let st = L.createLevel(lv).state; const mv = []; const hist = [st]; let seed = sd, dAt = -1;
+          const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+          for (let k = 0; k < 200; k++) {
+            const ms = L.legalMoves(st); if (!ms.length || st.won) break;
+            const m = ms[Math.floor(rnd() * ms.length)]; st = L.applyMove(st, m[0], m[1]).state; mv.push([m[0], m[1]]); hist.push(st);
+            if (st.won) break;
+            if (dAt < 0) { const r = L.solve(st, { nodeLimit: 3000 }); if (!L.isStuck(st) && !r.solved && !r.exhausted) dAt = mv.length; }
+          }
+          if (dAt < 0 || st.won || !L.isStuck(st) || mv.length < dAt + 2) continue;
+          let K = 0;
+          for (let j = mv.length - 1; j >= 1; j--) if (L.solve(hist[j], { nodeLimit: 3000 }).solved) { K = j; break; }
+          if (K < mv.length - 1) return { lv, sd, dAt, mv, K };
+        }
+        return null;
+      });
+      check(`予備軍に入ってから続けて詰み、戻し先が 2 手以上前になる手が見つかる（${plan ? `${plan.lv} 面・${plan.dAt} 手目で予備軍・${plan.mv.length} 手で詰み・戻し先 ${plan.K}` : 'なし'}）`, !!plan, plan);
+      if (plan) {
+        const g = c2.page;
+        await g.evaluate((lv) => window.IrobinGame.setLevel(lv), plan.lv); await wait(g, 100);
+        await playMoves(g, plan.mv.slice(0, plan.dAt)); await wait(g, 100);
+        const d1 = await gs(g);
+        await wait(g, 450); await clickCmd(g, 'close'); await wait(g, 100);
+        const d2 = await gs(g), hd = await hintText(g);
+        check(`(d) 「このまま つづける」：カードが閉じ（${d1.overlay}→${d2.overlay}）、doomed のまま・ヒントは「1手もどす」の案内（${hd}）・手は ${d2.moves}`, d1.overlay === 'rescue' && d2.overlay === null && d2.doomed === true && /1手もどす/.test(hd || '') && d2.moves === plan.dAt, { d1: d1.overlay, d2 });
+        await playMoves(g, plan.mv.slice(plan.dAt, plan.dAt + 1)); await wait(g, 100);
+        const d3 = await gs(g);
+        check(`(d) 次の手（まだ詰みでない）ではカードは出ない（overlay ${d3.overlay}・stuck ${d3.stuck}）`, d3.overlay === null && d3.stuck === false, d3.overlay);
+        await playMoves(g, plan.mv.slice(plan.dAt + 1)); await wait(g, 100);
+        const d4 = await gs(g), o4 = await overlayInfo(g);
+        check(`(d) そのまま詰むと、もう一度カード（見出し「うごかせる びんが ないよ」。overlay ${d4.overlay}・stuck ${d4.stuck}）`, d4.overlay === 'rescue' && d4.stuck === true && /うごかせる びんが ないよ/.test(o4.text), { d4: d4.overlay, o4 });
+        await wait(g, 450); await clickCmd(g, 'rewindYes'); await wait(g, 150);
+        const d5 = await gs(g);
+        const ls = await lastSolvable(g, plan.lv, plan.mv, d5.moves);
+        check(`(d) 押すと解ける最後の局面（${plan.mv.length} 手→${d5.moves} 手。1 手もどすより前・k が解ける ${ls.atK}・k+1〜n は解けない ${J(ls.after)}）`, d5.moves === plan.K && d5.moves < plan.mv.length - 1 && ls.ok && d5.stuck === false && d5.overlay === null, { d5: d5.moves, ls });
+      }
+      await c2.ctx.close();
+      // (g) カードを出す時に遊び方が開いていた（取りやめ）：予備軍のまま次の手を指すと、そのときにカードが出る
+      if (path6) {
+        const cg = await openG(browser, 'BW29 とりやめ', { extra: { 'irobin.best': '5' } });
+        const gp = cg.page;
+        await gp.evaluate(() => window.IrobinGame.setLevel(6)); await wait(gp, 100);
+        // path6 のあと、まだ詰まずに予備軍のままの手
+        const nx = await gp.evaluate((path) => {
+          const L = window.IrobinLogic; let st = L.createLevel(6).state;
+          for (const [f, t] of path) st = L.applyMove(st, f, t).state;
+          for (const [f, t] of L.legalMoves(st)) { const s2 = L.applyMove(st, f, t).state; const r = L.solve(s2, { nodeLimit: 3000 }); if (!s2.won && !L.isStuck(s2) && !r.solved && !r.exhausted) return [f, t]; }
+          return null;
+        }, path6);
+        check(`6 面：予備軍のまま次に指せる手がある（${J(nx)}）`, !!nx, nx);
+        if (nx) {
+          await playMoves(gp, path6.slice(0, -1));
+          const [f, t] = path6[path6.length - 1];
+          // 注いで演出の途中に遊び方を開き、そのあと演出を終わらせる（カードは遊び方が開いているので取りやめ）
+          await gp.evaluate(([f, t]) => { window.IrobinGame.pick(f); window.IrobinGame.pick(t); document.getElementById('helpBtn').click(); window.IrobinGame.skip(); }, [f, t]);
+          await wait(gp, 100);
+          const g1 = await gs(gp);
+          await clickCmd(gp, 'close'); await wait(gp, 400);
+          const g2 = await gs(gp);
+          await playMoves(gp, [nx]); await wait(gp, 100);
+          const g3 = await gs(gp);
+          check(`(g) 遊び方が開いていてカードが取りやめ（overlay ${g1.overlay}・doomed ${g1.doomed}）→ 閉じても出ない（${g2.overlay}）→ 予備軍のまま次の手を指すとカード（${g3.overlay}・doomed ${g3.doomed}）`, g1.overlay === 'help' && g1.doomed === true && g2.overlay === null && g3.overlay === 'rescue' && g3.doomed === true, { g1: g1.overlay, g2: g2.overlay, g3: g3.overlay });
+        }
+        await cg.ctx.close();
+      }
+      // (e) setState の詰み（BW7 の局面）でもカード、押すと詰みでなくなる
+      const c3 = await openG(browser, 'BW29 setState');
+      await c3.page.evaluate((s) => window.IrobinGame.setState(s), STUCK_STATE()); await wait(c3.page, 100);
+      await c3.page.evaluate(() => { window.IrobinGame.pick(0); window.IrobinGame.pick(1); window.IrobinGame.skip(); }); await wait(c3.page, 100);
+      const e1 = await gs(c3.page);
+      await wait(c3.page, 450); await clickCmd(c3.page, 'rewindYes'); await wait(c3.page, 150);
+      const e2 = await gs(c3.page);
+      const he = await hintText(c3.page);
+      check(`(e) setState の詰みでもカード（${e1.overlay}・stuck ${e1.stuck}）、押すと詰みでなくなる（stuck ${e2.stuck}・moves ${e2.moves}・overlay ${e2.overlay}）、setState の最初へ戻ったときのヒントは ふつうの文（${he}）`, e1.overlay === 'rescue' && e1.stuck === true && e2.stuck === false && e2.moves === 0 && e2.overlay === null && e2.phase === 'idle' && !/ここからなら/.test(he || '') && !!he, { e1, e2, he });
+      await c3.ctx.close();
+      // (f) SE 縦・横（ホーム画面）でカードがスクロールなしで収まり、ボタンが画面内
+      for (const o of ['p', 'l']) {
+        const v = view('SE', o, 'app');
+        const c = await openG(browser, `BW29 SE ${o}`, { v });
+        await c.page.evaluate((s) => window.IrobinGame.setState(s), STUCK_STATE()); await wait(c.page, 100);
+        await c.page.evaluate(() => { window.IrobinGame.pick(0); window.IrobinGame.pick(1); window.IrobinGame.skip(); }); await wait(c.page, 100);
+        const pr = await overlayProbe(c.page, v.safe);
+        const sc = await c.page.evaluate(() => { const ov = document.querySelector('#overlay'); return { sh: ov.scrollHeight, ch: ov.clientHeight }; });
+        check(`(f) ${v.label}：カードがスクロールなしで収まり（${sc.sh}/${sc.ch}）、ボタンが画面内・44px 以上`, (await gs(c.page)).overlay === 'rescue' && sc.sh <= sc.ch + 1 && overlayOk(pr), { pr, sc });
+        await c.ctx.close();
+      }
+    },
+  },
+  {
+    id: 'BW30', tier: 'full', title: 'いろびん IB-08 の画面：115 面と 68 面（ずらされた動物が見えている間に新しい人が来る）を solution で遊び、2 人いる各局面で #cust0Text・#cust1Text の動物の名前が違う',
+    async run({ browser, check }) {
+      const { ctx, page } = await openG(browser, 'BW30', { extra: { 'irobin.best': '114' } });
+      await page.evaluate(() => window.IrobinGame.setLevel(115)); await wait(page, 100);
+      const sol = await solutionOf(page);
+      check(`115 面の solution がある（${sol ? sol.length : 'なし'} 手）`, Array.isArray(sol) && sol.length > 0, null);
+      const names = () => page.evaluate(() => ['cust0', 'cust1'].map((id) => {
+        const e = document.getElementById(id), t = document.getElementById(id + 'Text');
+        if (!e || !e.dataset.color) return null;
+        const m = /ほしい\s*(\S+)\s*$/.exec(t ? t.textContent.trim() : '');
+        return m ? m[1] : '?';
+      }));
+      let both = 0; const dup = [];
+      const look = async (k) => { const [a, b] = await names(); if (a && b) { both++; if (a === b || a === '?') dup.push(`${k} 手：${a}・${b}`); } };
+      await look(0);
+      for (let k = 0; sol && k < sol.length - 1; k++) { await playMoves(page, [sol[k]]); await look(k + 1); }
+      check(`2 人いる ${both} 局面のどれも、2 つの枠の動物の名前が違う（同じ ${dup.length}）`, both > 5 && dup.length === 0, dup.slice(0, 8));
+      // ずらされた動物が見えている間に新しい人が来る場面（68 面の解の道。先の人が帰っても、ずらされた人はそのまま待つ）：
+      // 新しい人は、いま見えている動物と違う動物で来る
+      await page.evaluate(() => window.IrobinGame.setLevel(68)); await wait(page, 100);
+      const sol68 = await page.evaluate(() => window.IrobinLogic.createLevel(68).info.solution.map((m) => [m[0], m[1]]));   // 生成の解の道（この道で起きることを stateful の台本で確かめた）
+      const ord68 = await page.evaluate(() => { const s = window.IrobinLogic.createLevel(68).state; return [].concat(s.slots, s.queue).filter(Number.isInteger); });
+      const base = await page.evaluate((ord) => { const N = window.IrobinRender.ANIMAL_NAMES; return ord.map((_, i) => N[window.IrobinLogic.animalFor(68, i)]); }, ord68);
+      const cols = () => page.evaluate(() => ['cust0', 'cust1'].map((id) => { const e = document.getElementById(id); return e && e.dataset.color ? Number(e.dataset.color) : null; }));
+      let prev = await cols(), scene = 0, both68 = 0; const dup68 = [];
+      const slow = [await names()];   // 演出つきで遊んだときの、各手のあとの 2 つの枠の動物（下で、飛ばしたとき・もどしたときと比べる）
+      // 演出を飛ばさずに進める
+      const playSlow = async ([f, t]) => {
+        await page.evaluate(([f, t]) => { window.IrobinGame.pick(f); window.IrobinGame.pick(t); }, [f, t]);
+        for (let j = 0; j < 100; j++) { await wait(page, 100); const g = await gs(page); if (!g.busy && g.phase !== 'pouring') break; }
+      };
+      for (let k = 0; sol68 && k < sol68.length - 1; k++) {
+        await playSlow(sol68[k]);
+        const c = await cols(), nm = await names();
+        slow.push(nm);
+        if (nm[0] && nm[1]) { both68++; if (nm[0] === nm[1]) dup68.push(`${k + 1} 手：${nm[0]}`); }
+        for (let y = 0; y < 2; y++) {
+          const x = 1 - y;
+          // y に新しい人が来た・x は前から待っている人で、x の動物が ずらされている（2 引数の animalFor と違う）
+          if (c[y] !== null && c[y] !== prev[y] && c[x] !== null && c[x] === prev[x] && nm[x] !== base[ord68.indexOf(c[x])]) scene++;
+        }
+        prev = c;
+      }
+      check(`68 面：ずらされた動物が見えている間に新しい人が来る場面が ${scene} 回あり、2 人いる ${both68} 局面のどれも動物が違う（同じ ${dup68.length}）`, scene > 0 && both68 > 5 && dup68.length === 0, dup68.slice(0, 8));
+      // 演出を飛ばしても、各局面の動物は演出つきのときと同じ（並べ直しで注文の順を作り直さない・待っている人の動物を決め直さない。IB-08）
+      await page.evaluate(() => window.IrobinGame.setLevel(68)); await wait(page, 100);
+      const fast = [await names()];
+      for (let k = 0; sol68 && k < sol68.length - 1; k++) { await playMoves(page, [sol68[k]]); fast.push(await names()); }
+      const diffF = fast.map((x, k) => (J(x) === J(slow[k]) ? null : `${k} 手：${x}／${slow[k]}`)).filter(Boolean);
+      check(`68 面：演出を飛ばしても、各局面の動物は演出つきのときと同じ（ちがう ${diffF.length}）`, slow.length > 5 && fast.length === slow.length && diffF.length === 0, diffF.slice(0, 5));
+      // 1手もどすで面の最初まで戻っても、各局面の動物は演出つきのときと同じ（面の中で一度見せた動物を覚えている）・同じ動物は並ばない
+      const dupU = [], diffU = [];
+      for (let k = fast.length - 2; k >= 0; k--) {
+        await page.click('#undoBtn', { force: true }); await wait(page, 60);
+        const x = await names();
+        if (x[0] && x[1] && x[0] === x[1]) dupU.push(`${k} 手：${x[0]}`);
+        if (J(x) !== J(slow[k])) diffU.push(`${k} 手：${x}／${slow[k]}`);
+      }
+      check(`68 面：1手もどすで面の最初まで戻っても、各局面の動物は演出つきのときと同じ（ちがう ${diffU.length}）・同じ動物が並ばない（同じ ${dupU.length}）`, diffU.length === 0 && dupU.length === 0 && (await gs(page)).moves === 0, { diffU: diffU.slice(0, 5), dupU: dupU.slice(0, 5) });
+      await ctx.close();
     },
   },
 ];

@@ -602,7 +602,7 @@
     text-align: center;
     box-shadow: 0 0 0 1px var(--line), 0 20px 50px rgba(0, 0, 0, 0.5);
   }
-  .card h2 { margin: 0; font-size: 24px; line-height: 1.3; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+  .card h2 { margin: 0; font-size: 24px; line-height: 1.3; letter-spacing: 0.04em; overflow-wrap: anywhere; word-break: keep-all; text-wrap: balance; }   /* 見出しは ことばの間（空白）で折る。1〜2 文字だけ次の行に落ちない（IB-25 の UX） */
   .card p { margin: 0; color: var(--ink); font: 16px/1.6 var(--font-text); overflow-wrap: anywhere; }
   .card p.note { color: var(--muted); font-size: 14px; }
   .card p.best-new { color: var(--accent); font-weight: 700; }
@@ -691,6 +691,7 @@
 </div>
 
 <script src="../../common/sfx.js"></script>
+<script src="../../common/notice.js"></script>
 <script src="logic.js"></script>
 <script src="render.js"></script>
 <script src="input.js"></script>

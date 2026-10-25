@@ -473,7 +473,7 @@
     <div class="canvas-wrap" id="canvasWrap">
       <canvas id="stage" role="img" aria-label="舞台"></canvas>
     </div>
-    <p class="hint" id="hint"></p>
+    <p class="hint" id="hint" aria-live="polite"></p>
     <div class="ctrl">
       <button class="wbtn" id="windMinus" type="button" aria-label="1/4回転戻す">－<small>1/4戻す</small></button>
       <div class="dial" id="dial" role="slider" tabindex="0" aria-label="ネジ（指で時計回りに回すと巻く。離すと歩く）" aria-valuemin="0" aria-valuenow="0">
@@ -494,6 +494,7 @@
 </div>
 
 <script src="../../common/sfx.js"></script>
+<script src="../../common/notice.js"></script>
 <script src="stages.js"></script>
 <script src="logic.js"></script>
 <script src="render.js"></script>
@@ -560,6 +561,7 @@
   const rawProgress = () => { try { return localStorage.getItem(KEY_PROGRESS); } catch (e) { return null; } };
   let seenProgress = rawProgress();
   // 保存がこのページの覚えた文字と違う（ほかのページ・タブが書いた）
+  // X-22：比べるのは保存の生の文字。どちらも保存なし（null）なら「変わっていない」と見なす（今は毎回保存から読むので困らない）。メモリの値から書く保存を足すときは、書くたびに増やす印（書き込みの回数）で比べる形に変える
   const changedElsewhere = () => rawProgress() !== seenProgress;
   let stale = false;                     // true：このページはもう保存しない（開き直す前）
   let reloading = false;                 // true：開き直しをもう頼んだ（pageshow と visibilitychange の両方から呼ばれても1回だけ）
@@ -569,6 +571,7 @@
     stale = true;
     if (reloading) return true;
     reloading = true;
+    if (self.YubiNotice) self.YubiNotice.markReload();   // 開き直したあとに「ほかの タブの つづきから はじめました」を 1 回出す（X-24）
     try { location.reload(); } catch (e) { console.error("ゼンマイさんぽ: 開き直せませんでした", e); }
     return true;
   }
@@ -599,6 +602,9 @@
   let nextStepSfx = 0;
   let warnLevel = 0;           // 0: ふつう / 1: そろそろ限界 / 2: 超えている
   let gestureWound = false;    // いまのダイヤル操作で巻き数が変わったか
+  let star3Gone = false;       // この回の人形が ★3 の範囲を通りすぎた（「★3 の範囲を通りすぎた」を出した。X-14）
+  const HINT_STAR3_GONE = "★3の はんいを すぎたよ。もう ★3 は とれないよ";
+  const star3Far = (s) => s.target.x + s.target.w / 2 + (s.target.w / 2) * L.STAR3;   // ★3 の範囲の先の端
 
   const stage = () => STAGES[idx];
   const isOver = () => turns > stage().maxTurns + 1e-9;
@@ -706,6 +712,8 @@
       const e = clock - walkT0;
       const path = result.path;
       dollX = posAt(path, e);
+      // ★3 の範囲の先まで来て まだ止まらない＝この回は もう ★3 にならない。1回だけ知らせる（X-14）。行の高さは変えない（舞台が動かない）
+      if (!star3Gone && result.stars !== 3 && dollX > star3Far(stage()) + 1e-6) { star3Gone = true; el.hint.style.minHeight = el.hint.offsetHeight + "px"; el.hint.textContent = HINT_STAR3_GONE; }
       if (e >= nextStepSfx) { sfx.play("step"); nextStepSfx += 0.32; }
       if (e >= path[path.length - 1].t) {
         dollX = path[path.length - 1].x;
@@ -786,6 +794,7 @@
     el.stageName.textContent = s.name;
     setStars(el.stageStars, progress.stars[s.id] || 0);
     el.hint.textContent = s.hint || "";
+    el.hint.style.minHeight = ""; star3Gone = false;
     sfx.unlock();   // 効果音の準備を、ネジに触れる前に済ませる
     renderer.resize();
     renderDial();
@@ -1084,7 +1093,7 @@
     getState() {
       return {
         screen, stageId: stage() ? stage().id : null, stageIndex: idx, turns, phase, paused,
-        overlay: overlayKind, dollX,
+        overlay: overlayKind, dollX, star3Gone,
         result: result ? { result: result.result, x: result.x, stars: lastResult ? lastResult.stars : result.stars } : null,
         progress: JSON.parse(JSON.stringify(progress))
       };

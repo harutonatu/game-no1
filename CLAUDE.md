@@ -18,6 +18,7 @@
 | `common/sfx.js` | 共通の効果音（`YubiSfx.create("<ゲーム名>")`、音の表はゲームごと） |
 | `common/version.js` | 版の表示（`version` と `date`） |
 | `common/debug.js` | デバッグ表示（`?debug=1`。ふだんは何もしない）。仕組みと命令は [docs/debug.md](docs/debug.md) |
+| `common/notice.js` | 開き直したあとの知らせ（X-24。X-20 の開き直しの直前に `YubiNotice.markReload()`、開き直したページに 1 回だけ出す） |
 | `sw.js` | Service Worker（オフライン）。`CACHE_VERSION` と `APP_FILES`（事前キャッシュ一覧） |
 | `manifest.webmanifest` `icons/` | ホーム画面に追加するための設定と画像 |
 | `tests/` | 統合テスト（Playwright）。`package.json` や `node_modules` はリポジトリに入れない |

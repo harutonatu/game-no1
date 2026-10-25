@@ -5,7 +5,7 @@
  * SeizaiRender.create(canvas, { calm }) → {
  *   layout(stage, cssWidth, cssHeight) → { worldH, cssH, scale, offsetX, zones: [{ dept, x, y, w, h }] },
  *   frame(state, events, dtSec), burst(kind, dept), setCalm(bool), pause(), resume(),
- *   stats() → { actors, frames, slowFrames, bgRedraws, drawMs, calm, toolBurst, jamTag }（jamTag：いま描いた つまりの札 { dept, text } か null）
+ *   stats() → { actors, frames, slowFrames, bgRedraws, drawMs, calm, toolBurst, jamTag, yardTag }（jamTag：いま描いた つまりの札 { dept, text } か null）
  * }
  * - 世界は幅 360 の単位。#scene の幅に合わせて拡大縮小（上限 1.8 倍。広い画面では真ん中に寄せる）
  * - canvas は「見えている所」だけの大きさで、#sceneInner の中で position: sticky。スクロールの量だけずらして描く
@@ -99,6 +99,8 @@
     let lastZonesKey = "";
     let lastToolBurst = null;
     let jamTag = null;   // いま描いた つまりの札（{ dept, text }。テスト用に stats() で見せる。SZ-08）
+    let yardBox = null;    // 札と山の四角（世界の座標。重ならないことをテストで確かめる）
+    let yardTag = "";      // いま描いた 森の置き場の札（数字か「すぐ はこぶ」。テスト用に stats() で見せる。SZ-06）
 
     const doc = root.document;
     function el(id) { try { return doc ? doc.getElementById(id) : null; } catch (e) { return null; } }
@@ -697,9 +699,17 @@
     function drawPiles(s) {
       const b = s.buf || {};
       const v = (k) => Math.max(0, Math.floor(num(b[k], 0)));
-      // 森の置き場（丸太）
-      drawPile(12, 244, v("yard"), "log", 8);
-      label(String(v("yard")), 50, 230, {});
+      // 森の置き場（丸太）。はこぶ が速いと、切った丸太は すぐ運ばれて置き場は いつも 0（正しい動き）。
+      // 0 で、はこぶ が働いている（人がいて、待ち（E2 の "in"）でない）ときは「すぐ はこぶ」と出す（こわれていると思われない。SZ-06）
+      const yard = v("yard");
+      const wy = typeof actors.why === "function" ? actors.why() : null;
+      const cw = wy && "carry" in wy ? wy.carry : "in";   // まだ計算前（why が無い・carry が無い）は数字を出す側に倒す
+      const carrying = yard === 0 && num(((s.depts || {}).carry || {}).staff, 0) >= 1 && !cw;
+      drawPile(12, 244, yard, "log", 8);
+      yardTag = carrying ? "すぐ はこぶ" : String(yard);
+      // 札は山（x 12〜56・y 226〜246）の上に置く（右の山の前で待つ はこぶ人の「•••」にも、山にも かぶらない）
+      const yh = label(yardTag, 12, 206, {});
+      yardBox = { tag: { x: 12, y: 206, w: lastLabelW, h: yh }, pile: { x: 12, y: 226, w: 44, h: 20 } };
       // 工場の入口と、台と台の間の置き場（その台に入る品。名前の札は左上なので、山は見出しの帯の右に）
       const f = geo.factory;
       for (const c of f.cols) {
@@ -1387,7 +1397,7 @@
       resume() { paused = false; lastFrameAt = null; },
       stats() {
         const sorted = drawTimes.slice().sort((p, q) => p - q);
-        return { actors: actors.all().length, frames, slowFrames, bgRedraws, drawMs: sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0, calm, toolBurst: lastToolBurst ? lastToolBurst.dept : null, jamTag: jamTag ? Object.assign({}, jamTag) : null };
+        return { actors: actors.all().length, frames, slowFrames, bgRedraws, drawMs: sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0, calm, toolBurst: lastToolBurst ? lastToolBurst.dept : null, jamTag: jamTag ? Object.assign({}, jamTag) : null, yardTag, yardBox };
       },
       actors: () => actors.list(),
       // 待つ理由（§20 E2・E3。吹き出しと同じもの）と、はこぶ の人が門に着いた回数（§20 E4）

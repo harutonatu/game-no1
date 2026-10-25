@@ -35,6 +35,9 @@
   // 手は残っているが、もう全部は届けられない（ソルバーが上限内で「解けない」と言い切れたときだけ）
   const HINT_DOOMED = "この ままだと ぜんぶは とどけられないよ。「1手もどす」を おしてみてね";
   const DOOM_NODE_LIMIT = 3000;   // 詰み予備軍を調べる上限（局面の数。上限に届いたら何も言わない）
+  // 詰んだときの「とける ところまで もどす」（IB-25。契約 §20）
+  const HINT_REWOUND = "ここからなら ぜんぶ とどけられるよ";
+  const REWIND_BUDGET = 30000;    // 戻し先を探すときに調べる局面の合計の上限（1 局面ずつは DOOM_NODE_LIMIT まで。超えたら面の最初）
   // 布の瓶（§17.4）
   const HINT_CLOTH_FIRST = "ぬのの びんは、おきゃくさんに とどけると あくよ。どの いろから とどけるか かんがえよう";
   // 横向きで背が低い画面（SE 横）はヒントの欄が狭いので、短い文にする
@@ -106,6 +109,7 @@
   let reloading = false;                 // true：開き直しをもう頼んだ（pageshow と visibilitychange の両方から呼ばれても1回だけ）
   function noteSaved(key) { if (seenRaw.has(key)) seenRaw.set(key, readKey(key)); }
   // 保存がこのページの覚えた文字と違う（ほかのページ・タブが書いた）
+  // X-22：比べるのは保存の生の文字。どちらも保存なし（null）なら「変わっていない」と見なす（今は毎回保存から読むので困らない）。メモリの値から書く保存を足すときは、書くたびに増やす印（書き込みの回数）で比べる形に変える
   const changedElsewhere = () => WATCH_KEYS.some((k) => readKey(k) !== seenRaw.get(k));
   // 表に戻ったとき（visible・pageshow）：ほかで変わっていたら書かずに開き直す（true なら、ほかの処理はしない）
   function reloadIfStale() {
@@ -113,6 +117,7 @@
     stale = true;
     if (reloading) return true;
     reloading = true;
+    if (self.YubiNotice) self.YubiNotice.markReload();   // 開き直したあとに「ほかの タブの つづきから はじめました」を 1 回出す（X-24）
     try { location.reload(); } catch (e) { console.error("いろびん: 開き直せませんでした", e); }
     return true;
   }
@@ -146,7 +151,7 @@
   let selected = null;
   let phase = "idle";           // idle | selected | pouring | stuck | clear
   let paused = false;           // 裏に回っている
-  let overlayKind = null;       // null | help | clear | confirm
+  let overlayKind = null;       // null | help | clear | confirm | rescue
   let custom = null;            // setState で入れた最初の局面（テスト用。保存しない）
   let cardShownAt = -Infinity;
   let blockUntil = -Infinity;
@@ -155,6 +160,7 @@
   let lastClear = null;         // { level, moves, improved, par }
   let par = 0;                  // この面の目安の手数（生成時にソルバーが見つけた解の長さ。最短とは限らない）
   let doomed = false;           // 手はあるが、もう解けない（ソルバーが言い切れたとき）
+  let rescueOwed = false;       // 予備軍のカードを出すはずが取りやめになった（遊び方を開いていた・裏に回っていた・すぐ次の手を指した）。次に予備軍のまま注いだら出す（IB-25）
   let clothTipLevel = 0;        // 布の説明を出した面（やりなおしても同じ面なら出す）
   let clothTip = false;         // はじめて布が出た面（面の最初のヒントを布の説明にし、布の瓶を指さす）
   let gimTipLevel = 0;          // v37 の仕掛けの説明を出した面（やりなおしても同じ面なら出す）
@@ -282,6 +288,7 @@
     custom = null;
     selected = null;
     doomed = false;
+    rescueOwed = false;
     par = b.created && b.created.info && Array.isArray(b.created.info.solution) ? b.created.info.solution.length : 0;
     // はじめて布が出た面：布の説明を出し、見たことを保存する
     // （やりなおしで同じ面に戻ったときも出す。保存は見せた時点で "1"）
@@ -426,13 +433,15 @@
       setPhase("stuck");
       setHint(HINT_STUCK);
       sfx.play("stuck");
+      showRescue("stuck");
       return;
     }
     setPhase(selected !== null ? "selected" : "idle");
     if (checkDoomed()) {
       renderTools();
       if (selected === null) setHint(HINT_DOOMED);
-      if (!wasDoomed) sfx.play("stuck");   // 知らせる音は、解けなくなった最初の1回だけ
+      // 知らせる音は、解けなくなった最初の1回だけ。カードも最初の1回だけ（取りやめになっていたら、予備軍のまま進んだ次の手で出す）
+      if (!wasDoomed || rescueOwed) { if (!wasDoomed) sfx.play("stuck"); showRescue("doomed"); }
       return;
     }
     if (selected !== null) { setHint(HINT_SELECTED); return; }
@@ -512,6 +521,54 @@
     checkDoomed();
     renderTools();
     setHint(phase === "stuck" ? HINT_STUCK : idleHint());
+  }
+  // 詰んだ・詰み予備軍になった（注いだあと）：「とける ところまで もどす」のカードを出す（IB-25。契約 §20 R1・R2）。
+  // 出すのは次のひと区切り（later 0）。演出の途中に「1手もどす」などで flush されてから局面が変わったときは出さない
+  function showRescue(kind) {
+    const mark = moves.length, myState = state;
+    rescueOwed = true;   // 出したら消す。取りやめなら残す
+    later(() => {
+      if (overlayKind || paused || !state || state.won || state !== myState || moves.length !== mark) return;
+      if (kind === "stuck" ? phase !== "stuck" : !doomed) return;
+      rescueOwed = false;
+      render.pause();
+      showCard(`
+      <h2 id="cardTitle" data-f="h"></h2>
+      <p>とける ところまで もどす？</p>
+      <div class="btns">
+        <button class="cta primary" type="button" data-cmd="rewindYes">とける ところまで もどす</button>
+        <button class="cta" type="button" data-cmd="close">このまま つづける</button>
+      </div>`, { h: kind === "stuck" ? "うごかせる びんが ないよ" : "もう ぜんぶは とどけられないよ" }, "rescue");
+      cardShownAt = now();
+    }, 0);
+  }
+  // 戻し先：新しい方から 1 手ずつ、解ける最後の局面（R4）。history[k]＝k 手 注いだあとの局面
+  function rewindTarget() {
+    let spent = 0;
+    for (let k = history.length - 1; k >= 1; k--) { const r = safeCall(() => L.solve(history[k], { nodeLimit: DOOM_NODE_LIMIT }), null); spent += r && Number.isFinite(r.nodes) ? r.nodes : 0; if (r && r.solved === true) return k; if (spent > REWIND_BUDGET) break; }
+    return 0;   // 見つからない・探しきれない：面の最初（生成で解けると確かめ済み。setState の局面ならその局面）
+  }
+  function doRewind() {
+    hideOverlay();
+    if (!document.hidden) render.resume();
+    if (!state || state.won || phase === "clear") return;
+    flush();
+    if (state.won || phase === "clear") return;
+    const k = rewindTarget();
+    if (k >= history.length) return;
+    state = history[k];
+    history.length = k;
+    moves.length = k;
+    selected = null;
+    doomed = false;
+    render.update(state, { selected: null });
+    save();
+    hud();
+    sfx.play("undo");
+    setPhase(restPhase());
+    checkDoomed();
+    renderTools();
+    setHint(custom && k === 0 ? idleHint() : HINT_REWOUND);   // setState の局面の最初へ戻ったとき（解けるとは限らない）は、ふつうのヒント
   }
   function askRestart() {
     if (overlayKind || !state || phase === "clear") return;
@@ -601,7 +658,7 @@
       if (!document.hidden) render.resume();
       return;
     }
-    if (overlayKind === "confirm") {
+    if (overlayKind === "confirm" || overlayKind === "rescue") {
       hideOverlay();
       if (!document.hidden) render.resume();
     }
@@ -621,12 +678,13 @@
   el.overlay.addEventListener("click", (e) => {
     const btn = e.target && e.target.closest ? e.target.closest("[data-cmd]") : null;
     if (!btn) return;
-    if (overlayKind === "clear" && now() - cardShownAt < CARD_LOCK_MS) return;   // 出た直後の連打で押し間違えない
+    if ((overlayKind === "clear" || overlayKind === "rescue") && now() - cardShownAt < CARD_LOCK_MS) return;   // 出た直後の連打で押し間違えない
     const cmd = btn.dataset.cmd;
     if (cmd === "next") goNext();
     else if (cmd === "menu") goMenu();
     else if (cmd === "close") closeCard();
     else if (cmd === "restartYes") doRestart();
+    else if (cmd === "rewindYes") doRewind();
   });
   el.helpBtn.addEventListener("click", () => { sfx.unlock(); showHelp(); });
   // 届ける演出の途中でお客さんを押したら、演出を飛ばす（連鎖が長いときに待たせない）
@@ -662,7 +720,7 @@
     } else {
       if (reloadIfStale()) return;
       paused = false;
-      if (overlayKind !== "help" && overlayKind !== "confirm") render.resume();
+      if (overlayKind !== "help" && overlayKind !== "confirm" && overlayKind !== "rescue") render.resume();
       syncPhase();
     }
   });
@@ -780,7 +838,7 @@
       render.finishAll();
       custom = st;
       level = st.level;
-      state = st; history = []; moves = []; selected = null; doomed = false; par = 0; clothTip = false; gimTip = null;
+      state = st; history = []; moves = []; selected = null; doomed = false; rescueOwed = false; par = 0; clothTip = false; gimTip = null;
       render.build(state, { orders: ordersOf(st), places: placesOf(st) });
       hud();
       setPhase(restPhase());

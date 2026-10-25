@@ -104,6 +104,7 @@
   let reloading = false;                 // true：開き直しをもう頼んだ（pageshow と visibilitychange の両方から呼ばれても1回だけ）
   function noteSaved(key) { if (seenRaw.has(key)) seenRaw.set(key, readKey(key)); }
   // 保存がこのページの覚えた文字と違う（ほかのページ・タブが書いた）
+  // X-22：比べるのは保存の生の文字。どちらも保存なし（null）なら「変わっていない」と見なす（今は毎回保存から読むので困らない）。メモリの値から書く保存を足すときは、書くたびに増やす印（書き込みの回数）で比べる形に変える
   const changedElsewhere = () => WATCH_KEYS.some((k) => readKey(k) !== seenRaw.get(k));
   // 表に戻ったとき（visible・pageshow）：ほかで変わっていたら書かずに開き直す（true なら、ほかの処理はしない）
   function reloadIfStale() {
@@ -111,6 +112,7 @@
     stale = true;
     if (reloading) return true;
     reloading = true;
+    if (self.YubiNotice) self.YubiNotice.markReload();   // 開き直したあとに「ほかの タブの つづきから はじめました」を 1 回出す（X-24）
     try { location.reload(); } catch (e) { console.error("まとめてポン: 開き直せませんでした", e); }
     return true;
   }

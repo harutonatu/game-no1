@@ -243,7 +243,16 @@ export const tests = [
       const apex = [];
       const note = (s) => { for (const o of s.objs) apex.push((o.y - (o.vy * o.vy) / (2 * o.g) - s.stage.y) / s.stage.h); };
       // 的が 3 つ以上同時に飛ぶまで切り続け（爆弾はよける）、3 つを 1 回のスワイプでなぞる
-      const s0 = await kiriAutoplay(page, (s) => note(s) || s.objs.filter((o) => o.kind !== 'bomb' && o.y - o.r > s.stage.y && o.y + o.r < s.stage.y + s.stage.h).length >= 3 && s.objs.every((o) => o.kind !== 'bomb'), { maxMs: 120000, step: 300, lazy: true });
+      // 的を落とすとライフが減る。遊ぶ順の運しだいでライフが 1 以下になると、下の「ライフ 2 以上で爆弾」がいつまでも来ず 60 秒の時間切れ・
+      // 爆弾で終わってしまう（T-02）。そうなったら開き直して始め直す（2 回まで。確かめる中身は変えない）
+      const lowLife = (s) => s.lives < 2 || s.state !== 'play';
+      const restart = async () => { await page.goto(KIRI); await wait(page, 150); await kiriStart(page); };
+      let s0;
+      for (let k = 0; k < 3; k++) {
+        s0 = await kiriAutoplay(page, (s) => note(s) || lowLife(s) || (s.objs.filter((o) => o.kind !== 'bomb' && o.y - o.r > s.stage.y && o.y + o.r < s.stage.y + s.stage.h).length >= 3 && s.objs.every((o) => o.kind !== 'bomb')), { maxMs: 120000, step: 300, lazy: true });
+        if (!lowLife(s0) || k === 2) break;
+        await restart();
+      }
       const before = s0.score;
       const done = await kiriSwipe(page, (s) => {
         const ts = s.objs.filter((o) => o.kind !== 'bomb' && o.y - o.r > s.stage.y && o.y + o.r < s.stage.y + s.stage.h).sort((a, b) => a.x - b.x);
@@ -255,7 +264,12 @@ export const tests = [
       const comboPlays = (await plays(page)).filter((p) => p.n === 'combo');
       check(`ひと振りで ${n} 個切ると ${n} 点＋コンボ加点 ${2 * n - 3}（${before}→${s1.score}）、最大コンボ ${s1.maxCombo}、combo の音`, done && n >= 3 && s1.score - before === n + 2 * n - 3 && s1.maxCombo === n && comboPlays.some((p) => p.a === n), { done, n, before, after: s1.score, s0: s0.objs.length });
       // 爆弾が来るまで切り続け、爆弾を切る → ライフ −1、点は増えない、ゲームは続く
-      const s2 = await kiriAutoplay(page, (s) => note(s) || s.objs.some((o) => o.kind === 'bomb' && o.y - o.r > s.stage.y && o.y + o.r < s.stage.y + s.stage.h) && s.lives >= 2, { maxMs: 120000, step: 200 });
+      let s2;
+      for (let k = 0; k < 3; k++) {
+        s2 = await kiriAutoplay(page, (s) => note(s) || lowLife(s) || s.objs.some((o) => o.kind === 'bomb' && o.y - o.r > s.stage.y && o.y + o.r < s.stage.y + s.stage.h), { maxMs: 60000, step: 200 });
+        if (!lowLife(s2) || k === 2) break;
+        await restart();
+      }
       const bomb = s2.objs.find((o) => o.kind === 'bomb');
       if (bomb) await kiriSwipe(page, (s) => { const b = s.objs.filter((o) => o.kind === 'bomb').sort((a, c) => Math.hypot(a.x - bomb.x, a.y - bomb.y) - Math.hypot(c.x - bomb.x, c.y - bomb.y))[0]; return b && [[b.x, b.y - b.r - 4], [b.x, b.y + b.r + 4]]; }, 3);
       const s3 = await kiriSnap(page);

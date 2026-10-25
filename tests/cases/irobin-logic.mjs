@@ -36,7 +36,7 @@ export const tests = [
     id: 'BL1', tier: 'smoke', node: true, title: 'いろびん：定数・COLORS（9色・色と記号がすべて違う）・paramsFor が面の表どおり（境界・壊れた値）',
     run({ check, root }) {
       const L = load(root);
-      const K = { NAME: 'いろびん', CAP: 4, ORDER_SLOTS: 2, MAX_COLORS: 9, MAX_MOVES_SAVED: 2000, SOLVE_NODE_LIMIT: 40000, GEN_NODE_BUDGET: 200000, GEN_TRIES: 40, SAVE_KEY_BEST: 'irobin.best', SAVE_KEY_SAVE: 'irobin.save', SAVE_KEY_HELP: 'irobin.help' };
+      const K = { NAME: 'いろびん', CAP: 4, ORDER_SLOTS: 2, MAX_COLORS: 9, MAX_MOVES_SAVED: 2000, SOLVE_NODE_LIMIT: 40000, GEN_NODE_BUDGET: 100000, GEN_TRIES: 40, SAVE_KEY_BEST: 'irobin.best', SAVE_KEY_SAVE: 'irobin.save', SAVE_KEY_HELP: 'irobin.help' };
       const kBad = Object.entries(K).filter(([k, v]) => L[k] !== v).map(([k, v]) => ({ k, want: v, got: L[k] }));
       check('定数が契約 §3 のとおり', kBad.length === 0, kBad);
       const C = L.COLORS;
@@ -894,6 +894,59 @@ export const tests = [
       const l101 = L.createLevel(101), lk = l101.state.bottles.find((b) => b.lock !== null);
       const rb = L.replay(101, [[lk.id, l101.state.bottles.find((b) => b.cells.length === 0).id]]);
       check('かぎの びんから注ぐ手（id）を含む保存は replay で止まる（ok:false・applied 0。main.js はその面の最初から）', rb.ok === false && rb.applied === 0, rb.applied);
+    },
+  },
+  {
+    id: 'BL21', tier: 'smoke', node: true, title: 'いろびん IB-08：2 つの枠に同じ動物が並ばない（1〜600 面の解の道の 2 人いる局面すべて）・先に来た方（番号が小さい方）の動物は変わらない・2 引数の結果は v38 と同じ・3 番目の引数が壊れていても例外なし',
+    run({ check, root }) {
+      const L = load(root);
+      const fnv = (str) => { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); };
+      let steps = 0; const dup = [], moved = [];
+      for (let lv = 1; lv <= 600; lv++) {
+        const { state, info } = L.createLevel(lv);
+        const ord = [].concat(state.slots, state.queue).filter(Number.isInteger);
+        const chk = (st) => {
+          const [c0, c1] = st.slots;
+          if (!Number.isInteger(c0) || !Number.isInteger(c1)) return;
+          steps++;
+          const i0 = ord.indexOf(c0), i1 = ord.indexOf(c1);
+          const a0 = L.animalFor(lv, i0, i1), a1 = L.animalFor(lv, i1, i0);
+          if (a0 === a1) dup.push(`${lv} 面 ${i0}・${i1}：${a0}`);
+          const lo = Math.min(i0, i1);
+          if ((i0 === lo ? a0 : a1) !== L.animalFor(lv, lo)) moved.push(`${lv} 面 ${lo}`);
+        };
+        let s = state;
+        chk(s);
+        for (const [f, t] of info.solution) { s = L.applyMove(s, f, t).state; if (!s.won) chk(s); }
+      }
+      check(`(a) 1〜600 面の解の道で 2 人いる ${steps} 局面のどれも、2 つの枠の動物が違う（同じ ${dup.length}）`, steps > 10000 && dup.length === 0, dup.slice(0, 8));
+      check(`(b) 先に来た方（番号が小さい方）の動物は 2 引数のときと同じ（変わった ${moved.length}）`, moved.length === 0, moved.slice(0, 8));
+      const a = [];
+      for (let lv = 1; lv <= 50; lv++) for (let i = 0; i < 10; i++) a.push(L.animalFor(lv, i));
+      const h = fnv(a.join(','));
+      check(`(c) 2 引数の結果（1〜50 面×番号 0〜9 の 500 個）の指紋が v38 と同じ（${h}／0fab5405）`, h === '0fab5405', h);
+      const fails = [];
+      for (const o of [NaN, -1, 'x', {}, Symbol('s'), 1e12, Infinity, [], undefined, null]) {
+        for (const i of [0, 3, 7]) {
+          try { const k = L.animalFor(5, i, o); if (!L.ANIMAL_KEYS.includes(k)) fails.push(`${String(o)}→${String(k)}`); } catch (e) { fails.push(`${typeof o}: ${e}`); }
+        }
+      }
+      check('(d) 3 番目が NaN・-1・"x"・{}・Symbol()・1e12 などでも例外なし・ANIMAL_KEYS のどれか', fails.length === 0, fails.slice(0, 8));
+    },
+  },
+  {
+    id: 'BL22', tier: 'smoke', node: true, title: 'いろびん IB-12：生成の上限 GEN_NODE_BUDGET が 100000・調べる局面が多い面（1334・4774・100878 面）が v38 と同じ面・局面の数が上限以内・fallback 0',
+    run({ check, root }) {
+      const L = load(root);
+      const fnv = (str) => { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); };
+      check(`GEN_NODE_BUDGET が 100000（${L.GEN_NODE_BUDGET}）`, L.GEN_NODE_BUDGET === 100000, L.GEN_NODE_BUDGET);
+      const lvs = [1334, 4774, 100878];
+      const cs = lvs.map((lv) => L.createLevel(lv));
+      const h = fnv(cs.map((c) => JSON.stringify([c.state.bottles, c.state.slots, c.state.queue])).join('|'));
+      const nodes = cs.map((c) => c.info.nodes), fb = cs.map((c) => c.info.fallback);
+      check(`面の指紋が v38 と同じ（${h}／9852e4a9）`, h === '9852e4a9', h);
+      check(`調べた局面の数が 30187・58457・33173（${nodes.join('・')}）で、どれも上限以内`, J(nodes) === J([30187, 58457, 33173]) && nodes.every((n) => n <= L.GEN_NODE_BUDGET), nodes);
+      check(`fallback 0（${fb.join('・')}）`, fb.every((x) => x === 0), fb);
     },
   },
   {

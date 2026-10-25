@@ -52,10 +52,24 @@ export async function frozen(page, fn) {
   }
   try { return await fn(); } finally { await page.clock.resume(); }
 }
+// wait の前後でページの時刻を読む。同じページ（移動していない）かを、前に書いた印 tok で確かめる。読めなければ null
+let waitTok = 0;
+const markNow = (page, tok) => page.evaluate((t) => { window.__yubiWait = t; return performance.now(); }, tok).catch(() => null);
+const readNow = (page, tok) => page.evaluate((t) => (window.__yubiWait === t ? performance.now() : null), tok).catch(() => null);
 export async function wait(page, ms) {
   if (!clocked.has(page)) return sleep(ms);
+  const tok = ++waitTok;
+  const t0 = await markNow(page, tok);
   await page.clock.runFor(ms);
   await sleep(Math.min(ms, 15));     // 描画・イベントの後始末に少しだけ実時間を渡す
+  // 念のための確かめ：進んだ分が ms に足りなければ（巻き戻り・runFor が届かなかった）、足りない分をもう一度進める（3 回まで）。
+  // ページを移った・読めないときは何もしない
+  if (t0 === null) return;
+  for (let i = 0; i < 3; i++) {
+    const t1 = await readNow(page, tok);
+    if (t1 === null || t1 - t0 >= ms) return;
+    await page.clock.runFor(Math.ceil(ms - (t1 - t0)));
+  }
 }
 
 // ---------- タイムゾーン ----------
@@ -180,9 +194,13 @@ export async function newPage(browser, v, label, opts = {}) {
   if (v.safe) {
     const safe = v.safe;
     await ctx.route(/\/game-no1\/(.*\.html|(.*\/)?)(\?.*)?$/, async (route) => {
-      const r = await route.fetch();
-      if (!(r.headers()['content-type'] || '').includes('html')) return route.fulfill({ response: r });
-      route.fulfill({ response: r, body: subSafe(await r.text(), safe), headers: { ...r.headers(), 'content-type': 'text/html; charset=utf-8' } });
+      // 接続断（サーバーのオフライン）・閉じたページで fetch・fulfill が失敗しても、例外を外へ出さない（受け取り手のない例外で子プロセスごと落ちた。v39 1 章）
+      let r;
+      try { r = await route.fetch(); } catch { return route.abort('connectionreset').catch(() => {}); }
+      if (!(r.headers()['content-type'] || '').includes('html')) return route.fulfill({ response: r }).catch(() => {});
+      const body = await r.text().catch(() => null);
+      if (body === null) return route.abort('connectionreset').catch(() => {});
+      return route.fulfill({ response: r, body: subSafe(body, safe), headers: { ...r.headers(), 'content-type': 'text/html; charset=utf-8' } }).catch(() => {});
     });
   }
   if (opts.initScript) await ctx.addInitScript(opts.initScript);
@@ -265,6 +283,18 @@ export async function kiriSwipe(page, pts, steps = 5) {
 const nearest = (s, o) => s.objs.filter((x) => x.kind === o.kind).sort((a, b) => Math.hypot(a.x - o.x, a.y - o.y) - Math.hypot(b.x - o.x, b.y - o.y))[0];
 // 1つの的（kiriWaitObj で見つけたもの）を横に切る
 export const kiriSlash = (page, o) => kiriSwipe(page, (s) => { const n = nearest(s, o); return n && [[n.x - n.r - 16, n.y + 2], [n.x + n.r + 16, n.y - 2]]; });
+// 的を 1 つ切る。切れたか（cutCount が増えたか）を確かめ、切れなければ別の的で 3 回まで（T-07。WebKit で切ったのに 0 点の回があった）。
+// { f（切った的。kiriWaitObj の戻り値）, tries（何回目で切れたか） }。3 回とも切れなければ f: null
+export async function kiriCutOne(page) {
+  for (let tries = 1; tries <= 3; tries++) {
+    const c0 = (await kiriSnap(page)).cutCount;
+    const f = await kiriWaitObj(page);
+    if (!f) return { f: null, tries };
+    await kiriSlash(page, f.o); await wait(page, 50);
+    if ((await kiriSnap(page)).cutCount > c0) return { f, tries };
+  }
+  return { f: null, tries: 3 };
+}
 // 爆弾をよけて的を切り続け、cond(snapshot) が真になるまで遊ぶ（最大 maxMs のゲーム内時間）。
 // lazy: true なら落ち始めた的だけ切る（上がっている的は残す＝同時に飛ぶ的が増える）
 export async function kiriAutoplay(page, cond, { maxMs = 60000, step = 150, lazy = false } = {}) {
@@ -321,7 +351,8 @@ export function swInfo(root) {
 // WebKit では使えないため、これを使うテストには cdp: true を付ける（WebKit では「対象外」として飛ばす）
 export async function touch(ctx, page) {
   const cdp = await ctx.newCDPSession(page);
-  const send = (type, touchPoints) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
+  // ページが応答しないと CDP のタッチはいつまでも返らない（T-27）。10 秒で例外にする（run.mjs が「止まった」として 1 回だけ流し直す）
+  const send = (type, touchPoints) => { let tm; return Promise.race([cdp.send('Input.dispatchTouchEvent', { type, touchPoints }), new Promise((_, rej) => { tm = setTimeout(() => rej(new Error(`CDP のタッチが 10 秒返らない（${type}。ページが応答しない。T-27）`)), 10000); })]).finally(() => clearTimeout(tm)); };
   const tap = async (x, y, hold = 30) => { await send('touchStart', [{ x, y }]); await sleep(hold); await send('touchEnd', []); };
   const swipe = async (x0, y0, dx, dy, steps = 6, stepMs = 16) => {
     await send('touchStart', [{ x: x0, y: y0 }]);
@@ -422,12 +453,16 @@ export const x20Hidden = (p, h) => p.evaluate((h) => {
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
   document.dispatchEvent(new Event('visibilitychange'));
 }, h);
+// X-24：開き直したあとに出る知らせ（common/notice.js）の文。x20Run が開き直しのあとに確かめる
+export const X24_TEXT = 'ほかの タブの つづきから はじめました';
+export const noteText = (page) => page.evaluate(() => { const n = document.getElementById('yubiNotice'); return n ? n.textContent : null; });
 export async function x20Run(page, ctx, { key, newer, fp, hiddenWrite = null }) {
   const loaded = () => page.waitForEvent('load', { timeout: 5000 }).then(() => true, () => false);
   const hideNow = () => page.evaluate((k) => { window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false })); return localStorage.getItem(k); }, key);
   let nav = loaded();
   await page.evaluate(() => { window.__x20 = 1; window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })); window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); });
   const a = { reload: await nav, same: await page.evaluate(() => window.__x20 === 1) };
+  a.note = await noteText(page);   // 開き直していなければ知らせは出ない
   nav = loaded();
   const b = { kept: await page.evaluate(([k, raw]) => {
     window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
@@ -436,7 +471,7 @@ export async function x20Run(page, ctx, { key, newer, fp, hiddenWrite = null }) 
     window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
     return localStorage.getItem(k) === raw;
   }, [key, newer[0]]) };
-  b.reload = await nav; await wait(page, 300);
+  b.reload = await nav; await wait(page, 300); b.note = await noteText(page);
   b.fp = fp(await hideNow()); b.want = fp(newer[0]);
   await x20Hidden(page, true); await wait(page, 50);
   const p2 = await ctx.newPage();
@@ -449,7 +484,7 @@ export async function x20Run(page, ctx, { key, newer, fp, hiddenWrite = null }) 
   c.kept = (await hideNow()) === newer[1];
   nav = loaded();
   await x20Hidden(page, false);
-  c.reload = await nav; await wait(page, 300);
+  c.reload = await nav; await wait(page, 300); c.note = await noteText(page);
   c.fp = fp(await hideNow()); c.want = fp(newer[1]);
   // (d1) 裏にしたあと書かれ、storage イベントが届かないまま pagehide
   await x20Hidden(page, true); await wait(page, 50);
@@ -460,7 +495,7 @@ export async function x20Run(page, ctx, { key, newer, fp, hiddenWrite = null }) 
   }, [key, newer[2]]) };
   nav = loaded();
   await x20Hidden(page, false);
-  d1.reload = await nav; await wait(page, 300);
+  d1.reload = await nav; await wait(page, 300); d1.note = await noteText(page);
   d1.fp = fp(await hideNow()); d1.want = fp(newer[2]);
   // (d2) 見えている間に書かれ、イベントが届く前に裏へ回る（hidden の保存）→ pagehide
   const d2 = { kept: await page.evaluate(([k, raw]) => {
@@ -474,13 +509,17 @@ export async function x20Run(page, ctx, { key, newer, fp, hiddenWrite = null }) 
   }, [key, newer[3]]) };
   nav = loaded();
   await x20Hidden(page, false);
-  d2.reload = await nav; await wait(page, 300);
+  d2.reload = await nav; await wait(page, 300); d2.note = await noteText(page);
+  // 知らせは 1 回だけ：ふつうに開き直しても出ない
+  await page.reload(); await wait(page, 300);
+  const again = await noteText(page);
   d2.fp = fp(await hideNow()); d2.want = fp(newer[3]);
   const okD = (d) => d.kept && d.reload && d.fp === d.want;
-  const ok = !a.reload && a.same && b.kept && b.reload && b.fp === b.want && (!hiddenWrite || c.keptWrite) && c.kept && c.reload && c.fp === c.want && okD(d1) && okD(d2);
-  return { ok, a, b, c, d1, d2 };
+  const noteOk = a.note === null && b.note === X24_TEXT && c.note === X24_TEXT && d1.note === X24_TEXT && d2.note === X24_TEXT && again === null;
+  const ok = noteOk && !a.reload && a.same && b.kept && b.reload && b.fp === b.want && (!hiddenWrite || c.keptWrite) && c.kept && c.reload && c.fp === c.want && okD(d1) && okD(d2);
+  return { ok, a, b, c, d1, d2, again };
 }
-export const x20Text = (r) => `変わっていなければ開き直さない（${!r.a.reload && r.a.same}）・bfcache で書き戻さない（${r.b.kept}）・開き直す（${r.b.reload}）・新しい保存から続ける（${r.b.fp === r.b.want}）・裏で別のタブが書いたら閉じても書き戻さない（${r.c.kept}）${r.c.keptWrite === undefined ? '' : `・裏でこのページが保存しようとしても書かない（${r.c.keptWrite}）`}・表に戻ると開き直して（${r.c.reload}）続ける（${r.c.fp === r.c.want}）・storage イベントが届かないまま閉じても書き戻さない（裏のあと ${r.d1.kept}・hidden の保存 ${r.d2.kept}）・開き直して続ける（${r.d1.reload && r.d1.fp === r.d1.want}・${r.d2.reload && r.d2.fp === r.d2.want}）`;
+export const x20Text = (r) => `変わっていなければ開き直さない（${!r.a.reload && r.a.same}）・bfcache で書き戻さない（${r.b.kept}）・開き直す（${r.b.reload}）・新しい保存から続ける（${r.b.fp === r.b.want}）・裏で別のタブが書いたら閉じても書き戻さない（${r.c.kept}）${r.c.keptWrite === undefined ? '' : `・裏でこのページが保存しようとしても書かない（${r.c.keptWrite}）`}・表に戻ると開き直して（${r.c.reload}）続ける（${r.c.fp === r.c.want}）・storage イベントが届かないまま閉じても書き戻さない（裏のあと ${r.d1.kept}・hidden の保存 ${r.d2.kept}）・開き直して続ける（${r.d1.reload && r.d1.fp === r.d1.want}・${r.d2.reload && r.d2.fp === r.d2.want}）・開き直したら知らせを 1 回（a ${r.a.note}・b ${r.b.note === X24_TEXT}・c ${r.c.note === X24_TEXT}・d ${r.d1.note === X24_TEXT && r.d2.note === X24_TEXT}・2 回目なし ${r.again === null}）`;
 
 // ---------- 合否の記録 ----------
 // 既知の不具合の一覧（ここに載せたものだけが「既知」扱い。直ったら行を消す）
