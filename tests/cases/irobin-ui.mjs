@@ -1791,7 +1791,7 @@ export const tests = [
         return {
           btns, text: c.textContent.replace(/\s+/g, ' ').trim(),
           served: sv ? { n: sv.querySelectorAll('canvas').length, label: sv.getAttribute('aria-label'), vis: vis(sv) } : null,
-          note: note ? { ...r(note), text: note.textContent.trim(), fs: parseFloat(getComputedStyle(note).fontSize), vis: vis(note), h: note.getBoundingClientRect().height, url: note.querySelector('.url') ? getComputedStyle(note.querySelector('.url')).userSelect : null } : null,
+          note: note ? { ...r(note), text: note.textContent.trim(), fs: parseFloat(getComputedStyle(note).fontSize), vis: vis(note), h: note.getBoundingClientRect().height, url: note.querySelector('.url') ? (() => { const cs = getComputedStyle(note.querySelector('.url')); return cs.userSelect || cs.webkitUserSelect; })() : null } : null,
           next: nn && vis(nn) ? { text: nn.textContent.trim(), ...r(nn) } : null,
           best: bn && vis(bn) ? { text: bn.textContent.trim(), quiet: bn.classList.contains('quiet') } : null,
           h2: r(q('h2')), stars: vis(q('.stars')) ? r(q('.stars')) : null,
