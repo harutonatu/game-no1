@@ -395,8 +395,8 @@ const M = [
   ['MK43 ほしくだき：砲台の x がねらうマスへ動く（AS-01 の戻り）', 'ルール', 'games/asteroid/logic.js', '      T.ang = clamp(T.ang, -AIM_MAX, AIM_MAX);\n    }\n  }', '      T.ang = clamp(T.ang, -AIM_MAX, AIM_MAX);\n      if (T.tgt >= 0 && R.mats[T.tgt]) T.x += clamp(cellX(R, T.tgt) - T.x, -3, 3);\n    }\n  }'],
   ['MK44 ほしくだき：弾がいつも真上へ飛ぶ（たま・ほのお・どかん以外の砲身の向き ang を見ない）', 'ルール', 'games/asteroid/logic.js', '    const room = () => s.shots.length < SHOTS_MAX;\n    const sa = Math.sin(T.ang), ca = Math.cos(T.ang);', '    const room = () => s.shots.length < SHOTS_MAX;\n    const sa = 0, ca = 1;'],
   ['MK45 ほしくだき：ビームが最初のマスで止まる（奥へ掘らない）', 'ルール', 'games/asteroid/logic.js', 'if (dd > d0 + BEAM_DEPTH * CELL) return true;', 'if (dd > d0) return true;'],
-  ['MK46 ほしくだき：いなずまが違う種類のマスにも広がる', 'ルール', 'games/asteroid/logic.js', 'if (!seen.has(q) && mats[q] === m) {', 'if (!seen.has(q) && mats[q]) {'],
-  ['MK47 ほしくだき：いなずまが BOLT_CELLS（しんかの数）を見ない', 'ルール', 'games/asteroid/logic.js', '    while (head < cells.length && cells.length < n) {', '    n = Infinity;\n    while (head < cells.length && cells.length < n) {'],
+  ['MK46 ほしくだき：いなずまが違う種類のマスへ伝わらない（v40 の前に戻る）', 'ルール', 'games/asteroid/logic.js', 'const np = p * (mats[q] === 2 ? BOLT_KEEP.iron : BOLT_KEEP.other);', 'const np = mats[q] === mats[start] ? p * (mats[q] === 2 ? BOLT_KEEP.iron : BOLT_KEEP.other) : 0;'],
+  ['MK47 ほしくだき：いなずまが BOLT_CELLS（しんかの数）を見ない', 'ルール', 'games/asteroid/logic.js', '    while (cells.length < n && front.length) {', '    n = Infinity;\n    while (cells.length < n && front.length) {'],
   ['MK48 ほしくだき：てつ を すじ で入れる（かたまりにしない）', '計算', 'games/asteroid/logic.js', '      placeBlobs(mats, cols, rows, cells, ironWant, nb, 2, okRock, rnd);', '      let left = ironWant + 0 * nb; for (const j of cells) { if (left <= 0) break; if (okRock(j) && (j % cols) % 3 === 0) { mats[j] = 2; left--; } }'],
   ['MK49 ほしくだき：入れ替えが星の途中ですぐ当たる', 'ルール', 'games/asteroid/logic.js', '    s.swap.sort((a, b) => a.slot - b.slot);\n    return null;', '    s.swap.sort((a, b) => a.slot - b.slot);\n    applySwaps(s, []);\n    return null;'],
   ['MK50 ほしくだき：はね返しのやり直しで入れ替えが当たらない', 'ルール', 'games/asteroid/logic.js', '    s.phase = "fly";\n    applySwaps(s, evs || []);\n', '    s.phase = "fly";\n'],
@@ -424,6 +424,16 @@ const M = [
   ['MK72 ほしくだき：クリアの演出中の保存で予約を当てない（開き直すと予約が消える）', '保存', 'games/asteroid/logic.js', '      applySwaps(tmp, []);\n', ''],
   ['MK73 ほしくだき：はね返しの間の保存で予約を当てない（開き直すとやり直しに予約が当たらない。T1）', '保存', 'games/asteroid/logic.js', '    if (toNext || ph === "bounce") {', '    if (toNext) {'],
   ['MK74 ほしくだき：2択の間の保存で戻り先（bounce・clear）を見ない（T1）', '保存', 'games/asteroid/logic.js', '    const ph = state.phase === "choose" ? state.back : state.phase;', '    const ph = state.phase;'],
+  // v40（docs/plans/v40-ast.md 4 章）：いなずま・たま・どかん
+  ['MK75 ほしくだき：いなずまの威力が伝わっても減らない（v40）', 'ルール', 'games/asteroid/logic.js', 'const np = p * (mats[q] === 2 ? BOLT_KEEP.iron : BOLT_KEEP.other);', 'const np = p;'],
+  ['MK76 ほしくだき：たまの撃つ間隔が Lv で短くならない（v40）', '計算', 'games/asteroid/logic.js', 'return w === "shot" ? W[w].rate / (1 + SHOT_UP.rate * shotUp(L)) : W[w].rate;', 'return W[w].rate;'],
+  ['MK77 ほしくだき：たまが貫通しない（v40）', 'ルール', 'games/asteroid/logic.js', 'if (b.p > 0) { b.p--; b.dmg *= SHOT_UP.keep; return false; }', ''],
+  ['MK78 ほしくだき：たまが通りぬけても威力が減らない（v40）', '計算', 'games/asteroid/logic.js', 'b.p--; b.dmg *= SHOT_UP.keep;', 'b.p--;'],
+  ['MK79 ほしくだき：どかんの円の中心を内側へずらさない（v40）', 'ルール', 'games/asteroid/logic.js', 'if (gl > 1e-9) { tc += gx / gl * BOMB_SHIFT * r0; tr += gy / gl * BOMB_SHIFT * r0; }', ''],
+  ['MK80 ほしくだき：たまの強さが Lv 11 から伸びない（v40）', '計算', 'games/asteroid/logic.js', 'const up = w === "shot" ? 1 + SHOT_UP.dmg * shotUp(L) : 1;', 'const up = 1;'],
+  ['MK81 ほしくだき：たまが こわしたマスだけ通りぬける（硬いマスで止まる。ユーザーの答え「こわさなくても進む」の逆。v40）', 'ルール', 'games/asteroid/logic.js', '          if (b.p > 0) { b.p--; b.dmg *= SHOT_UP.keep; return false; }', '          if (b.p > 0 && !R.mats[i]) { b.p--; b.dmg *= SHOT_UP.keep; return false; }'],
+  ['MK82 ほしくだき：通りぬけて星の上へ出た たまを消さない（v40 レビュー）', 'ルール', 'games/asteroid/logic.js', '        if (b.h !== undefined && b.y < R.y) continue;', ''],
+  ['MK83 ほしくだき：たまの しんか で「つきぬける ように なった」を出さない（v40 レビュー）', '表示', 'games/asteroid/render.js', 'if (id === "shot" && Array.isArray(pierce) && pierce.includes(num(lv, 10)))', 'if (false)'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

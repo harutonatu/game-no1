@@ -1617,4 +1617,30 @@ export const tests = [
       await ctx.close();
     },
   },
+  {
+    id: 'KW26', tier: 'full', title: 'ほしくだき（v40 レビュー）：いなずまの稲光は 0.35 秒で、てつ から いわ へ伝わった枝（色を変えて描く）が出る。たまを Lv20 にすると しんか の 2 行目に「3れんで つきぬける ように なった」、Lv99 で「もっと つきぬける ように なった」（Lv30 は「4れんに なった」）。いなずまの説明「つながった マスへ えだわかれ。てつは とおくまで とどく」',
+    async run({ browser, check, root }) {
+      const L = logicOf(root);
+      const { ctx, page } = await openK(browser, 'KW26', { v: SMOKE_V() });
+      // てつ を 6 列おきの縦すじにした星（いなずま Lv41＝40 マスは すじ の長さより多いので、いわ へも伝わる）
+      await setL(page, "l.star = 12; l.slots = [{ id: 'bolt', lv: 41 }]; l.bench = []; l.swap = []; l.offer = null; const R = l.rock; R.mats = R.mats.map((m, i) => (m ? ((i % R.cols) % 6 === 0 ? 2 : 1) : 0)); R.hp = R.mats.map((m) => (m ? 1e12 : 0)); R.vy = 0;");
+      let fx = null;
+      for (let k = 0; k < 40 && !fx; k++) { await wait(page, 100); fx = (await gs(page)).boltFx; }
+      check(`いなずまの絵：0.35 秒（${fx && fx.dur}）、枝 ${fx && fx.segs} のうち てつ 以外へ伝わった枝 ${fx && fx.other}（1 つ以上）`, !!fx && fx.dur === 0.35 && fx.segs >= 30 && fx.other >= 1, fx);
+      const evo = async (lv) => {
+        await setL(page, `l.slots = [{ id: 'shot', lv: ${lv - 1} }]; l.kakera = 9e15; l.offer = null;`);
+        await page.evaluate(() => window.AsteroidGame.upgrade(0));
+        let line = null;
+        for (let k = 0; k < 10 && !line; k++) { await wait(page, 50); line = (await gs(page)).evolveLine; }
+        await wait(page, 2000);
+        return line;
+      };
+      const e20 = await evo(20), e30 = await evo(30), e40 = await evo(40), e99 = await evo(99);
+      check(`しんか の 2 行目：Lv20「${e20}」・Lv30「${e30}」・Lv40「${e40}」・Lv99「${e99}」`, e20 === '3れんで つきぬける ように なった' && e30 === '4れんに なった' && e40 === 'もっと つきぬける ように なった' && e99 === 'もっと つきぬける ように なった', [e20, e30, e40, e99]);
+      const bolt = L.WEAPONS.find((w) => w.id === 'bolt');
+      const html = fs.readFileSync(path.join(root, 'games/asteroid/index.html'), 'utf8');
+      check(`いなずまの説明「${bolt.desc}」（index.html の初期の文も同じ）`, bolt.desc === 'つながった マスへ えだわかれ。てつは とおくまで とどく' && html.includes('<span class="cdesc" data-part="desc">' + bolt.desc + '</span>'), bolt.desc);
+      await ctx.close();
+    },
+  },
 ];

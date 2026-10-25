@@ -1129,7 +1129,8 @@
       hint: el.hint ? el.hint.textContent : "", suggest: suggestSlot, swapSel: overlay === "swap" ? swapSel : null,
       totals: s.totals ? Object.assign({}, s.totals) : null,
       drawMs: Number(st.drawMs) || 0, cellPx: Number(st.cellPx) || 0,
-      view: st.view || null   // render の見せている範囲（zoom・rockPx など。§18.1 A の確かめ用）
+      view: st.view || null,   // render の見せている範囲（zoom・rockPx など。§18.1 A の確かめ用）
+      boltFx: st.bolt || null, evolveLine: st.evolve || null   // v40：最後のいなずまの絵（dur・segs・other）・しんか の 2 行目
     };
   }
   function advance(sec) {

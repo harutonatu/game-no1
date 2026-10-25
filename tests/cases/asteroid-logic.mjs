@@ -119,10 +119,10 @@ export const tests = [
       check('UP_COST（たま 5・ちらし 5・どかん 34・いなずま 5・ビーム 8・ほのお 4）・SLOT_COST は n 個目の武器の値段で長さ 6（[null, 40, 300, 2000, 80まん, 20おく]）', J(L.UP_COST) === J({ shot: 5, spread: 5, bomb: 34, bolt: 5, beam: 8, fire: 4 }) && J(L.SLOT_COST) === J([null, 40, 300, 2000, 800000, 2e9]), [L.UP_COST, L.SLOT_COST]);
       check('SLOT_COST は増えていく', L.SLOT_COST.length === 6 && L.SLOT_COST[0] === null && L.SLOT_COST.slice(1).every((v, k, a) => v > 0 && (k === 0 || v > a[k - 1])), L.SLOT_COST);
       check('区切りのおまけ・ベスト・もろい底（§18.1）はそのまま', L.MILESTONE_BONUS === 0.03 && J(L.MILESTONES) === J([25, 50, 75]) && L.BEST_MAX === 200 && J(L.SOFT) === J({ q: 0.2, mul: 0.05, ramp: 0.15 }), [L.MILESTONE_BONUS, L.SOFT]);
-      check('EARLY_HP・大きな星（+4 マス・重さ 1.3 倍）・大きさ（星 1 で 20 マス・1 星 0.96 マス）・近づく速さの目安・混ざり方', J(L.EARLY_HP) === J([0.015, 0.056, 0.08, 0.27, 0.35, 0.39, 0.58, 0.82, 0.9]) && L.BOSS_GROW === 4 && L.BOSS_HARD === 1.3 && L.SIZE_BASE === 20 && L.SIZE_STEP === 0.96 &&
+      check('EARLY_HP・大きな星（+4 マス・重さ 1.3 倍）・大きさ（星 1 で 20 マス・1 星 0.96 マス）・近づく速さの目安・混ざり方', J(L.EARLY_HP) === J([0.015, 0.056, 0.08, 0.25, 0.35, 0.39, 0.58, 0.82, 0.9]) && L.BOSS_GROW === 4 && L.BOSS_HARD === 1.3 && L.SIZE_BASE === 20 && L.SIZE_STEP === 0.96 &&
         L.APPROACH.first === 135 && L.APPROACH.normal === 240 && L.APPROACH.boss === 300 && L.APPROACH.keep === 0.33 && J(L.MIX) === J({ iron: [0.25, 0.35], ice: 0.15, tilt: 0.08 }), [L.EARLY_HP, L.APPROACH, L.MIX]);
       check('マスは いわ・てつ・こおり・きん（コード 1〜4）、硬さ 1・4・2・2、かけら 1・4・2・10', J(L.MATS.map((m) => [m.id, m.code, m.name])) === J([['rock', 1, 'いわ'], ['iron', 2, 'てつ'], ['ice', 3, 'こおり'], ['gold', 4, 'きん']]) && J(L.MAT_HP) === J({ rock: 1, iron: 4, ice: 2, gold: 2 }) && J(L.MAT_VALUE) === J({ rock: 1, iron: 4, ice: 2, gold: 10 }), [L.MATS, L.MAT_HP, L.MAT_VALUE]);
-      check('武器（作り直し：面で当たる どかん・いなずま・ビームは強さ約 1/4。ちらし 1.25・いなずま 0.65 は自動プレイで直した値）', J(L.WEAPONS.map((w) => [w.id, w.name, w.dmg, w.rate])) === J([['shot', 'たま', 1, 0.2], ['spread', 'ちらし', 1.25, 0.6], ['bomb', 'どかん', 0.75, 1.6], ['bolt', 'いなずま', 0.65, 1.2], ['beam', 'ビーム', 0.375, 2], ['fire', 'ほのお', 3, 1]]), L.WEAPONS.map((w) => [w.id, w.dmg, w.rate]));
+      check('武器（作り直し：面で当たる どかん・いなずま・ビームは強さ約 1/4。ちらし 1.25 は自動プレイで直した値。いなずま 0.8 は v40（伝わるごとに威力が減るぶん））', J(L.WEAPONS.map((w) => [w.id, w.name, w.dmg, w.rate])) === J([['shot', 'たま', 1, 0.2], ['spread', 'ちらし', 1.25, 0.6], ['bomb', 'どかん', 0.75, 1.6], ['bolt', 'いなずま', 0.8, 1.2], ['beam', 'ビーム', 0.375, 2], ['fire', 'ほのお', 3, 1]]), L.WEAPONS.map((w) => [w.id, w.dmg, w.rate]));
       const aff = { spread: { rock: 2, iron: 0.9, ice: 1, gold: 1 }, bomb: { rock: 1, iron: 1, ice: 2, gold: 1 }, bolt: { rock: 1, iron: 2.2, ice: 0.5, gold: 1 }, beam: { rock: 1, iron: 1.8, ice: 1, gold: 1 }, fire: { rock: 1, iron: 0.75, ice: 3, gold: 1 }, shot: { rock: 1, iron: 1, ice: 1, gold: 1 } };
       const affBad = [];
       for (const w in aff) for (const m in aff[w]) if (L.affOf(w, m) !== aff[w][m]) affBad.push([w, m, L.affOf(w, m)]);
@@ -145,8 +145,8 @@ export const tests = [
       const weightNow = (n) => { const i = L.starInfo(n); return L.cellHp(n, 'rock') * i.cols * i.rows; };
       const ratio = [4, 12, 20, 30].map((n) => weightNow(n) / (600 * L.HP_GROWTH ** (n - 1) * (n <= 9 ? L.EARLY_HP[n - 1] : 1) * (Math.min(24, 10 + (n - 1) * 0.48) ** 2) * 0.86 * (n % 5 === 0 ? 1.3 : 1) * (adjOf(n) * L.starInfo(n).cols * L.starInfo(n).rows / ((Math.min(48, 20 + (Math.min(n, 40) - 1) * 0.96) ** 2) * 0.86 * (n % 5 === 0 ? 1.3 : 1)))));
       check('星の体力の合計は前の作りの 1.1〜1.25 倍（HP_BASE 180 ÷ 150。自動プレイで 1 つの星を 3〜5 分に合わせた分）', ratio.every((x) => x > 1.1 && x < 1.25), ratio);
-      const dw = (base, Lv) => base * (1 + 0.25 * (Lv - 1)) * 2 ** Math.floor(Lv / 10);
-      check('dmg(w, L) = DMG × (1 + 0.25(L−1)) × 2^floor(L/10)', [1, 5, 9, 10, 11, 20, 30, 99].every((Lv) => L.WEAPONS.every((w) => near(L.dmg(w.id, Lv), dw(w.dmg, Lv), 1e-9 * dw(w.dmg, Lv)))), [L.dmg('shot', 9), L.dmg('shot', 10)]);
+      const dw = (base, Lv, id) => base * (1 + 0.25 * (Lv - 1)) * 2 ** Math.floor(Lv / 10) * (id === 'shot' ? 1 + 0.2 * Math.max(0, Lv - 10) / 89 : 1);
+      check('dmg(w, L) = DMG × (1 + 0.25(L−1)) × 2^floor(L/10)（たまは Lv 11 から × (1 + 0.2 × (L−10)/89)。v40）', [1, 5, 9, 10, 11, 20, 30, 55, 99].every((Lv) => L.WEAPONS.every((w) => near(L.dmg(w.id, Lv), dw(w.dmg, Lv, w.id), 1e-9 * dw(w.dmg, Lv, w.id)))) && L.dmg('shot', 10) === 6.5 && near(L.dmg('shot', 99), 13056 * 1.2, 1e-6), [L.dmg('shot', 10), L.dmg('shot', 99)]);
       check('upCost(w, L) = round(UP_COST × 1.35^(L−1))、Lv 上限で null、Lv 98 でも KAKERA_MAX 未満・減らない', L.WEAPONS.every((w) => L.upCost(w.id, 1) === L.UP_COST[w.id] && L.upCost(w.id, 7) === Math.round(L.UP_COST[w.id] * 1.35 ** 6) && L.upCost(w.id, 98) < L.KAKERA_MAX) && L.upCost('shot', 99) === null &&
         Array.from({ length: 97 }, (_, k) => k + 1).every((Lv) => L.upCost('beam', Lv + 1) >= L.upCost('beam', Lv)), [L.upCost('shot', 7)]);
       check('しんか（§3.3）：たま 1→2→3 連、ちらし 5→7→9→11 発、どかん 3→4→5→6 マス、いなずま 16→24→32→40 マス、ビーム 2→4→6→8 マス、ほのお 3→4 秒、Lv30 で打ち止め',
@@ -230,7 +230,7 @@ export const tests = [
     },
   },
   {
-    id: 'KL3', tier: 'smoke', node: true, title: 'ほしくだき：当たり（斜めの弾は DDA で通り道の最初のマス・場の外へ消える、ちらしの扇 12°・15°、どかんの円 半径 3 マス・縁が中心、いなずまの枝分かれ（同じ種類・BOLT_CELLS・木）、ビームが掘る、ほのお、ひび、弾の上限）',
+    id: 'KL3', tier: 'smoke', node: true, title: 'ほしくだき：当たり（斜めの弾は DDA で通り道の最初のマス・場の外へ消える、ちらしの扇 12°・15°、どかんの円 半径 3 マス・中心は縁から内側へ（v40）、いなずまの枝分かれ（てつ を先に・いわ へも伝わる・BOLT_CELLS・木。v40）、ビームが掘る、ほのお、ひび、弾の上限）',
     run({ check, root }) {
       const L = load(root);
       const BIG = 1e9, C7 = L.CELL;
@@ -289,8 +289,8 @@ export const tests = [
       const inC = [];
       let centerCell = -1;
       if (boom) { const R = r.s.rock; for (let i = 0; i < 225; i++) { const x = cx(L, R, i), y = cy(L, R, i); if ((x - boom.x) ** 2 + (y - boom.y) ** 2 <= (boom.r + 1e-6) ** 2) inC.push(i); if (near(x, boom.x, 1e-6) && near(y, boom.y, 1e-6)) centerCell = i; } }
-      const onEdge = centerCell >= 0 && (centerCell % 15 === 0 || centerCell % 15 === 14 || centerCell < 15 || centerCell >= 210);
-      check('どかん：半径 3 マス（21 単位）の円の中のマスだけ、円の中心は縁のマス（円は外から欠ける）', !!boom && near(boom.r, 21) && J(hitsB) === J(inC) && hitsB.length >= 12 && hitsB.length <= 29 && onEdge, [boom, hitsB.length, centerCell]);
+      const edgeIn = inC.some((i) => i % 15 === 0 || i % 15 === 14 || i < 15 || i >= 210);
+      check('どかん：半径 3 マス（21 単位）の円の中のマスだけ。円の中心は縁のマスから内側へずれ（v40）、円は縁のマスを含む（円は外から欠ける）', !!boom && near(boom.r, 21) && J(hitsB) === J(inC) && hitsB.length >= 20 && hitsB.length <= 29 && centerCell < 0 && edgeIn, [boom, hitsB.length, centerCell]);
       const fB = ofKind(r.evs, 'fire').find((e) => e.w === 'bomb');
       check('どかん：山なりで 0.6 秒後に落ちる', !!fB && r.evs.indexOf(boom) > r.evs.indexOf(fB) && Math.round((r.s.t - (r.s.cd[0] - 1.6)) * 30) === 18, r.s.t);
       // いなずま：一番近い てつ へ落ち、つながった てつ だけへ枝分かれ（6 マスのかたまり）
@@ -301,8 +301,8 @@ export const tests = [
       const blobA = [2, 3, 4, 11, 18, 19];
       const tree = (b, C = 8) => { if (!b) return false; const got = [b.from]; for (const [x, y] of b.edges) { if (!got.includes(x) || got.includes(y)) return false; const dd = Math.abs(x - y); if (!(dd === C || (dd === 1 && Math.floor(x / C) === Math.floor(y / C)))) return false; got.push(y); } return got; };
       const tA = tree(bolt);
-      check('いなずま：てつ に落ち、上下左右でつながった てつ（6 マス）だけへ枝分かれ（はなれた てつ・いわ には行かない）。edges は木（親は先に通ったマス）', !!tA && blobA.includes(bolt.from) && J([...tA].sort((x, y) => x - y)) === J(blobA), bolt);
-      check('いなずま：枝分かれしたマス全部に当たる（hit の w が bolt）', J(ofKind(r.evs, 'hit').filter((e) => e.w === 'bolt').map((e) => e.i).sort((x, y) => x - y)) === J(blobA), null);
+      check('いなずま：てつ に落ち、つながった てつ（6 マス）を先にたどり、そのあと いわ へも伝わる（v40）。edges は木（親は先に通ったマス）', !!tA && blobA.includes(bolt.from) && J(tA.slice(0, 6).sort((x, y) => x - y)) === J(blobA) && tA.length > 6 && tA.slice(6).every((i) => bl.rock.mats[i] === 1), bolt);
+      check('いなずま：伝わったマス全部に当たる（hit の w が bolt）', !!tA && J(ofKind(r.evs, 'hit').filter((e) => e.w === 'bolt').map((e) => e.i).sort((x, y) => x - y)) === J([...tA].sort((x, y) => x - y)), null);
       for (const [lv, n] of [[1, 16], [10, 24]]) {
         let bb = mk(L, { star: 3, slots: [{ id: 'bolt', lv }] });
         bb = setRock(L, bb, Array(10).fill('iiiiiiiiii'), { hp: BIG, only: 0, bottom: 260 });
@@ -762,9 +762,11 @@ export const tests = [
       const re = L.simulate('greedy', { seed: 1, maxStar: 12, reopenEvery: 180 });
       check('3 分ごとに閉じて開き直しても、星の途中の保存で greedy の 1.2 倍以内で星 12 まで進む', !re.error && re.endSec !== null && re.reopens >= 10 && re.endSec <= g.endSec * 1.2, [re.endSec, g.endSec, re.reopens]);
       // 入れ替えの効き目（§3.10）：greedy は星 16 までに入れ替えを使い、入れ替えなし（swap:false）より遅くならない
-      const gs = L.simulate('greedy', { seed: 2, maxStar: 16 }), gn = L.simulate('greedy', { seed: 2, maxStar: 16, swap: false });
+      // v40：たまが強くなって greedy が たま を外さなくなったので、入れ替えは「ほのお を先に選ぶ」順で確かめる
+      const PO = ['fire', 'bomb', 'spread', 'beam', 'bolt'];
+      const gs = L.simulate('greedy', { seed: 2, maxStar: 16, pickOrder: PO }), gn = L.simulate('greedy', { seed: 2, maxStar: 16, swap: false, pickOrder: PO }), gb = L.simulate('greedy', { seed: 2, maxStar: 16 });
       check('入れ替え：greedy は ひかえ の武器へ入れ替える（1 回以上・swap の出来事）、swap:false より遅くならない（1.02 倍以内）、swap:false は入れ替えない', !gs.error && gs.swaps >= 1 && gn.swaps === 0 && gs.endSec <= gn.endSec * 1.02, [gs.swaps, gs.endSec, gn.endSec, gs.swapLog]);
-      check('いなずまの枝分かれ：てつ の多い星で、1 回の当たるマスの数の中央値が BOLT_CELLS の 6 割以上', gs.boltMedian !== null && gs.boltMedian >= 0.6 && gs.boltCells > 50, [gs.boltMedian, gs.boltCells]);
+      check('いなずまの枝分かれ：てつ の多い星で、1 回で当たる てつ のマスの数の中央値が BOLT_CELLS の 6 割以上（てつ のかたまりが小さすぎない。v40 から いわ へも伝わるので てつ だけ数える）', gb.boltMedian !== null && gb.boltMedian >= 0.6 && gb.boltCells > 50, [gb.boltMedian, gb.boltCells]);
     },
   },
   {
@@ -1087,6 +1089,139 @@ export const tests = [
       const g = L.simulate('greedy', { seed: 1 });
       const cu = cpuOf(c0), ms = Math.round((cu.user + cu.system) / 1000), wall = Date.now() - t0;
       check(`greedy で星 30 まで 1 本が CPU 時間 10 秒以内（Node。CPU ${ms}ms・壁の時計 ${wall}ms）・stepCells の最大 6000 以下`, !g.error && g.stars.length === 30 && ms <= 10000 && g.stepCells <= 6000, [ms, wall, g.stepCells, g.stars.length]);
+    },
+  },
+  {
+    id: 'KL20', tier: 'smoke', node: true, title: 'ほしくだき（v40）：いなずまは どの種類のマスへも伝わる。威力は 1 マスごとに てつ ×0.95・ほか ×0.8、0.3 未満の先へは行かない、威力の大きい先から、BOLT_CELLS まで',
+    run({ check, root }) {
+      const L = load(root);
+      const BIG = 1e9;
+      check('定数：BOLT_KEEP（てつ 0.95・ほか 0.8）・BOLT_MIN 0.3', J(L.BOLT_KEEP) === J({ iron: 0.95, other: 0.8 }) && L.BOLT_MIN === 0.3, [L.BOLT_KEEP, L.BOLT_MIN]);
+      // 横 1 列 21 マス（真ん中 col 10 が砲台の真上）。row の文字で種類を決める
+      const one = (row) => {
+        let s = mk(L, { star: 6, slots: [{ id: 'bolt', lv: 1 }] });
+        s = setRock(L, s, [row], { hp: BIG, only: 0, bottom: 300 });
+        const r = until(L, s, (e) => e.kind === 'bolt', 2);
+        const b = ofKind(r.evs, 'bolt')[0];
+        if (!b) return null;
+        const pw = { [b.from]: 1 };
+        let tree = true;
+        for (const [x, y] of b.edges) { if (!(x in pw) || (y in pw) || Math.abs(x - y) !== 1) tree = false; pw[y] = pw[x] * (s.rock.mats[y] === 2 ? 0.95 : 0.8); }
+        const d = L.dmg('bolt', 1);
+        const okHp = Object.keys(pw).every((i) => near(s.rock.hp[i] - r.s.rock.hp[i], d * pw[i] * L.affOf('bolt', ['', 'rock', 'iron', 'ice', 'gold'][s.rock.mats[i]]), 1e-6));
+        return { b, pw, tree, okHp, cells: Object.keys(pw).map(Number).sort((x, y) => x - y), min: Math.min(...Object.values(pw)) };
+      };
+      const A = one('rrrrrrrrrrrrrrrrrrrrr');
+      check('いわ だけ：真ん中から左右へ 5 マスずつ（0.8^5＝0.33 まで。0.8^6＝0.26 の先へは行かない）＝11 マス、当たる強さは DMG × 0.8^距離', !!A && A.tree && A.okHp && J(A.cells) === J([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]) && A.min >= 0.3, A && [A.cells, A.min]);
+      const B = one('iiiiiiiiiiiiiiiiiiiii');
+      check('てつ だけ：BOLT_CELLS（16 マス）まで、つながった並び、強さは DMG × 2.2 × 0.95^距離', !!B && B.tree && B.okHp && B.cells.length === 16 && B.cells[15] - B.cells[0] === 15, B && B.cells);
+      const C = one('rrrrrrrriiiiirrrrrrrr');
+      const rocks = C ? C.cells.filter((i) => i < 8 || i > 12) : [];
+      check('てつ → いわ：てつ（8〜12）を通りぬけて いわ へも伝わる（鉄で止まらない）。いわ へは 0.95²×0.8^k が 0.3 以上の 4 マスずつ（4〜7・13〜16）', !!C && C.tree && C.okHp && J(C.cells) === J([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]) && rocks.length === 8, C && C.cells);
+      // 威力の大きい先から：てつ のかたまりを先にたどる（edges の順で、てつ が いわ より先）
+      const order = C ? C.b.edges.map(([, y]) => y) : [];
+      check('威力の大きい先から：てつ 4 マスを先に、そのあと いわ', order.slice(0, 4).every((i) => i >= 8 && i <= 12) && order.slice(4).every((i) => i < 8 || i > 12), order);
+      // こおり へも伝わる（相性 0.5 のまま）
+      const D = one('cccccccccciiccccccccc');
+      check('こおり へも伝わる（相性 0.5 で当たる）', !!D && D.okHp && D.cells.some((i) => i !== 10 && i !== 11 && i !== 9) && D.cells.length >= 9, D && D.cells);
+    },
+  },
+  {
+    id: 'KL21', tier: 'smoke', node: true, title: 'ほしくだき（v40）：たまの伸び（Lv 1〜10 は前と同じ・Lv 11 から撃つ間隔が短く強さが増す・Lv 99 で間隔 0.2÷1.8 秒）と貫通（こわせなくても通りぬける・通りぬけるたびに威力 ×0.3・最大 5）',
+    run({ check, root }) {
+      const L = load(root);
+      check('定数：SHOT_UP（from 10・rate 0.8・dmg 0.2・keep 0.3・pierce 20/40/60/80/99）', J(L.SHOT_UP) === J({ from: 10, rate: 0.8, dmg: 0.2, keep: 0.3, pierce: [20, 40, 60, 80, 99] }), [L.SHOT_UP]);
+      // 撃つ間隔：fire の出来事の間（step の数）
+      const gap = (lv) => {
+        let s = mk(L, { slots: [{ id: 'shot', lv }] });
+        s = setRock(L, s, Array(10).fill('rrrrrrrrrr'), { hp: 1e9, only: 0, bottom: 260 });
+        const at = [];
+        for (let k = 0; k < 120; k++) { const r = L.step(s, L.STEP); s = r.state; if (r.events.some((e) => e.kind === 'fire')) at.push(k); }
+        const g = at.slice(1).map((x, i) => x - at[i]);
+        return g.slice(2).sort((a, b) => a - b)[g.length >> 1];
+      };
+      const g1 = gap(1), g10 = gap(10), g99 = gap(99);
+      check(`撃つ間隔：Lv1・Lv10 は 0.2 秒（6 step。前と同じ）、Lv99 は 0.2÷1.8＝0.111 秒（3〜4 step の中央 3）`, g1 === 6 && g10 === 6 && g99 === 3, [g1, g10, g99]);
+      check('つよさの表示 dpsOf：Lv10 までは前の式のまま（1×(1+0.25(L−1))×2^floor(L/10)×連÷0.2）、Lv99 は前の 2.16 倍（間隔 ÷1.8・強さ 1.2 倍）', [1, 5, 9, 10].every((lv) => L.dpsOf(mk(L, { slots: [{ id: 'shot', lv }] }), 0) === Math.max(1, Math.round((1 + 0.25 * (lv - 1)) * 2 ** Math.floor(lv / 10) * L.shapeOf('shot', lv) / 0.2))) &&
+        L.dpsOf(mk(L, { slots: [{ id: 'shot', lv: 99 }] }), 0) === Math.round(13056 * 1.2 * 4 / (0.2 / 1.8)), [L.dpsOf(mk(L, { slots: [{ id: 'shot', lv: 99 }] }), 0)]);
+      // 撃った弾の貫通の回数（p）
+      const pOf = (lv) => { let s = mk(L, { slots: [{ id: 'shot', lv }] }); s = setRock(L, s, Array(10).fill('rrrrrrrrrr'), { hp: 1e9, only: 0, bottom: 260 }); for (let k = 0; k < 30; k++) { s = L.step(s, L.STEP).state; if (s.shots.length) return s.shots[0].p; } return null; };
+      const ps = [1, 19, 20, 39, 40, 99].map(pOf);
+      check('貫通の回数：Lv19 まで 0、Lv20 で 1、Lv40 で 2、Lv99 で 5', J(ps) === J([0, 0, 1, 1, 2, 5]), ps);
+      // 縦 1 列 8 マスに、真下から 1 発（p を決めて置く）
+      const col = (p, hp) => {
+        let s = mk(L, { slots: [{ id: 'shot', lv: 1 }] });
+        s = setRock(L, s, Array(8).fill('r'), { hp, only: 0, x: 180 - L.CELL / 2, bottom: 300 });
+        s = { ...s, cd: [1e9], shots: [{ k: 0, w: 'shot', x: 180, y: 320, vx: 0, vy: -600, t: 0, dmg: 1, p }] };
+        const r = run(L, s, 0.5);
+        const loss = s.rock.hp.map((h, i) => +(h - (r.s.rock.mats[i] ? r.s.rock.hp[i] : 0)).toFixed(6));
+        return { brk: ofKind(r.evs, 'break').map((e) => e.i).sort((a, b) => a - b), hit: ofKind(r.evs, 'hit').map((e) => e.i).sort((a, b) => a - b), left: r.s.shots.length, loss };
+      };
+      const c0 = col(0, 0.05), c2 = col(2, 0.05), cb = col(5, 1e9);
+      check('貫通：p 0 で 1 マス、p 2 で 3 マス（下から 7・6・5）。こわせない硬いマスも通りぬける（p 5 で 6 マス＝7〜2 に当たり、1 は無傷）。威力は 1・0.3・0.09…（通りぬけるたびに ×0.3）',
+        J(c0.brk) === J([7]) && J(c2.brk) === J([5, 6, 7]) && cb.brk.length === 0 && J(cb.hit) === J([2, 3, 4, 5, 6, 7]) && near(cb.loss[7], 1, 1e-6) && near(cb.loss[6], 0.3, 1e-6) && near(cb.loss[5], 0.09, 1e-6) && cb.loss[1] === 0 && c0.left === 0 && c2.left === 0 && cb.left === 0, [c0.brk, c2.brk, cb.hit, cb.loss]);
+      // 通りぬけて星の四角の上へ出た たまは消える（v40 レビュー）・通りぬけたあとの当たりには thru の印（最初の当たりには付かない）
+      {
+        let s3 = mk(L, { slots: [{ id: 'shot', lv: 1 }] });
+        s3 = setRock(L, s3, Array(3).fill('r'), { hp: 1e9, only: 0, x: 180 - L.CELL / 2, bottom: 300 });
+        s3 = { ...s3, cd: [1e9], shots: [{ k: 0, w: 'shot', x: 180, y: 320, vx: 0, vy: -600, t: 0, dmg: 1, p: 5 }] };
+        const r3 = run(L, s3, 0.2);
+        const hits = ofKind(r3.evs, 'hit');
+        check('通りぬけて星の上へ出た たまは消える（3 マスに当たって、0.2 秒後に弾が残っていない）。通りぬけたあとの 2 つの当たりだけ thru', hits.length === 3 && r3.s.shots.length === 0 && !hits[0].thru && hits[1].thru === true && hits[2].thru === true, [hits.map((e) => [e.i, !!e.thru]), r3.s.shots.length]);
+      }
+      // 貫通が増える Lv99 でも しんか の出来事（Lv98 → 99。v40 レビュー）
+      const u99 = L.upgrade(mk(L, { kakera: 9e15, slots: [{ id: 'shot', lv: 98 }] }), 0), u98 = L.upgrade(mk(L, { kakera: 9e15, slots: [{ id: 'shot', lv: 97 }] }), 0), b99 = L.upgrade(mk(L, { kakera: 9e15, slots: [{ id: 'bolt', lv: 98 }] }), 0);
+      check('たまを Lv99 にすると evolve の出来事（貫通が増える）。Lv98・いなずま Lv99 では出ない', u99.ok && J(u99.events) === J([{ kind: 'evolve', slot: 0, lv: 99 }]) && u98.ok && u98.events.length === 0 && b99.ok && b99.events.length === 0, [u99.events, u98.events, b99.events]);
+    },
+  },
+  {
+    id: 'KL22', tier: 'smoke', node: true, title: 'ほしくだき（v40）：どかんの円の中心が星の内側へずれる（むだが減る・円は縁を含む）',
+    run({ check, root }) {
+      const L = load(root);
+      check('定数：BOMB_SHIFT 0.5', L.BOMB_SHIFT === 0.5, [L.BOMB_SHIFT]);
+      const out = [];
+      for (const [lv, size] of [[1, 15], [30, 21]]) {
+        let s = mk(L, { slots: [{ id: 'bomb', lv }] });
+        s = setRock(L, s, Array(size).fill('r'.repeat(size)), { hp: 1e9, only: 0, bottom: 320 });
+        const R = s.rock;
+        const r = until(L, s, (e) => e.kind === 'boom', 3);
+        const b = ofKind(r.evs, 'boom')[0];
+        if (!b) { out.push(null); continue; }
+        let all = 0, inside = 0, edge = false;
+        const rc = b.r / L.CELL, cc = (b.x - R.x) / L.CELL, rr = (b.y - R.y) / L.CELL;
+        for (let y = Math.floor(rr - rc - 1); y <= Math.ceil(rr + rc + 1); y++) for (let x = Math.floor(cc - rc - 1); x <= Math.ceil(cc + rc + 1); x++) {
+          if ((x + 0.5 - cc) ** 2 + (y + 0.5 - rr) ** 2 > rc * rc + 1e-9) continue;
+          all++;
+          if (x >= 0 && x < size && y >= 0 && y < size) { inside++; if (x === 0 || y === 0 || x === size - 1 || y === size - 1) edge = true; }
+        }
+        out.push({ lv, ratio: inside / all, edge, depth: (R.y + size * L.CELL - b.y) / L.CELL });
+      }
+      check('円のうち星の中にある割合が 8 割以上（前は 5〜6 割）、円は一番外のマスを含む（外から欠ける）', out.every((o) => o && o.ratio >= 0.8 && o.edge), out);
+    },
+  },
+  {
+    id: 'KL23', tier: 'full', node: true, title: 'ほしくだき（v40）：同じ物差し（砲台 1 台・その武器だけ・星を止めて 30 秒・削れた体力をマスに直した数/秒）で、Lv99 の たま が てつ・いわ・まざった星のどれでも一番。Lv1・Lv60 では得意の武器が たま より上',
+    run({ check, root }) {
+      const L = load(root);
+      const MN = ['', 'rock', 'iron', 'ice', 'gold'];
+      const rate = (w, lv, star, kind) => [7, 11, 23].reduce((a, seed) => a + rate1(w, lv, star, kind, seed), 0) / 3;
+      const rate1 = (w, lv, star, kind, seed) => {
+        let s = mk(L, { star, slots: [{ id: w, lv }], seed });
+        const R = s.rock, mats = R.mats.slice(), hp = R.hp.slice();
+        for (let i = 0; i < mats.length; i++) { if (!mats[i]) continue; if (kind === 'iron') mats[i] = 2; else if (kind === 'rock') mats[i] = 1; hp[i] = L.cellHp(star, MN[mats[i]]); }
+        s = { ...s, rock: { ...R, mats, hp, y: 330 - R.rows * L.CELL, vy: 0, scan: null, rowHp: new Array(R.rows).fill(1) }, shots: [], burns: [] };
+        const h0 = hp.slice();
+        for (let k = 0; k < 900; k++) { s = L.step(s, L.STEP).state; if (s.phase !== 'fly') break; }
+        let eq = 0;
+        for (let i = 0; i < mats.length; i++) if (mats[i]) eq += (h0[i] - (s.rock.mats[i] ? s.rock.hp[i] : 0)) / h0[i];
+        return eq / 30;
+      };
+      const W6 = ['shot', 'spread', 'bomb', 'bolt', 'beam', 'fire'];
+      const tab = {};
+      for (const kind of ['iron', 'rock', 'mixed']) for (const [lv, star] of [[1, 3], [60, 20], [99, 30]]) tab[kind + lv] = Object.fromEntries(W6.map((w) => [w, +rate(w, lv, star, kind).toFixed(3)]));
+      const top = (o) => Math.max(...Object.entries(o).filter(([w]) => w !== 'shot').map(([, v]) => v));
+      check('Lv99（星 30）：たま が てつ・いわ・まざった星のどれでも ほかの武器の一番より 1 割以上 上', ['iron', 'rock', 'mixed'].every((k) => tab[k + 99].shot >= top(tab[k + 99]) * 1.1), tab);
+      check('役目が残る：Lv1（星 3）と Lv60（星 20）の てつ の星では いなずま か ビーム が、いわ の星では ちらし か どかん が たま より上', [1, 60].every((lv) => Math.max(tab['iron' + lv].bolt, tab['iron' + lv].beam) > tab['iron' + lv].shot && Math.max(tab['rock' + lv].spread, tab['rock' + lv].bomb) > tab['rock' + lv].shot), tab);
     },
   },
 ];

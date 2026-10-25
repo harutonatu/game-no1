@@ -48,13 +48,21 @@
   const AIM_MAX = 60 * DEG, TURN_SPEED = 360 * DEG, AIM_TOL = 4 * DEG, BARREL = 14;
   // いなずまの枝分かれのマスの数・ビームの幅（マス）は Lv1 の値（しんかは EVOLVE）。ビームの深さ（マス）
   const BOLT_CELLS = 16, BEAM_W = 2, BEAM_DEPTH = 20;
+  // （v40）たまの伸び（Lv 11 から。Lv 1〜10 は前と同じ）：x = (Lv − 10) ÷ 89（0〜1）。撃つ間隔 = RATE ÷ (1 + rate × x)、強さ × (1 + dmg × x)。
+  // pierce の Lv ごとに 貫通 +1：当たったマスを（こわせなくても）通りぬけて、うしろのマスにも当たる。通りぬけるたびに威力 × keep。
+  // 1 発で最大 1 + 5 マスの細い線（ビームは幅 2〜8 マス・奥へ 20 マスの帯を全部同じ強さで掘る。たまは数マスを通りぬけるだけ）
+  const SHOT_UP = deepFreeze({ from: 10, rate: 0.8, dmg: 0.2, keep: 0.3, pierce: [20, 40, 60, 80, 99] });
+  // （v40）いなずまは どの種類のマスへも伝わる。1 マス伝わるごとに威力 ×（てつ へ 0.95＝−5%、ほかへ 0.8＝−20%）。BOLT_MIN 未満になる先へは伝わらない
+  const BOLT_KEEP = deepFreeze({ iron: 0.95, other: 0.8 }), BOLT_MIN = 0.3;
+  // （v40）どかん の円の中心を、ねらった縁のマスから星の内側（円の中の残っているマスの重心の向き）へ 半径 × BOMB_SHIFT ずらす
+  const BOMB_SHIFT = 0.5;
   const HP_BASE = 180, HP_GROWTH = 1.252, VALUE_GROWTH = 2.35, UP_GROWTH = 1.35, LEVEL_MAX = 99, SLOTS_MAX = 4;
   // 1 マスのかけらは MAT_VALUE × valMul ÷ VALUE_DIV（マスが約 4 倍になったので。端数は kfrac にためる）
   const VALUE_DIV = 4;
   // エンディング（星 ENDING_STAR）より先の増え方（§17.1「星 100 まで詰まらない」）
   const HP_GROWTH2 = 1.0, VALUE_GROWTH2 = 1.03;
   // 最初の星だけ、マスの体力をこの倍にする（星 1〜9。§17.1「最初の 3 星は 1.5〜3 分」）
-  const EARLY_HP = deepFreeze([0.015, 0.056, 0.08, 0.27, 0.35, 0.39, 0.58, 0.82, 0.9]);
+  const EARLY_HP = deepFreeze([0.015, 0.056, 0.08, 0.25, 0.35, 0.39, 0.58, 0.82, 0.9]);
   // マスの混ざり方（§3.2）：てつ（星 3〜9・10〜）、こおり（星 6〜）、星ごとの傾き（てつ多め／こおり多め）
   const MIX = deepFreeze({ iron: [0.25, 0.35], ice: 0.15, tilt: 0.08 });
   const SIZE_BASE = 20, SIZE_STEP = 0.96;   // 星 1 の直径（マス）と、星ごとに増えるマスの数（星 30 ごろに 48 マス）
@@ -96,7 +104,7 @@
     { id: "shot", name: "たま", dmg: 1, rate: 0.20, good: null, aff: {}, desc: "いちばん ちかい マスへ まっすぐ うつ" },
     { id: "spread", name: "ちらし", dmg: 1.25, rate: 0.6, good: "rock", aff: { rock: 2, iron: 0.9 }, desc: "おうぎの かたちに 5はつ ちらす" },
     { id: "bomb", name: "どかん", dmg: 0.75, rate: 1.6, good: "ice", aff: { ice: 2 }, desc: "おちた ところの まわりを まとめて こわす" },
-    { id: "bolt", name: "いなずま", dmg: 0.65, rate: 1.2, good: "iron", aff: { iron: 2.2, ice: 0.5 }, desc: "つながった おなじ マスへ えだわかれ する" },
+    { id: "bolt", name: "いなずま", dmg: 0.8, rate: 1.2, good: "iron", aff: { iron: 2.2, ice: 0.5 }, desc: "つながった マスへ えだわかれ。てつは とおくまで とどく" },
     { id: "beam", name: "ビーム", dmg: 0.375, rate: 2.0, good: "iron", aff: { iron: 1.8 }, desc: "まっすぐ おくまで あなを あける" },
     { id: "fire", name: "ほのお", dmg: 3, rate: 1.0, good: "ice", aff: { ice: 3, iron: 0.75 }, desc: "もやして となりの こおりへ ひろがる" }
   ]);
@@ -170,11 +178,18 @@
   // 1 マスのかけら（端数こみ。整数にしない。kakera へは addK で端数をためて足す）
   function cellValue(n, mat) { return MAT_VALUE[mat] ? MAT_VALUE[mat] * valMul(n) / VALUE_DIV : null; }
   function lvOk(L) { return isNum(L) ? clamp(Math.floor(L), 1, LEVEL_MAX) : 1; }
+  // （v40）たまの伸び（0〜1）。Lv 10 までは 0
+  function shotUp(L) { return L <= SHOT_UP.from ? 0 : (L - SHOT_UP.from) / (LEVEL_MAX - SHOT_UP.from); }
   function dmg(w, L) {
     if (!W[w]) return null;
     L = lvOk(L);
-    return W[w].dmg * (1 + 0.25 * (L - 1)) * Math.pow(2, Math.floor(L / EVOLVE_EVERY));
+    const up = w === "shot" ? 1 + SHOT_UP.dmg * shotUp(L) : 1;
+    return W[w].dmg * (1 + 0.25 * (L - 1)) * Math.pow(2, Math.floor(L / EVOLVE_EVERY)) * up;
   }
+  // 撃つ間隔（秒）。たまは Lv 11 から短くなる（v40）
+  function rateOf(w, L) { L = lvOk(L); return w === "shot" ? W[w].rate / (1 + SHOT_UP.rate * shotUp(L)) : W[w].rate; }
+  // たまの貫通の回数（v40）
+  function pierceOf(L) { L = lvOk(L); let n = 0; for (const x of SHOT_UP.pierce) if (L >= x) n++; return n; }
   function upCost(w, L) {
     if (!W[w]) return null;
     L = lvOk(L);
@@ -857,14 +872,25 @@
         const n = shapeOf(w, L);
         for (let j = 0; j < n && room(); j++) {
           const off = (j - (n - 1) / 2) * 4;   // 連は砲身に直角にならべる
-          s.shots.push({ k, w, x: mz.x + ca * off, y: mz.y + sa * off, vx: sa * BULLET_SPEED, vy: -ca * BULLET_SPEED, t: 0, dmg: d });
+          s.shots.push({ k, w, x: mz.x + ca * off, y: mz.y + sa * off, vx: sa * BULLET_SPEED, vy: -ca * BULLET_SPEED, t: 0, dmg: d, p: pierceOf(L) });
         }
       } else if (room()) {
         s.shots.push({ k, w, x: mz.x, y: mz.y, vx: sa * BULLET_SPEED, vy: -ca * BULLET_SPEED, t: 0, dmg: d, aim: tgt });
       }
     } else if (w === "bomb") {
       if (!room()) return;
-      const tc = (tgt % R.cols) + 0.5, tr = Math.floor(tgt / R.cols) + 0.5;
+      let tc = (tgt % R.cols) + 0.5, tr = Math.floor(tgt / R.cols) + 0.5;
+      // （v40）円の中心を星の内側へ：ねらった縁のマスのまわり（半径 r0）の残っているマスの重心の向きへ r0 × BOMB_SHIFT
+      const r0 = shapeOf(w, L), c0 = tgt % R.cols, w0 = Math.floor(tgt / R.cols);
+      let gx = 0, gy = 0;
+      for (let dr = -r0; dr <= r0; dr++) for (let dc = -r0; dc <= r0; dc++) {
+        const c = c0 + dc, rr = w0 + dr;
+        if (dc * dc + dr * dr > r0 * r0 || c < 0 || c >= R.cols || rr < 0 || rr >= R.rows || !R.mats[rr * R.cols + c]) continue;
+        gx += dc; gy += dr;
+      }
+      CELLS += (2 * r0 + 1) * (2 * r0 + 1);
+      const gl = Math.hypot(gx, gy);
+      if (gl > 1e-9) { tc += gx / gl * BOMB_SHIFT * r0; tr += gy / gl * BOMB_SHIFT * r0; }
       const tx = R.x + tc * CELL, ty = R.y + tr * CELL;
       ctx.evs.push({ kind: "fire", k, w, x: mz.x, y: mz.y, ang: T.ang, tx, ty });
       s.shots.push({ k, w, x: mz.x, y: mz.y, vx: (tx - mz.x) / BOMB_FLIGHT, vy: (ty - mz.y) / BOMB_FLIGHT, t: 0, dmg: d, sx: mz.x, sy: mz.y, tc, tr, r: shapeOf(w, L) });
@@ -872,34 +898,44 @@
       ctx.evs.push({ kind: "fire", k, w, x: mz.x, y: mz.y, ang: T.ang, tx: cellX(R, tgt), ty: cellY(R, tgt) });
       const tree = boltTree(s, tgt, shapeOf(w, L));
       ctx.evs.push({ kind: "bolt", from: tgt, edges: tree.edges });
-      for (const i of tree.cells) hurt(s, i, d, w, ctx);
+      for (let q = 0; q < tree.cells.length; q++) hurt(s, tree.cells[q], d * tree.pw[q], w, ctx);
     } else if (w === "beam") {
       fireBeam(s, k, T, mz, shapeOf(w, L), d, ctx);
     }
   }
-  // いなずま：ねらったマスから、上下左右でつながった同じ種類のマスを幅優先でたどる（同じ距離の中では種つきのハッシュの順）。最大 n マス
+  // いなずま（v40）：ねらったマスから上下左右へ、どの種類のマスへも伝わる。威力は 1 から始まり、1 マス伝わるごとに
+  // てつ へは × BOLT_KEEP.iron、ほかへは × BOLT_KEEP.other。BOLT_MIN 未満になる先へは伝わらない。
+  // 威力の大きい先から順に（同じなら種つきのハッシュの順）、最大 n マス。pw[q] は cells[q] の威力
   function boltTree(s, start, n) {
     const R = s.rock, cols = R.cols, mats = R.mats, N = mats.length;
-    const m = mats[start];
-    const cells = [start], edges = [], seen = new Set([start]);
+    const cells = [start], pw = [1], edges = [], seen = new Set([start]);
     const salt = hash2(s.seed >>> 0, Math.floor(s.t * 30) >>> 0);
-    let head = 0;
-    while (head < cells.length && cells.length < n) {
-      const j = cells[head++];
+    const front = [];   // [威力, マス, 親, 順の札]
+    const grow = (j, p) => {
       const c = j % cols;
       const nb = [];
       if (j >= cols) nb.push(j - cols);
       if (c > 0) nb.push(j - 1);
       if (c < cols - 1) nb.push(j + 1);
       if (j + cols < N) nb.push(j + cols);
-      nb.sort((a, b) => hash2(salt, a) - hash2(salt, b));
       for (const q of nb) {
         CELLS++;
-        if (cells.length >= n) break;
-        if (!seen.has(q) && mats[q] === m) { seen.add(q); cells.push(q); edges.push([j, q]); }
+        if (seen.has(q) || !mats[q]) continue;
+        const np = p * (mats[q] === 2 ? BOLT_KEEP.iron : BOLT_KEEP.other);
+        if (np < BOLT_MIN - 1e-9) continue;
+        front.push([np, q, j, hash2(salt, q)]);
       }
+    };
+    grow(start, 1);
+    while (cells.length < n && front.length) {
+      let bi = 0;
+      for (let k = 1; k < front.length; k++) { const x = front[k], y = front[bi]; if (x[0] > y[0] + 1e-12 || (Math.abs(x[0] - y[0]) <= 1e-12 && x[3] < y[3])) bi = k; }
+      const f = front[bi]; front[bi] = front[front.length - 1]; front.pop();
+      if (seen.has(f[1])) continue;
+      seen.add(f[1]); cells.push(f[1]); pw.push(f[0]); edges.push([f[2], f[1]]);
+      grow(f[1], f[0]);
     }
-    return { cells, edges };
+    return { cells, edges, pw };
   }
   // ビーム：光の通り道（幅 W マス）を、最初に当たったマスから奥へ BEAM_DEPTH マスまで全部（§3.5「ビームの穴」）
   function fireBeam(s, k, T, mz, Wc, d, ctx) {
@@ -964,7 +1000,7 @@
         const T = s.turrets[k];
         if (!(T.tgt >= 0 && s.rock.mats[T.tgt]) || Math.abs(T.ang - T.aim) > AIM_TOL + 1e-9) continue;
         fireWeapon(s, k, ctx);
-        const rate = W[s.slots[k].id].rate;
+        const rate = rateOf(s.slots[k].id, s.slots[k].lv);
         s.cd[k] = s.cd[k] + rate > s.t ? s.cd[k] + rate : s.t + rate;
       }
     }
@@ -996,14 +1032,21 @@
         }
         const x0 = b.x, y0 = b.y;
         b.x += b.vx * dt; b.y += b.vy * dt;
-        let hit = -1;
+        let gone = false;
         const R = s.rock;
-        dda(R, x0, y0, b.x, b.y, (i) => { if (R.mats[i]) { hit = i; return true; } return false; });
-        if (hit >= 0) {
-          if (b.w === "fire") ignite(s, hit, ctx);
-          else hurt(s, hit, b.dmg, b.w, ctx);
-          continue;
-        }
+        // 通り道の最初のマスに当たる。たまの貫通（b.p）：当たったマスを（こわせなくても）通りぬけて、残りの回数だけ同じ線の うしろのマスへ進む。通りぬけるたびに威力 × SHOT_UP.keep（v40）
+        dda(R, x0, y0, b.x, b.y, (i) => {
+          if (!R.mats[i] || i === b.h) return false;   // b.h＝通りぬけたばかりのマス（次の step の線の始まりが同じマスの中でも 2 回当たらない）
+          if (b.w === "fire") { ignite(s, i, ctx); gone = true; return true; }
+          const thru = b.h !== undefined;
+          hurt(s, i, b.dmg, b.w, ctx);
+          if (thru) { const e = ctx.evs[ctx.evs.length - 1]; if (e && e.i === i) e.thru = true; }   // 通りぬけたあとの当たり（自動プレイの sideHits で数えない）
+          b.h = i;
+          if (b.p > 0) { b.p--; b.dmg *= SHOT_UP.keep; return false; }
+          gone = true; return true;
+        });
+        if (gone) continue;
+        if (b.h !== undefined && b.y < R.y) continue;   // 通りぬけて星の四角の上へ出た たまは消す（v40 レビュー）
         if (b.x < -40 || b.x > FIELD_W + 40 || b.y < -600 || b.y > FIELD_H + 40 || b.t > 3) continue;
         keep.push(b);
       }
@@ -1177,12 +1220,12 @@
     if (w === "shot") return v;
     if (w === "spread") return v * 1.0;
     if (w === "bomb") { let n = 0; const r = Math.ceil(v); for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) if (a * a + b * b <= v * v + 1e-9) n++; return n * 0.9; }
-    if (w === "bolt") return v * 0.8;
+    if (w === "bolt") return v * 0.65;   // v40：DMG 0.8 × 平均の威力 約 0.8（つよさの表示と自動プレイの見積もりは前と同じ 0.52）
     if (w === "beam") return v * BEAM_DEPTH * 0.9;
     if (w === "fire") return v;
     return 1;
   }
-  function dpsRaw(w, L) { return dmg(w, L) * nominalHits(w, L) / W[w].rate; }
+  function dpsRaw(w, L) { return dmg(w, L) * nominalHits(w, L) / rateOf(w, L); }
   function dpsOf(state, slot) {
     try {
       if (!isObj(state) || !Array.isArray(state.slots)) return null;
@@ -1252,7 +1295,7 @@
       const why = upgradeMut(s, slot);
       if (why) return { state, ok: false, reason: why };
       const lv = s.slots[slot].lv;
-      const events = lv % EVOLVE_EVERY === 0 ? [{ kind: "evolve", slot, lv }] : [];
+      const events = lv % EVOLVE_EVERY === 0 || (s.slots[slot].id === "shot" && SHOT_UP.pierce.includes(lv)) ? [{ kind: "evolve", slot, lv }] : [];   // たまは貫通が増える Lv99 も（v40）
       return { state: s, ok: true, events };
     } catch (e) { return { state, ok: false, reason: "error" }; }
   }
@@ -1662,6 +1705,9 @@
         CELLS = 0;
         const sideW = s.slots.length >= 2 ? new Set([s.slots[0].id, s.slots[s.slots.length - 1].id]) : null;
         const br = sideW ? bottomRow(s.rock) : -1;
+        // いなずまの当たりのうち てつ だけを数えるため、撃ちそうな step だけ前のマスを写す（SIM ではマスをその場で書き換えるので）
+        const bk = s.slots.findIndex((y) => y.id === "bolt");
+        const preMats = bk >= 0 && s.phase === "fly" && s.t + STEP + 1e-9 >= s.cd[bk] ? s.rock.mats.slice() : null;
         stepMut(s, STEP, evs);
         if (CELLS > rep.stepCells) rep.stepCells = CELLS;
         let born = 0;
@@ -1669,12 +1715,12 @@
           if (e.kind === "break") born += 2;
           else if (e.kind === "chunk") { born += e.cells.length * 2; starChunks++; }
           else if (e.kind === "hit") {
-            if (sideW && sideW.has(e.w) && e.w !== "bolt" && e.w !== "bomb" && e.w !== "fire") {
+            if (sideW && sideW.has(e.w) && e.w !== "bolt" && e.w !== "bomb" && e.w !== "fire" && !e.thru) {
               rep.sideHits.all++;
               if (Math.floor(e.i / s.rock.cols) < br - 2) rep.sideHits.side++;
             }
           } else if (e.kind === "bolt") {
-            if (s.star >= 3 && starInfo(s.star).main === "iron") { const x = s.slots.find((y) => y.id === "bolt"); rep.boltCells.push((e.edges.length + 1) / shapeOf("bolt", x ? x.lv : 1)); }
+            if (s.star >= 3 && starInfo(s.star).main === "iron") { const x = s.slots.find((y) => y.id === "bolt"); const pm = preMats || s.rock.mats; let n = pm[e.from] === 2 ? 1 : 0; for (const ed of e.edges) if (pm[ed[1]] === 2) n++; rep.boltCells.push(n / shapeOf("bolt", x ? x.lv : 1)); }
           } else if (e.kind === "swap") { rep.swaps++; rep.swapLog.push({ star: s.star, slot: e.slot, from: e.from, to: e.to, lv: e.lv }); }
           else if (e.kind === "clear") {
             rep.stars.push({ star: e.star, boss: e.star % APPROACH.bossEvery === 0, sec: +(s.t - starStart).toFixed(2), clearSec: +(s.t - tryStart).toFixed(2),
@@ -1716,7 +1762,7 @@
   const api = {
     NAME, MATS, WEAPONS, EVOLVE, MAT_HP, MAT_VALUE, UP_COST, SLOT_COST,
     FIELD_W, FIELD_H, BARRIER_Y, TURRET_Y, ARC_SAG, CELL, GRID_MAX,
-    AIM_MAX, TURN_SPEED, AIM_TOL, BARREL, BOLT_CELLS, BEAM_W, BEAM_DEPTH,
+    AIM_MAX, TURN_SPEED, AIM_TOL, BARREL, BOLT_CELLS, BEAM_W, BEAM_DEPTH, SHOT_UP, BOLT_KEEP, BOLT_MIN, BOMB_SHIFT,
     HP_BASE, HP_GROWTH, VALUE_GROWTH, HP_GROWTH2, VALUE_GROWTH2, VALUE_DIV, EARLY_HP, UP_GROWTH, LEVEL_MAX, SLOTS_MAX,
     CLEAR_BONUS, MILESTONE_BONUS, MILESTONES, BEST_MAX, SOFT, ENDING_STAR, STAR_MAX, STAR_CALC_MAX, KAKERA_MAX, SHOTS_MAX, STEP,
     SAVE_VERSION, SAVE_KEY, SAVE_KEY_BAK, SAVE_KEY_BEST, SAVE_KEY_HELP,
