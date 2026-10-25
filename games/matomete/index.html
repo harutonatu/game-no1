@@ -217,18 +217,18 @@
   .tag[data-blast="2"] { background: #fff2a8; box-shadow: 0 0 0 2px #ff5a1f, 0 0 10px rgba(255, 170, 60, 0.8); }
   .tag[data-blast="2"] .kick { color: #d1290b; }
 
-  /* れんぞく（§10）：盤の上のはしに小さく。5こ以上を続けて消している間だけ出る */
+  /* れんぞく（§10）：盤の上のふちにまたがせて小さく（盤にかかるのは札の高さの半分。一番上の段をなるべく隠さない。MT-16）。5こ以上を続けて消している間だけ出る */
   .streak {
     position: absolute;
     z-index: 6;
-    left: 50%; top: 4px;
-    transform: translateX(-50%);
+    left: 50%; top: 0;
+    transform: translate(-50%, -50%);
     box-sizing: border-box;
     padding: 1px 8px;
     border-radius: 999px;
     background: rgba(13, 17, 29, 0.82);
     color: var(--gold);
-    font: 800 12px/1.4 var(--font-display);
+    font: 800 12px/1.2 var(--font-display);
     white-space: nowrap;
     pointer-events: none;
     box-shadow: 0 0 0 1px #ff8a3d;
@@ -431,6 +431,13 @@
     .card .btns.row4 { display: flex; flex-direction: row; }
     .card .btns.row4 button { flex: 1 1 0; min-width: 0; white-space: normal; line-height: 1.2; }
   }
+  /* 横向きでとても背が低い（568×270 など）：終わりのカードは 2 段組（左に見出し・点数、右にベスト・のこり）にして、スクロールなしで収める（MT-13） */
+  @media (orientation: landscape) and (max-height: 300px) {
+    .card:has(> .btns.row4) { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); grid-auto-flow: row dense; align-items: center; column-gap: 12px; row-gap: 4px; padding-top: 6px; padding-bottom: 6px; }
+    .card:has(> .btns.row4) > h2, .card:has(> .btns.row4) > p.sub, .card:has(> .btns.row4) > p.big { grid-column: 1; }
+    .card:has(> .btns.row4) > p:not(.sub):not(.big) { grid-column: 2; text-align: left; }
+    .card:has(> .btns.row4) > .btns { grid-column: 1 / -1; }
+  }
 
   /* 背の低い縦画面：カードを詰めて、遊び方がスクロールなしで収まるように */
   @media (orientation: portrait) and (max-height: 620px) {
@@ -438,6 +445,17 @@
     .card h2 { font-size: 21px; }
     .card ol.rules { font-size: 15px; line-height: 1.5; }
     .card p.note { display: none; }
+  }
+  /* 縦でとても背が低い（SE の Safari 320×454 など）：終わりのカードの字とすき間を詰めて、スクロールなしで収める（MT-18） */
+  @media (orientation: portrait) and (max-height: 500px) {
+    .card:has(> .btns.row4) { padding-top: 10px; padding-bottom: 10px; gap: 6px; }
+    .card:has(> .btns.row4) h2 { font-size: 20px; }
+    .card:has(> .btns.row4) p { font-size: 15px; line-height: 1.35; }
+    .card:has(> .btns.row4) p.sub { margin-top: -2px; font-size: 14px; }
+    .card:has(> .btns.row4) p.least, .card:has(> .btns.row4) p.note-best { font-size: 13px; }
+    .card:has(> .btns.row4) p.big { font-size: 32px; line-height: 1.1; }
+    .card:has(> .btns.row4) .btns { gap: 6px; }
+    .card:has(> .btns.row4) .btns button { min-height: 44px; padding: 4px 6px; }
   }
 
   @media (prefers-reduced-motion: reduce) {

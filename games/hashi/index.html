@@ -333,6 +333,8 @@
   .card dt { font-weight: 700; color: var(--accent); white-space: nowrap; }
   .card dd { margin: 0; color: var(--ink); }
   .card .btns { display: flex; flex-direction: column; gap: 10px; }
+  /* 閉じるボタンは、カードが長くてもスクロールしなくても押せるよう、画面の下に見えたままにする（いろびんと同じ。X-15） */
+  .card .btns { position: sticky; bottom: 0; z-index: 1; background: var(--panel); padding-top: 6px; margin-top: -6px; }   /* 上の余白は margin-top で打ち消して、高さを増やさない（HW19 の SE 横） */
   .card .btns button,
   .card button[data-set] {
     box-sizing: border-box;

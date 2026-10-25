@@ -170,7 +170,7 @@ export const tests = [
     },
   },
   {
-    id: 'A5', tier: 'full', title: 'メニュー：カードを押すと tap が鳴り、押したときの処理が短い（遷移を遅らせない）',
+    id: 'A5', tier: 'full', solo: true, title: 'メニュー：カードを押すと tap が鳴り、押したときの処理が短い（遷移を遅らせない）',
     async run({ browser, check }) {
       const { ctx, page } = await newPage(browser, V(), 'A5', {
         initScript: () => {
@@ -259,6 +259,57 @@ export const tests = [
       };
       const got = Object.fromEntries(Object.keys(want).map((g) => [g, names(g)]));
       check('音名の一覧：ブロック・タイル・メニューは従来どおり、キリトリだけに slice・combo・bomb・miss・launch', Object.keys(want).every((g) => got[g] === want[g]), got);
+    },
+  },
+  {
+    id: 'A7', tier: 'full', title: '♪の読み上げ（X-25。PK-36・HS-07 の横展開）：全部のゲームで、♪の aria-label は状態によらず同じ名前（効果音／こうかおん／音）でオン・オフを入れない、押すと aria-pressed だけが true⇄false に変わる、読み上げの名前（ariaSnapshot）にも オン／オフ が出ない',
+    async run({ browser, check }) {
+      const WANT = [['games/blocks/', '効果音'], ['games/2048/', '効果音'], ['games/kiritori/', '効果音'], ['games/irocode/', '効果音'], ['games/zenmai/', '効果音'],
+        ['games/pikatto/', '音'], ['games/hashi/', '効果音'], ['games/irobin/', '効果音'], ['games/matomete/', '効果音'], ['games/michibiki/', '効果音'],
+        ['games/seizai/', 'こうかおん'], ['games/asteroid/', 'こうかおん']];
+      const { ctx, page } = await newPage(browser, V(), 'A7');
+      const rows = [], bad = [];
+      for (const [url, want] of WANT) {
+        await seed(page, {});
+        await page.goto(BASE + url); await wait(page, 300);
+        const btn = page.locator('#soundBtn, #sound-btn').first();
+        const read = async () => ({ label: await btn.getAttribute('aria-label'), pressed: await btn.getAttribute('aria-pressed'), ax: (await btn.ariaSnapshot()).replace(/\s+/g, ' ') });
+        const r0 = await read();
+        await btn.evaluate((b) => b.click()); await wait(page, 80);
+        const r1 = await read();
+        await btn.evaluate((b) => b.click()); await wait(page, 80);
+        const r2 = await read();
+        // ピカッとの最初の画面は ♪ が読み上げの木の外（ariaSnapshot が空）なので、名前は aria-label だけで見る
+        const axOk = (r) => (r.ax === '' ? url === 'games/pikatto/' : r.ax.startsWith(`- button "${want}"`) && !/オン|オフ/.test(r.ax));
+        const ok = [r0, r1, r2].every((r) => r.label === want && axOk(r)) && /^(true|false)$/.test(String(r0.pressed)) && r1.pressed !== r0.pressed && r2.pressed === r0.pressed;
+        rows.push(`${url.replace(/^games\/|\/$/g, '')} 「${r0.label}」${r0.pressed}→「${r1.label}」${r1.pressed}`);
+        if (!ok) bad.push({ url, r0, r1, r2 });
+      }
+      check(`♪の名前は状態によらず同じで、オン・オフは aria-pressed だけ（${rows.join('、')}）`, rows.length === WANT.length && bad.length === 0, bad);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'A8', tier: 'smoke', node: true, title: '効果音（MT-03）：同時発音の上限（36）を連打で使い切った直後でも、結果の音（まとめてポンの over・allclear）は鳴る。ふつうの音は上限で止まる',
+    run({ check, root }) {
+      const src = fs.readFileSync(path.join(root, 'common/sfx.js'), 'utf8');
+      const made = { n: 0 };
+      const param = () => ({ value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {}, setTargetAtTime() {}, cancelScheduledValues() {} });
+      const node = () => ({ connect(t) { return t || node(); }, disconnect() {}, start() {}, stop() {}, frequency: param(), gain: param(), Q: param(), detune: param(), threshold: param(), knee: param(), ratio: param(), attack: param(), release: param(), playbackRate: param(), pan: param() });
+      class AC { constructor() { this.currentTime = 1; this.state = 'running'; this.sampleRate = 8000; this.destination = node(); }
+        resume() { return Promise.resolve(); } createGain() { return node(); } createBiquadFilter() { return node(); } createDynamicsCompressor() { return node(); } createWaveShaper() { return node(); } createStereoPanner() { return node(); }
+        createOscillator() { made.n++; return node(); } createBufferSource() { made.n++; return node(); } createBuffer(c, n) { return { getChannelData: () => new Float32Array(n) }; } }
+      const sb = { localStorage: { getItem: () => null, setItem() {} }, navigator: {}, AudioContext: AC, console };
+      sb.globalThis = sb; sb.window = sb; vm.createContext(sb); vm.runInContext(src, sb);
+      const sfx = sb.YubiSfx.create('matomete');
+      sfx.unlock();
+      for (let i = 0; i < 60; i++) sfx.play('fall');      // 時計が進まないので、上限（36）まで埋まる
+      const filled = made.n;
+      sfx.play('fall'); const more = made.n - filled;
+      const b1 = made.n; sfx.play('over'); const over = made.n - b1;
+      const b2 = made.n; sfx.play('allclear'); const ac = made.n - b2;
+      check(`上限まで埋まったら（${filled} 個）ふつうの音 fall は増えない（${more} 個）`, filled === 36 && more === 0, { filled, more });
+      check(`その直後でも over（${over} 個）と allclear（${ac} 個）は鳴る`, over > 0 && ac > 0, { over, ac });
     },
   },
 ];

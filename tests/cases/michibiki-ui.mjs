@@ -5,7 +5,7 @@
 //   時間はページの時計ではなく manual(true) と tick(n) で進める（§14 の 11）。カードのロック・ヒントの 3 秒などのタイマーだけ page.clock（wait）で進める。
 //   機体は spawn({ color, kind, x, y, dx, dy })（forceSpawn。x・y・dx・dy はロジック担当の拡張）で決まった所に出し、出るまで（WARN_S = 120 コマ）tick で待つ。
 //   無いときに合格にしない（空振りの合格を作らない）：MichibikiGame が無ければ例外で不合格にする。
-//   smoke：FW1〜FW5・FW20・FW21。full：FW6〜FW19・FW22・FW23（FW15・FW18・FW23 は CDP なので Chromium だけ、FW10 は AudioContext が要る）。
+//   smoke：FW1〜FW5・FW20・FW21。full：FW6〜FW19・FW22〜FW24（FW15・FW18・FW23 は CDP なので Chromium だけ、FW10 は AudioContext が要る）。
 //   FW20〜FW23 は契約 §19（レビュー後の直し）の確認。
 import fs from 'node:fs';
 import path from 'node:path';
@@ -278,14 +278,20 @@ export const tests = [
       r.pausedOpen = (await dom(page)).overlay === 'paused';
       r.paused = await reachable(page, 'a#back') && await go();
       await gotoM(page);
-      for (let i = 0; i < 3; i++) await crashOnce(page);
-      await wait(page, 700);
-      r.overOpen = (await dom(page)).overlay === 'over';
-      r.over = await reachable(page, 'a#back') && await go();
+      // ページの時計を止めて wait でだけ進める（止めないと WebKit ではページの時刻がずれ、0.7 秒進めても 0.6 秒のカードがまだ出ていないことがある。FW2 と同じ。T-16）
+      await frozen(page, async () => {
+        for (let i = 0; i < 3; i++) await crashOnce(page);
+        await wait(page, 700);
+        r.overOpen = (await dom(page)).overlay === 'over';
+        r.overReach = await reachable(page, 'a#back');
+      });
+      r.over = r.overReach && await go();
       check('遊んでいる途中・遊び方・一時停止・終わりのカードのどれからも a#back が見えて押せ、メニューが開く', Object.values(r).every(Boolean), r);
       await gotoM(page);
-      for (let i = 0; i < 3; i++) await crashOnce(page);
-      await wait(page, 1300);
+      await frozen(page, async () => {   // 1.3 秒＝カード 0.6 秒＋押せない 0.6 秒のあと（T-16）
+        for (let i = 0; i < 3; i++) await crashOnce(page);
+        await wait(page, 1300);
+      });
       await page.click('#menuBtn'); await page.waitForURL(BASE, { timeout: 5000 }).catch(() => {});
       check('終わりのカードの「メニューへ」（#menuBtn）でメニューが開く', page.url() === BASE && await page.locator('a.game').count() >= 2, page.url());
       await ctx.close();
@@ -485,8 +491,11 @@ export const tests = [
       check(`着陸 4 で あおの滑走路が開くと open（引数 ${op && op.a}）`, !!op && op.a === 1, op);
       // crash・over
       let s = await gs(page);
-      for (let i = 0; i < 4 && !s.over; i++) { s = await crashOnce(page); await sleep(250); }
-      await wait(page, 700);
+      // ページの時計を止めて wait でだけ進める（FW4・FW2 と同じ。止めないと WebKit ではページの時刻がずれる。T-22）
+      await frozen(page, async () => {
+        for (let i = 0; i < 4 && !s.over; i++) { s = await crashOnce(page); await sleep(250); }
+        await wait(page, 700);
+      });
       const ps2 = await plays(page);
       const ic = ps2.findIndex((p) => p.n === 'crash'), io = ps2.findIndex((p) => p.n === 'over');
       check(`ぶつかると crash、終わると over（crash の後）`, s.over && ic >= 0 && io > ic, ps2.map((p) => p.n).slice(-12));
@@ -730,7 +739,7 @@ export const tests = [
     },
   },
   {
-    id: 'FW18', tier: 'full', cdp: 'CDP の CPU 低速化', title: 'ミチビキ空港 性能：機体 10・道 400 点 × 3 本で、CPU 4倍遅く（CDP）して lastDrawMs の 95% が 8ms 以内、一時停止中は frames が増えない',
+    id: 'FW18', tier: 'full', solo: true, cdp: 'CDP の CPU 低速化', title: 'ミチビキ空港 性能：機体 10・道 400 点 × 3 本で、CPU 4倍遅く（CDP）して lastDrawMs の 95% が 8ms 以内、一時停止中は frames が増えない',
     async run({ browser, check }) {
       const { ctx, page } = await openM(browser, 'FW18', { v: view('SE', 'p', 'app') });
       await firstPlane(page);
@@ -784,8 +793,10 @@ export const tests = [
         lits.push(st.drawLog.arrows.find((a) => a.color === 0).lit);
         landed = st.landed;
         if (k === 0) {
-          await wait(page, 700); await T(page, 0);
-          lits.push((await gs(page)).drawLog.arrows.find((a) => a.color === 0).lit);
+          await frozen(page, async () => {   // 0.7 秒ちょうどで見る（T-22）
+            await wait(page, 700); await T(page, 0);
+            lits.push((await gs(page)).drawLog.arrows.find((a) => a.color === 0).lit);
+          });
         }
         // 区域を出たら、また逆向きに入る道（ヒントが消える 3 秒を待つ）
         const out = await until(page, `s.planes.some((x) => x.id === ${q.id} && x.x < 72) || evs.some((e) => e.type === 'crash' && e.ids.includes(${q.id}))`, 600);
@@ -908,6 +919,65 @@ export const tests = [
       const q = (await gs(page)).planes.find((x) => x.id === id);
       check(`2本目の指は無視され、機体は1本目の指の道（右上）へ進む（向き ${q && q.dx.toFixed(2)}, ${q && q.dy.toFixed(2)}）`, !!q && q.dx > 0 && q.dy < 0, q);
       await ctx.close();
+    },
+  },
+  {
+    id: 'FW24', tier: 'full', title: 'ミチビキ空港 滑走路の置き方（MC-15）：restart(seed, layout) は置き方 0、restart() を続けると前の回と違う置き方（2 種類以上）、getState().runways・#field[data-plan]・描いた矢印が置き方の表と同じ、置き方 1 でも おまかせで着陸できる、置き方が前の回と変わった回の はじめだけ「こんかいは かっそうろの ならびが ちがうよ」（最初の回・同じ置き方では出ない）',
+    async run({ browser, check }) {
+      const { ctx, page } = await openM(browser, 'FW24');
+      const table = (layout, plan) => page.evaluate(([l, p]) => window.MichibikiLogic.RUNWAY_PLANS[l][p].map((r) => [r.ex, r.ey, r.dx, r.dy]), [layout, plan]);
+      await fresh(page, 3, 'tall');
+      await T(page, 1);
+      const s0 = await gs(page), d0 = await page.evaluate(() => document.querySelector('#field').dataset.plan);
+      check(`restart(3, 'tall') は置き方 0（今のテストのまま）：runways が あか (100,170)→・data-plan ${d0}`, s0.plan === 0 && d0 === '0' && s0.runways[0].ex === RED.ex && s0.runways[0].ey === RED.ey && s0.runways[0].dx === RED.dx, { plan: s0.plan, d0, runways: s0.runways });
+      // restart()（種なし）を 7 回：続けて同じ置き方にならない・2 種類以上
+      const plans = [], bad = [];
+      for (let i = 0; i < 7; i++) {
+        await page.evaluate(() => { const G = window.MichibikiGame; G.restart(); G.manual(true); });
+        await T(page, 1);
+        const s = await gs(page), d = await page.evaluate(() => document.querySelector('#field').dataset.plan);
+        const want = await table(s.layout, s.plan);
+        const rwOk = JSON.stringify(s.runways.map((r) => [r.ex, r.ey, r.dx, r.dy])) === JSON.stringify(want);
+        const ar = s.drawLog.arrows;
+        const arOk = ar.length === 3 && s.runways.every((r) => { const a = ar.find((x) => x.color === r.color); return a && a.dx === r.dx && a.dy === r.dy && Math.hypot(a.x - r.ex, a.y - r.ey) <= 22; });
+        if (!(rwOk && arOk && d === String(s.plan))) bad.push({ i, plan: s.plan, d, rwOk, arOk });
+        plans.push(s.plan);
+      }
+      check(`restart() を 7 回：getState().runways・#field[data-plan]・描いた矢印が置き方の表と同じ（${plans.join(',')}）`, bad.length === 0, bad);
+      check(`続く 2 回で同じ置き方にならず、2 種類以上出る（${plans.join(',')}）`, plans.every((p, i) => i === 0 || p !== plans[i - 1]) && new Set(plans).size >= 2, plans);
+      // 置き方 1 で、1 機目におまかせの道を付けると着陸
+      await page.evaluate(() => { const G = window.MichibikiGame; G.restart(5, 'tall', 1); G.manual(true); });
+      const s1 = await gs(page);
+      const q = await firstPlane(page);
+      await page.evaluate((id) => window.MichibikiGame.guide(id), q.id);
+      const u = await until(page, 's.landed >= 1', 1500);
+      check(`restart(5, 'tall', 1)：plan ${s1.plan}・あか (220,170)←、1 機目に おまかせの道を付けると着陸（landed ${u.s.landed}）`, s1.plan === 1 && s1.runways[0].ex === 220 && s1.runways[0].dx === -1 && u.ok && u.s.landed === 1, { s1: s1.runways, u: u.s });
+      // 案内：置き方が前の回と違う回の はじめだけ出る（最初の回・同じ置き方では出ない）
+      const MSG = 'こんかいは かっそうろの ならびが ちがうよ';
+      let pg;
+      const startP = (plan) => pg.evaluate((p) => { window.MichibikiGame.restart(7, 'tall', p); window.MichibikiGame.manual(true); }, plan);
+      await ctx.close();
+      const c2 = await openM(browser, 'FW24 plan-hint', { start: false });
+      pg = c2.page;
+      const h1 = await hintText(pg);   // 開いた直後の最初の回
+      check(`最初の回では案内が出ない（「${h1}」）`, h1 !== MSG, h1);
+      const p0 = (await gs(pg)).plan;
+      await startP(p0);
+      const h0 = await hintText(pg);
+      check(`同じ置き方で始め直しても出ない（置き方 ${p0}・「${h0}」）`, h0 !== MSG, h0);
+      await startP((p0 + 1) % 3);
+      const h2 = await hintText(pg);
+      check(`置き方が 違う置き方に変わった回の はじめに案内が出る（「${h2}」）`, h2 === MSG, h2);
+      await startP((p0 + 1) % 3);
+      const h3 = await hintText(pg);
+      check(`同じ置き方（続けて）では出ない（「${h3}」）`, h3 !== MSG, h3);
+      await startP(p0);
+      const h4 = await hintText(pg);
+      check(`元の置き方に変わるとまた出る（「${h4}」）`, h4 === MSG, h4);
+      await pg.evaluate(() => window.MichibikiGame.tick(300));
+      const h5 = await hintText(pg);
+      check(`3 秒ほどで消える（「${h5}」）`, h5 !== MSG, h5);
+      await c2.ctx.close();
     },
   },
 ];

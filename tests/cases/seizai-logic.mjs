@@ -8,6 +8,8 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+// 重さを測る CPU 時間（このスレッドだけ。GC・JIT の裏のスレッドと、CPU が混んで待たされた時間を数えない。古い Node は process.cpuUsage。T-21）
+const cpuOf = (prev) => (process.threadCpuUsage ? process.threadCpuUsage(prev) : process.cpuUsage(prev));
 
 function load(root) {
   const f = path.join(root, 'games/seizai/logic.js');
@@ -382,10 +384,12 @@ export const tests = [
       const bad = [L.catchUp(s, -5), L.catchUp(s, NaN), L.catchUp(s, 'x'), L.catchUp(s, null)];
       check('catchUp の秒が 負・NaN・文字・null → 何も進めない', bad.every((c) => c.report.effective === 0 && c.state.t === s.t), bad.map((c) => c.report));
       check('catchUp は大口の注文・広げる・買うを自動でしない', (() => { const g = mk(L, 1, { money: 1e9, goal: { done: 1000 } }); const c = L.catchUp(g, 7200).state; return c.stage === 1 && J(c.depts) === J(g.depts); })(), null);
-      const t0 = process.hrtime.bigint();
-      L.catchUp(maxed(L, 4), 7200);
-      const ms = Number(process.hrtime.bigint() - t0) / 1e6;
-      check('catchUp(7200)（みなと・全部最大）が Node で 50ms 以内', ms <= 50, ms.toFixed(1) + 'ms');
+      // 重さは CPU 時間で見る（並列のテストで CPU が混んでも、待たされた時間を数えない。T-21・T-20 と同じ）
+      const g4 = maxed(L, 4);
+      const c0 = cpuOf(), t0 = process.hrtime.bigint();
+      L.catchUp(g4, 7200);
+      const cu = cpuOf(c0), ms = (cu.user + cu.system) / 1000, wall = Number(process.hrtime.bigint() - t0) / 1e6;
+      check(`catchUp(7200)（みなと・全部最大）が Node で CPU 時間 50ms 以内（CPU ${ms.toFixed(1)}ms・壁の時計 ${wall.toFixed(1)}ms）`, ms <= 50, [ms.toFixed(1) + 'ms', wall.toFixed(1) + 'ms']);
     },
   },
   {
@@ -637,6 +641,43 @@ export const tests = [
       check('買えなかったとき（お金・上限）は toolUp なし（null）', !f1.ok && !f1.toolUp && !f2.ok && !f2.toolUp, [f1, f2].map((x) => [x.reason, x.toolUp]));
       const one = L.loadSave(L.makeSave(u1.state, 1)).state;
       check('toolUp は state に残らない（保存・読み込み・step に出ない）', !('toolUp' in u1.state) && !('toolUp' in one) && L.step(u1.state, 0.1).events.every((e) => e.kind !== 'tool'), null);
+    },
+  },
+  {
+    id: 'WL14', tier: 'smoke', node: true, title: 'もくもくこうば：かんな の直し（SZ-08・契約 §23）みなと で全部さいだい・はやい でも つまりは かんな でない、かんな の速さ（1ぷんに N まい）の式、もう強くできない部署（maxedOut）の判定、次の段で もっと強くできるか（moreNextStage。S1）',
+    run({ check, root }) {
+      const L = load(root);
+      // ユーザーの録画の形：みなと で全部の部署を 上限・Lv50・はやい
+      const allFast = (stage) => { const depts = {}; for (const id of IDS) { const cap = L.CAPS[stage - 1][id]; depts[id] = LINE[id] ? { lines: Math.max(1, cap), level: 50, mgr: stage >= 2 ? 'fast' : null } : { staff: cap, level: 50, mgr: stage >= 2 ? 'fast' : null }; } return mk(L, stage, { depts }); };
+      const s4 = allFast(4), r = L.rates(s4), bn = L.bottleneck(s4);
+      check(`みなと で全部さいだい・はやい：つまりは かんな でない（${bn}）`, bn && bn !== 'plane', { bn, rates: r });
+      // かんな の速さ：台数 × (1 ÷ 2.5 秒) × speedMul(Lv) × はやい 1.5。4台・Lv50・はやい で 1ぷんに 849まい（直す前は 424まい）
+      const perMin = (lines, lv, mgr) => { const st = { ...s4, depts: { ...s4.depts, plane: { ...s4.depts.plane, lines, level: lv, mgr } } }; return L.rates(st).plane * 60; };
+      const want = (lines, lv, mgr) => lines * (60 / 2.5) * (1 + 0.1 * (lv - 1)) * (mgr === 'fast' ? 1.5 : 1);
+      const cases = [[4, 50, 'fast'], [1, 1, null], [2, 10, 'gain'], [3, 30, 'fast']].map(([a, b, c]) => ({ lines: a, lv: b, mgr: c, got: perMin(a, b, c), want: want(a, b, c) }));
+      check('かんな の速さ（1ぷんに N まい）＝ 台数 × 60 ÷ 2.5 × speedMul(Lv) × はやい 1.5（BASE_TIME.plane 2.5）', L.BASE_TIME.plane === 2.5 && cases.every((x) => Math.abs(x.got - x.want) < 1e-6), cases);
+      check(`4台・Lv50・はやい の かんな は 1ぷんに ${Math.floor(cases[0].got)}まい（849。録画の 424 ではない）`, Math.floor(cases[0].got) === 849, cases[0]);
+      check('全部さいだい・はやい の かんな の流れ（丸太に直して）は かくざい より速い', r.plane / L.PLANKS_PER_BEAM > r.beam, { plane: r.plane / 2, beam: r.beam });
+      // もう強くできない部署
+      check('maxedOut：全部さいだい・はやい の つまりの部署は true、ほかの部署も true（どれも もう買えない）', L.maxedOut(s4, bn) === true && IDS.every((id) => L.maxedOut(s4, id) === true), IDS.map((id) => L.maxedOut(s4, id)));
+      const tweak = (id, o) => ({ ...s4, depts: { ...s4.depts, [id]: { ...s4.depts[id], ...o } } });
+      const nots = { gain: L.maxedOut(tweak(bn, { mgr: 'gain' }), bn), noMgr: L.maxedOut(tweak(bn, { mgr: null }), bn), lv49: L.maxedOut(tweak(bn, { level: 49 }), bn), line3: L.maxedOut(tweak('beam', { lines: 3 }), 'beam'), staff7: L.maxedOut(tweak('cut', { staff: 7 }), 'cut') };
+      check('maxedOut は まだ強くできれば false（もうかる・マネージャー無し・Lv49・台が上限未満・人が上限未満）', Object.values(nots).every((v) => v === false), nots);
+      const s3 = allFast(3);
+      check('みなと より前の段：こうじょう で かんな（使えない部署）は false、かんそう さいだい・はやい は true', L.maxedOut(s3, 'plane') === false && L.maxedOut(s3, 'dry') === true, [L.maxedOut(s3, 'plane'), L.maxedOut(s3, 'dry')]);
+      const s1 = allFast(1);
+      const s1lv = { ...s1, depts: { ...s1.depts, cut: { ...s1.depts.cut, level: 49 } } };
+      check('こや（マネージャーを雇えない）では 上限・Lv50 なら true、Lv49 なら false', L.maxedOut(s1, 'cut') === true && L.maxedOut(s1lv, 'cut') === false, [L.maxedOut(s1, 'cut'), L.maxedOut(s1lv, 'cut')]);
+      check('maxedOut はおかしな引数でも例外を出さず false', [L.maxedOut(null, 'cut'), L.maxedOut({}, 'cut'), L.maxedOut(s4, 'nope'), L.maxedOut(s4)].every((v) => v === false), null);
+      check('maxedOut は渡した state を変えない', J(s4) === J(allFast(4)), null);
+      // 次の段で もっと強くできるか（S1・契約 §23 K3）：段 4 より前で、上限（CAPS）が増える・こや でマネージャーがまだいない部署は true
+      const more = (st) => Object.fromEntries(IDS.map((id) => [id, L.moreNextStage(st, id)]));
+      const m3 = more(s3), m4 = more(s4), m1 = more(s1), s2 = allFast(2), m2 = more(s2);
+      check(`こうじょう で全部さいだい・はやい：つまり ${L.bottleneck(s3)} は maxedOut だが moreNextStage true（みせ 3→4 人）。きこり・なえぎ・はこび・みせ は true、かわむき・かくざい・かんそう・いた（上限が同じ 4）と 使えない かんな は false`,
+        L.bottleneck(s3) === 'shop' && L.maxedOut(s3, 'shop') === true && m3.shop && m3.cut && m3.plant && m3.carry && !m3.peel && !m3.beam && !m3.dry && !m3.plank && !m3.plane, m3);
+      check('みなと（段 4）は どの部署も false（これいじょう はやく できない）', IDS.every((id) => m4[id] === false), m4);
+      check('こや は 使える部署が全部 true（マネージャーは こうば から雇える）、使えない部署は false。こうば の かわむき（3→4 台）は true', m1.cut && m1.plant && m1.carry && m1.peel && m1.shop && !m1.beam && !m1.plane && m2.peel && m2.beam && !m2.dry, { m1, m2 });
+      check('moreNextStage はおかしな引数でも例外を出さず false・渡した state を変えない', [L.moreNextStage(null, 'cut'), L.moreNextStage({}, 'cut'), L.moreNextStage(s3, 'nope'), L.moreNextStage(s3)].every((v) => v === false) && J(s3) === J(allFast(3)), null);
     },
   },
   {

@@ -119,6 +119,11 @@ const M = [
   ['MH26 ハシわたり：茎が最大になっても知らせない（grow が鳴り続ける。HS-02）', '操作', 'games/hashi/main.js', 'if (bridgeLen >= L.MAX_LEN) {', 'if (false) {'],
   ['MH27 ハシわたり：カードの間、うしろのプレイ画面を inert にしない（HS-07）', '操作', 'games/hashi/main.js', 'el.playView.setAttribute("inert", "");', ''],
   ['MH28 ハシわたり：茎が最大のまま押下が取り消されても案内を戻さない（隠すと「いちばん ながい！ はなしてね」が残る。R1）', '表示', 'games/hashi/main.js', '    if (maxed) { maxed = false; setHint(hintReady()); }\n', ''],
+  ['MH29 ハシわたり：ぴったりを続けても いのちが戻らない（HS-09）', '遊べること', 'games/hashi/logic.js', 'const heal = !stageMode && perfect && streak % HEAL_EVERY === 0 && state.lives < LIVES;', 'const heal = false;'],
+  ['MH30 ハシわたり：いのちが上限を超えて戻る（HS-09）', 'ルール', 'games/hashi/logic.js', '&& state.lives < LIVES;', ';'],
+  ['MH31 ハシわたり：ステージでも いのちが戻る（HS-09）', 'ルール', 'games/hashi/logic.js', 'const heal = !stageMode && perfect', 'const heal = perfect'],
+  ['MH32 ハシわたり：案内に倍々・回復の言葉を出さない（HS-09）', '表示', 'games/hashi/main.js', '${gainWord}${perfectTail(o)}', '${gainWord}'],
+  ['MH33 ハシわたり：画面の大きさが変わっても空と水のグラデーションを作り直さない（HS-10・T-25）', '表示', 'games/hashi/render.js', /if \(!skyG \|\| skyKey !== String\(deckY\)\) \{([\s\S]*?)if \(!waterG \|\| waterKey !== waterY \+ "," \+ H\) \{/, (_, mid) => `if (!skyG) {${mid}if (!waterG) {`],
   // ---- 版の表示（メニュー）。版を上げる手順が崩れたときの検出 ----
   // MV1・MV3 は正規表現で今の版・日付を読み、1つずらす（版を上げるたびに直さなくてよい）
   ['MV1 版の数字だけ上げ忘れる（version.js が1つ前の版のまま。sw.js は今の版）', '更新', 'common/version.js', /version: "v(\d+)"/, (_, n) => `version: "v${Number(n) - 1}"`],
@@ -146,7 +151,7 @@ const M = [
   // ---- いろびん（games/irobin/）。注ぐ規則・そろい判定・届ける・隠れ・ソルバー・保存・中断の仕組みを変えたときだけ流す ----
   //      届けた瓶は消える（2026-10-19 のルール変更）。MB4＝消えない、MB13＝旧仕様（空き瓶に置き換わる）、MB14＝瓶の番号のずれ
   ['MB1 いろびん：色違いの瓶にも注げる（mismatch の判定を外す）', 'ルール', 'games/irobin/logic.js', 'if (dl > 0 && col(d, dl - 1) !== c) return R_MISMATCH;', ''],
-  ['MB2 いろびん：注ぐ量が相手の空きを超える（空きで丸めない）', 'ルール', 'games/irobin/logic.js', 'return Math.min(run, CAP - dl);', 'return run;'],
+  ['MB2 いろびん：注ぐ量が相手の空きを超える（空きで丸めない）', 'ルール', 'games/irobin/logic.js', 'return Math.min(run, cap - dl);', 'return run;'],
   ['MB3 いろびん：そろった瓶を、注文の色と違うお客さんにも届ける', 'ルール', 'games/irobin/logic.js', 'if (x !== GONE && isSealedP(x) && col(x, 0) === want) {', 'if (x !== GONE && isSealedP(x)) {'],
   ['MB4 いろびん：届けた瓶が消えない（栓をしたまま残る）', 'ルール', 'games/irobin/logic.js', 'bots[b] = GONE;                                      // 届けた瓶は消える（空の瓶は出てこない）', 'bots[b] = bots[b];                                   // (変異)'],
   ['MB5 いろびん：注いでも隠れた段が見えるようにならない', 'ルール', 'games/irobin/logic.js', 'ns &= ~(1 << (8 + 5 * (nsl - 1)));', ''],
@@ -160,8 +165,8 @@ const M = [
   ['MB13 いろびん：届けたあと空き瓶を足す（旧仕様に戻す：届けた瓶が同じ場所の空の瓶に置き換わる）', 'ルール', 'games/irobin/logic.js', 'bots[b] = GONE;                                      // 届けた瓶は消える（空の瓶は出てこない）', 'bots[b] = 0;                                         // (変異) 旧仕様'],
   ['MB14 いろびん：演出中に押した瓶を、押したボタンの位置で選ぶ（届けて詰めた後の並びとずれる）', '操作', 'games/irobin/main.js', 'if (Number.isSafeInteger(id)) {\n      i = safeCall', 'if (false) {\n      i = safeCall'],
   //      布の瓶（2026-10-20、契約 §17）。MB18（新しい色）はユーザー決定 §17.8 で作らない
-  ['MB15 いろびん：布が1人早く取れる（served >= cover − 1 で取る）', 'ルール', 'games/irobin/logic.js', 'if (k === 0 || ctx.served < k) continue;', 'if (k === 0 || ctx.served < k - 1) continue;'],
-  ['MB16 いろびん：布の瓶に注げる（布を見るのは注ぐ元だけ）', 'ルール', 'games/irobin/logic.js', 'if ((s | d) & COVER_MASK) return R_COVERED;', 'if (s & COVER_MASK) return R_COVERED;'],
+  ['MB15 いろびん：布が1人早く取れる（served >= cover − 1 で取る）', 'ルール', 'games/irobin/logic.js', 'if (k === 0 || ctx.served < k ||', 'if (k === 0 || ctx.served < k - 1 ||'],
+  ['MB16 いろびん：布の瓶に注げる（布を見るのは注ぐ元だけ）', 'ルール', 'games/irobin/logic.js', 'if ((s | d) & COVER_MASK) return isKeyP(s)', 'if (s & COVER_MASK) return isKeyP(s)'],
   ['MB17 いろびん：古い v:2 の手をそのまま再生する（布の前のルールの手を捨てない）', '保存データ互換', 'games/irobin/logic.js', '    if ((o.v === 1 || o.v === 2) && Number.isSafeInteger(o.level) && o.level >= 1) return { level: o.level, moves: [] };\n    if (o.v !== SAVE_V) return null;', '    if (o.v === 1 && Number.isSafeInteger(o.level) && o.level >= 1) return { level: o.level, moves: [] };\n    if (o.v !== SAVE_V && o.v !== 2) return null;'],
   ['MB19 いろびん：布の瓶を押すと選べる（布の判定を外す）', '操作', 'games/irobin/main.js', '    if (coverOf(b) !== null) {\n      const m = Math.max(0, coverOf(b)', '    if (false) {\n      const m = Math.max(0, coverOf(b)'],
   ['MB20 いろびん：届けた瓶の跡を残さず詰める（render の replaceChild(emptyPlace…) を removeChild にする）', '演出', 'games/irobin/render.js', 'btn.parentNode.replaceChild(emptyPlace(btn._id), btn);', 'btn.parentNode.removeChild(btn);'],
@@ -238,11 +243,25 @@ const M = [
   ['MF27 ミチビキ空港：pageshow で終わりのカードを出し直さない（§19 A3）', '閉じ込め', 'games/michibiki/main.js', 'window.addEventListener("pageshow", () => {\n    if (hintTimer', 'window.addEventListener("pageshow-x", () => {\n    if (hintTimer'],
   ['MF28 ミチビキ空港：同じ機体を2本目の指でもなぞれる（§19 A7）', '操作', 'games/michibiki/main.js', 'for (const d of drawings.values()) if (d.id === id) return false;', ''],
   ['MF29 ミチビキ空港：「さいしょから」が確認なしで始め直す（§19 B2）', '誤タップ', 'games/michibiki/main.js', 'else if (cmd === "restart") showRestartConfirm();', 'else if (cmd === "restart") startGame(newSeed());'],
+  ['MF30 ミチビキ空港：newGame が置き方を見ない（MC-15）', 'ルール', 'games/michibiki/logic.js', 'const pl = normPlan(plan);', 'const pl = 0;'],
+  ['MF31 ミチビキ空港：着陸の判定だけ置き方 0 の滑走路で見る（MC-15）', 'ルール', 'games/michibiki/logic.js', 'const rws = runwayListOf(s.layout, s.plan);', 'const rws = runwayListOf(s.layout, 0);'],
+  ['MF32 ミチビキ空港：毎回同じ置き方を選ぶ（MC-15）', '表示', 'games/michibiki/main.js', 'return lastPlan < 0 ? Math.floor(Math.random() * n) : (lastPlan + 1 + Math.floor(Math.random() * (n - 1))) % n;', 'return 0;'],
   ['MB22 いろびん：pageshow でクリアのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/irobin/main.js', '    if (overlayKind !== "clear") return;\n    const unlock', '    return;\n    const unlock'],
   // 古いページから書き戻さない（X-20。いろびん §18・まとめてポン §11）。流すときは ONLY=BW20,QW21,X1
   ['MB23 いろびん：表に戻ったとき保存がほかで変わっていても開き直さない（契約 §18・X-20）', '保存', 'games/irobin/main.js', '    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;', '    return false;'],
   ['MB24 いろびん：開き直す前（stale）でも保存を書く（契約 §18・X-20）', '保存', 'games/irobin/main.js', '  function writeKey(key, val) {\n    if (stale) return false;\n', '  function writeKey(key, val) {\n'],
   ['MB25 いろびん：裏へ回る・閉じるときの保存で比べ直さない（storage イベントが届く前に古い面・手を書き戻す。契約 §18・X-20）', '保存', 'games/irobin/main.js', '    if (!stale && changedElsewhere()) stale = true;\n    return stale;', '    return stale;'],
+  // いろびん v36（IB-09・IB-11・IB-22）。流すときは ONLY に BL・BW の全項目と X1
+  ['MB26 いろびん：makeSave が上限を超えた手も書く（読むときに捨てられ面の最初に戻る。IB-09）', '保存', 'games/irobin/logic.js', 'moves.slice(0, MAX_MOVES_SAVED).map(', 'moves.map('],
+  ['MB27 いろびん：予備の固定面（fallback 2）を verify に通さない（IB-11）', '生成', 'games/irobin/logic.js', '      if (!verify(lv, params, got)) throw new Error("いろびん: 予備の面が解けません（" + lv + " 面）");\n', ''],
+  ['MB28 いろびん：最後の手まで保存された面を、クリアのカードなしで次の面にする（IB-22）', '保存', 'games/irobin/main.js', '      hud();\n      onClear();\n      return true;', '      const r = L.recordBest(best, level);\n      best = r.best; writeKey(KEY_BEST, String(best));\n      return startLevel(level + 1, []);'],
+  //      v37 の新しい仕掛け（IB-29・契約 §19）。局面のキーの 3 文字目（仕掛けの印）を落とす変異は作らない：瓶は印ごとに分かれて並ぶので、落としても局面が重ならず見つけられない（BL16 の作業で確かめた）
+  ['MB29 いろびん：ちいさい びんにも 4 段入る（注ぐ量の上限を瓶ごとに見ない）', 'ルール', 'games/irobin/logic.js', 'const cap = td === SMALL_TAG ? SMALL_CAP : CAP;', 'const cap = CAP;'],
+  ['MB30 いろびん：ちいさい びんを短く描かない（data-cap をいつも 4 にする）', '見た目', 'games/irobin/render.js', 'btn.dataset.cap = String(bcap);', 'btn.dataset.cap = "4";'],
+  ['MB31 いろびん：いろ きまりの びんに ほかの色も入る', 'ルール', 'games/irobin/logic.js', 'if (td !== 0 && td !== SMALL_TAG && td !== c + 1) return R_ONLY;', 'if (false) return R_ONLY;'],
+  ['MB32 いろびん：いろ きまりの びんの札（色と記号）を描かない', '見た目', 'games/irobin/render.js', 'only !== null && !sealed ? onlyHtml(only) : bcap === 3', 'bcap === 3'],
+  ['MB33 いろびん：鍵の色をそろえても かぎの びんが開かない', 'ルール', 'games/irobin/logic.js', 'if (tagOf(x) === c + 1 && coverOf(x) === KEY_COVER) {', 'if (false) {'],
+  ['MB34 いろびん：かぎの びんを押すと選べる（main の かぎの判定を外す）', '操作', 'games/irobin/main.js', '    if (Number.isSafeInteger(b.lock)) {\n      setHint(lockHint(b.lock));', '    if (false) {\n      setHint(lockHint(b.lock));'],
   ['MQ41 まとめてポン：pageshow で終わりのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/matomete/main.js', '    if (overlayKind !== "over") return;\n    const unlock', '    return;\n    const unlock'],
   ['MQ42 まとめてポン：表に戻ったとき保存がほかで変わっていても開き直さない（契約 §11・X-20）', '保存', 'games/matomete/main.js', '    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;', '    return false;'],
   ['MQ43 まとめてポン：裏で別のタブが書いても保存を止めない（storage を見ない。契約 §11・X-20）', '保存', 'games/matomete/main.js', 'if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true;', 'if (false) stale = true;'],
@@ -319,16 +338,20 @@ const M = [
   ['MW65 もくもくこうば：表に戻ったとき保存がほかで変わっていても開き直さない（X-20）', '保存', 'games/seizai/main.js', '    if (!stale && !changedElsewhere()) return false;', '    return false;'],
   ['MW66 もくもくこうば：開き直す前（stale）でも保存を書く（X-20）', '保存', 'games/seizai/main.js', '  function writeKey(key, val) {\n    if (stale) return false;\n', '  function writeKey(key, val) {\n'],
   ['MW67 もくもくこうば：裏へ回る・閉じるときの保存で比べ直さない（storage イベントが届く前に古い状態を書き戻す。X-20）', '保存', 'games/seizai/main.js', '    if (!stale && changedElsewhere()) stale = true;\n    return stale;', '    return stale;'],
+  // かんな の直し（契約 §23・SZ-08）。流すときは ONLY=WL14,WW27,X1
+  ['MW68 もくもくこうば：かんな の baseTime を 5 に戻す（全部さいだい・はやい でも かんな が いちばん遅いまま。SZ-08）', '計算', 'games/seizai/logic.js', 'plank: 2.5, plane: 2.5, shop: 3 });', 'plank: 2.5, plane: 5, shop: 3 });'],
+  ['MW69 もくもくこうば：もう強くできない部署にも「ここが おそい！」の札を出す（SZ-08）', '表示', 'games/seizai/render.js', 'if (bn === d && memo.maxed) {', 'if (false) {'],
+  ['MW70 もくもくこうば：次の段で上限（CAPS）が増える部署でも「これいじょう はやく できないよ」と言う（moreNextStage が CAPS を見ない。S1）', '表示', 'games/seizai/logic.js', '    if ((kind === "staff" || kind === "line") && capOf(s.stage + 1, id) > capOf(s.stage, id)) return true;\n', ''],
   // ---- ちきゅうを守れ！ほしくだき（games/asteroid/）。中身の仕組みを変えたときだけ、このゲームの分だけ流す（契約 §11.4）。----
   //      数値（星の時間・値段・体力）の調整中なので、数値を変える変異は KL に任せ、ここは画面・保存・中断・オフライン・場を押す・ルールの流れを中心にする
   ['MK1 ほしくだき：2択の間も場が進む（choose でも step が進み、fly に戻る）', 'ルール', 'games/asteroid/logic.js', 'if (s.phase === "choose" || s.phase === "end") return;', 'if (s.phase === "end") return;'],
   ['MK2 ほしくだき：とどいたら かけら・武器を消す', 'データ消失', 'games/asteroid/logic.js', 's.tries = Math.min(TRIES_MAX, s.tries + 1);', 's.tries = Math.min(TRIES_MAX, s.tries + 1); s.kakera = 0; s.slots = s.slots.map((x) => ({ id: x.id, lv: 1 }));'],
-  ['MK3 ほしくだき：とどいたとき星を最初からにしない（残りのまま続く）', 'ルール', 'games/asteroid/logic.js', 'function restartStar(s) {\n    s.rock = genRock(s.seed, s.star, s.tries);', 'function restartStar(s) {\n    s.rock = Object.assign({}, s.rock, { mats: s.rock.mats.slice(), hp: s.rock.hp.slice(), y: s.rock.y - 120 });'],
+  ['MK3 ほしくだき：とどいたとき星を最初からにしない（残りのまま続く）', 'ルール', 'games/asteroid/logic.js', 'function restartStar(s, evs) {\n    s.rock = genRock(s.seed, s.star, s.tries);', 'function restartStar(s, evs) {\n    s.rock = Object.assign({}, s.rock, { mats: s.rock.mats.slice(), hp: s.rock.hp.slice(), y: s.rock.y - 120, scan: null });'],
   ['MK4 ほしくだき：エンディングを2回出す（星 ENDING_STAR より先のクリアでも出す）', 'ルール', 'games/asteroid/logic.js', 'if (was === ENDING_STAR && !s.cleared) {', 'if (was >= ENDING_STAR) {'],
   ['MK5 ほしくだき：場を押すと進む（#field のクリックで step を進める。#fieldCanvas は pointer-events: none なので親の #field に付ける）', '操作', 'games/asteroid/main.js', '  if (el.helpOk) el.helpOk.addEventListener("click", closeHelp);', '  if (el.field) el.field.addEventListener("click", () => { if (state && state.phase !== "fly") state = Object.assign({}, state, { wait: 0 }); stepOnce(STEP, null); updateUi(); });\n  if (el.helpOk) el.helpOk.addEventListener("click", closeHelp);'],
-  ['MK6 ほしくだき：壊れた保存を bak に写さず上書き', '保存', 'games/asteroid/main.js', 'if (!keepBroken(raw)) saveBlocked = true;', ''],
+  ['MK6 ほしくだき：壊れた保存を bak に写さず上書き', '保存', 'games/asteroid/main.js', '        if (!keepBroken(raw)) saveBlocked = true;\n        later(() => setHint(HINT_BROKEN', '        later(() => setHint(HINT_BROKEN'],
   ['MK7 ほしくだき：bak が既にあっても上書き（最初の壊れた保存が消える）', '保存', 'games/asteroid/main.js', '    if (readKey(KEY_BAK) !== null) return true;\n', ''],
-  ['MK8 ほしくだき：hidden でも進む（visibilitychange の hidden で sleep を呼ばない）', '中断', 'games/asteroid/main.js', 'document.addEventListener("visibilitychange", () => { if (document.hidden) sleep(); else wake(); });', 'document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });'],
+  ['MK8 ほしくだき：hidden でも進む（visibilitychange の hidden で sleep を呼ばない）', '中断', 'games/asteroid/main.js', 'document.addEventListener("visibilitychange", () => { if (document.hidden) sleep(); else if (!reloadIfStale()) wake(); });', 'document.addEventListener("visibilitychange", () => { if (!document.hidden && !reloadIfStale()) wake(); });'],
   ['MK9 ほしくだき：logic.js を APP_FILES から外す', 'オフライン', 'sw.js', '  "./games/asteroid/logic.js",\n', ''],
   ['MK10 ほしくだき：render.js を APP_FILES から外す', 'オフライン', 'sw.js', '  "./games/asteroid/render.js",\n', ''],
   ['MK11 ほしくだき：2択のカードの 400ms のロックなし（出た直後に押せる）', '誤タップ', 'games/asteroid/main.js', 'const cardLocked = () => now() - cardShownAt < CARD_LOCK_MS;', 'const cardLocked = () => false;'],
@@ -340,11 +363,11 @@ const M = [
   ['MK17 ほしくだき：かけらが足りないとき音 deny もヒントも出さない', '表示', 'games/asteroid/main.js', '    if (r.reason === "money") {\n      sfx.play("deny");\n      const cost', '    if (false) {\n      sfx.play("deny");\n      const cost'],
   ['MK18 ほしくだき：開き直すと かけらが 0 になる（保存を読んでも かけらを捨てる）', 'データ消失', 'games/asteroid/main.js', '      setClock(loaded, extra.t);\n      state = loaded;', '      setClock(loaded, extra.t);\n      state = Object.assign({}, loaded, { kakera: 0 });'],
   ['MK19 ほしくだき：pagehide でタイマーを片付けない', '中断', 'games/asteroid/main.js', 'window.addEventListener("pagehide", () => { sleep(); clearLater(); });', 'window.addEventListener("pagehide", () => { sleep(); });'],
-  ['MK20 ほしくだき：遊び方を開いている間も止めない', '中断', 'games/asteroid/main.js', 'const running = () => !sleeping && overlay !== "help" && overlay !== "end";', 'const running = () => !sleeping && overlay !== "end";'],
+  ['MK20 ほしくだき：カード（遊び方・2択・入れ替え・エンディング・さいしょから）が出ている間も止めない（running から overlay === null を外す。T-15・§21.4）', '中断', 'games/asteroid/main.js', 'const running = () => !sleeping && !restarting && !stale && overlay === null;', 'const running = () => !sleeping && !restarting && !stale;'],
   ['MK21 ほしくだき：動きを減らす設定を見ない', '動き', 'games/asteroid/main.js', 'let calm = !!reduceMotion.matches;', 'let calm = false;'],
-  ['MK22 ほしくだき：2択が開き直しで変わる（保存の offer を入れ替えて読む）', '保存', 'games/asteroid/logic.js', 'if (okOffer) base.offer = [f[0], f[1]];', 'if (okOffer) base.offer = [f[1], f[0]];'],
+  ['MK22 ほしくだき：2択が開き直しで変わる（保存の offer を入れ替えて読む）', '保存', 'games/asteroid/logic.js', 'base.offer = okOffer ? f.slice() : makeOffer(base);', 'base.offer = okOffer ? f.slice().reverse() : makeOffer(base);'],
   // §18（レビュー後の変更：区切り・クリアの時間とベスト・もろい底・相性・星の途中の保存・手ごたえの表示）。2026-10-21、feature/asteroid-test2
-  ['MK23 ほしくだき：区切りをやり直し（はね返し）でもらい直せる', 'ルール', 'games/asteroid/logic.js', '    s.tryAt = s.t;   // 区切り（ms）は星ごとなので', '    s.ms = []; s.tryAt = s.t;   // 区切り（ms）は星ごとなので'],
+  ['MK23 ほしくだき：区切りをやり直し（はね返し）でもらい直せる', 'ルール', 'games/asteroid/logic.js', '    s.tryAt = s.t;\n  }\n  function nextStar(s, evs) {', '    s.ms = []; s.tryAt = s.t;\n  }\n  function nextStar(s, evs) {'],
   ['MK24 ほしくだき：星のベスト時間を遅いほうにする', '保存', 'games/asteroid/logic.js', 'if (prev === null || time < prev) s.bestT', 'if (prev === null || time > prev) s.bestT'],
   ['MK25 ほしくだき：もろい底なし（下の行も体力 1 倍）', '計算', 'games/asteroid/logic.js', 'const SOFT = deepFreeze({ q: 0.2, mul: 0.05, ramp: 0.15 });', 'const SOFT = deepFreeze({ q: 0.2, mul: 1, ramp: 0.15 });'],
   ['MK26 ほしくだき：相性の倍率 aff がいつも 1', '計算', 'games/asteroid/logic.js', 'return isNum(a) ? a : 1;', 'return 1;'],
@@ -360,14 +383,48 @@ const M = [
   ['MK36 ほしくだき：クリアの演出中の保存を同じ星にする（開き直すと同じ星をもう一度）', '保存', 'games/asteroid/logic.js', 'if (state.phase === "clear" && !(state.star === ENDING_STAR && !state.cleared)) {', 'if (false) {'],
   ['MK37 ほしくだき：壊れた bestT（キーが整数でない・0 以下・大きすぎ）を捨てない', '保存', 'games/asteroid/logic.js', 'if (!/^[1-9][0-9]{0,3}$/.test(k) || Number(k) > STAR_MAX || !isNum(v) || v <= 0 || v > 1e7) continue;', 'if (!isNum(v)) continue;'],
   ['MK38 ほしくだき：さいしょからで asteroid.save.bak を消さない', 'データ消失', 'games/asteroid/main.js', 'goneBak = removeKey(KEY_BAK);', 'goneBak = true;'],
-  ['MK39 ほしくだき：さいしょからのあと保存を止めない（pagehide・hidden でメモリ上の古い状態を書き戻す）', 'データ消失', 'games/asteroid/main.js', '    if (!state || restarting) return false;\n', '    if (!state) return false;\n'],
+  ['MK39 ほしくだき：さいしょからのあと保存を止めない（pagehide・hidden でメモリ上の古い状態を書き戻す）', 'データ消失', 'games/asteroid/main.js', '    if (!state || restarting || stale) return false;', '    if (!state || stale) return false;'],
   ['MK40 ほしくだき：さいしょからで asteroid.best も消す', 'データ消失', 'games/asteroid/main.js', 'goneBak = removeKey(KEY_BAK);', 'goneBak = removeKey(KEY_BAK) && removeKey(KEY_BEST);'],
   ['MK41 ほしくだき：さいしょからの確認で「やめる」を押しても消す', '誤タップ', 'games/asteroid/main.js', 'el.restartNo.addEventListener("click", cancelRestart);', 'el.restartNo.addEventListener("click", doRestart);'],
   ['MK42 ほしくだき：さいしょからで消せないとき #hint で知らせない（古い保存が残ったのに気づけない）', '保存', 'games/asteroid/main.js', '      setHint(HINT_RESET_FAIL, 5000);\n', ''],
+  // 作り直し（2026-10-23。契約 §11.4・§21.4）：砲台・斜め撃ち・ビーム・いなずま・てつのかたまり・ひかえと入れ替え・v:1 の引き継ぎ・lose の hold・X-20
+  ['MK43 ほしくだき：砲台の x がねらうマスへ動く（AS-01 の戻り）', 'ルール', 'games/asteroid/logic.js', '      T.ang = clamp(T.ang, -AIM_MAX, AIM_MAX);\n    }\n  }', '      T.ang = clamp(T.ang, -AIM_MAX, AIM_MAX);\n      if (T.tgt >= 0 && R.mats[T.tgt]) T.x += clamp(cellX(R, T.tgt) - T.x, -3, 3);\n    }\n  }'],
+  ['MK44 ほしくだき：弾がいつも真上へ飛ぶ（たま・ほのお・どかん以外の砲身の向き ang を見ない）', 'ルール', 'games/asteroid/logic.js', '    const room = () => s.shots.length < SHOTS_MAX;\n    const sa = Math.sin(T.ang), ca = Math.cos(T.ang);', '    const room = () => s.shots.length < SHOTS_MAX;\n    const sa = 0, ca = 1;'],
+  ['MK45 ほしくだき：ビームが最初のマスで止まる（奥へ掘らない）', 'ルール', 'games/asteroid/logic.js', 'if (dd > d0 + BEAM_DEPTH * CELL) return true;', 'if (dd > d0) return true;'],
+  ['MK46 ほしくだき：いなずまが違う種類のマスにも広がる', 'ルール', 'games/asteroid/logic.js', 'if (!seen.has(q) && mats[q] === m) {', 'if (!seen.has(q) && mats[q]) {'],
+  ['MK47 ほしくだき：いなずまが BOLT_CELLS（しんかの数）を見ない', 'ルール', 'games/asteroid/logic.js', '    while (head < cells.length && cells.length < n) {', '    n = Infinity;\n    while (head < cells.length && cells.length < n) {'],
+  ['MK48 ほしくだき：てつ を すじ で入れる（かたまりにしない）', '計算', 'games/asteroid/logic.js', '      placeBlobs(mats, cols, rows, cells, ironWant, nb, 2, okRock, rnd);', '      let left = ironWant + 0 * nb; for (const j of cells) { if (left <= 0) break; if (okRock(j) && (j % cols) % 3 === 0) { mats[j] = 2; left--; } }'],
+  ['MK49 ほしくだき：入れ替えが星の途中ですぐ当たる', 'ルール', 'games/asteroid/logic.js', '    s.swap.sort((a, b) => a.slot - b.slot);\n    return null;', '    s.swap.sort((a, b) => a.slot - b.slot);\n    applySwaps(s, []);\n    return null;'],
+  ['MK50 ほしくだき：はね返しのやり直しで入れ替えが当たらない', 'ルール', 'games/asteroid/logic.js', '    s.phase = "fly";\n    applySwaps(s, evs || []);\n', '    s.phase = "fly";\n'],
+  ['MK51 ほしくだき：入れ替えで外した武器の Lv を忘れる（ひかえで Lv 1 になる）', 'データ消失', 'games/asteroid/logic.js', '      s.bench[bi] = { id: out.id, lv: out.lv };', '      s.bench[bi] = { id: out.id, lv: 1 };'],
+  ['MK52 ほしくだき：入れ替えで載せた武器が外した武器の Lv を引き継ぐ（Lv が武器ごとでない）', 'ルール', 'games/asteroid/logic.js', '      s.slots[k] = { id: inn.id, lv: inn.lv };', '      s.slots[k] = { id: inn.id, lv: out.lv };'],
+  ['MK53 ほしくだき：持ったことが無い武器を入れ替えで選べる', 'ルール', 'games/asteroid/logic.js', 'if (!s.bench.some((x) => x.id === id) || s.swap.some((p) => p.id === id)) return "bench";', 'if (s.swap.some((p) => p.id === id)) return "bench";'],
+  ['MK54 ほしくだき：4 台のあと「あたらしい ぶき」を出さない（ひかえへ入れられない）', 'ルール', 'games/asteroid/logic.js', 'return n >= 1 && n < W_IDS.length ? SLOT_COST[n] : null;', 'return n >= 1 && n < SLOTS_MAX ? SLOT_COST[n] : null;'],
+  ['MK55 ほしくだき：6 種類そろっても #unlockBtn を出す', '表示', 'games/asteroid/main.js', 'setHidden(el.unlockBtn, sc === null);', 'setHidden(el.unlockBtn, false);'],
+  ['MK56 ほしくだき：ひかえの武器も強くできる（upgrade の枠の番号が砲台の数をこえたら ひかえ の Lv を上げる）', 'ルール', 'games/asteroid/logic.js', '      if (!isState(state) || !Number.isInteger(slot) || !state.slots[slot] || !W[state.slots[slot].id]) return { state, ok: false, reason: "slot" };', '      if (isState(state) && Number.isInteger(slot) && !state.slots[slot] && Array.isArray(state.bench) && state.bench[slot - state.slots.length]) { const s = shallow(state); s.bench[slot - s.slots.length].lv++; return { state: s, ok: true, events: [] }; }\n      if (!isState(state) || !Number.isInteger(slot) || !state.slots[slot] || !W[state.slots[slot].id]) return { state, ok: false, reason: "slot" };'],
+  ['MK57 ほしくだき：v:1 から星・武器も引き継ぐ（v:2 と同じに読む）', '保存', 'games/asteroid/logic.js', '      if (o.v === 1) {', '      if (o.v === 1) o.v = SAVE_VERSION;\n      if (false) {'],
+  ['MK58 ほしくだき：v:1 で かけらを 0 にする', 'データ消失', 'games/asteroid/logic.js', '        s.kakera = intIn(o.kakera, 0, KAKERA_MAX, 0);', '        s.kakera = 0;'],
+  ['MK59 ほしくだき：v:1 のとき元の保存を asteroid.save.bak に写さない', 'データ消失', 'games/asteroid/main.js', '        migrated = true;\n        if (!keepBroken(raw)) saveBlocked = true;\n', '        migrated = true;\n'],
+  ['MK60 ほしくだき：v:1 のとき asteroid.best を消す', 'データ消失', 'games/asteroid/main.js', '        migrated = true;\n', '        migrated = true; removeKey(KEY_BEST); best = 0;\n'],
+  ['MK61 ほしくだき：デバッグの lose で hold にしない（撃ちきって clear になりうる。T-19）', 'テスト', 'games/asteroid/main.js', '        }, { hold: true });', '        });'],
+  ['MK62 ほしくだき：表に戻ったとき保存がほかで変わっていても開き直さない（X-20）', '保存', 'games/asteroid/main.js', '    if (!stale && !changedElsewhere()) return false;', '    return false;'],
+  ['MK63 ほしくだき：saveNow が stale を見ない（writeKey で止まるが「ほぞんが できないよ」が出る。X-20）', '保存', 'games/asteroid/main.js', '    if (!state || restarting || stale) return false;', '    if (!state || restarting) return false;'],
+  ['MK64 ほしくだき：裏へ回る・閉じるときの保存で比べ直さない（staleOnHide。storage イベントが届く前に古い状態を書き戻す。X-20）', '保存', 'games/asteroid/main.js', '    if (!stale && changedElsewhere()) stale = true;\n    return stale;', '    return stale;'],
+  ['MK65 ほしくだき：裏で別のタブが書いても保存を止めない（storage を見ない。X-20）', '保存', 'games/asteroid/main.js', 'if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true;', 'if (false) stale = true;'],
+  ['MK66 ほしくだき：2択の候補に ひかえの武器が出る', 'ルール', 'games/asteroid/logic.js', 'const have = new Set(s.slots.map((x) => x.id).concat((s.bench || []).map((x) => x.id)));', 'const have = new Set(s.slots.map((x) => x.id));'],
+  ['MK67 ほしくだき：4 台のあとの2択で「えらんだ ぶきは ひかえ（いま つかわない ぶき）に はいるよ」を出さない', '表示', 'games/asteroid/main.js', 'if (state.slots.length >= SLOTS_MAX) parts.push("えらんだ ぶきは ひかえ（いま つかわない ぶき）に はいるよ");', ''],
+  ['MK68 ほしくだき：残りの武器が 1 つでも #choiceB を隠さない', '表示', 'games/asteroid/main.js', '        setHidden(btn, !knownId(id));', '        setHidden(btn, false);'],
+  ['MK69 ほしくだき：ひかえが空でも #swapCard を開く', '操作', 'games/asteroid/main.js', '    if (!benchOf(state).length) { setHint(HINT_NO_BENCH);', '    if (false) { setHint(HINT_NO_BENCH);'],
+  ['MK70 ほしくだき：予約の札「つぎから ○○」を出さない', '表示', 'games/asteroid/main.js', '      r.next.hidden = !nx;', '      r.next.hidden = true;'],
+  ['MK71 ほしくだき：入れ替えの予約を保存しない（開き直すと予約が消える）', '保存', 'games/asteroid/logic.js', '      slots, bench, offer: state.offer ? state.offer.slice() : null, swap, cleared', '      slots, bench, offer: state.offer ? state.offer.slice() : null, swap: [], cleared'],
+  ['MK72 ほしくだき：クリアの演出中の保存で予約を当てない（開き直すと予約が消える）', '保存', 'games/asteroid/logic.js', '      applySwaps(tmp, []);\n', ''],
+  ['MK73 ほしくだき：はね返しの間の保存で予約を当てない（開き直すとやり直しに予約が当たらない。T1）', '保存', 'games/asteroid/logic.js', '    if (toNext || ph === "bounce") {', '    if (toNext) {'],
+  ['MK74 ほしくだき：2択の間の保存で戻り先（bounce・clear）を見ない（T1）', '保存', 'games/asteroid/logic.js', '    const ph = state.phase === "choose" ? state.back : state.phase;', '    const ph = state.phase;'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;
-const OUTF = path.join(HERE, PICK ? `result-${PICK.join('_')}.json` : 'result.json');
+const pickName = PICK ? PICK.join('_') : '';
+const OUTF = path.join(HERE, PICK ? `result-${pickName.length > 80 ? `${PICK[0]}-${PICK.at(-1)}-${PICK.length}` : pickName}.json` : 'result.json');   // 長い M でもファイル名が長すぎないように
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'yubi-mutants-'));
 const copyApp = (dir) => fs.cpSync(ROOT, dir, { recursive: true, filter: (src) => { const r = path.relative(ROOT, src); return !(r === '.git' || r.startsWith('.git' + path.sep) || r === 'tests' || r.startsWith('tests' + path.sep)); } });
 const rows = [];

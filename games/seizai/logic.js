@@ -68,7 +68,8 @@
   const DEPT = {};
   for (const d of DEPTS) DEPT[d.id] = d;
   // 2026-10-21（§19.1.4）：dry 10→2・plank 10→2.5。こうじょう に広げた直後に 1台・Lv1 でも稼ぎが落ちないように（測った値は契約 §19.7）
-  const BASE_TIME = Object.freeze({ cut: 6, plant: 5, carry: 8, peel: 5, beam: 8, dry: 2, plank: 2.5, plane: 5, shop: 3 });
+  // 2026-10-23（SZ-08・契約 §23）：plane 5→2.5。全部さいだい・はやい でも かんな が いちばん遅いまま（直せないつまり）だったため
+  const BASE_TIME = Object.freeze({ cut: 6, plant: 5, carry: 8, peel: 5, beam: 8, dry: 2, plank: 2.5, plane: 2.5, shop: 3 });
   // 段に広げて新しい台が来たときの きかい の Lv（§19.1.2。古い保存の補いにも使う）
   const START_LEVEL = Object.freeze({ dry: 1, plane: 1 });
   const PLANKS_PER_BEAM = 2;
@@ -80,7 +81,7 @@
   const CUST_EVERY = Object.freeze([4, 3, 2.5, 2]);
   const STAGE_MUL = Object.freeze([1, 1.5, 3, 6]);
   const WOOD = Object.freeze(["すぎ", "すぎ", "ひのき", "けやき"]);
-  const PRICE = Object.freeze({ peeled: 5, beams: 30, planks: 20, smooth: 60 });   // smooth 30→60（§19.1.4）
+  const PRICE = Object.freeze({ peeled: 5, beams: 30, planks: 20, smooth: 70 });   // smooth 30→60（§19.1.4）→70（SZ-08。かんな を速くしたあと、みなと に広げた直後の稼ぎを落とさない）
   const PRODUCT_NAME = Object.freeze({ peeled: "むきまるた", beams: "かくざい", dried: "かわいた かくざい", planks: "いた", smooth: "つるつるいた" });
   const PRODUCT_UNIT = Object.freeze({ peeled: "こ", beams: "ぽん", dried: "ぽん", planks: "まい", smooth: "まい" });
 
@@ -89,7 +90,7 @@
   const STAFF_GROWTH = 1.55;
   const LEVEL_COST = Object.freeze({ cut: 10, plant: 10, carry: 12, peel: 15, beam: 700, dry: 1500, plank: 3000, plane: 1000, shop: 20 });   // plane 20000→1000（§19.1.4）
   const LEVEL_GROWTH = 1.18;
-  const LINE_COST = Object.freeze({ peel: 100, beam: 3000, dry: 10000, plank: 20000, plane: 10000 });   // plane 150000→10000（§19.1.4）
+  const LINE_COST = Object.freeze({ peel: 100, beam: 3000, dry: 10000, plank: 20000, plane: 2000000 });   // plane 150000→10000（§19.1.4）→2000000（SZ-08。かんな の BASE_TIME を 2.5 にしたぶん、台を増やす値段で みなと の長さを保つ）
   const LINE_GROWTH = 5;
   const MGR_COST = Object.freeze({ cut: 300, plant: 300, carry: 400, peel: 500, beam: 8000, dry: 30000, plank: 50000, plane: 300000, shop: 1000 });
   const MGR_FAST = 1.5;
@@ -532,6 +533,27 @@
   }
   function bottleneck(state) {
     try { return okState(state) ? bottleneckS(clone(state)) : null; } catch (e) { return null; }
+  }
+  // もう強くできない部署（SZ-08・契約 §23）：人・台・きかい・マネージャーの どれも もう買えず、マネージャーは「はやい」（無料で切り替えられるので、
+  // 「もうかる」なら まだ速くできる）。こや ではマネージャーを雇えないので、買える物が無ければ さいだい。使えない部署は false
+  function maxedOutS(s, id) {
+    if (!DEPT[id] || !unlocked(s.stage, id)) return false;
+    for (const w of ["staff", "line", "level", "mgr"]) if (costOfS(s, id, w) !== null) return false;
+    return s.stage < 2 || s.depts[id].mgr === "fast";
+  }
+  function maxedOut(state, dept) {
+    try { return okState(state) ? maxedOutS(clone(state), dept) : false; } catch (e) { return false; }
+  }
+  // 次の段に上がると、もっと強くできる部署か（S1・契約 §23 K3）：人数・台数の上限（CAPS）が増える、または こや でマネージャーがまだいない
+  // （こうば から雇える）。みなと（段 4）・使えない部署は false。maxedOut が true でも、これが true なら「これいじょう はやく できない」とは言わない
+  function moreNextStageS(s, id) {
+    if (!DEPT[id] || !unlocked(s.stage, id) || s.stage >= 4) return false;
+    const kind = DEPT[id].kind;
+    if ((kind === "staff" || kind === "line") && capOf(s.stage + 1, id) > capOf(s.stage, id)) return true;
+    return s.stage < 2 && s.depts[id].mgr === null;
+  }
+  function moreNextStage(state, dept) {
+    try { return okState(state) ? moreNextStageS(clone(state), dept) : false; } catch (e) { return false; }
   }
   function priceOf(state) {
     try { return okState(state) ? priceOfS(clone(state)) : null; } catch (e) { return null; }
@@ -1066,7 +1088,7 @@
     SAVE_VERSION, SAVE_KEY, SAVE_KEY_BAK, SAVE_KEY_BEST, SAVE_KEY_HELP,
     START_LEVEL, TOOL_LV, TOOLS,
     speedMul, toolTier, toolOf,
-    newGame, step, rates, bottleneck, priceOf, productOf, costOf, buy, setMgr, boost, callCustomer, acceptOrder, forceOrder,
+    newGame, step, rates, bottleneck, maxedOut, moreNextStage, priceOf, productOf, costOf, buy, setMgr, boost, callCustomer, acceptOrder, forceOrder,
     canExpand, expand, goalOf, shipNeed, awaySeconds, catchUp, fastForward, formatYen, makeSave, loadSave, validateBest, validateFlag, simulate
   };
   return Object.freeze(api);

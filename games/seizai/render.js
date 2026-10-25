@@ -5,7 +5,7 @@
  * SeizaiRender.create(canvas, { calm }) → {
  *   layout(stage, cssWidth, cssHeight) → { worldH, cssH, scale, offsetX, zones: [{ dept, x, y, w, h }] },
  *   frame(state, events, dtSec), burst(kind, dept), setCalm(bool), pause(), resume(),
- *   stats() → { actors, frames, slowFrames, bgRedraws, drawMs, calm }
+ *   stats() → { actors, frames, slowFrames, bgRedraws, drawMs, calm, toolBurst, jamTag }（jamTag：いま描いた つまりの札 { dept, text } か null）
  * }
  * - 世界は幅 360 の単位。#scene の幅に合わせて拡大縮小（上限 1.8 倍。広い画面では真ん中に寄せる）
  * - canvas は「見えている所」だけの大きさで、#sceneInner の中で position: sticky。スクロールの量だけずらして描く
@@ -98,6 +98,7 @@
     let scrollDrawQueued = false;
     let lastZonesKey = "";
     let lastToolBurst = null;
+    let jamTag = null;   // いま描いた つまりの札（{ dept, text }。テスト用に stats() で見せる。SZ-08）
 
     const doc = root.document;
     function el(id) { try { return doc ? doc.getElementById(id) : null; } catch (e) { return null; } }
@@ -676,6 +677,7 @@
     }
     // 今のお金で買えるものがある部署か（名札の「＋」。main.js の canBuyAny と同じ見方）
     let memoState = null, memo = { buy: {} };
+    let maxedKey = null, maxedVal = false;   // つまりの部署の maxedOut を「部署・人数・台数・Lv・マネージャー・段」の組で覚える（S2）
     function canBuyAny(s, d) {
       if (memoState === s && d in memo.buy) return memo.buy[d];
       const v = canBuyAnyRaw(s, d);
@@ -1254,8 +1256,18 @@
       const depts = s.depts || {};
       const t = num(s.t, 0);
       // logic の関数は state を写すので、同じ state（step は 0.1 秒ごと）の間は 1 回だけ求める（性能 §6.4）
-      if (memoState !== s) { memoState = s; memo = { buy: {} }; try { memo.bn = typeof Lg().bottleneck === "function" ? Lg().bottleneck(s) : null; } catch (e) { memo.bn = null; } }
+      if (memoState !== s) { memoState = s; memo = { buy: {} }; try { memo.bn = typeof Lg().bottleneck === "function" ? Lg().bottleneck(s) : null; } catch (e) { memo.bn = null; }
+        // つまりの部署が もう強くできない（SZ-08・契約 §23）：黄色の点線と「ここが おそい！」の代わりに「ぜんぶ さいだい！」。
+        // maxedOut は state を写すので、「部署・人数・台数・Lv・マネージャー・段」の組が変わったときだけ聞き直す（S2）
+        const bx = memo.bn && depts[memo.bn] ? depts[memo.bn] : null;
+        const mk = memo.bn ? [memo.bn, bx && bx.staff, bx && bx.lines, bx && bx.level, bx && bx.mgr, s.stage].join("|") : "";
+        if (mk !== maxedKey) {
+          maxedKey = mk;
+          try { maxedVal = !!memo.bn && typeof Lg().maxedOut === "function" && Lg().maxedOut(s, memo.bn) === true; } catch (e) { maxedVal = false; }
+        }
+        memo.maxed = maxedVal; }
       const bn = memo.bn;
+      jamTag = null;
       const L = Lg();
       const cd = num(L.BOOST_COOLDOWN, 15), bs = num(L.BOOST_SEC, 5), cc = num(L.CALL_COOLDOWN, 10);
       for (const d of geo.order) {
@@ -1276,8 +1288,13 @@
           if (x.mgr === "fast" || x.mgr === "gain") sub += x.mgr === "fast" ? " ⚑" : " ¥";
           label(sub, lx, z.y + 4 + hh, { bg: "rgba(20,24,30,0.55)", right });
         }
-        // つまり（黄色の点線と札）
-        if (bn === d) {
+        // つまり（黄色の点線と札）。もう強くできない部署は点線なしで「ぜんぶ さいだい！」（遊ぶ人にできることが無いので急かさない）
+        if (bn === d && memo.maxed) {
+          const fullText = labelWidth("ぜんぶ さいだい！", true) <= z.w - 6 ? "ぜんぶ さいだい！" : "さいだい！";
+          const jy = d === "cut" ? geo.forest.rows[0] + 4 : z.y + z.h - 22;
+          label(fullText, z.x + 3, jy, { bg: "#c8ecc9", ink: "#12321a", bold: true });
+          jamTag = { dept: d, text: fullText };
+        } else if (bn === d) {
           ctx.strokeStyle = "#ffd84d"; ctx.lineWidth = 2.6;
           if (ctx.setLineDash) ctx.setLineDash([6, 4]);
           ctx.strokeRect(z.x + 1.5, z.y + 1.5, z.w - 3, z.h - 3);
@@ -1287,6 +1304,7 @@
           // きこり は下に森の手前の列（人が歩く所）があるので、奥と手前の列の間の草地に出す（人を隠さない。§18）
           const jy = d === "cut" ? geo.forest.rows[0] + 4 : z.y + z.h - 22;
           label(jamText, z.x + 3, jy, { bg: "#ffd84d", ink: "#2b2200", bold: true });
+          jamTag = { dept: d, text: jamText };
         }
         // 最初の一手：なえぎを「おして！」の札つきでゆっくり光らせる（動きを減らす設定では光らせず札だけ）
         if (d === "plant" && stage === 1 && noPurchaseYet(s)) {
@@ -1369,7 +1387,7 @@
       resume() { paused = false; lastFrameAt = null; },
       stats() {
         const sorted = drawTimes.slice().sort((p, q) => p - q);
-        return { actors: actors.all().length, frames, slowFrames, bgRedraws, drawMs: sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0, calm, toolBurst: lastToolBurst ? lastToolBurst.dept : null };
+        return { actors: actors.all().length, frames, slowFrames, bgRedraws, drawMs: sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0, calm, toolBurst: lastToolBurst ? lastToolBurst.dept : null, jamTag: jamTag ? Object.assign({}, jamTag) : null };
       },
       actors: () => actors.list(),
       // 待つ理由（§20 E2・E3。吹き出しと同じもの）と、はこぶ の人が門に着いた回数（§20 E4）

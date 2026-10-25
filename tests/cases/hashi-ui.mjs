@@ -4,7 +4,7 @@
 //   テスト用の公開 API（契約 §12）：window.HashiGame = { getState, holdFor(ms), lenToCross, setRandom(seq), skip }
 //   計算ロジックは HL（hashi-logic.mjs）で確かめ済み。ここでは画面の中の HashiLogic を「期待値の計算機」として使う。
 //   無いときに合格にしない（空振りの合格を作らない。契約 §12・§13-9）：HashiGame が無ければ例外で不合格にする。
-//   smoke：HW1〜HW4。full：HW5〜HW13（HW11 は CDP のタッチ操作なので Chromium だけ）。
+//   smoke：HW1〜HW4・HW16（ステージ）・HW18（旗）。full：HW5〜HW15・HW17・HW19〜HW23（HW11 は CDP のタッチ操作なので Chromium だけ、HW10 は AudioContext が要る、HW19 は solo＝最後に 1 つずつ）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { BASE, view, custom, newPage, seed, wait, frozen, layoutProbe, swInfo, sleep, touch, SFX_SPY, plays, IS_CHROMIUM, x20Run, x20Text } from '../lib.mjs';
@@ -32,9 +32,14 @@ async function gotoH(page, extra = {}, { help = true, mode = 'endless' } = {}) {
 }
 // 「どっちで あそぶ？」のカードで遊び方を選ぶ（カードを閉じた直後 300ms は池の押下を受けないので待つ）
 async function pickMode(page, mode) {
-  const ok = await page.evaluate((m) => { const b = document.querySelector(`#overlay:not([hidden]) [data-cmd="${m}"]`); if (!b) return false; b.click(); return true; }, mode);
-  if (!ok) throw new Error(`「どっちで あそぶ？」のカードに data-cmd="${mode}" が無い（overlay=${(await page.evaluate(() => window.HashiGame.getState().overlay))}）`);
-  await wait(page, 350);
+  const t0 = await page.evaluate((m) => { const b = document.querySelector(`#overlay:not([hidden]) [data-cmd="${m}"]`); if (!b) return null; b.click(); return performance.now(); }, mode);
+  if (t0 === null) throw new Error(`「どっちで あそぶ？」のカードに data-cmd="${mode}" が無い（overlay=${(await page.evaluate(() => window.HashiGame.getState().overlay))}）`);
+  await wait(page, 350); await passBlock(page, t0);
+}
+// カードを閉じた直後の 300ms（池の押下を受けない）を、ページの時刻 t0（閉じたときの performance.now）から ms たつまで確かに待つ。
+// 重いとき Playwright の時計が実時間に合わせる途中の古い値で巻き戻り、wait の分だけ進まないことがある（T-25・T-05）。足りない分を足す（3 回まで）
+async function passBlock(page, t0, ms = 350) {
+  for (let i = 0; i < 3; i++) { const dt = await page.evaluate((t) => performance.now() - t, t0); if (dt >= ms) return; await wait(page, Math.ceil(ms - dt)); }
 }
 
 // ---------- 読む ----------
@@ -610,10 +615,10 @@ export const tests = [
       const { ctx, page } = await openH(browser, 'HW7', { opts: { touch: false } });
       await blurAll(page);
       await page.keyboard.down('Space'); await wait(page, 200);
-      const k1 = await gs(page), kh = await holdingAttr(page);
+      const k1 = await gs(page), kh = await holdingAttr(page), ae1 = await page.evaluate(() => document.activeElement ? (document.activeElement.id || document.activeElement.tagName) : null);   // ae1 は T-18 の原因を絞るため detail に出すだけ
       await page.keyboard.down('Space'); await wait(page, 100);      // 押しっぱなしの repeat
       const k2 = await gs(page);
-      check(`Space の keydown で伸びる（phase ${k1.phase}・bridgeLen ${k1.bridgeLen?.toFixed?.(1)}・data-holding ${kh}）`, k1.phase === 'growing' && k1.bridgeLen > 0 && kh === '1', { k1, kh });
+      check(`Space の keydown で伸びる（phase ${k1.phase}・bridgeLen ${k1.bridgeLen?.toFixed?.(1)}・data-holding ${kh}）`, k1.phase === 'growing' && k1.bridgeLen > 0 && kh === '1', { k1, kh, ae1 });
       check(`repeat の keydown で伸び直さない（${k1.bridgeLen?.toFixed?.(1)} → ${k2.bridgeLen?.toFixed?.(1)}、増え続ける）`, k2.phase === 'growing' && k2.bridgeLen > k1.bridgeLen, { k1, k2 });
       await page.keyboard.up('Space'); await wait(page, 50);
       const k3 = await gs(page);
@@ -862,20 +867,22 @@ export const tests = [
       await page.click('#helpBtn'); await wait(page, 200);
       const p2 = Object.fromEntries((await overlayInfo(page)).sets.map((x) => [x.set, x.pressed]));
       check(`開き直しても残る（slow ${s2.slow}・guide ${s2.guide}、aria-pressed ${p2.slow}/${p2.guide}）`, s2.slow === true && s2.guide === true && p2.slow === 'true' && p2.guide === 'true', { s2, p2 });
-      await clickCmd(page, 'close'); await wait(page, 400);
+      { const tc = await page.evaluate(() => performance.now()); await clickCmd(page, 'close'); await wait(page, 400); await passBlock(page, tc, 400); }   // 閉じた直後の 300ms を確かに過ぎてから押す（T-05）
       // ガイド点線：押している間、guideTipX = 今の葉の右端 + 今の長さ
       const [cx, cy] = await stageCenter(page);
       const right = (await lens(page)).right;
+      // 押す前のようす（押しても伸びないことがまれにある。T-05 の原因を絞るため detail に出すだけ）
+      const pre = await page.evaluate(([x, y]) => { const s = window.HashiGame.getState(), e = document.elementFromPoint(x, y); return { phase: s.phase, overlay: s.overlay, paused: s.paused, at: e ? (e.id || e.className || e.tagName) : null, t: Math.round(performance.now()) }; }, [cx, cy]);
       await page.mouse.move(cx, cy); await page.mouse.down(); await wait(page, 300);
-      const gv = await page.evaluate(() => ({ g: window.__hrView?.guideTipX ?? null, len: window.HashiGame.getState().bridgeLen }));
+      const gv = await page.evaluate(() => ({ g: window.__hrView?.guideTipX ?? null, len: window.HashiGame.getState().bridgeLen, phase: window.HashiGame.getState().phase, t: Math.round(performance.now()) }));
       await page.mouse.up(); await settle(page);
-      check(`ガイドがオンなら、押している間 guideTipX（${gv.g}）＝右端 ${right}＋長さ ${gv.len?.toFixed?.(1)}`, typeof gv.g === 'number' && Math.abs(gv.g - (right + gv.len)) <= 10, { gv, right });
+      check(`ガイドがオンなら、押している間 guideTipX（${gv.g}）＝右端 ${right}＋長さ ${gv.len?.toFixed?.(1)}`, typeof gv.g === 'number' && Math.abs(gv.g - (right + gv.len)) <= 10, { gv, right, pre });
       // オフに戻す
       await wait(page, 400);
       await page.click('#helpBtn'); await wait(page, 200);
       await page.click('#overlay [data-set="slow"]'); await page.click('#overlay [data-set="guide"]'); await wait(page, 100);
       const ls3 = [await stored(page, 'hashi.slow'), await stored(page, 'hashi.guide')];
-      await clickCmd(page, 'close'); await wait(page, 400);
+      { const tc = await page.evaluate(() => performance.now()); await clickCmd(page, 'close'); await wait(page, 400); await passBlock(page, tc, 400); }   // 閉じた直後の 300ms を確かに過ぎてから押す（T-05）
       await page.mouse.move(cx, cy); await page.mouse.down(); await wait(page, 300);
       const gv2 = await page.evaluate(() => ({ g: window.__hrView ? window.__hrView.guideTipX : 'no-view', phase: window.HashiGame.getState().phase }));
       await page.mouse.up(); await settle(page);
@@ -1144,7 +1151,7 @@ export const tests = [
     },
   },
   {
-    id: 'HW19', tier: 'full', title: 'ハシわたり レビュー後の直し：SE 縦横でカード・ボタン・案内の文が語の途中で折れない（クリアカードは「ステージ 40」「クリア！」の2行）、ボタンの文（あそぶ（つづき）・あそびかたを えらぶ）、短い遊び方はスクロールなしで「わかった」まで見える、落ちた所の言葉、花火（同時に3発以上・1発ごとに音・蓮は枚数ぶん・CPU 4倍遅くでも描画 34ms 以内）、高さの差はステージ 1 から・茎を最大に伸ばしても上端に 8px 余白',
+    id: 'HW19', tier: 'full', solo: true, title: 'ハシわたり レビュー後の直し：SE 縦横でカード・ボタン・案内の文が語の途中で折れない（クリアカードは「ステージ 40」「クリア！」の2行）、ボタンの文（あそぶ（つづき）・あそびかたを えらぶ）、短い遊び方はスクロールなしで「わかった」まで見える、落ちた所の言葉、花火（同時に3発以上・1発ごとに音・蓮は枚数ぶん・CPU 4倍遅くでも描画 34ms 以内）、高さの差はステージ 1 から・茎を最大に伸ばしても上端に 8px 余白',
     async run({ browser, check }) {
       for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app')]) {
         const head = v.label;
@@ -1488,6 +1495,79 @@ export const tests = [
       { const B = hx(c.C.leaf); rows.push(['影のふち/leaf', cr(mix(hx(c.C.well), B, c.ea), B)]); }
       rows.push(['ぴったり印のふち/leaf', cr(hx(c.C.perfectEdge), hx(c.C.leaf))], ['ぴったり印/ふち', cr(hx(c.C.perfect), hx(c.C.perfectEdge))]);
       check(`HS-08：${rows.map(([n, v]) => `${n} ${v.toFixed(2)}`).join('・')}（すべて 3:1 以上）、ぴったり印の暗いふち ${c.ring}px（2 以上）`, rows.every(([, v]) => v >= 3) && c.ring >= 2, rows);
+    },
+  },
+  {
+    id: 'HW22', tier: 'full', title: 'ハシわたり v36（HS-10）：茎を 1 秒伸ばす間、空と水のグラデーション（createLinearGradient）を作り直さない（直す前は約 120 回）。画面の大きさが変わったら作り直す',
+    async run({ browser, check }) {
+      const SPY = () => { window.__lg = 0; const o = CanvasRenderingContext2D.prototype.createLinearGradient; CanvasRenderingContext2D.prototype.createLinearGradient = function (...a) { window.__lg++; return o.apply(this, a); }; };
+      const { ctx, page } = await openH(browser, 'HW22', { opts: { touch: false, initScript: SPY } });
+      const [cx, cy] = await stageCenter(page);
+      const r = await frozen(page, async () => {
+        await page.evaluate(() => { window.__lg = 0; });
+        await page.mouse.move(cx, cy); await page.mouse.down();
+        await page.clock.runFor(1000); await sleep(30);
+        const x = await page.evaluate(() => ({ lg: window.__lg, phase: window.HashiGame.getState().phase }));
+        await page.mouse.up();
+        return x;
+      });
+      check(`1 秒伸ばす間の createLinearGradient が 2 回以下（${r.lg} 回・phase ${r.phase}）`, r.phase === 'growing' && r.lg <= 2, r);
+      await settle(page);
+      await page.evaluate(() => { window.__lg = 0; });
+      // 対照：大きさを変えずに同じだけ待つと 0 回（下の待ち方で、大きさの変化がなくても作り直してしまう、を見逃さない。T-25）
+      for (let i = 0; i < 10; i++) { await sleep(50); await wait(page, 50); }
+      const lg0 = await page.evaluate(() => window.__lg);
+      check(`大きさを変えずに待つ間は作り直さない（${lg0} 回）`, lg0 === 0, lg0);
+      await page.setViewportSize({ width: 844, height: 390 });
+      // 大きさの変化（resize・ResizeObserver）と、そのあとの描画（rAF）は実時間で届く。重いときは早送りのあとに届くので、
+      // 実時間と早送りを交互に、作り直すまで最大 40 回（約 4.6 秒）待つ（以前は wait 300 の 1 回だけで、並列 3 の重さで 0 回になった。T-25）
+      let lg2 = 0, rounds = 0;
+      for (; rounds < 40 && lg2 < 1; rounds++) { await sleep(50); await wait(page, 50); lg2 = await page.evaluate(() => window.__lg); }
+      check(`画面の大きさが変わると作り直す（${lg2} 回・待った回数 ${rounds}）`, lg2 >= 1, { lg2, rounds });
+      await ctx.close();
+    },
+  },
+  {
+    id: 'HW23', tier: 'full', title: 'ハシわたり v37（HS-09）：どこまでもで落ちたあと、ぴったりを 3 回続けると ♥ が 1 つ戻る（案内「あと 2かいで ♥」「ぴったり 2れんぞく！」「♥ もどった！」・bloom・読み上げ）。満タンでは戻らず「つぎは ボーナス 16」。案内は SE 縦横で 2 行以内。遊び方に倍々と回復の言葉',
+    async run({ browser, check }) {
+      const { ctx, page } = await openH(browser, 'HW23', { v: SMOKE_V(), opts: { initScript: SFX_SPY } });
+      // 1 回落ちる（lives 2）
+      const L0 = await lens(page);
+      await holdLen(page, L0.short);
+      const f = await settle(page);
+      const heartsOf = () => page.evaluate(() => ({ hearts: document.querySelector('#hearts').textContent.trim(), lives: document.querySelector('#lives').textContent.trim(), sr: document.querySelector('#sr').textContent }));
+      const d0 = await heartsOf();
+      check(`1 回落ちて lives 2・#hearts が ♥♥♡（${d0.hearts}）`, f.s.lives === 2 && d0.hearts === '♥♥♡' && d0.lives === '2', { lives: f.s.lives, d0 });
+      const step = async () => { const L = await lens(page); await holdLen(page, L.perfect); return settle(page); };
+      const r1 = await step();
+      check(`1 回目：案内に「あと 2かいで ♥」、「つぎは ボーナス」は出ない（${r1.hints.join(' / ')}）`, r1.hints.some((h) => h.includes('あと 2かいで ♥')) && !r1.hints.some((h) => h.includes('つぎは ボーナス')) && r1.s.lives === 2, r1.hints);
+      const r2 = await step();
+      check(`2 回目：「ぴったり 2れんぞく！」「あと 1かいで ♥」（${r2.hints.join(' / ')}）`, r2.hints.some((h) => h.includes('ぴったり 2れんぞく！') && h.includes('あと 1かいで ♥')) && r2.s.lives === 2, r2.hints);
+      const r3 = await step();
+      const d3 = await heartsOf();
+      const pl = (await plays(page)).map((p) => p.n);
+      check(`3 回目：「♥ もどった！」（短く）・lives 3・#hearts ♥♥♥・#lives 3・読み上げ「いのちが 1つ もどった」（${r3.hints.join(' / ')}）`,
+        r3.hints.some((h) => h.includes('♥ もどった！') && !h.includes('1つ')) && r3.s.lives === 3 && d3.hearts === '♥♥♥' && d3.lives === '3' && d3.sr.includes('いのちが 1つ もどった'), { hints: r3.hints, d3 });
+      check(`bloom が鳴る（${[...new Set(pl)].join(',')}）`, pl.includes('bloom'), pl);
+      const r4 = await step();
+      const d4 = await heartsOf();
+      check(`4 回目（満タン）：「ぴったり 4れんぞく！」「つぎは ボーナス 16」、回復の言葉は出ない・lives 3（${r4.hints.join(' / ')}）`,
+        r4.hints.some((h) => h.includes('ぴったり 4れんぞく！') && h.includes('つぎは ボーナス 16')) && !r4.hints.some((h) => h.includes('もどった') || h.includes('あと ')) && r4.s.lives === 3 && !d4.sr.includes('もどった'), { hints: r4.hints, d4 });
+      // 遊び方カード
+      await page.evaluate(() => document.querySelector('#helpBtn').click()); await wait(page, 350);
+      const ov = await overlayInfo(page);
+      check('遊び方に「ぴったりを つづけると …ばいに なる」（条件が先）と「3かい つづけると」', ov.shown && ov.text.includes('ぴったりを つづけると 1→2→4→8→16 と ばいに なる') && ov.text.includes('3かい つづけると'), ov.text);
+      await ctx.close();
+      // SE 縦・横：一番長い案内でも #hint が 2 行以内（はみ出さない）
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app')]) {
+        const c2 = await openH(browser, 'HW23 ' + v.label, { v });
+        const L = await lens(c2.page);
+        await holdLen(c2.page, L.short); await settle(c2.page);
+        for (let i = 0; i < 3; i++) { const Li = await lens(c2.page); await holdLen(c2.page, Li.perfect); await settle(c2.page); }
+        const h = await c2.page.evaluate(() => { const e = document.querySelector('#hint'); const cs = getComputedStyle(e); const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.3; return { text: e.textContent.trim(), h: e.getBoundingClientRect().height, sh: e.scrollHeight, ch: e.clientHeight, lh }; });
+        check(`${v.label}：3 回目の案内が はみ出さず 2 行以内（高さ ${h.h.toFixed(0)}px・行 ${h.lh.toFixed(0)}px）「${h.text}」`, h.text.includes('もどった') && h.sh <= h.ch + 1 && h.h <= h.lh * 2 + 1, h);
+        await c2.ctx.close();
+      }
     },
   },
 ];

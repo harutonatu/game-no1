@@ -12,7 +12,7 @@
 //   るすの あいだ（§4.3・§7.1）は、ページの時計を clockTime で決まった瞬間に固定して確かめる（日本・ロサンゼルスの2つのタイムゾーン）。
 //   期待値は Node で読んだ logic.js（同じ root）から作る。半分の速さの 45 秒・上限の 7200 秒は決め打ちの値で比べる（logic が変わっても見逃さない）。
 //   無いときに合格にしない（空振りの合格を作らない）：SeizaiGame・YubiDebug が無ければ例外で不合格にする。
-//   smoke：WW1〜WW6。full：WW7〜WW26（WW18 はレビュー後の直し §17.1、WW19 は §17.3 の B、WW20 は §18 待つ理由（SZ-03）、WW21〜23 は §19（新しい工程・道具・画面を広く）、WW24 は §20 はこぶ人の往復と「まち」（SZ-04・SZ-05）、WW25 は §21 さいしょから（SZ-07）、WW26 は §22 古いページから書き戻さない（X-20）。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
+//   smoke：WW1〜WW6。full：WW7〜WW27（WW18 はレビュー後の直し §17.1、WW19 は §17.3 の B、WW20 は §18 待つ理由（SZ-03）、WW21〜23 は §19（新しい工程・道具・画面を広く）、WW24 は §20 はこぶ人の往復と「まち」（SZ-04・SZ-05）、WW25 は §21 さいしょから（SZ-07）、WW26 は §22 古いページから書き戻さない（X-20）、WW27 は §23 もう強くできない つまり（SZ-08）。WW10・WW17 は CDP なので Chromium だけ、WW14 は AudioContext が要る）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -542,7 +542,7 @@ export const tests = [
     },
   },
   {
-    id: 'WW10', tier: 'full', cdp: 'CDP の CPU 低速化', title: 'もくもくこうば 性能：みなとで全部最大（人 60 前後）にして、CPU 4 倍遅く（CDP）で 6 秒、人の数 66 以下、34ms を超えるコマが 5% 以下',
+    id: 'WW10', tier: 'full', solo: true, cdp: 'CDP の CPU 低速化', title: 'もくもくこうば 性能：みなとで全部最大（人 60 前後）にして、CPU 4 倍遅く（CDP）で 6 秒、人の数 66 以下、34ms を超えるコマが 5% 以下',
     async run({ browser, check }) {
       const { ctx, page } = await newPage(browser, view('SE', 'p', 'app'), 'WW10');
       await seed(page, { 'seizai.help': '1' });
@@ -1290,7 +1290,12 @@ export const tests = [
         const st = mkState(L, 2, { goal: { done: L.STAGES[1].goal }, money: L.STAGES[1].cost + 10 });
         const { ctx, page } = await openW(browser, 'WW23', { v: SMOKE_V(), items: { 'seizai.save': saveOf(L, st, T0) }, opts: { clockTime: new Date(T0 + 1000), reducedMotion: 'reduce' } });
         await page.click('#expandBtn'); await waitOverlay(page, 'stage', 2500);
-        check('節目カードの間は案内を出さない', (await gs(page)).scrollCue === null && (await page.evaluate(() => document.querySelector('#scrollCue').hidden)), null);
+        // 案内はカードが開いた次の描画（rAF）で消える。rAF は実時間で届くので、重いときはカードが見えた直後にまだ残っている（T-25 の横展開）。
+        // 実時間と早送りを交互に最大 20 回（約 2.3 秒）待ってから見る（カードの間ずっと出ている不具合なら、待っても消えないので見つかる）
+        const cueOff = () => page.evaluate(() => ({ cue: window.SeizaiGame.getState().scrollCue, hidden: document.querySelector('#scrollCue').hidden }));
+        let co = await cueOff();
+        for (let i = 0; i < 20 && !(co.cue === null && co.hidden); i++) { await sleep(50); await wait(page, 50); co = await cueOff(); }
+        check('節目カードの間は案内を出さない', co.cue === null && co.hidden && (await gs(page)).overlay === 'stage', co);
         await pressCard(page, '#stageOk');
         await page.evaluate(() => { document.querySelector('#scene').scrollTop = 0; }); await wait(page, 150);
         const cn = (await gs(page)).scrollCue, isNew = await page.evaluate(() => document.querySelector('#scrollCue').dataset.new);
@@ -1570,6 +1575,72 @@ export const tests = [
       const sE2 = await after();
       check(`storage イベントが届かないまま（見えている間に書かれて hidden の保存）：書き戻さず（${hideE2}）、表に戻ると開き直して（${rE2}）続ける（段 ${sE2.stage}・お金 ${sE2.money}）`, hideE2 && rE2 && sE2.stage === 3 && sE2.money >= 13579 && sE2.money < 13579 + 2000, { hideE2, rE2, sE2 });
       check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
+      await ctx.close();
+    },
+  },
+  {
+    id: 'WW27', tier: 'full', title: 'もくもくこうば もう強くできない つまり（§23・SZ-08）：ユーザーの録画と同じ みなと・全部の部署を上限・Lv50・はやい で、つまりは かんな でなく、かんな のシートは「1ぷんに 849まい」。つまりの部署が もう強くできないときは「ここが おそい！」の札（jamTag）・シートと読み上げの「ここが おそいよ」を出さず、「ぜんぶ さいだい！」（シート「これいじょう はやく できないよ」・data-maxed=1・data-jam=0）、ほかの場所に「〇〇を ふやそう」を出さない。マネージャーを「もうかる」にすると（まだ速くできる）「ここが おそい」に戻る。こうじょう（段 3）で全部さいだい・はやい のときは、つまり（みせ）は みなと で上限が増えるので シートは「つぎの だんで もっと ふやせるよ」（「これいじょう はやく できないよ」と言わない。S1）',
+    async run({ browser, check, root, errors }) {
+      const L = logicOf(root);
+      const e0 = errors.length;
+      const st = mkState(L, 4, { goal: { done: 0 } });
+      for (const [k, d] of Object.entries(st.depts)) { const cap = L.CAPS[3][k]; d.level = 50; d.mgr = 'fast'; if ('lines' in d) d.lines = cap; else d.staff = cap; }
+      const { ctx, page } = await openW(browser, 'WW27', { v: SMOKE_V(), items: { 'seizai.save': saveOf(L, st, T0) }, opts: { clockTime: new Date(T0 + 1000) } });
+      await closeCards(page);
+      // 場所を押してシートを開くと応援（2 倍）になり つまりが動くので、先に全部を応援して 5 秒の効き目が切れるのを待つ
+      // （そのあと 10 秒は応援を使えない間で、押してもシートが開くだけ。下の確かめは その間に終える）
+      await page.evaluate(() => { for (const d of window.SeizaiLogic.DEPTS) window.SeizaiGame.tapZone(d.id); });
+      await wait(page, 5600);
+      const zoneInfo = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.zone[data-dept]')].filter((b) => !b.hidden).map((b) => [b.dataset.dept, { jam: b.dataset.jam, maxed: b.dataset.maxed, label: b.getAttribute('aria-label') || '' }])));
+      const sheetOf = async (d) => { await page.evaluate((x) => document.querySelector(`.zone[data-dept="${x}"]`).click(), d); await wait(page, 150); const r = await page.evaluate(() => { const e = document.querySelector('#sheetInfo'); return { t: e.textContent.replace(/\s+/g, ' ').trim(), jam: e.dataset.jam, maxed: e.dataset.maxed }; }); await page.click('#sheetClose'); await wait(page, 60); return r; };
+      const g = await gs(page);
+      const bn = g.bottleneck;
+      check(`全部さいだい・はやい：つまりは かんな でない（${bn}）・もう強くできない（bottleneckMaxed ${g.bottleneckMaxed}）`, bn && bn !== 'plane' && g.bottleneckMaxed === true, { bn, maxed: g.bottleneckMaxed });
+      const pl = await sheetOf('plane');
+      const want = Math.floor(L.rates(await lg(page)).plane * 60);
+      check(`かんな のシート「${pl.t}」が 1ぷんに ${want}まい（849。録画の 424 ではない）で、「おそい」が無い`, want === 849 && pl.t.includes('1ぷんに 849まい') && !/おそい/.test(pl.t), pl);
+      const tag = g.jamTag;
+      check(`つまりの札（${tag && tag.dept}：「${tag && tag.text}」）は「ぜんぶ さいだい！」で「おそい」ではない`, tag && tag.dept === bn && /さいだい！/.test(tag.text) && !/おそい/.test(tag.text), tag);
+      const z = await zoneInfo();
+      check(`${bn} の場所：data-jam 0・data-maxed 1、読み上げ「${z[bn] && z[bn].label}」に「ぜんぶ さいだい」があり「おそい」が無い`, z[bn] && z[bn].jam !== '1' && z[bn].maxed === '1' && /ぜんぶ さいだい/.test(z[bn].label) && !/おそい/.test(z[bn].label), z[bn]);
+      const bad = Object.entries(z).filter(([, v]) => /おそい|を ふやそう/.test(v.label));
+      check('ほかの場所の読み上げにも「おそい」「〇〇を ふやそう」（強くできない部署を すすめる）が無い', bad.length === 0, bad);
+      const sb = await sheetOf(bn);
+      check(`${bn} のシート「${sb.t}」：「ぜんぶ さいだい！」「これいじょう はやく できないよ」、「ここが おそいよ」は無い（data-jam 0・data-maxed 1）`, /ぜんぶ さいだい！/.test(sb.t) && /これいじょう はやく できないよ/.test(sb.t) && !/おそい/.test(sb.t) && sb.jam === '0' && sb.maxed === '1', sb);
+      // マネージャーを「もうかる」にすると、まだ「はやい」で速くできる → 「ここが おそい」に戻る
+      const sm = await page.evaluate((d) => window.SeizaiGame.setMgr(d, 'gain'), bn);
+      await wait(page, 400);
+      const g2 = await gs(page), z2 = await zoneInfo(), s2 = await sheetOf(g2.bottleneck);
+      check(`${bn} を「もうかる」に（${JSON.stringify(sm && sm.ok !== undefined ? sm.ok : sm)}）：つまり ${g2.bottleneck}・bottleneckMaxed false、札「${g2.jamTag && g2.jamTag.text}」、場所 data-jam 1、シート「${s2.t}」に「ここが おそいよ」`, g2.bottleneck === bn && g2.bottleneckMaxed === false && g2.jamTag && /おそい！/.test(g2.jamTag.text) && z2[bn].jam === '1' && z2[bn].maxed === '0' && /ここが おそいよ/.test(z2[bn].label) && /ここが おそいよ/.test(s2.t) && s2.jam === '1', { g2: { bn: g2.bottleneck, m: g2.bottleneckMaxed, tag: g2.jamTag }, z: z2[bn], s2 });
+      // 段 3（こうじょう）で全部さいだい・はやい：つまり（みせ）は今は もう強くできないが、みなと で上限が増える → 「これいじょう はやく できないよ」とは言わない（S1）
+      const st3 = mkState(L, 3, { goal: { done: 0 } });
+      for (const [k, d] of Object.entries(st3.depts)) { const cap = L.CAPS[2][k]; if (!cap) continue; d.level = 50; d.mgr = 'fast'; if ('lines' in d) d.lines = cap; else d.staff = cap; }
+      await gotoW(page, { 'seizai.save': saveOf(L, st3, T0) });
+      await closeCards(page);
+      await page.evaluate(() => { for (const d of window.SeizaiLogic.DEPTS) window.SeizaiGame.tapZone(d.id); });
+      await wait(page, 5600);
+      const g3 = await gs(page), s3 = await sheetOf(g3.bottleneck);
+      check(`こうじょう で全部さいだい・はやい：つまり ${g3.bottleneck}（bottleneckMaxed ${g3.bottleneckMaxed}・bottleneckMoreNext ${g3.bottleneckMoreNext}）のシート「${s3.t}」は「つぎの だんで もっと ふやせるよ」で、「これいじょう はやく できないよ」「ここが おそいよ」は無い（data-maxed 1）`,
+        g3.stage === 3 && g3.bottleneck === 'shop' && g3.bottleneckMaxed === true && g3.bottleneckMoreNext === true && /つぎの だんで もっと ふやせるよ/.test(s3.t) && !/これいじょう/.test(s3.t) && !/おそい/.test(s3.t) && s3.maxed === '1' && s3.jam === '0', { g3: { st: g3.stage, bn: g3.bottleneck, m: g3.bottleneckMaxed, more: g3.bottleneckMoreNext }, s3 });
+      check('ページエラー・コンソールエラーが無い', errors.length === e0, errors.slice(e0));
+      await ctx.close();
+    },
+  },
+  {
+    id: 'WW28', tier: 'full', title: 'もくもくこうば マネージャーの切り替え（X-25）：「はやい／もうかる」の ✓ は見た目だけで、読み上げの名前（ariaSnapshot）に ✓ が入らない、状態は aria-pressed（押すと入れ替わる）',
+    async run({ browser, check, root }) {
+      const L = logicOf(root);
+      const { ctx, page } = await openW(browser, 'WW28', { v: SMOKE_V(), items: { 'seizai.save': saveOf(L, mkState(L, 2, { depts: { cut: { staff: 2, level: 10, mgr: 'fast' } } }), T0) }, opts: { clockTime: new Date(T0 + 1000) } });
+      await page.evaluate(() => document.querySelector('.zone[data-dept="cut"]').click()); await wait(page, 100);
+      const ax = async () => ({ fast: (await page.locator('#mgrFast').ariaSnapshot()).replace(/\s+/g, ' '), gain: (await page.locator('#mgrGain').ariaSnapshot()).replace(/\s+/g, ' '),
+        vis: await page.evaluate(() => getComputedStyle(document.querySelector('#mgrFast > span'), '::before').content) });
+      const a0 = await ax();
+      await page.click('#mgrGain'); await wait(page, 100);
+      const a1 = await ax();
+      const okOne = (a, on) => /^- button "/.test(a.fast) && /^- button "/.test(a.gain) && !/✓/.test(a.fast + a.gain)
+        && /\[pressed\]/.test(on === 'fast' ? a.fast : a.gain) && !/\[pressed\]/.test(on === 'fast' ? a.gain : a.fast);
+      check(`はやい・もうかる の読み上げの名前に ✓ なし、状態は aria-pressed（${a0.fast} / ${a0.gain} → もうかるを押すと ${a1.fast} / ${a1.gain}）。見た目の ✓ は残る（${a0.vis}）`,
+        okOne(a0, 'fast') && okOne(a1, 'gain') && /✓/.test(a0.vis), { a0, a1 });
       await ctx.close();
     },
   },

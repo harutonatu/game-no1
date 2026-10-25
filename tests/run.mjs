@@ -3,7 +3,7 @@
 //   node tests/run.mjs full  [配信ディレクトリ]   … 公開前に（目標 60 秒以内）
 // 配信ディレクトリ：引数 > 環境変数 GAME_ROOT > 既定（tests/ の1つ上＝リポジトリのルート）
 // 環境変数：
-//   BROWSER=chromium|webkit（既定 chromium）  WORKERS=4（グループ単位の並列数）  PORT=8800（並列 i 番目は PORT+i を使う）
+//   BROWSER=chromium|webkit（既定 chromium）  WORKERS=3（グループ単位の並列数。クラウドの 4 コアで公開の条件を確かめる数。v38）  PORT=8800（並列 i 番目は PORT+i を使う）
 //   ONLY=D2,S1（項目を絞る）  JSON=path（結果を JSON で書き出す）  VERBOSE=1（合格した確認も表示）
 //   CLOCK=0（待ち時間の早送りを止める）  TEST_TIMEOUT=60000（1項目の上限 ms）
 //   HEADED=1（画面を出してブラウザを起動。Linux で画面が無いときは xvfb-run -a を前につける）
@@ -44,7 +44,7 @@ export const GROUPS = [
   { key: 'WL', title: 'WL もくもくこうば 計算ロジック(Node)', file: 'seizai-logic.mjs', weight: { smoke: 0, full: 0 } },
   { key: 'WW', title: 'WW もくもくこうば 画面（育てる・買う・節目・注文・るすの あいだ・時計・保存・戻る・画面内・横向き・性能・キーボード・音・オフライン・メニュー）', file: 'seizai-ui.mjs', weight: { smoke: 8, full: 45 } },
   { key: 'KL', title: 'KL ほしくだき 計算ロジック(Node)', file: 'asteroid-logic.mjs', weight: { smoke: 0, full: 0 } },
-  { key: 'KW', title: 'KW ほしくだき 画面（壊れる・強くする・2択・はね返し・クリア・保存・戻る・中断・画面内・横向き・性能・キーボード・音・オフライン・メニュー）', file: 'asteroid-ui.mjs', weight: { smoke: 8, full: 45 } },
+  { key: 'KW', title: 'KW ほしくだき 画面（壊れる・強くする・2択・はね返し・クリア・保存・戻る・中断・画面内・横向き・性能・キーボード・音・オフライン・メニュー）', file: 'asteroid-ui.mjs', weight: { smoke: 8, full: 84 } },
 ];
 
 const args = process.argv.slice(2);
@@ -62,6 +62,12 @@ if (process.env.HEADED === '1' && process.platform === 'linux' && !process.env.D
   process.exit(2);
 }
 const pick = (t) => (tier === 'full' || t.tier === 'smoke') && (!ONLY || ONLY.includes(t.id));
+// 速さを測る項目（solo: true）は、並列のときはほかの項目が終わってから 1 つずつ流す（ほかの子プロセスが CPU を使っている間に測らない。T-02・T-09）。
+// PHASE：all＝全部（WORKERS=1）／par＝solo 以外（並列の段）／solo＝solo だけ（あとの段）。基準の ms は変えない
+const PHASE = process.env.PHASE || 'all';
+const inPhase = (t) => PHASE === 'all' || (PHASE === 'solo') === !!t.solo;
+// ページ・ブラウザが落ちたときの Playwright の例外の文（これだけを流し直す。MT-14・T-09）
+const CRASHED = /Target crashed|Page crashed|Browser has been closed|browser has disconnected/i;
 
 if (isWorker) await worker(args[2]); else await main();
 
@@ -70,7 +76,7 @@ async function worker(key) {
   const g = GROUPS.find((x) => x.key === key);
   const lib = await import('./lib.mjs');
   const { tests } = await import('./cases/' + g.file);
-  const plan = tests.filter(pick);
+  const plan = tests.filter(pick).filter(inPhase);
   const TEST_TIMEOUT = Number(process.env.TEST_TIMEOUT || 60000);
   const rec = new lib.Recorder();
   let srv = null, browser = null;
@@ -93,12 +99,27 @@ async function worker(key) {
       // 効果音の確認（audio: true）は、ブラウザに AudioContext が無い環境（Windows 版 Playwright の WebKit など）では対象外にする。
       // OS 名では決めず、実際に typeof AudioContext / webkitAudioContext を調べる
       if (t.audio && !(await hasAudio())) { out.skipped.push({ id: t.id, title: t.title, why: '環境に AudioContext が無い', env: true }); continue; }
-      rec.start(t.id, t.title);
-      const ctx = { browser, srv, root, tier, errors: lib.pageErrors, check: (n, ok, d, known) => rec.check(n, ok, d, known) };
-      let timer;
-      try { await Promise.race([t.run(ctx), new Promise((_, rej) => { timer = setTimeout(() => rej(new Error(`${TEST_TIMEOUT / 1000} 秒以内に終わらない`)), TEST_TIMEOUT); })]); } catch (e) { rec.fail(e); } finally { clearTimeout(timer); }
-      srv?.reset();
-      rec.end();
+      // ページ・ブラウザが落ちた例外（WebKit の Target crashed など。MT-14）のときだけ、その項目を 1 回だけ流し直す。
+      // ふつうの不合格（check の失敗・ほかの例外・時間切れ）は流し直さない。流し直した項目は結果に「流し直し 1 回」と出す
+      let retryWhy = null;
+      for (let attempt = 0; ; attempt++) {
+        rec.start(t.id, t.title);
+        const ctx = { browser, srv, root, tier, errors: lib.pageErrors, check: (n, ok, d, known) => rec.check(n, ok, d, known) };
+        let timer;
+        try { await Promise.race([t.run(ctx), new Promise((_, rej) => { timer = setTimeout(() => rej(new Error(`${TEST_TIMEOUT / 1000} 秒以内に終わらない`)), TEST_TIMEOUT); })]); } catch (e) { rec.fail(e); } finally { clearTimeout(timer); }
+        srv?.reset();
+        const it = rec.end();
+        const crash = it.checks.find((c) => c.name === '例外' && CRASHED.test(String(c.detail)));
+        if (attempt === 0 && crash) {
+          rec.items.pop();   // 1 回目の結果は捨てて、落ちた理由だけ残す
+          retryWhy = String(crash.detail).split(' | ')[0].slice(0, 120);
+          for (const c of browser ? browser.contexts() : []) await c.close().catch(() => {});
+          if (browser && !browser.isConnected()) browser = await lib.launchBrowser();
+          continue;
+        }
+        if (retryWhy) { it.retry = 1; it.retryWhy = retryWhy; }
+        break;
+      }
     }
   } catch (e) {
     out.fatal = String(e && e.stack || e);
@@ -115,7 +136,7 @@ async function worker(key) {
 async function main() {
   const T0 = Date.now();
   const PORT = Number(process.env.PORT || 8800);
-  const WORKERS = Math.max(1, Number(process.env.WORKERS || 4));
+  const WORKERS = Math.max(1, Number(process.env.WORKERS || 3));
   const mods = {};
   for (const g of GROUPS) mods[g.key] = (await import('./cases/' + g.file)).tests;
   const plan = GROUPS.filter((g) => mods[g.key].some(pick));
@@ -124,11 +145,15 @@ async function main() {
   console.log(`配信: ${root}  → http://127.0.0.1:${PORT}〜${PORT + WORKERS - 1}/game-no1/\n`);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'yubi-tests-'));
   const results = {};
-  const queue = [...plan].sort((a, b) => b.weight[tier] - a.weight[tier]);
-  const runOne = (g, slot) => new Promise((resolve) => {
-    const file = path.join(tmp, g.key + '.json');
+  // 並列（WORKERS が 2 以上）なら、solo の項目は並列の段から外し、あとの段で 1 グループずつ流す（T-02）
+  const split = WORKERS > 1;
+  const hasSolo = (g) => mods[g.key].some((t) => pick(t) && t.solo);
+  const hasPar = (g) => mods[g.key].some((t) => pick(t) && !t.solo);
+  const queue = [...plan].filter((g) => !split || hasPar(g)).sort((a, b) => b.weight[tier] - a.weight[tier]);
+  const runOne = (g, slot, phase) => new Promise((resolve) => {
+    const file = path.join(tmp, g.key + '.' + phase + '.json');
     const t0 = Date.now();
-    const child = spawn(process.execPath, [SELF, '--worker', tier, root, g.key], { env: { ...process.env, PORT: String(PORT + slot), RESULT_FILE: file }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [SELF, '--worker', tier, root, g.key], { env: { ...process.env, PORT: String(PORT + slot), RESULT_FILE: file, PHASE: phase }, stdio: ['ignore', 'pipe', 'pipe'] });
     let log = '';
     child.stdout.on('data', (d) => { log += d; });
     child.stderr.on('data', (d) => { log += d; });
@@ -136,15 +161,18 @@ async function main() {
       let r;
       try { r = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { r = { key: g.key, items: [], errors: [], skipped: [], fatal: `子プロセスが結果を書かずに終了（code ${code}）\n${log.slice(-2000)}` }; }
       r.sec = (Date.now() - t0) / 1000; r.log = log;
-      results[g.key] = r;
+      const prev = results[g.key];   // 並列の段の結果があれば、solo の段の結果をうしろに足す
+      results[g.key] = !prev ? r : { ...prev, items: [...prev.items, ...r.items], errors: [...prev.errors, ...r.errors], skipped: [...prev.skipped, ...r.skipped],
+        fatal: [prev.fatal, r.fatal].filter(Boolean).join('\n') || null, sec: prev.sec + r.sec, log: prev.log + r.log };
       const ng = r.items.filter((i) => !i.ok).length + (r.fatal ? 1 : 0);
-      console.log(`  … ${g.title.split(' ')[0]} 完了 ${r.sec.toFixed(1)}s（${r.items.length} 項目${ng ? `、不合格 ${ng}` : ''}）`);
+      console.log(`  … ${g.title.split(' ')[0]}${phase === 'solo' ? '（速さ・1 つずつ）' : ''} 完了 ${r.sec.toFixed(1)}s（${r.items.length} 項目${ng ? `、不合格 ${ng}` : ''}）`);
       resolve();
     });
   });
   await Promise.all(Array.from({ length: Math.min(WORKERS, queue.length) }, async (_, slot) => {
-    while (queue.length) await runOne(queue.shift(), slot);
+    while (queue.length) await runOne(queue.shift(), slot, split ? 'par' : 'all');
   }));
+  if (split) for (const g of plan.filter(hasSolo)) await runOne(g, 0, 'solo');
   fs.rmSync(tmp, { recursive: true, force: true });
 
   // ---- 表示（グループの順に） ----
@@ -157,7 +185,7 @@ async function main() {
     if (r.log.trim() && (process.env.VERBOSE || r.fatal)) console.log(r.log.trim().split('\n').map((l) => '    | ' + l).join('\n'));
     for (const it of r.items) {
       items.push(it);
-      console.log(`  ${it.ok ? 'PASS' : 'FAIL'}  ${it.id.padEnd(3)} ${(it.ms / 1000).toFixed(1).padStart(5)}s  ${it.title}  (${it.checks.filter((c) => c.ok).length}/${it.checks.length})`);
+      console.log(`  ${it.ok ? 'PASS' : 'FAIL'}  ${it.id.padEnd(3)} ${(it.ms / 1000).toFixed(1).padStart(5)}s  ${it.title}  (${it.checks.filter((c) => c.ok).length}/${it.checks.length})${it.retry ? `\n        ↻ 流し直し 1 回（1 回目：${it.retryWhy}）` : ''}`);
       for (const c of it.checks) {
         if (c.known && !c.ok) console.log(`        △ 既知の不具合（修正待ち・合否に含めない）: ${c.name}\n          ${c.known}`);
         else if (c.known && c.ok) console.log(`        ★ 既知の不具合が解消した: ${c.name} → tests/lib.mjs の KNOWN_ISSUES から外す`);
@@ -180,6 +208,8 @@ async function main() {
   console.log(`\n結果 [${tier} / ${BROWSER}]：テスト ${items.length - failed.length}/${items.length} 合格、確認項目 ${checks.filter((c) => c.ok).length}/${checks.length - knownFail.length} 合格${knownFail.length ? `（ほかに既知の不具合 ${knownFail.length} 件）` : ''}${skipped.length ? `、対象外 ${skipped.length} 項目` : ''}、所要 ${total.toFixed(1)} 秒（目標 ${target} 秒以内${total <= target ? '：達成' : '：超過'}）`);
   if (knownFail.length) console.log('既知の不具合: ' + [...new Set(knownFail.map((c) => c.known.split(' ')[0]))].join(', ') + '（tests/lib.mjs の KNOWN_ISSUES）');
   if (failed.length) console.log('不合格: ' + failed.map((i) => i.id).join(', '));
+  const retried = items.filter((i) => i.retry);
+  if (retried.length) console.log('流し直し 1 回（ページ・ブラウザが落ちた）: ' + retried.map((i) => `${i.id}（${i.ok ? '2 回目は合格' : '2 回目も不合格'}）`).join(', '));
   if (process.env.JSON) fs.writeFileSync(process.env.JSON, JSON.stringify({ tier, browser: BROWSER, root, totalSec: total, items, skipped }, null, 1));
   process.exit(failed.length ? 1 : 0);
 }

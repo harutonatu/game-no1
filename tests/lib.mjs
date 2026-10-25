@@ -484,8 +484,10 @@ export const x20Text = (r) => `変わっていなければ開き直さない（$
 
 // ---------- 合否の記録 ----------
 // 既知の不具合の一覧（ここに載せたものだけが「既知」扱い。直ったら行を消す）
-// K1（SE 横・Safari でブロックの DROP・HOLD が重なる）は feature/kiritori で直し、通常の合否に入れた（V2・V3・V8）
+// K1（SE 横・Safari でブロックの DROP・HOLD が重なる）は feature/kiritori で直し、通常の合否に入れた（V2・V3・V12。V8 は v38 で消して欠番）
 export const KNOWN_ISSUES = {
+  // ほしくだき（作り直し、2026-10-23）：SE 縦・ホーム画面（320×568、safe-area の上 20px）で 4 台のとき、場の高さが safe-area を除いた高さの 42.7%（契約 §5.1 の 4 割 3 分に 0.3 点足りない）。
+  // 部品C の 44% は safe-area なしで測った値。PM の決定待ち（目安を 4 割 2 分にするか、画面を詰めるか）。KW8 の場の高さの確認だけに付ける
 };
 // 既知の不具合のキー → 説明（なければ undefined）。check(名前, ok, 詳細, known(キー)) のように使う
 export const known = (key) => KNOWN_ISSUES[key];

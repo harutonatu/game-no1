@@ -450,6 +450,13 @@
     nextStep = 0;
     setPhase("walking", D(Math.abs(walkTo - walkFrom) / WALK_SPEED));
   }
+  // ぴったりの案内のうしろ（HS-09）：♥ が戻った・あと何回で戻る・つぎの ボーナス（倍々）を短く。ステージは点を見せないので何も足さない
+  function perfectTail(o) {
+    if (run.mode === "stage") return "";
+    if (o.heal) return "　♥ もどった！";
+    if (run.lives < L.LIVES && o.healIn > 0) return `　あと ${o.healIn}かいで ♥`;
+    return `　${o.nextBonus >= L.BONUS_CAP && o.bonus >= L.BONUS_CAP ? "つぎも" : "つぎは"} ボーナス ${o.nextBonus}`;
+  }
   function arrive() {
     const o = pending.outcome;
     if (o.kind === "cross") {
@@ -472,14 +479,15 @@
         sfx.play("perfect", Math.min(Math.max(o.streak, 1), 5));
         perfectAt = clock;
         perfectX = run.platforms[0].x + run.platforms[0].w / 2;
-        setHint(`${skipWord}ぴったり！${gainWord}`);
+        setHint(`${skipWord}${o.streak >= 2 ? `ぴったり ${o.streak}れんぞく！` : "ぴったり！"}${gainWord}${perfectTail(o)}`);
+        if (o.heal) sfx.play("bloom");
       } else if (o.skip) {
         setHint(`とばし！${gainWord}`);
       } else {
         setHint("わたれた！");
       }
       if (st) announce(`${o.skip ? "とばし。2まい すすんだ。" : ""}${o.perfect ? "ぴったり。" : ""}わたった ${run.crossed}まい。のこり ${run.goal - run.crossed}まい`);
-      else announce(`${o.skip ? "とばし。" : ""}${o.perfect ? "ぴったり。" : o.skip ? "" : "わたれた。"}${o.gain}てん。ごうけい ${run.score}てん。のこり ${run.lives}`);
+      else announce(`${o.skip ? "とばし。" : ""}${o.perfect ? "ぴったり。" : o.skip ? "" : "わたれた。"}${o.gain}てん。ごうけい ${run.score}てん。${o.heal ? "いのちが 1つ もどった。" : ""}のこり ${run.lives}`);
       if (st && o.skip) bump();
       if (o.flag) {
         // 旗：落ちても ここから（ひとつ飛ばしで旗の葉を飛び越えたときも）
@@ -894,7 +902,7 @@
       <p data-f="l3"></p>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {
         l1: tap ? "タップで のびて、もう一度 タップで たおれる。つぎの はっぱに のせよう。" : "ながく おして、はなすと くきが たおれる。つぎの はっぱに のせよう。",
-        l3: st ? "おちたら さいごの はたから。" : "おちると ♥ が へる。0で おしまい。"
+        l3: st ? "おちたら さいごの はたから。" : `おちると ♥ が へる。0で おしまい。ぴったり ${L.HEAL_EVERY}れんぞくで ♥ が もどる。`
       }, "help");
       el.card.dataset.help = "short";
       return;
@@ -902,9 +910,9 @@
     showCard(`
       <h2 id="cardTitle">あそびかた</h2>
       <p>がめんを ながく おすと、くきが のびるよ。はなすと たおれる。</p>
-      <p>くきの さきが つぎの はっぱに のれば わたれる。まんなかの ◆ に のると「ぴったり」で ボーナス！</p>
+      <p>くきの さきが つぎの はっぱに のれば わたれる。まんなかの ◆ に のると「ぴったり」で ボーナス！ ぴったりを つづけると 1→2→4→8→16 と ばいに なるよ。</p>
       <p>うんと のばして 2つ さきの はっぱに とどいたら「とばし」。2つぶん ＋ おまけの てん！（むりに ねらわなくて だいじょうぶ）</p>
-      <p>「どこまでも」：みずに おちると いのち ♥ が 1つ へるよ。0に なったら おしまい。おちても、おなじ ところから もう一度。</p>
+      <p>「どこまでも」：みずに おちると いのち ♥ が 1つ へるよ。0に なったら おしまい。おちても、おなじ ところから もう一度。ぴったりを ${L.HEAL_EVERY}かい つづけると ♥ が 1つ もどるよ。</p>
       <p>「ステージ」：ゴールの はたの はっぱまで わたれば クリア。5まい わたるごとに きいろい はたが あるよ。おちたら さいごの はたから（「さいしょから」も えらべる）。はたは とじると きえて、つぎは ステージの さいしょから。たかい はっぱには ながい くきが いるよ。</p>
       ${hasFinePointer() ? "<p>キーボードの スペース・エンターでも あそべます。M で おと。</p>" : ""}
       <p>おしつづけるのが むずかしいときは「タップしき」：1かい タップで のびはじめ、もう1かいで たおれる。</p>

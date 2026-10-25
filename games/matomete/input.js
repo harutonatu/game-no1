@@ -7,7 +7,7 @@
  *
  * MatometeInput.attach({ board, area, root = document }, { onTap(x, y, via), onKey(cmd, arg) }, { isBlocked, cellAt(clientX, clientY) })
  *   → { detach() }
- *   - タップ：area（盤のまわりを含むプレイ画面）の pointerdown。押した座標からマスを決める（cellAt）。
+ *   - タップ：area（main.js は document.body を渡す＝画面のどこでも。MT-01）の pointerdown。押した座標からマスを決める（cellAt）。
  *     盤の外を押したら onTap(null, null, 'tap')。ボタン・リンクの上は数えない。主ボタン（左クリック・指1本目）だけ。
  *     2回タップは素早く押すことが多いので、指を離した瞬間（touchend）を止めてダブルタップ拡大・後追いの click を出さない。
  *   - ダブルタップ拡大の抑止（ボタンの所）：.tools・.head-tools で、350ms 以内の2回目のタップの touchend を止め、click は自分で送る。

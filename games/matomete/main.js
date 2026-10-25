@@ -77,7 +77,7 @@
   document.addEventListener("touchend", () => sfx.unlock(), { capture: true });
   function renderSoundBtn() {
     el.soundBtn.setAttribute("aria-pressed", String(!!sfx.on));
-    el.soundBtn.setAttribute("aria-label", sfx.on ? "効果音：オン" : "効果音：オフ");
+    el.soundBtn.setAttribute("aria-label", "効果音");   // オン・オフは aria-pressed だけで伝える（名前に入れると読み上げが二重になる。X-25）
   }
   function toggleSound() { sfx.unlock(); sfx.toggle(); renderSoundBtn(); }
   el.soundBtn.addEventListener("click", toggleSound);
@@ -175,17 +175,18 @@
   }
 
   // ===== 表示 =====
-  const sizeOf = (text) => (text.length <= 5 ? "s" : text.length <= 6 ? "m" : "l");
-  function setNum(node, n) {
+  // 字の大きさ：sMax 文字までは s、その 1 文字上は m、もっと長いと l。「のこり」の欄はいちばん狭いので 4 文字までを s にする（5 桁でも欄に収める。MT-17）
+  const sizeOf = (text, sMax = 5) => (text.length <= sMax ? "s" : text.length <= sMax + 1 ? "m" : "l");
+  function setNum(node, n, sMax) {
     const t = String(n);
     if (node.textContent !== t) node.textContent = t;
-    node.dataset.size = sizeOf(t);
+    node.dataset.size = sizeOf(t, sMax);
   }
   function hud() {
     if (!state) return;
     setNum(el.score, state.score);
     setNum(el.best, bestShown);
-    setNum(el.left, safeCall(() => L.remaining(state), 0));
+    setNum(el.left, safeCall(() => L.remaining(state), 0), 4);
     el.score.dataset.overBest = bestShown > 0 && state.score > bestShown ? "1" : "0";
     el.modeChip.textContent = `ベスト（${MODE_NAME[mode] || MODE_NAME.normal}）`;
     el.modeChip.dataset.mode = mode;
@@ -636,7 +637,9 @@
     }
   }
   const input = I && typeof I.attach === "function"
-    ? I.attach({ board: el.board, area: el.playView, root: document }, { onTap, onKey },
+    // 盤の外ならどこを押しても選びをやめる（ヒント・点数の欄・上の帯も。ボタン・リンクは input.js が数えない。MT-01）。
+    // カードが出ている間は isBlocked・onTap の overlayKind で何もしない。.app は max-width 820px なので iPad の左右の余白も入るよう body で受ける
+    ? I.attach({ board: el.board, area: document.body, root: document }, { onTap, onKey },
       { isBlocked: () => !!overlayKind, cellAt: (cx, cy) => pickCell(cx, cy) })
     : null;
   if (!input) console.error("まとめてポン: MatometeInput が読み込まれていません（input.js）。タップとキーボードが使えません");

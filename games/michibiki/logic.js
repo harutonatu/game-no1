@@ -101,6 +101,19 @@
     ])
   });
 
+  // 滑走路の置き方（MC-15）：0＝RUNWAYS のまま、1＝左右を裏返す、2＝上下を裏返す。回ごとに main が選ぶ。
+  // §3.3 の決まり 1〜4 は左右・上下に裏返しても同じ形なので満たしたまま。出る位置・向きの乱数も左右・上下で同じ形なので、難しさは変わらない（v37 の計画で autoplay 200 回ずつ測った）
+  const PLAN_COUNT = 3;
+  function flipRunways(list, w, h, fx, fy) {
+    return Object.freeze(list.map((r) => Object.freeze({
+      color: r.color, ex: fx ? w - r.ex : r.ex, ey: fy ? h - r.ey : r.ey, dx: fx ? -r.dx || 0 : r.dx, dy: fy ? -r.dy || 0 : r.dy
+    })));
+  }
+  const RUNWAY_PLANS = Object.freeze({
+    tall: Object.freeze([RUNWAYS.tall, flipRunways(RUNWAYS.tall, 320, 520, true, false), flipRunways(RUNWAYS.tall, 320, 520, false, true)]),
+    wide: Object.freeze([RUNWAYS.wide, flipRunways(RUNWAYS.wide, 520, 320, true, false), flipRunways(RUNWAYS.wide, 520, 320, false, true)])
+  });
+
   // ---------------------------------------------------------------- 小さな道具
 
   const isInt = (n) => Number.isSafeInteger(n);
@@ -151,6 +164,7 @@
   function normLayout(layout) {
     return typeof layout === "string" && hasOwn(LAYOUTS, layout) ? layout : "tall";
   }
+  function normPlan(plan) { return Number.isSafeInteger(plan) && plan >= 0 && plan < PLAN_COUNT ? plan : 0; }
   // landed を 0 以上の整数に（負・小数・文字・無い → 0、小数は切り捨て）
   function normLanded(landed) {
     if (!isNum(landed) || landed < 0) return 0;
@@ -195,6 +209,8 @@
   function layoutOf(state) {
     return state && typeof state === "object" ? normLayout(state.layout) : "tall";
   }
+  function planOf(state) { return state && typeof state === "object" ? normPlan(state.plan) : 0; }
+  function runwayListOf(layout, plan) { return RUNWAY_PLANS[normLayout(layout)][normPlan(plan)]; }
   function openColors(state) {
     const c = state && isInt(state.colors) ? state.colors : 1;
     return clamp(c, 1, COLORS.length);
@@ -203,15 +219,15 @@
     try {
       const layout = layoutOf(state);
       const n = openColors(state);
-      return Object.freeze(RUNWAYS[layout].map((r) => Object.freeze({
+      return Object.freeze(runwayListOf(layout, planOf(state)).map((r) => Object.freeze({
         color: r.color, ex: r.ex, ey: r.ey, dx: r.dx, dy: r.dy, open: r.color < n
       })));
     } catch (e) {
       return Object.freeze([]);
     }
   }
-  function runwayOf(layout, color) {
-    const list = RUNWAYS[normLayout(layout)];
+  function runwayOf(layout, color, plan) {
+    const list = runwayListOf(layout, plan);
     for (let i = 0; i < list.length; i++) if (list[i].color === color) return list[i];
     return null;
   }
@@ -301,7 +317,7 @@
     return {
       seed: normSeed(state.seed),
       rng: (isNum(state.rng) ? Math.floor(state.rng) : normSeed(state.seed)) >>> 0,
-      layout, w: L.w, h: L.h,
+      layout, plan: planOf(state), w: L.w, h: L.h,
       tick,
       landed: normLanded(state.landed),
       lives: isInt(state.lives) ? clamp(state.lives, 0, LIVES) : LIVES,
@@ -329,7 +345,7 @@
     }));
     return Object.freeze({
       seed: s.seed, rng: s.rng,
-      layout: s.layout, w: s.w, h: s.h,
+      layout: s.layout, plan: s.plan, w: s.w, h: s.h,
       tick: s.tick,
       landed: s.landed, lives: s.lives, over: s.over,
       colors: s.colors,
@@ -407,9 +423,9 @@
   // へ向かってまっすぐ飛ぶ。何もしなければ手前の点を通って入り口の横を抜ける（区域に入らないので着陸しない）。
   // 手前の点に着くまでに約 4 秒あるので、そこから矢印の向きへ短くなぞるだけで入れる。r は 0〜1
   const FIRST_SIDE_MIN = 100, FIRST_SIDE_MAX = 140;
-  function firstWarnOpt(layout, r) {
+  function firstWarnOpt(layout, plan, r) {
     const L = LAYOUTS[layout];
-    const rw = runwayOf(layout, 0);
+    const rw = runwayOf(layout, 0, plan);
     const edge = rw.dx > 0 ? "left" : rw.dx < 0 ? "right" : rw.dy > 0 ? "top" : "bottom";
     const off = FIRST_SIDE_MIN + (FIRST_SIDE_MAX - FIRST_SIDE_MIN) * (isNum(r) ? clamp(r, 0, 1) : 0.5);
     const horiz = edge === "left" || edge === "right";
@@ -421,22 +437,23 @@
     return { edge, at, dir: unit(ax - pos[0], ay - pos[1]) || edgeInward(edge) };
   }
 
-  function newGame(seed, layout) {
+  function newGame(seed, layout, plan) {
     try {
       const lay = normLayout(layout);
+      const pl = normPlan(plan);
       const L = LAYOUTS[lay];
       const sd = normSeed(seed);
       const rng = rngBox(sd);
       const s = {
         seed: sd, rng: 0,
-        layout: lay, w: L.w, h: L.h,
+        layout: lay, plan: pl, w: L.w, h: L.h,
         tick: 0, landed: 0, lives: LIVES, over: false,
         colors: 1, nextId: 0, nextSpawnTick: 0, pendingColor: null,
         planes: [], warns: [], nearPairs: [],
         stats: { crashes: 0, guidedLandings: 0, freeLandings: 0, bounces: 0, wrongWays: 0 }
       };
       // 回の1機目：あかの滑走路の手前側の辺から、滑走路の向きに沿って（契約 §3.4・§19 B4）
-      const first = firstWarnOpt(lay, rng.next());
+      const first = firstWarnOpt(lay, pl, rng.next());
       makeWarn(s, rng, { edge: first.edge, at: first.at, dir: first.dir, color: 0, kind: "normal", delay: FIRST_SPAWN_T });
       s.nextSpawnTick = FIRST_SPAWN_T + intervalTicks(0, rng);
       s.rng = rng.a;
@@ -490,8 +507,8 @@
 
   // 着陸の動き：滑走路に沿って奥へ、減速しながら（p を書き換える）
   const LAND_EASE = 0.06;
-  function moveLanding(p, layout) {
-    const rw = runwayOf(layout, p.color);
+  function moveLanding(p, layout, plan) {
+    const rw = runwayOf(layout, p.color, plan);
     if (!rw) return;
     const tx = rw.ex + rw.dx * RUNWAY_LEN * 0.75;
     const ty = rw.ey + rw.dy * RUNWAY_LEN * 0.75;
@@ -533,7 +550,7 @@
 
     // ② 動かす
     for (const p of s.planes) {
-      if (p.phase === "land") { moveLanding(p, s.layout); continue; }
+      if (p.phase === "land") { moveLanding(p, s.layout, s.plan); continue; }
       movePlane(p);
       if (bounce(p, s.w, s.h)) {
         s.stats.bounces += 1;
@@ -542,7 +559,7 @@
     }
 
     // ③ 着陸の判定
-    const rws = RUNWAYS[s.layout];
+    const rws = runwayListOf(s.layout, s.plan);
     for (const p of s.planes) {
       if (p.phase !== "fly") continue;
       let inZone = null;
@@ -729,7 +746,7 @@
       const path = cleanPoints(points, p.x, p.y, s.w, s.h);
       let guided = false, wrongWay = false;
       if (path.length) {
-        const rw = runwayOf(s.layout, p.color);
+        const rw = runwayOf(s.layout, p.color, s.plan);
         const j = judgePath(path, p.x, p.y, rw && rw.color < s.colors ? rw : null);
         guided = j.guided; wrongWay = j.wrongWay;
         p.path = freezePath(path);
@@ -808,7 +825,7 @@
       const c = color === undefined || color === null ? p.color : color;
       if (!okColor(c) || c >= openColors(state)) return null;
       const layout = layoutOf(state);
-      const rw = runwayOf(layout, c);
+      const rw = runwayOf(layout, c, planOf(state));
       if (!rw) return null;
       const L = LAYOUTS[layout];
       const lo = PLANE_R, hx = L.w - PLANE_R, hy = L.h - PLANE_R;
@@ -914,7 +931,7 @@
   function naivePath(state, id) {
     const p = state.planes.find((q) => q.id === id);
     if (!p) return null;
-    const rw = runwayOf(state.layout, p.color);
+    const rw = runwayOf(state.layout, p.color, planOf(state));
     if (!rw) return null;
     return resample([[p.x, p.y], [rw.ex, rw.ey]]);
   }
@@ -925,7 +942,7 @@
     const layout = normLayout(o.layout);
     const maxSeconds = isNum(o.maxSeconds) && o.maxSeconds > 0 ? Math.min(o.maxSeconds, 36000) : 900;
     const maxTicks = Math.round(maxSeconds * FPS);
-    let state = newGame(seed, layout);
+    let state = newGame(seed, layout, o.plan);
     let maxAliveSeen = 0;
     const pending = [];          // lazy：[道を付けるコマ, id]
     const firstFive = new Map(); // id 0〜4 の結末（'land' | 'crash'）
@@ -987,7 +1004,7 @@
     NAME, STEP, LAYOUTS, LIVES, CRASH_LIFE, PLANE_R, PICK_R, CRASH_D, NEAR_D, ZONE_R, LAND_DOT,
     APPROACH_D, APPROACH_ROOM, RUNWAY_LEN, RUNWAY_W, SPEED, WARN_S, FIRST_SPAWN_S, LAND_S, CRASH_BREATH,
     SAFE_SPAWN_D, MAX_PLANES, PATH_STEP, MAX_PATH, COLOR_STEPS, SAVE_KEY_BEST, SAVE_KEY_HELP,
-    COLORS, RUNWAYS, KINDS, EDGES,
+    COLORS, RUNWAYS, RUNWAY_PLANS, PLAN_COUNT, KINDS, EDGES,
     makeRng, newGame, update, advance, setPath, clearPath, pickPlane, suggestPath, forceSpawn,
     colorsFor, spawnInterval, maxAlive, kindFor, runwaysFor,
     validateBest, recordBest, validateFlag, colorName, autoplay

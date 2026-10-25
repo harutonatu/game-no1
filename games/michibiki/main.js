@@ -50,6 +50,7 @@
   const HINT_NEAR = "あかく ひかったら ぶつかりそう！";
   const HINT_TAP = "かっそうろを タップしても いいよ";
   const HINT_PORTRAIT = "たてむきの ほうが あそびやすいよ";
+  const HINT_PLAN = "こんかいは かっそうろの ならびが ちがうよ";   // 置き方が前の回と違う回の はじめだけ（MC-15）
   const HINT_CLOSED = "その いろの かっそうろは まだ ひらいて いないよ";
 
   const now = () => performance.now();
@@ -79,7 +80,7 @@
   document.addEventListener("touchend", () => sfx.unlock(), { capture: true });
   function renderSoundBtn() {
     el.soundBtn.setAttribute("aria-pressed", String(!!sfx.on));
-    el.soundBtn.setAttribute("aria-label", sfx.on ? "効果音：オン" : "効果音：オフ");
+    el.soundBtn.setAttribute("aria-label", "効果音");   // オン・オフは aria-pressed だけで伝える（名前に入れると読み上げが二重になる。X-25）
   }
   function toggleSound() { sfx.unlock(); sfx.toggle(); renderSoundBtn(); }
   renderSoundBtn();
@@ -519,6 +520,13 @@
 
   // ===== 回を始める・終わる =====
   function newSeed() { return Date.now() >>> 0; }
+  // 滑走路の置き方（MC-15）：回ごとに、前の回と違う置き方を選ぶ（はじめは乱数）。テストの restart(seed, layout) は置き方 0（今までどおり）
+  let lastPlan = -1;
+  function pickPlan() {
+    const n = Math.max(1, L.PLAN_COUNT | 0);
+    if (n === 1) return 0;
+    return lastPlan < 0 ? Math.floor(Math.random() * n) : (lastPlan + 1 + Math.floor(Math.random() * (n - 1))) % n;
+  }
   function stopAll() {
     clearLater();
     runId += 1;
@@ -527,30 +535,34 @@
     render.finishAll();
     freezeUntil = -Infinity;
   }
-  function makeGame(seed, layout) {
+  function makeGame(seed, layout, plan) {
     const lay = layout === "wide" || layout === "tall" ? layout : orientNow();
-    const s = safeCall(() => L.newGame(seed >>> 0, lay), null);
+    const pl = Number.isSafeInteger(plan) && plan >= 0 ? plan : pickPlan();
+    const s = safeCall(() => L.newGame(seed >>> 0, lay, pl), null);
     if (!s) return false;
     state = s;
     prevState = null;
     render.setField(s.w, s.h);
     el.app.dataset.layout = s.layout;
     el.field.dataset.layout = s.layout;
+    el.field.dataset.plan = String(s.plan | 0);
+    lastPlan = s.plan | 0;
     firstPlane = null; tutorDone = false; wrongHints = 0;
     lastOver = null;
     acc = 0; lastT = null;
     return true;
   }
-  function startGame(seed, layout) {
+  function startGame(seed, layout, plan) {
     stopAll();
     hideOverlay();
-    if (!makeGame(Number.isFinite(seed) ? seed : newSeed(), layout)) return false;
+    const prevPlan = lastPlan;
+    if (!makeGame(Number.isFinite(seed) ? seed : newSeed(), layout, plan)) return false;
     best = readBest();
     startBest = best;
     render.resume();
     setPhase("playing");
     hud();
-    setHint("");
+    setHint(prevPlan >= 0 && (state.plan | 0) !== prevPlan ? HINT_PLAN : "", 3000);
     sfx.play("start");
     lastOrient = orientNow();
     lastScale = render.scale;
@@ -810,7 +822,7 @@
     const runways = state ? (safeCall(() => L.runwaysFor(state), []) || []).map((r) => ({ color: r.color, ex: r.ex, ey: r.ey, dx: r.dx, dy: r.dy, open: !!r.open })) : [];
     const log = render.drawLog || { marks: [], arrows: [] };
     return {
-      phase, overlay: overlayKind, layout: s.layout || null, w: s.w || 0, h: s.h || 0, tick: s.tick | 0,
+      phase, overlay: overlayKind, layout: s.layout || null, plan: Number.isSafeInteger(s.plan) ? s.plan : 0, w: s.w || 0, h: s.h || 0, tick: s.tick | 0,
       landed: s.landed | 0, lives: Number.isFinite(s.lives) ? s.lives : LIVES, over: !!s.over, colors: s.colors | 0, best,
       planes, warns, runways, stats: Object.assign({}, s.stats || {}), selected,
       scale: render.scale, paused: phase === "paused" || phase === "help", manual: manualMode, timers: timers.size, runId,
@@ -852,7 +864,7 @@
       const w = (s.warns || []).find((x) => !before.has(x.id));
       return w ? { id: w.id } : null;
     },
-    restart(seed, layout) { const sd = Number(seed); return startGame(seed !== undefined && Number.isFinite(sd) ? sd : newSeed(), layout); },
+    restart(seed, layout, plan) { const sd = Number(seed), given = seed !== undefined && Number.isFinite(sd); return startGame(given ? sd : newSeed(), layout, Number.isSafeInteger(plan) ? plan : given ? 0 : undefined); },
     pause() { return pause(); },
     resume() { return resume(); },
     toScreen(x, y) { return render.toScreen(x, y); },

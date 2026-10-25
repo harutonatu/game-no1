@@ -23,14 +23,19 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | 変数 | 既定 | 意味 |
 |---|---|---|
 | `BROWSER` | `chromium` | `chromium` か `webkit`（Safari と同じエンジン）。WebKit は `node "$(npm root -g)/playwright/cli.js" install webkit` で入れる（足りないライブラリは `install-deps webkit`） |
-| `WORKERS` | `4` | グループ単位で並列に流す数。`1` で順番に |
-| `PORT` | `8800` | サーバーのポート。並列の i 番目は `PORT+i` を使う（既定なら 8800〜8803） |
+| `WORKERS` | `3` | グループ単位で並列に流す数。`1` で順番に（v38 で 4→3。クラウドの 4 コアで公開の条件を確かめる数） |
+| `PORT` | `8800` | サーバーのポート。並列の i 番目は `PORT+i` を使う（既定なら 8800〜8802） |
+| `PORT`（同時に流すとき） | — | 別々のテストを同時に流すとき（例：2 人の担当が同じ作業フォルダで）は、`PORT` を WORKERS ぶん以上離す（例 9100・9200・9300）。6 コアでは Chromium 2 本＋WebKit 1 本程度まで（T-04） |
 | `ONLY` | — | 項目を絞る（例 `ONLY=D2,S1`） |
 | `VERBOSE` | — | `1` で合格した確認も表示 |
 | `JSON` | — | 結果を JSON に書き出すパス |
 | `CLOCK` | — | `0` で待ち時間の早送りを止め、すべて実時間で待つ（早送りのせいで合否が変わっていないかの確認用） |
 | `TEST_TIMEOUT` | `60000` | 1 項目の上限（ms）。止まっても全体は止まらない |
 | `HEADED` | — | `1` で画面を出してブラウザを起動する（既定はヘッドレス）。下の「画面を出して流す」 |
+
+**速さを測る項目は最後に 1 つずつ**：速さを測る項目（A5・WW10・KW10・FW18・HW19、`solo: true`）は、WORKERS が 2 以上のとき、ほかのグループが全部終わってから 1 つずつ流れる（出力に「（速さ・1 つずつ）」と出る）。並列の負荷で速さの測定が落ちないため（T-02・T-09）。WORKERS=1 なら今までどおり。
+
+**ページ・ブラウザが落ちたときだけ 1 回流し直す**：項目がページ・ブラウザが落ちた例外（`Target crashed` など。WebKit で起きる。MT-14）で止まったときだけ、run.mjs がその項目を 1 回だけ流し直す（「↻ 流し直し 1 回」と出て、最後に「流し直し 1 回（ページ・ブラウザが落ちた）: …」の行が出る）。1 回目の結果は捨て、2 回目を合否にする。check の失敗・ほかの例外・時間切れは流し直さない。2 回目も落ちたら不合格のまま。関門の報告には、この「流し直し 1 回」の行をそのまま書く。
 
 ### 画面を出して流す（HEADED=1）
 
@@ -74,27 +79,27 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 | 変更 | 流すもの |
 |---|---|
 | どんな変更でも（コミット前） | `node tests/run.mjs smoke` |
-| CSS・HTML の配置・文字の大きさ | smoke ＋ `ONLY=V1,V2,V3,V4,V5,V6,V7,V8,V12,E4,E5 node tests/run.mjs full`（ブロックのスコア欄の 5 桁は V12。変異は `ONLY=V12,X1 M=M27`） |
+| CSS・HTML の配置・文字の大きさ | smoke ＋ `ONLY=V1,V2,V3,V4,V5,V6,V7,V12,V13,E4,E5 node tests/run.mjs full`（ブロックのスコア欄の 5 桁は V12。変異は `ONLY=V12,X1 M=M27`） |
 | sw.js・manifest・ファイルの追加や改名（CACHE_VERSION を上げたとき） | smoke ＋ `ONLY=L5,L10,S8,S1,S2,S3,S4,S5,S6,S7 node tests/run.mjs full` |
 | 保存データ（localStorage）・2048 のロジック | smoke ＋ `ONLY=D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,P10 node tests/run.mjs full`（古いページから書き戻さない P10 は X-20。変異は `ONLY=P10 M=M24,M25,M26`） |
-| メニュー（index.html）の並び・カード | smoke ＋ `ONLY=E1,E7,E8,D9,A4,A5,T3 node tests/run.mjs full`（並びの保存を変えたら `ONLY=E1,E7,E8,X1 M=MR1,MR2,MR3,MR4,MR5,MR6 node tests/mutants/mutate.mjs both`。MR5・MR6 は修飾キーつきのクリック（X-23）） |
+| メニュー（index.html）の並び・カード | smoke ＋ `ONLY=E1,E7,E8,D9,A4,A5,T3,V13 node tests/run.mjs full`（メニューのベストの長い記録は V13。MT-02）（並びの保存を変えたら `ONLY=E1,E7,E8,X1 M=MR1,MR2,MR3,MR4,MR5,MR6 node tests/mutants/mutate.mjs both`。MR5・MR6 は修飾キーつきのクリック（X-23）） |
 | キリトリ道場（games/kiritori/） | smoke ＋ `ONLY=L7,L8,L9,D3,D10,E4,E6,V1,V2,V3,V4,V5,P8,P9,A4,A6,T5,T6 node tests/run.mjs full` |
-| 効果音（common/sfx.js）・♪ボタン | smoke ＋ `ONLY=A1,A2,A3,A4,A5,A6,T1,T4,T6,P5 node tests/run.mjs full` |
+| 効果音（common/sfx.js）・♪ボタン | smoke ＋ `ONLY=A1,A2,A3,A4,A5,A6,A7,A8,T1,T4,T6,P5 node tests/run.mjs full` |
 | タッチ操作・ダブルタップ抑止 | smoke ＋ `ONLY=T1,T2,T3,T4,T5,T6,P7,E5 node tests/run.mjs full`（WebKit でも `BROWSER=webkit … smoke`） |
 | いろコード（games/irocode/）の変更 | smoke ＋ `ONLY=I10,I11,I12,I13,I14,I15,I16,I17,I18,I20 node tests/run.mjs full`（ロジックだけなら `ONLY=I1,I2,I3 node tests/run.mjs smoke`、0 秒） |
 | ゼンマイさんぽ（games/zenmai/）の変更 | smoke ＋ `ONLY=ZL1,ZL2,ZL3,ZL4,ZL5,ZL6,ZL7,ZU6,ZU7,ZU8,ZU9,ZU10,ZU11,ZU12,ZU13,ZU14,ZU16 node tests/run.mjs full`（ステージの数値は ZL、画面は ZU） |
 | ピカッと早押し（games/pikatto/）の変更 | smoke ＋ `ONLY=PK5,PK6,PK7,PK8,PK9,PK12,PK14,PK16,PK17,PK18,PK19,PK20,PK21,PK22 node tests/run.mjs full`（ルール・保存を変えたら `ONLY=PK1,PK3,PK9,PK15,PK16 M=MP1,MP2,MP3,MP4,MP5,MP6,MP7 node tests/mutants/mutate.mjs both`。「メニューへ」の確認（PK-33）を変えたら `ONLY=PK4,PK20,X1 M=MP11,MP12 node tests/mutants/mutate.mjs both`） |
-| ハシわたり（games/hashi/）の変更 | smoke ＋ `ONLY=HW5,HW6,HW7,HW8,HW9,HW10,HW11,HW12,HW13,HW14,HW15,HW17,HW19,HW20,HW21 node tests/run.mjs full`（ロジックだけなら `ONLY=HL1,HL2,HL3,HL4,HL5,HL6,HL7,HL8,HL9,HL10,HL11,HL12 node tests/run.mjs smoke`、0 秒。ルール・保存を変えたら `PORT=9900 ONLY=HL1,…,HL12,HW1,…,HW19 M=MH1,…,MH20 node tests/mutants/mutate.mjs both`（10 個ずつに分けて流す）。古いページから書き戻さない（X-20）を変えたら `ONLY=HW20 M=MH21,MH22,MH23 PORT=9900 node tests/mutants/mutate.mjs both`。v31 の直しを変えたら `ONLY=HW21 M=MH24,MH25,MH26,MH27 node tests/mutants/mutate.mjs both`） |
-| いろびん（games/irobin/）の変更 | smoke ＋ `ONLY=BW5,BW6,BW7,BW8,BW9,BW10,BW11,BW12,BW13,BW14,BW15,BW16,BW20 node tests/run.mjs full`（ロジックだけなら `ONLY=BL1,BL2,BL3,BL4,BL5,BL6,BL7,BL8,BL9,BL10,BL11,BL12,BL13,BL14 node tests/run.mjs smoke`、約 9 秒。ルール・保存・生成を変えたら `ONLY=BL1,…,BL14,BW1,…,BW18 M=MB1,…,MB17,MB19,MB20,MB21 node tests/mutants/mutate.mjs both`。MB18 は欠番。古いページから書き戻さない（X-20）を変えたら `ONLY=BW20 M=MB23,MB24,MB25 PORT=9900 node tests/mutants/mutate.mjs both`） |
-| まとめてポン（games/matomete/）の変更 | smoke ＋ `ONLY=QW4,QW5,QW6,QW7,QW8,QW9,QW10,QW11,QW12,QW13,QW14,QW15,QW18,QW19,QW21 node tests/run.mjs full`（ロジックだけなら `ONLY=QL1,QL2,QL3,QL4,QL5,QL6,QL7,QL8,QL9,QL10,QL11 node tests/run.mjs full`、数秒。ルール・保存・2回タップを変えたら `ONLY=QL1,…,QL11,QW1,…,QW19 M=MQ1,MQ2,…,MQ40 node tests/mutants/mutate.mjs both`。古いページから書き戻さない（X-20）を変えたら `ONLY=QW21 M=MQ42,MQ43,MQ44 PORT=9950 node tests/mutants/mutate.mjs both`） |
-| ミチビキ空港（games/michibiki/）の変更 | smoke ＋ `ONLY=FW6,FW7,FW8,FW9,FW10,FW11,FW12,FW13,FW14,FW15,FW16,FW17,FW18,FW19,FW22,FW23 node tests/run.mjs full`（ロジックだけなら `ONLY=FL1,FL2,FL3,FL4,FL5,FL6,FL7,FL8,FL9,FL10,FL11,FL12 node tests/run.mjs full`、約 20 秒。ルール・保存・出現を変えたら `ONLY=FL1,…,FL12,FW1,…,FW23 M=MF1,…,MF29 node tests/mutants/mutate.mjs both`） |
-| もくもくこうば（games/seizai/）の変更 | smoke ＋ `ONLY=WW7,WW8,WW9,WW10,WW11,WW12,WW13,WW14,WW15,WW16,WW17,WW18,WW19,WW20,WW21,WW22,WW23,WW24,WW25,WW26 node tests/run.mjs full`（ロジックだけなら `ONLY=WL1,WL2,WL3,WL4,WL5,WL6,WL7,WL8,WL9,WL10,WL11,WL12,WL13 node tests/run.mjs full`。経済・保存・閉じた間・船・注文を変えたら `ONLY=WL1,…,WL11,WW1,…,WW19 M=MW1,…,MW50 PORT=9640 WORKERS=2 node tests/mutants/mutate.mjs both`。10 個ずつ M を区切って流す。さいしょから（契約 §21）を変えたら `ONLY=WW25 M=MW61,MW62,MW63,MW64 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`。古いページから書き戻さない（X-20）を変えたら `ONLY=WW26 M=MW65,MW66,MW67 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`） |
-| ちきゅうを守れ！ほしくだき（games/asteroid/）の変更 | smoke ＋ `ONLY=KW8,KW9,KW10,KW11,KW12,KW13,KW14,KW15,KW16,KW17,KW20,KW21 node tests/run.mjs full`（ロジックだけなら `ONLY=KL1,KL2,KL3,KL4,KL5,KL6,KL7,KL8,KL9,KL10,KL11,KL12,KL13,KL14,KL15 node tests/run.mjs full`。ルール・保存・中断・画面の流れを変えたら `PORT=9650 ONLY=KL1,…,KL15,KW1,…,KW20 M=MK1,…,MK37 node tests/mutants/mutate.mjs both`（10 個ずつ）。さいしょから（契約 §19）や保存を変えたら `ONLY=KW6,KW21 M=MK6,MK7,MK18,MK38,MK39,MK40,MK41,MK42 PORT=8900 WORKERS=2 node tests/mutants/mutate.mjs both`。ロジックの数値を変えたら main.js の gostar の表 `ARMS_LV` も測り直す（design.md §10.68）） |
+| ハシわたり（games/hashi/）の変更 | smoke ＋ `ONLY=HW5,HW6,HW7,HW8,HW9,HW10,HW11,HW12,HW13,HW14,HW15,HW17,HW19,HW20,HW21,HW22,HW23 node tests/run.mjs full`（ロジックだけなら `ONLY=HL1,HL2,HL3,HL4,HL5,HL6,HL7,HL8,HL9,HL10,HL11,HL12,HL13 node tests/run.mjs smoke`、0 秒。ルール・保存を変えたら `PORT=9900 ONLY=HL1,…,HL13,HW1,…,HW19,HW23 M=MH1,…,MH20,MH29,MH30,MH31,MH32 node tests/mutants/mutate.mjs both`（10 個ずつに分けて流す）。古いページから書き戻さない（X-20）を変えたら `ONLY=HW20 M=MH21,MH22,MH23 PORT=9900 node tests/mutants/mutate.mjs both`。v31 の直しを変えたら `ONLY=HW21 M=MH24,MH25,MH26,MH27 node tests/mutants/mutate.mjs both`。HW22 を変えたら ONLY=HW22,X1 M=MH33） |
+| いろびん（games/irobin/）の変更 | smoke ＋ `ONLY=BW5,BW6,BW7,BW8,BW9,BW10,BW11,BW12,BW13,BW14,BW15,BW16,BW20,BW21,BW22,BW23,BW24,BW25,BW26,BW27,BW28 node tests/run.mjs full`（ロジックだけなら `ONLY=BL1,BL2,BL3,BL4,BL5,BL6,BL7,BL8,BL9,BL10,BL11,BL12,BL13,BL14,BL15,BL16,BL17,BL18,BL19 node tests/run.mjs smoke`、約 9 秒。ルール・保存・生成を変えたら `ONLY=BL1,…,BL19,BW1,…,BW18,BW25,BW26,BW27 M=MB1,…,MB17,MB19,MB20,MB21,MB26,MB27,MB28,MB29,MB30,MB31,MB32,MB33,MB34 node tests/mutants/mutate.mjs both`。MB18 は欠番。古いページから書き戻さない（X-20）を変えたら `ONLY=BW20 M=MB23,MB24,MB25 PORT=9900 node tests/mutants/mutate.mjs both`） |
+| まとめてポン（games/matomete/）の変更 | smoke ＋ `ONLY=QW4,QW5,QW6,QW7,QW8,QW9,QW10,QW11,QW12,QW13,QW14,QW15,QW18,QW19,QW21,QW22,QW23 node tests/run.mjs full`（ロジックだけなら `ONLY=QL1,QL2,QL3,QL4,QL5,QL6,QL7,QL8,QL9,QL10,QL11 node tests/run.mjs full`、数秒。ルール・保存・2回タップを変えたら `ONLY=QL1,…,QL11,QW1,…,QW19 M=MQ1,MQ2,…,MQ40 node tests/mutants/mutate.mjs both`。古いページから書き戻さない（X-20）を変えたら `ONLY=QW21 M=MQ42,MQ43,MQ44 PORT=9950 node tests/mutants/mutate.mjs both`） |
+| ミチビキ空港（games/michibiki/）の変更 | smoke ＋ `ONLY=FW6,FW7,FW8,FW9,FW10,FW11,FW12,FW13,FW14,FW15,FW16,FW17,FW18,FW19,FW22,FW23,FW24 node tests/run.mjs full`（ロジックだけなら `ONLY=FL1,FL2,FL3,FL4,FL5,FL6,FL7,FL8,FL9,FL10,FL11,FL12,FL13 node tests/run.mjs full`、約 20 秒。ルール・保存・出現を変えたら `ONLY=FL1,…,FL13,FW1,…,FW24 M=MF1,…,MF32 node tests/mutants/mutate.mjs both`） |
+| もくもくこうば（games/seizai/）の変更 | smoke ＋ `ONLY=WW7,WW8,WW9,WW10,WW11,WW12,WW13,WW14,WW15,WW16,WW17,WW18,WW19,WW20,WW21,WW22,WW23,WW24,WW25,WW26,WW27,WW28 node tests/run.mjs full`（ロジックだけなら `ONLY=WL1,WL2,WL3,WL4,WL5,WL6,WL7,WL8,WL9,WL10,WL11,WL12,WL13,WL14 node tests/run.mjs full`。経済・保存・閉じた間・船・注文を変えたら `ONLY=WL1,…,WL11,WW1,…,WW19 M=MW1,…,MW50 PORT=9640 WORKERS=2 node tests/mutants/mutate.mjs both`。10 個ずつ M を区切って流す。さいしょから（契約 §21）を変えたら `ONLY=WW25 M=MW61,MW62,MW63,MW64 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`。古いページから書き戻さない（X-20）を変えたら `ONLY=WW26 M=MW65,MW66,MW67 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`。かんな の速さ・もう強くできない つまり（契約 §23・SZ-08）を変えたら `ONLY=WL14,WW27,X1 M=MW68,MW69 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`） |
+| ちきゅうを守れ！ほしくだき（games/asteroid/）の変更 | smoke ＋ `ONLY=KW8,KW9,KW10,KW11,KW12,KW13,KW14,KW15,KW16,KW17,KW20,KW21,KW23,KW25 node tests/run.mjs full`（ロジックだけなら `ONLY=KL1,…,KL19 node tests/run.mjs full`。ルール・保存・中断・画面の流れを変えたら `WORKERS=3 PORT=9650 ONLY=KL1,…,KL19,KW1,…,KW25,X1 M=MK1,…,MK74 node tests/mutants/mutate.mjs full`（全部で 1 時間あまり。直した所の MK だけに絞ってよい）。KW3（はね返し）を変えたら 20 回続けて流して 0 回落ちることを確かめる（T-19）。ロジックの数値を変えたら main.js の gostar の表 `ARMS` も測り直す（design.md §10.68）） |
 | 遠隔テストの中継（tests/relay/・common/debug-relay.js・common/debug.js の relay の部分） | smoke ＋ `ONLY=RL1,RL2,RL3,RL4,RL5,RL6,RL7,RL8,RL9,RL10,RL11,RL12 node tests/run.mjs full` を Chromium と WebKit（`BROWSER=webkit WORKERS=1`）の両方で。ONLY は番号を並べる形（`ONLY=RL` では絞れない）。約 30〜50 秒 |
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
 | テストを変えたとき・中身の仕組み（点数計算・保存・日付・ルール）を変えたとき | `node tests/mutants/mutate.mjs both`（そのゲームの分だけ。テストがわざと入れた不具合を見つけられるか） |
 
-- **公開の条件**は Chromium smoke・full（WORKERS=2）と WebKit smoke（WORKERS=1）の合格。変異テストは中身の仕組み（点数計算・保存・日付・ルール）を変えたときだけ、そのゲームの分だけ流す。表示・見た目・文言だけの修正では流さない。
+- **公開の条件**は Chromium smoke・full（WORKERS=3。v38 から。自宅 PC は CLAUDE.md 5 章の目安）と WebKit smoke（WORKERS=1）の合格。変異テストは中身の仕組み（点数計算・保存・日付・ルール）を変えたときだけ、そのゲームの分だけ流す。表示・見た目・文言だけの修正では流さない。
 - **smoke**（約 110 確認）：データが消えない・メニューへ戻れる・ボタンが画面内（最も狭い／最も低い画面）・オフラインで開く・更新で旧キャッシュが消える・基本操作・効果音のオン/オフ・ダブルタップ抑止など、壊れると困るもの。
 - **full**（約 280 確認）：smoke ＋ 境界値（CSS の切り替わり・桁数・0.8 秒・3 秒）、ペアワイズの 12 画面、操作の細部、全部の効果音、タッチ操作一式。
 
@@ -106,26 +111,26 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 | D | データ保護・互換 | 途中経過・ベストの保存（キリトリは D10）、壊れた／古い保存データ |
 | E | 閉じ込めなし | どの画面・カードからもメニューへ戻れる（キリトリは E6）、低い画面でカードのボタンに届く、メニューが最近遊んだ順に並ぶ（E7・E8。X-21。Ctrl・Meta・Shift・Alt つき・中ボタンのクリックでは入れない。X-23） |
 | S | オフライン・更新 | Service Worker：オフライン起動、旧版からの更新、遅い回線・無応答（3画面）、新しい版との食い違い |
-| V | 画面外・押せる・桁数 | 端末×向き×起動方法×画面（4画面）のペアワイズ、CSS の境界、7 桁のスコア。V2 は SE 横 Safari（568×270）のブロック・ピカッと 4 人が重ならない（X-17）。V8・V1 のスコア欄は文字の範囲の縦を行の高さで切り詰めて測る（T-13）。V12 はブロックの LEVEL・LINES 5 桁（99999）を 15 画面で確かめる（X-18。高さ 319 以下の横持ちはスコア欄を 162px に広げる） |
+| V | 画面外・押せる・桁数 | 端末×向き×起動方法×画面（4画面）のペアワイズ、CSS の境界、7 桁のスコア。V2 は SE 横 Safari（568×270）のブロック・ピカッと 4 人が重ならない（X-17）。V1・V12 のスコア欄は文字の範囲の縦を行の高さで切り詰めて測る（T-13）。V12 はブロックの LEVEL・LINES 5 桁（99999）を 15 画面で確かめる（X-18。高さ 319 以下の横持ちはスコア欄を 162px に広げる）。V13 はメニューのベストの最大の桁（全部のゲームの「ありうる長い記録」が SE 縦・SE 横・iPhone 13 縦で「…」で切れず 2 行まで、ゼンマイの「45 / 45」は行の途中で割れない。MT-02）。V14 は最初のカードが SE 縦横 4 画面でスクロールなしで押せる・遊び方の表の説明の欄が潰れない（X-15・PK-39）。V8（ブロックのスコア欄 4 桁・13 画面）は V12 と同じ画面・もっと長い桁で確かめているので v38 で消した（欠番） |
 | P | 遊べること | キー・ボタン・スワイプ、0.8 秒の待ち、クリア、演出、キリトリの切る・落とす・爆弾・コンボ（P8・P9） |
-| A | 効果音 | 音名の一致、操作で鳴る（キリトリは A6）、オフなら鳴らない、メニューの tap |
+| A | 効果音 | 音名の一致、操作で鳴る（キリトリは A6）、オフなら鳴らない、メニューの tap。A7 は♪の読み上げの名前（全部のゲームで aria-label は状態によらず同じ・オン／オフは aria-pressed だけ・ariaSnapshot にも オン／オフ が出ない。X-25）。A8 は同時発音の上限を使い切っても結果の音は鳴る（MT-03。smoke・node） |
 | T | タッチ操作 | ダブルタップ拡大の抑止、タッチでの音の準備（unlock）、操作一式（キリトリは T6） |
 | I | いろコード | logic.js（score・乱数・日付・保存データの検証）を Node で直接、画面（基本操作・保存・メニューへ戻れる・画面内・オフライン・境界値・色覚・効果音・ダブルタップ抑止・日付の変わり目・最大値・保存不可・日付の仕様） |
 | ZL | ゼンマイさんぽ 計算ロジック（Node） | `games/zenmai/logic.js`・`stages.js` を直接呼ぶ：15 ステージの形と★3 が取れること、simulate・starsFor・bestTurns・validateProgress の境界値、ZL7 はネジの入力 input.js（持ち替え・cancel・速い回転・中心付近）（zenmai-logic.mjs） |
 | Z | ゼンマイさんぽ 画面 | ZU0 静的（DOM・読み込み順・sw.js・音名）／ZU1 データが消えない・壊れた保存／ZU2 メニューへ戻れる・遊び方／ZU3・ZU11 ボタンが画面内・44px／ZU4 オフライン／ZU5 1 ステージクリア／ZU6 境界値／ZU7 ＋/－/歩かせる だけで遊べる／ZU8・ZU13 円ドラッグ（CDP）／ZU9 効果音／ZU10 ダブルタップ抑止（CDP）／ZU12 最後のステージ・全 15 ステージ・動きを減らす設定／ZU14 警告の基準（ネジと舞台・限界の1回転手前）・止まった後のゲージ・「つぎ」の目印・初回の遊び方（zenmai-ui.mjs） |
 | PK | ピカッと早押し | logic.js（Node：勝ち・フライング・負の時刻・3点先取・5回・引き分け・redoRound・validateBestSolo）、input.js（Node：受付の窓・pointerId・キー・timeStamp）、静的（APP_FILES・読み込み順・音名）、画面（よーい・一時停止・回数表示・ベスト更新・終わり方）、保存（bestSolo）、戻れる、配置（隅が重ならない・2人は対角）、最大桁、効果音、ダブルタップ抑止、オフライン、実イベント（pointercancel・Enter／Space）（PK1〜PK18）。PK4 は結果カードの「メニューへ」が確認のカードを通して戻ることも見る。v31 の直し（full）：よーいの見た目・よーい中に押すと「いまは おさなくて いいよ。まってね」（フライングにしない）・設定の説明がモードで変わる・遊び方のやさしい言葉（PK19。PK-31・PK-32・PK-34）、対戦の途中で点が消えるときだけ「メニューへ」を確かめる（つづける／メニューへ もどる、フォーカスはつづける、出た直後 400ms は「メニューへ もどる」を押せない＝「メニューへ」の2度押しで点が消えない（R2））・「？」のカードにも「メニューへ」・点なし・れんしゅう・最終結果では確認なし（PK20。PK-33）、キーボード（閉じた後のフォーカスが body に落ちない・Enter と Space の押しっぱなしの repeat を無視（Space も repeat の keydown を何度か起こして確かめる。R3）・最終カードを待つ間の「？」が勝手に閉じない。PK21。PK-35）、#hint は変わった行だけ更新・音ボタンは aria-label「音」固定で aria-pressed だけ・黄の上の枠 3:1 以上（白 5px の内側に #111 3px）（PK22。PK-36・PK-37）。勝ち負けは pressFor(idx, ts) で確かめ、早送り中の実タップでは見ない（event.timeStamp は早送りされないため） |
-| HL | ハシわたり 計算ロジック（Node） | `games/hashi/logic.js`・`course.js` を直接呼ぶ：押した時間⇔茎の長さの境界と逆関数、resolve の端ちょうど・ぴったり・missBy・おしい、ボーナス 1→2→4→8→16→16、いのちと over、イミュータブル、コースの公平さ、validateBest・recordBest・validateFlag、読み込み順の誤り（HL1〜HL8）、ひとつ飛ばし（2つ先の端ちょうど・2つ分＋おまけ・ぴったりと重なる・間と行き過ぎは落ちる・届く所は画面の中。HL9）、高さの差（斜めの長さで届く・届かない・高い葉に短すぎ・どこまでもは平ら。HL10）、ステージ（K・難しさの上がり方・上限 50・同じ並び・公平さ・クリア・落ちたら最初から・ゴールの先へは飛ばせない・validateStage・recordStage。HL11）、旗（5 枚ごと・ゴールは旗にしない・落ちたら最後の旗から同じ並び・ひとつ飛ばしで旗を越えても取る・5 枚のステージは旗なし・どこまでもは旗なし）と落ちた所の言葉 zone（short・long・between・aim・over。HL12）（hashi-logic.mjs） |
-| HW | ハシわたり 画面 | DOM と `window.HashiGame`（getState・holdFor・lenToCross・setRandom・skip）で：渡る・表示の一致、落ちる・いのち・もう一度、ベストの保存、戻れる、画面内・横向きの重なり、中断（hidden・遊び方）、キーボード、タイマーの片付け、時計、効果音、ダブルタップ抑止、設定、オフライン（HW1〜HW13）、タップ式（HW14）、ひとつ飛ばし（lenToSkip・とばしの案内と音・SE 縦横で届く所が canvas の中。HW15）、ステージ（はじめの「どっちで あそぶ？」・わたった n/K・最初から・クリアのカードと hashi.stage・つぎへ・どこまでもは今どおり。HW16 smoke）、クリアの演出（clearFx・タップで早送り・400ms・隠すと止まる・動きを減らす・キーボード・壊れた hashi.stage・SE 縦横の高い葉とカード。HW17）、旗（5 枚目で「はた！」と音・数字が跳ねる、旗の後に落ちると「どこから やりなおす？」のカード（さいごの はたから・さいしょから・400ms）、ひとつ飛ばしで旗を越える、「とばし！ 2まい すすんだ」、旗は保存しない、5 枚のステージはカードなし。HW18 smoke）、レビュー後の直し（SE 縦横でカード・案内の文が語の途中で折れない・クリアカードの2行・ボタンの文・短い遊び方がスクロールなしで見える・落ちた所の言葉・花火（同時3発・1発ごとに音・蓮は枚数ぶん・CPU 4倍遅くで描画 34ms 以内）・ステージ 1 から高さの差・茎の上の余白 8px。HW19）、v31 の直し（隠す・遊び方で案内が残らない・茎が最大で grow を止め tap と光で知らせる・短すぎる押下の案内・最後のいのちは sinking でぽちゃんの後にカード・data-holding は main.js だけ・最大のまま隠しても案内が「ながく おして、はなしてね」に戻る（R1）・結果の見出し「Nまい わたった！」と 0 回・設定の説明（読み上げの名前は「ゆっくりモード」などだけで、オン／オフと ○● は入れず aria-pressed で状態。R4）・iPhone ではキーボードの行なし・カードの間 #playView は inert で #sr は外・閉じたら #stageWrap へフォーカス・♪の名前は「効果音」だけ・影とぴったり印が 3:1 以上。HW21）（hashi-ui.mjs）。タップ式（hashi.tap）は HW14、読み上げは #sr（aria-live=polite、結果ごとに1文。#hint は読ませない）、`HashiRender.layout(W, H, viewW, maxLen, lift)` は縮尺の純粋な関数（HW19 が使う）、`HashiInput.createCore` は onHoldStart が false を返したら down も false（押していないことにする。HW14）。初回だけ自動で出る遊び方は短い3行（#card[data-help=short]）、設定のある詳しい版は「？」（data-help=full）。開くと出る「どっちで あそぶ？」は、テストの gotoH が mode（既定 endless）のボタンで選ぶ |
-| BL | いろびん 計算ロジック（Node） | `games/irobin/logic.js` を直接呼ぶ：定数・COLORS（9色で色と記号がすべて違う）・paramsFor が面の表どおり（境界と壊れた値）、pourCheck・applyMove の決まりと reason の順・注ぐ量（見えている同じ色の続きと空きの小さい方）、そろう・届ける・届けた瓶は消える（瓶が1本減り空き瓶は増えない・残りは詰めて id は変わらない）・待ち瓶・連鎖の順・全部届けて won、イミュータブルとおかしな引数、生成（1〜60 面と 1000 面が決定的・各色4段・最初からそろった瓶なし・隠れの形・solutionIds を再生すると won・合計3秒以内・1 面は最初の手で詰まない）、ソルバー（解けない盤・待ち瓶がある盤で手の位置がずれない・布の無い面では注文の順で解けるかどうかは変わらない・上限で exhausted）、保存の検証（validateBest・validateSave の v:3 と古い v:2・v:1・makeSave・recordBest・validateFlag・replay は瓶の id）、詰み、隠れた色、静的（音名 unveil を含む・読み込み順・APP_FILES・メニューの名前が NAME と同じ）、BL11 は生成した面の解を通して瓶の本数・空き瓶・id・途中保存の再生。布の瓶（契約 §17）：BL12 は pourCheck の covered の順・布の瓶へ／から注げない・届けた数が cover に届いた手で unveiled（1人早くは取れない）・空き瓶の布で空き瓶が増える・隠れの面は一番上だけ・ソルバーも布を考える、BL13 は 1〜2000 面の生成（布の表・中身は空き瓶か4段で同じ色4段なし・cover とその幅（§17.9）・25〜600 面の布の面の半分以上で布が効いている・solution を再生すると won で布は全部取れる・fallback 2 なし・1面 300ms 以内）、BL14 は保存 v:3 の途中保存（布が取れる前・後）の再生と v:2・v:1 の手を捨てる（BL1〜BL14、irobin-logic.mjs） |
-| BW | いろびん 画面 | DOM と `window.IrobinGame`（getState・pick・pour・solution・skip・setLevel・setState）で：注ぐ・表示の一致（隠れの段は data-color が空）、solution() で1面クリア・ベスト保存・next、途中の再読み込みと壊れた保存・ほかのゲームのキー、メニューへ戻れる、画面内（SE 縦横・iPad・11本の面・16桁・ヒントの高さ・カード）、お助け（1手もどす・やりなおし）、詰み、キーボード、中断（hidden・遊び方）、効果音の順、色覚（記号）、動きを減らす、オフライン、ダブルタップ抑止（CDP）、メニューのカード、詰み予備軍・届けの連鎖の長さ（6本以上の連鎖を 20 面から探す。布が同じ手で取れる手は除く）・めやすと★・遊び方の閉じるボタン（BW16）、届けた瓶の跡は空いたまま（画面の瓶が1本減る・残りは動かず位置が同じ・跡は押しても何もしない・data-index は state の位置／data-id と aria-label・数字キーの番号は置き場所＝id+1 で固定・空いた場所の数字キーは何もしない・矢印は跡を飛ばす・演出中に押した瓶が正しい瓶を選ぶ・再読み込み v:3）（BW17、smoke）、布の瓶（data-covered・data-cover-left・aria-label・押しても選べずヒントと deny・はじめての布のヒントと irobin.cloth・届けて布が取れる・音 unveil・「あきびんが でてきた！」・動きを減らす設定で 0.5 秒以内・再読み込み）（BW18、smoke）（BW1〜BW18、irobin-ui.mjs） |
+| HL | ハシわたり 計算ロジック（Node） | `games/hashi/logic.js`・`course.js` を直接呼ぶ：押した時間⇔茎の長さの境界と逆関数、resolve の端ちょうど・ぴったり・missBy・おしい、ボーナス 1→2→4→8→16→16、いのちと over、イミュータブル、コースの公平さ、validateBest・recordBest・validateFlag、読み込み順の誤り（HL1〜HL8）、ぴったり 3 回で ♥ +1（`HEAL_EVERY`・上限 3・ステージは無し・`nextBonus`・`healIn`。HS-09。HL13）、ひとつ飛ばし（2つ先の端ちょうど・2つ分＋おまけ・ぴったりと重なる・間と行き過ぎは落ちる・届く所は画面の中。HL9）、高さの差（斜めの長さで届く・届かない・高い葉に短すぎ・どこまでもは平ら。HL10）、ステージ（K・難しさの上がり方・上限 50・同じ並び・公平さ・クリア・落ちたら最初から・ゴールの先へは飛ばせない・validateStage・recordStage。HL11）、旗（5 枚ごと・ゴールは旗にしない・落ちたら最後の旗から同じ並び・ひとつ飛ばしで旗を越えても取る・5 枚のステージは旗なし・どこまでもは旗なし）と落ちた所の言葉 zone（short・long・between・aim・over。HL12）（hashi-logic.mjs） |
+| HW | ハシわたり 画面 | DOM と `window.HashiGame`（getState・holdFor・lenToCross・setRandom・skip）で：渡る・表示の一致、落ちる・いのち・もう一度、ベストの保存、戻れる、画面内・横向きの重なり、中断（hidden・遊び方）、キーボード、タイマーの片付け、時計、効果音、ダブルタップ抑止、設定、オフライン（HW1〜HW13）、タップ式（HW14）、ひとつ飛ばし（lenToSkip・とばしの案内と音・SE 縦横で届く所が canvas の中。HW15）、ステージ（はじめの「どっちで あそぶ？」・わたった n/K・最初から・クリアのカードと hashi.stage・つぎへ・どこまでもは今どおり。HW16 smoke）、クリアの演出（clearFx・タップで早送り・400ms・隠すと止まる・動きを減らす・キーボード・壊れた hashi.stage・SE 縦横の高い葉とカード。HW17）、旗（5 枚目で「はた！」と音・数字が跳ねる、旗の後に落ちると「どこから やりなおす？」のカード（さいごの はたから・さいしょから・400ms）、ひとつ飛ばしで旗を越える、「とばし！ 2まい すすんだ」、旗は保存しない、5 枚のステージはカードなし。HW18 smoke）、レビュー後の直し（SE 縦横でカード・案内の文が語の途中で折れない・クリアカードの2行・ボタンの文・短い遊び方がスクロールなしで見える・落ちた所の言葉・花火（同時3発・1発ごとに音・蓮は枚数ぶん・CPU 4倍遅くで描画 34ms 以内）・ステージ 1 から高さの差・茎の上の余白 8px。HW19）、v31 の直し（隠す・遊び方で案内が残らない・茎が最大で grow を止め tap と光で知らせる・短すぎる押下の案内・最後のいのちは sinking でぽちゃんの後にカード・data-holding は main.js だけ・最大のまま隠しても案内が「ながく おして、はなしてね」に戻る（R1）・結果の見出し「Nまい わたった！」と 0 回・設定の説明（読み上げの名前は「ゆっくりモード」などだけで、オン／オフと ○● は入れず aria-pressed で状態。R4）・iPhone ではキーボードの行なし・カードの間 #playView は inert で #sr は外・閉じたら #stageWrap へフォーカス・♪の名前は「効果音」だけ・影とぴったり印が 3:1 以上。HW21）、グラデーションを毎フレーム作らない（HS-10。HW22）、v37 の倍々と回復の案内（どこまでもで落ちたあとぴったりを 3 回続けると ♥ が 1 つ戻る・満タンでは戻らない・案内は SE 縦横で 2 行以内・遊び方の言葉。HS-09。HW23）（hashi-ui.mjs）。タップ式（hashi.tap）は HW14、読み上げは #sr（aria-live=polite、結果ごとに1文。#hint は読ませない）、`HashiRender.layout(W, H, viewW, maxLen, lift)` は縮尺の純粋な関数（HW19 が使う）、`HashiInput.createCore` は onHoldStart が false を返したら down も false（押していないことにする。HW14）。初回だけ自動で出る遊び方は短い3行（#card[data-help=short]）、設定のある詳しい版は「？」（data-help=full）。開くと出る「どっちで あそぶ？」は、テストの gotoH が mode（既定 endless）のボタンで選ぶ |
+| BL | いろびん 計算ロジック（Node） | `games/irobin/logic.js` を直接呼ぶ：定数・COLORS（9色で色と記号がすべて違う）・paramsFor が面の表どおり（境界と壊れた値）、pourCheck・applyMove の決まりと reason の順・注ぐ量（見えている同じ色の続きと空きの小さい方）、そろう・届ける・届けた瓶は消える（瓶が1本減り空き瓶は増えない・残りは詰めて id は変わらない）・待ち瓶・連鎖の順・全部届けて won、イミュータブルとおかしな引数、生成（1〜60 面と 1000 面が決定的・各色4段・最初からそろった瓶なし・隠れの形・solutionIds を再生すると won・合計3秒以内・1 面は最初の手で詰まない）、ソルバー（解けない盤・待ち瓶がある盤で手の位置がずれない・布の無い面では注文の順で解けるかどうかは変わらない・上限で exhausted）、保存の検証（validateBest・validateSave の v:3 と古い v:2・v:1・makeSave・recordBest・validateFlag・replay は瓶の id）、詰み、隠れた色、静的（音名 unveil を含む・読み込み順・APP_FILES・メニューの名前が NAME と同じ）、BL11 は生成した面の解を通して瓶の本数・空き瓶・id・途中保存の再生。布の瓶（契約 §17）：BL12 は pourCheck の covered の順・布の瓶へ／から注げない・届けた数が cover に届いた手で unveiled（1人早くは取れない）・空き瓶の布で空き瓶が増える・隠れの面は一番上だけ・ソルバーも布を考える、BL13 は 1〜2000 面の生成（布の表・中身は空き瓶か4段で同じ色4段なし・cover とその幅（§17.9）・25〜600 面の布の面の半分以上で布が効いている・solution を再生すると won で布は全部取れる・fallback 2 なし・1面 300ms 以内）、BL14 は保存 v:3 の途中保存（布が取れる前・後）の再生と v:2・v:1 の手を捨てる。BL15 は makeSave は最初の 2000 手まで・予備の面も verify（IB-09・IB-11）v37 の新しい仕掛け（契約 §19）：BL16 はちいさい びん（3 段まで・3 段そろっても栓にならない・布の面に出さない・ほかの面は前と同じ。IB-29）、BL17 はいろ きまりの びん、BL18 はかぎの びん、BL19 は出し方と生成（paramsFor の表・41〜600 面が全部作れて解ける・1 面 50ms 以内・保存 v:3 で同じ局面）、BL20（full）はわな手の割合が帯ごとに上がる（BL1〜BL20、irobin-logic.mjs） |
+| BW | いろびん 画面 | DOM と `window.IrobinGame`（getState・pick・pour・solution・skip・setLevel・setState）で：注ぐ・表示の一致（隠れの段は data-color が空）、solution() で1面クリア・ベスト保存・next、途中の再読み込みと壊れた保存・ほかのゲームのキー、メニューへ戻れる、画面内（SE 縦横・iPad・11本の面・16桁・ヒントの高さ・カード）、お助け（1手もどす・やりなおし）、詰み、キーボード、中断（hidden・遊び方）、効果音の順、色覚（記号）、動きを減らす、オフライン、ダブルタップ抑止（CDP）、メニューのカード、詰み予備軍・届けの連鎖の長さ（6本以上の連鎖を 20 面から探す。布が同じ手で取れる手は除く）・めやすと★・遊び方の閉じるボタン（BW16）、届けた瓶の跡は空いたまま（画面の瓶が1本減る・残りは動かず位置が同じ・跡は押しても何もしない・data-index は state の位置／data-id と aria-label・数字キーの番号は置き場所＝id+1 で固定・空いた場所の数字キーは何もしない・矢印は跡を飛ばす・演出中に押した瓶が正しい瓶を選ぶ・再読み込み v:3）（BW17、smoke）、布の瓶（data-covered・data-cover-left・aria-label・押しても選べずヒントと deny・はじめての布のヒントと irobin.cloth・届けて布が取れる・音 unveil・「あきびんが でてきた！」・動きを減らす設定で 0.5 秒以内・再読み込み）（BW18、smoke）面の番号 4〜8 桁は 1 段のまま（IB-30）（BW21）。最後の手まで保存された面はクリアのカードから（IB-22。BW22）、- キー・もういちど・SE 横の遊び方・記号 12px（IB-10・17・19・21。BW23）、手 0 のやりなおしは disabled（IB-13。BW6）、待っているお客さんのまばたき・止まっている間に描くのはその間だけ・裏と動きを減らす設定ではしない（IB-16。BW24）v37 の新しい仕掛け：ちいさい びんの見た目・はじめてのヒント・3 つまで（BW25）、いろ きまりの びんの札とヒント（BW26）、かぎの びんの錠と開く演出（BW27）、遊び方の行と SE 縦横（BW28）（BW1〜BW28、irobin-ui.mjs） |
 | QL | まとめてポン 計算ロジック（Node） | `games/matomete/logic.js` を直接呼ぶ：定数・COLORS、かたまり（上下左右・斜めは別）・1個は消せない、(n−2)² と全部消し +1000、落下と左詰め、終わりの判定、同じ種で同じ盤・最初から消せない盤を出さない、replay・保存の検証、イミュータブル・例外を出さない、1000 回の乱数プレイで不変条件（3 モード）、モードの記憶・のこりの記録・「おしい」の線（QL10）、§10 の まわりも消える・れんぞく・preview（QL11）（QL1〜QL11、matomete-logic.mjs） |
-| QW | まとめてポン 画面 | DOM と `window.MatometeGame`（state・tapCell・select・remove・undo・restart・newSeed・cellRect・isAnimating・skip）で：2回タップ（1回目は選ぶだけ・札「n こ ＋p てん」・data-selected・選び直し・盤の外と空のマスで選びをやめる・1個のマスはヒントと揺れ・消したあとの盤が別実装と同じ）（QW1）、保存（v:3・再読み込みで同じ局面と れんぞく・v:2・v:1 は同じ種の最初から・hidden で保存・壊れた保存 17 通りとベスト・保存不可・ほかのキー）（QW2）、どこからでも戻れる・遊び方は初回だけ（QW3）、静的：音名・読み込み順・APP_FILES（QW16、Node）、全部消し（種 187・お祝い・+1000・1620 点・カードの 0.6 秒ロック・終わった回を再開しない）（QW4）、終わり（ベストのキーの分け方・むずかしい⇔ふつう）（QW5）、お助け（1手もどす・U・さいしょからの確認）（QW6）、canvas の色＝state（はじめ・落下・左詰め）と cellRect（QW7）、画面内（SE 縦横・13 横・iPad・7 桁・12px・たてむきの案内・カード）（QW8）、キーボード（QW9）、動きを減らす（QW10）、効果音（QW11）、オフライン（QW12）、タッチの2回タップと拡大の抑止（QW13、CDP）、色覚・ベスト超えの目印（QW14）、メニューのカード（QW15）、やさしい・モードの記憶・のこりの記録・小さなお祝い（QW17）、2回目のずれ・明滅の停止・横向きのたてむき（QW18）、§10 まわりも消える（予告・波・れんぞく 2・ひろがる！・表示が消える・もどす／再読み込み・0.9 秒以内・動きを減らす）（QW19）（QW1〜QW19、matomete-ui.mjs） |
-| FL | ミチビキ空港 計算ロジック（Node） | `games/michibiki/logic.js` を直接呼ぶ：定数・COLORS（3色・hex と印が違う）・滑走路の置き方の決まり 1〜4・難しさの関数の境界（FL1）、直進・速さ・道をたどる・道の終わりで直進・間引き・MAX_PATH・reason・pickPlane（FL2）、着陸（区域と向きの境界の両側・wrongway は1回・入り直すとまた1回・区域の中で向きが直る・色違いと閉じた滑走路は素通り・着陸の動き中はぶつからない・guided と stats）（FL3）、ぶつかる・近すぎる・2組・3機・over・CRASH_BREATH（FL4）、跳ね返り（FL5）、色が増える・開いた直後の色・出る間隔・maxAlive・kindFor（FL6）、出現・左の辺の1機目・WARN_S・SAFE_SPAWN_D・辺の 15〜85%・決定的・Math.random（FL7）、保存の検証（FL8）、イミュータブル・例外なし・1000 種の不変条件（FL9）、autoplay の調整の目安（FL10、full）、静的：読み込み順・音名・APP_FILES（FL11）、おまかせの道 240 通り（FL12）（michibiki-logic.mjs） |
-| FW | ミチビキ空港 画面 | DOM と `window.MichibikiGame`（getState・manual・tick・drawPath・guide・spawn・restart など）で：なぞって着陸・逆向きは通り過ぎる（FW1、lib.mjs の `mbDrag`）、ぶつかる・♥・終わりのカードの 0.6 秒・もういちど・ベスト（FW2）、壊れた保存・保存不可・ほかのキー（FW3）、どこからでも戻れる（FW4）、hidden・遊び方で止まる（FW5）、画面内 8 画面・5 桁・倍率（FW6）、向きの変化（FW7）、キーボード（FW8）、タップでおまかせ（FW9）、効果音（FW10）、色覚の印とヒント（FW11）、動きを減らす・0.4 秒の停止（FW12）、色が増える（FW13）、遊び方（FW14）、タッチ（FW15、CDP）、オフライン（FW16）、メニュー（FW17）、性能（FW18、CDP）、矢印と逆向きのヒント（FW19）、契約 §19 の直し：うしろをつかむ・長押しはタップ（FW20、smoke）、すぐ保存・さいしょからの確認・#overTip（FW21、smoke）、pageshow（FW22）、2本目の指（FW23、CDP）（michibiki-ui.mjs） |
-| WL | もくもくこうば 計算ロジック（Node） | `games/seizai/logic.js` を直接呼ぶ：定数と表・式、流れ（つまり・bottleneck・木が尽きない）、応援とよびこみ、節目、大きな船、大口の注文、閉じた間（時計が戻る・0時またぎを TZ 2 通りの別プロセスで・壊れた日付・上限・半分の速さ）、保存、決定的・イミュータブル、1000 回の乱数の操作の不変条件（WL1〜WL10、smoke）、工程：かんそう・かんな の並びと使える段・いた は かわいた かくざい を使う・みなと は つるつるいた・v25 の形の保存を読んで止まらない（WL12、smoke）、道具の段階：TOOL_LV・TOOLS・toolTier の境目・toolOf の next・buy の toolUp は段が上がった買い物だけ（WL13、smoke）、自動プレイの目安（WL11、full。節目の直後 10 分の稼ぎを含む）（seizai-logic.mjs、担当A） |
-| WW | もくもくこうば 画面 | DOM と `window.SeizaiGame`（getState・logic・advance・away・tapZone・buy・setState など）、`?debug=1` の命令（gostage・neworder・ships）で：遊べる・#money／#goalText／シートの値段が logic の関数と同じ・deny（WW1）、節目と #stageCard の 400ms・bgRedraws（WW2）、起動のるすの あいだ 90 秒・30 秒・3 時間・時計が戻る・壊れた savedAt（WW3）、0時またぎを日本とロサンゼルス・hidden→visible・二重に足さない・時計を戻す（WW4）、保存・10 秒ごと・bak・保存不可・ほかのキー（WW5）、どこからでも戻れる（WW6）、注文（WW7）、大きな船と最大の桁（WW8）、画面内 7 画面・遊び方（WW9）、性能（WW10、CDP）、中断と pagehide（WW11）、キーボード（WW12）、動きを減らす（WW13）、効果音（WW14）、メニュー・NAME・DG1・touch-action（WW15）、オフライン（WW16）、タッチ（WW17、CDP）、レビュー後の直し：遊び方の間だけ止まる・rAF だけが止まった間・押した部署が見える・advance＝step（WW18）、レビュー後の直し B：注文カードは最初の1回だけ自動で開く（2回目からは札と #hint）・シートを開いている間は閉じてから・おかえり が注文より先・おかえり／エンディングの文が見出しと重ならない・注文の札の文・最初の一手の「おして！」・森が止まったときの案内・買える印・広げるボタンの2段・節目カードの絵・マネージャーの1行・みなとで景色へスクロール（WW19）、待つ理由：なえぎのシートと読み上げに「きりかぶが まだ ないよ。きこりを ふやすと」・はこぶ・かわむき にも「きこりを ふやそう」・つまりの きこり には出ない・切り株まで歩いて植える（WW20）、新しい工程：かんそう・かんな の場所とシートの値段・つまりの札・節目カードの「ふえたもの」・みなと の めあて・v25 の形の保存（WW21）、道具：Lv4→5 の「のこぎりに なった！」・音 tool・lastTool・「つぎ：…（Lv15）」・全部署の名前が TOOLS と同じ・Lv 1・5・15・30 で絵が変わる（WW22）、画面を広く：SE 縦の上の帯 104px 以下・#scene 6 割以上・開いた場所の上 44px が見える・#scrollCue・横向きのシート（WW23）、はこぶ人の往復と「まち」：録画の局面（こうば）で 30 秒の間に門まで 3 回以上（`getState().carryTrips`）・はこぶ・かわむき・かくざい の「まち」（`getState().waits`）が出続けない・はこぶ のシートに待つ文なし・動きを減らす設定でも往復・本当に前の品が来ないときは「まち」・きこりが つまって切り株が ときどきしか できないときは なえぎ（猶予 3 秒）に「まち」（WW24）、さいしょから（契約 §21・SZ-07）：SE 縦・横で #helpOk・#helpReset・#resetNo・#resetYes が画面内・44px 以上・「やめる」が先で primary・やめる／Esc で保存が変わらない・実行で save と bak を消して開き直し best・help・save.v<n> は残る・開き直す前の pagehide で古い保存を書き戻さない・消せないときは #hint「けせなかった」（WW25）。smoke は WW1〜WW6（seizai-ui.mjs） |
-| KL | ちきゅうを守れ！ほしくだき 計算ロジック（Node） | `games/asteroid/logic.js` を直接呼ぶ（担当A・数値の調整担当が持つ）：式・星の形・当たり・はなれたかたまり・近づく・クリア・2択・保存・決定的・自動プレイの目安・不変条件 |
-| KW | ちきゅうを守れ！ほしくだき 画面 | DOM と `window.AsteroidGame`（getState・logic・advance・upgrade・unlock・choose・setState・save）、`?debug=1` の命令（win・lose）で：遊べる・表示の一致（formatKakera・upCostOf・dpsOf・progressOf）（KW1）、2択（400ms・止まる・再読み込みで同じ候補）（KW2）、はね返し（「あと N%」・残る・自動で次）（KW3）、場を押しても何も起きない（fly・bounce・clear）（KW4）、クリアとエンディング（KW5）、保存・壊れた保存・bak（KW6）、戻る（KW7）／full：画面内（最大の桁・SE 横）（KW8）、長い名前の折り返し・遊び方（KW9）、性能（CDP）（KW10）、中断（KW11）、キーボード（KW12）、動きを減らす（KW13）、効果音（KW14）、メニュー・NAME の一致（KW15）、オフライン（KW16）、タッチ（CDP）（KW17）、§18 で足したもの：区切りの帯・もらい直せない・ms の保存（KW18）、クリアの帯の時間・ベスト・ちきゅうまで・bestT の保存と壊れた値（KW19）、◎ と 2択の案内・gostar（KW20、full）、さいしょから（契約 §19・AS-05）：#helpRestart → 確認 #restartCard（本文「いまの ほし・かけら・ぶきは ぜんぶ きえるよ。ベストの きろくは のこるよ。」・「やめる」が先で primary・出た直後 400ms は押せない・場は止まる）・やめる／Esc で保存が変わらない・実行で save と bak を消して ほし 1 から、best・help は残る・直後の pagehide／hidden で古い保存を書き戻さない・消せないときは古い状態のまま続けて #hint「けせなかったよ。もう いちど ためしてね」・SE 縦横で画面内 44px 以上（KW21、full） |
+| QW | まとめてポン 画面 | DOM と `window.MatometeGame`（state・tapCell・select・remove・undo・restart・newSeed・cellRect・isAnimating・skip）で：2回タップ（1回目は選ぶだけ・札「n こ ＋p てん」・data-selected・選び直し・盤の外と空のマスで選びをやめる・1個のマスはヒントと揺れ・消したあとの盤が別実装と同じ）（QW1）、保存（v:3・再読み込みで同じ局面と れんぞく・v:2・v:1 は同じ種の最初から・hidden で保存・壊れた保存 17 通りとベスト・保存不可・ほかのキー）（QW2）、どこからでも戻れる・遊び方は初回だけ（QW3）、静的：音名・読み込み順・APP_FILES（QW16、Node）、全部消し（種 187・お祝い・+1000・1620 点・カードの 0.6 秒ロック・終わった回を再開しない）（QW4）、終わり（ベストのキーの分け方・むずかしい⇔ふつう）（QW5）、お助け（1手もどす・U・さいしょからの確認）（QW6）、canvas の色＝state（はじめ・落下・左詰め）と cellRect（QW7）、画面内（SE 縦横・13 横・iPad・7 桁・12px・たてむきの案内・カード）（QW8）、キーボード（QW9）、動きを減らす（QW10）、効果音（QW11）、オフライン（QW12）、タッチの2回タップと拡大の抑止（QW13、CDP）、色覚・ベスト超えの目印（QW14）、メニューのカード（7 桁の 9,999,999 てん も省略せず 2 行まで。MT-02）（QW15）、やさしい・モードの記憶・のこりの記録・小さなお祝い（QW17）、2回目のずれ・明滅の停止・横向きのたてむき（QW18）、§10 まわりも消える（予告・波・れんぞく 2・ひろがる！・表示が消える・もどす／再読み込み・0.9 秒以内・動きを減らす）（QW19）、v34 の小さな直し（盤の外ならヘッダー・ヒント・点数の欄を押しても選びをやめる・？は遊び方を開く＝MT-01、568×270 の終わりのカードがスクロールなし＝MT-13、「れんぞく」の札が盤にかかるのは 10px まで＝MT-16）（QW22）v35 の小さな直し（「のこり」が 5 桁でも欄に収まる＝MT-17、SE 縦 Safari の終わりのカードがスクロールなし＝MT-18）（QW23）（QW1〜QW23、matomete-ui.mjs） |
+| FL | ミチビキ空港 計算ロジック（Node） | `games/michibiki/logic.js` を直接呼ぶ：定数・COLORS（3色・hex と印が違う）・滑走路の置き方の決まり 1〜4・難しさの関数の境界（FL1）、v37 の置き方 3 通り（`PLAN_COUNT`・`RUNWAY_PLANS`・6 つとも決まり 1〜4・`newGame` の plan・1 機目・各置き方の着陸。MC-15。FL13）、直進・速さ・道をたどる・道の終わりで直進・間引き・MAX_PATH・reason・pickPlane（FL2）、着陸（区域と向きの境界の両側・wrongway は1回・入り直すとまた1回・区域の中で向きが直る・色違いと閉じた滑走路は素通り・着陸の動き中はぶつからない・guided と stats）（FL3）、ぶつかる・近すぎる・2組・3機・over・CRASH_BREATH（FL4）、跳ね返り（FL5）、色が増える・開いた直後の色・出る間隔・maxAlive・kindFor（FL6）、出現・左の辺の1機目・WARN_S・SAFE_SPAWN_D・辺の 15〜85%・決定的・Math.random（FL7）、保存の検証（FL8）、イミュータブル・例外なし・1000 種の不変条件（FL9）、autoplay の調整の目安（FL10、full。v37 で置き方 1・2 の straight も足した）、静的：読み込み順・音名・APP_FILES（FL11）、おまかせの道 240 通り（FL12）（michibiki-logic.mjs） |
+| FW | ミチビキ空港 画面 | DOM と `window.MichibikiGame`（getState・manual・tick・drawPath・guide・spawn・restart など）で：なぞって着陸・逆向きは通り過ぎる（FW1、lib.mjs の `mbDrag`）、ぶつかる・♥・終わりのカードの 0.6 秒・もういちど・ベスト（FW2）、壊れた保存・保存不可・ほかのキー（FW3）、どこからでも戻れる（FW4）、hidden・遊び方で止まる（FW5）、画面内 8 画面・5 桁・倍率（FW6）、向きの変化（FW7）、キーボード（FW8）、タップでおまかせ（FW9）、効果音（FW10）、色覚の印とヒント（FW11）、動きを減らす・0.4 秒の停止（FW12）、色が増える（FW13）、遊び方（FW14）、タッチ（FW15、CDP）、オフライン（FW16）、メニュー（FW17）、性能（FW18、CDP）、矢印と逆向きのヒント（FW19）、契約 §19 の直し：うしろをつかむ・長押しはタップ（FW20、smoke）、すぐ保存・さいしょからの確認・#overTip（FW21、smoke）、pageshow（FW22）、2本目の指（FW23、CDP）、v37 の置き方：回ごとに前と違う置き方・描いた矢印が滑走路と同じ・変わった回の最初の案内（FW24）（michibiki-ui.mjs） |
+| WL | もくもくこうば 計算ロジック（Node） | `games/seizai/logic.js` を直接呼ぶ：定数と表・式、流れ（つまり・bottleneck・木が尽きない）、応援とよびこみ、節目、大きな船、大口の注文、閉じた間（時計が戻る・0時またぎを TZ 2 通りの別プロセスで・壊れた日付・上限・半分の速さ）、保存、決定的・イミュータブル、1000 回の乱数の操作の不変条件（WL1〜WL10、smoke）、工程：かんそう・かんな の並びと使える段・いた は かわいた かくざい を使う・みなと は つるつるいた・v25 の形の保存を読んで止まらない（WL12、smoke）、道具の段階：TOOL_LV・TOOLS・toolTier の境目・toolOf の next・buy の toolUp は段が上がった買い物だけ（WL13、smoke）、かんな の直し：みなと で全部さいだい・はやい でも つまりが かんな でない・かんな の速さ（1ぷんに N まい）の式・もう強くできない部署 `maxedOut`・次の段で もっと強くできるか `moreNextStage`（WL14、smoke。SZ-08・レビュー S1）、自動プレイの目安（WL11、full。節目の直後 10 分の稼ぎを含む）（seizai-logic.mjs、担当A） |
+| WW | もくもくこうば 画面 | DOM と `window.SeizaiGame`（getState・logic・advance・away・tapZone・buy・setState など）、`?debug=1` の命令（gostage・neworder・ships）で：遊べる・#money／#goalText／シートの値段が logic の関数と同じ・deny（WW1）、節目と #stageCard の 400ms・bgRedraws（WW2）、起動のるすの あいだ 90 秒・30 秒・3 時間・時計が戻る・壊れた savedAt（WW3）、0時またぎを日本とロサンゼルス・hidden→visible・二重に足さない・時計を戻す（WW4）、保存・10 秒ごと・bak・保存不可・ほかのキー（WW5）、どこからでも戻れる（WW6）、注文（WW7）、大きな船と最大の桁（WW8）、画面内 7 画面・遊び方（WW9）、性能（WW10、CDP）、中断と pagehide（WW11）、キーボード（WW12）、動きを減らす（WW13）、効果音（WW14）、メニュー・NAME・DG1・touch-action（WW15）、オフライン（WW16）、タッチ（WW17、CDP）、レビュー後の直し：遊び方の間だけ止まる・rAF だけが止まった間・押した部署が見える・advance＝step（WW18）、レビュー後の直し B：注文カードは最初の1回だけ自動で開く（2回目からは札と #hint）・シートを開いている間は閉じてから・おかえり が注文より先・おかえり／エンディングの文が見出しと重ならない・注文の札の文・最初の一手の「おして！」・森が止まったときの案内・買える印・広げるボタンの2段・節目カードの絵・マネージャーの1行・みなとで景色へスクロール（WW19）、待つ理由：なえぎのシートと読み上げに「きりかぶが まだ ないよ。きこりを ふやすと」・はこぶ・かわむき にも「きこりを ふやそう」・つまりの きこり には出ない・切り株まで歩いて植える（WW20）、新しい工程：かんそう・かんな の場所とシートの値段・つまりの札・節目カードの「ふえたもの」・みなと の めあて・v25 の形の保存（WW21）、道具：Lv4→5 の「のこぎりに なった！」・音 tool・lastTool・「つぎ：…（Lv15）」・全部署の名前が TOOLS と同じ・Lv 1・5・15・30 で絵が変わる（WW22）、画面を広く：SE 縦の上の帯 104px 以下・#scene 6 割以上・開いた場所の上 44px が見える・#scrollCue・横向きのシート（WW23）、はこぶ人の往復と「まち」：録画の局面（こうば）で 30 秒の間に門まで 3 回以上（`getState().carryTrips`）・はこぶ・かわむき・かくざい の「まち」（`getState().waits`）が出続けない・はこぶ のシートに待つ文なし・動きを減らす設定でも往復・本当に前の品が来ないときは「まち」・きこりが つまって切り株が ときどきしか できないときは なえぎ（猶予 3 秒）に「まち」（WW24）、さいしょから（契約 §21・SZ-07）：SE 縦・横で #helpOk・#helpReset・#resetNo・#resetYes が画面内・44px 以上・「やめる」が先で primary・やめる／Esc で保存が変わらない・実行で save と bak を消して開き直し best・help・save.v<n> は残る・開き直す前の pagehide で古い保存を書き戻さない・消せないときは #hint「けせなかった」（WW25）、もう強くできない つまり（契約 §23・SZ-08）：みなと で全部さいだい・はやい の局面で つまりが かんな でなく かんな のシートが「1ぷんに 849まい」・つまりの札（`getState().jamTag`）が「ぜんぶ さいだい！」・場所の data-maxed=1 と読み上げとシートに「おそい」が無い・ほかの場所に「〇〇を ふやそう」が無い・「もうかる」にすると「ここが おそい」に戻る・こうじょう で全部さいだい・はやい の つまり（みせ）は シート「つぎの だんで もっと ふやせるよ」で「これいじょう」と言わない（レビュー S1）（WW27）。もうかる／はやい の ✓ は見た目だけで読み上げの名前（ariaSnapshot）に入らず、状態は aria-pressed（X-25）（WW28）。smoke は WW1〜WW6（seizai-ui.mjs） |
+| KL | ちきゅうを守れ！ほしくだき 計算ロジック（Node） | `games/asteroid/logic.js` を直接呼ぶ（担当A・数値の調整担当が持つ）：式・星の形・当たり・はなれたかたまり・近づく・クリア・2択・保存・決定的・自動プレイの目安・不変条件・重さ（KL19 の greedy は壁の時計でなく CPU 時間で測る。T-20） |
+| KW | ちきゅうを守れ！ほしくだき 画面 | DOM と `window.AsteroidGame`（getState・logic・advance・upgrade・unlock・choose・reserveSwap・setState・save）、`?debug=1` の命令（win・lose・gostar・bench）で：遊べる・表示の一致（formatKakera・upCostOf・dpsOf・progressOf）（KW1）、2択（400ms・止まる・再読み込みで同じ候補）（KW2）、はね返し（lose は一番下を BARRIER_Y ちょうど・hold にするので 1 step で必ず bounce・「あと N%」・残る・自動で次。T-19）（KW3）、場を押しても何も起きない（fly・bounce・clear）（KW4）、クリアとエンディング（KW5）、保存 v:2・壊れた保存（v:3・欄だけ壊れた ひかえ・予約）・bak（KW6）、戻る（入れ替えのカードからも）（KW7）、区切り（KW18）、クリアの帯とベスト（KW19）、砲台と斜め撃ち（turretsOf の位置・等間隔・ang・斜めの弾・x が動かない・ひかえは撃たない・枠を開けると並び直す）（KW22）、古い保存 v:1（かけらだけ・bak・best は下げない・遊び方の先頭に知らせ 1 行 #helpMig、#hint には出さない・閉じたら消える。UX レビュー 4）（KW24）／full：画面内（最大の桁・3 台・4 台＋ひかえ・6 種類・場の高さ 4 台は 42%・30%・予約の札「つぎの ほしから」（入らない行だけ「つぎから」）・「とおい／ちかい」が場の中で砲台に重ならない）（KW8）、長い名前の折り返し（T-13 と同じ切り詰め）・遊び方（KW9）、性能（§21.5：星 30・4 台 Lv30・CPU 4 倍で遅いコマ 5% 以下・drawMs 8ms・stepMs 4ms）（KW10）、中断（KW11）、キーボード（4 台のあと U で ひかえへ）（KW12）、動きを減らす（KW13）、効果音（KW14）、メニュー・NAME の一致・説明「ほうだいが」（KW15）、オフライン（KW16）、タッチ（CDP）（KW17）、◎ と 2択の案内・gostar（KW20）、さいしょから（KW21）、ひかえと入れ替え（ひかえが空・4 台後は ひかえへ・残り 1 つは 1 枚・6 種類でボタンが消える・一度持った武器だけ・ひかえは強くできない・#swapCard の 400ms と止まる・予約の札・取り消し・星の途中は替わらない・再読み込みで残る・はね返しとクリアで替わる・Lv は武器ごと・音 swap・キーボード・SE 縦横）（KW23）、古いページから書き戻さない（X-20。x20Run・ヒントを出さない・見えている間は後勝ち・さいしょからの直後）（KW25） |
 | DG | デバッグ表示（common/debug.js） | 無効なら DOM・console に触れない（全ページ）、?debug=1 でボタン・エラーの件数・パネル・コピー用の文字、メニュー→ゲームでも有効、?debug=0 と「デバッグを終わる」で消える、命令（help・info・layout・state・storage・tap・logs）の形と安全なエラー、ボタンが全ページ（SE 縦横・最初の画面とプレイ中）で押せる要素に重ならない、パネルの文字 12px・ボタン 44px・touch-action、オフライン（DG1〜DG6、debug.mjs）。わざと起こすエラーには印 DGTEST を付け、X1 の集計から外す |
 | RL | iPhone の遠隔テスト（中継） | `tests/relay/relay.mjs` を子のプロセスとして `--key` 固定・`--port 0`（空いているポート）・`--host 127.0.0.1` で起動し、Playwright のページを iPhone の代わりにつなぐ。PC 向けの窓口は fetch、`ask.mjs` は子のプロセスで呼ぶ。終わったら（失敗しても）中継を止める：起動 → `/status`・`/wait`・`/run`（info・layout・state・logs・時間切れ）・`/logs`（RL1）、合言葉ちがいは 4001・rejected・つなぎ直さない・形の悪い key は覚えない（RL2）、`open` でメニュー→ゲーム・`/wait?after=` で新しい接続を待つ・悪い path は断る・`reload`・移る先の URL に `debug=1&relay=1&key=` が付く・sessionStorage も残る（RL3）、中継を止めて起動し直すと自動でつなぎ直す（RL4）、relay を付けないときは debug-relay.js を読まない・`?relay=0` と「デバッグを終わる」・APP_FILES に入れない（RL5）、ask.mjs の `--yes`・終了コード 2・`名前=値`（RL6）、静的配信の安全（root の外・.git・301・405・Content-Type・no-store）とループバック以外 403（RL7）、2 台目で 1 台目が 4002（RL8）、Node だけの偽の端末で枠の読み方・ログの切り詰め・hello 前の上限・`--exit-on-stdin-close`（RL9）、なりすまし対策（別の Origin・名前の Host は 403、合言葉 5 回間違いで締め切り、既定の合言葉 8 文字、hello 前 8 本まで）（RL10）、open・reload で sessionStorage が消えていても移った先でデバッグが有効になりつなぎ直す・URL に `debug=1&relay=1&key=` が付き path の `?` と `#` は残る（RL11、T-11）、Node だけ：iPhone で開く URL の並び（ふつうの LAN が先、仮想（アダプタ名・192.168.56.x・172.16〜31.x・169.254.x.x・MAC の先頭）は後ろで印、先頭に「おすすめ」）（RL12、T-12）。smoke は RL1・RL5（relay.mjs）。中継を止めている間の「WebSocket につながらない」console だけは X1 に数えない |
 | X1 | 共通 | 全ページでコンソールエラー 0（最後に 1 回） |
@@ -147,7 +152,7 @@ tests/
 ## 速くするしくみ
 
 - **外部フォントの遮断**：Google Fonts は空の応答で即答（Service Worker の通信も）。ネットワークに左右されない。
-- **グループ単位の並列**：既定 4 並列。グループごとに別のプロセス・別のポート・別のブラウザなので、オフラインや遅い回線の再現が他に影響しない。
+- **グループ単位の並列**：既定 3 並列（v38 から）。グループごとに別のプロセス・別のポート・別のブラウザなので、オフラインや遅い回線の再現が他に影響しない。
 - **待ち時間の早送り**：Playwright の `page.clock` でページ内のタイマーを置き換え、`wait(page, ms)` で一気に進める。**0.8 秒の境界（P2 前半）・Service Worker の 3 秒（S）・音の同時発音数（A2・A5）・スクロール（E5・P7）は実時間**のまま。
 
 所要時間（この環境の Chromium、4 コア。同じ版で計測）：
@@ -164,6 +169,11 @@ tests/
 A5（メニューの pointerdown の処理 ≤16ms）は、負荷の高い並列実行の中で 1 回だけ 16ms を少し超えることがあるため、S6 と同じ考え方で「16ms を超えた回があれば 6 回の測定を最大 3 巡まで繰り返し、いちばん速い巡の最大値で判定」にした（基準の 16ms は変えていない）。なお A5 を単独で流すと（`ONLY=A5`）、ブラウザで最初の AudioContext を作る 1 回目が 30〜40ms になり、master（167df81）でも不合格になる。full では先に A2〜A4 が音を鳴らしているのでこの差は出ない。
 参考：一時フォルダにあった元のスイートは smoke 17.4 秒・full 110.4 秒（項目は今より少ない）。full の残りの時間の大半は S4・S6（Service Worker の 3 秒待ちを実時間で確かめる）です。
 
+項目ごとの秒数の取り方：`JSON=<ファイル>` を付けて流すと、JSON の `items[].ms` に項目ごとの時間が入る（出力の `PASS  WW24  37.0s` と同じ）。遅い順に並べるには `node -e "const j=require('<ファイル>');for(const i of j.items.sort((a,b)=>b.ms-a.ms).slice(0,10))console.log(i.id,(i.ms/1000).toFixed(1))"`。
+v37 の計画の結果（4 コアのクラウド、full 385 項目）：WORKERS=2 で 506 秒・WORKERS=3 で 381 秒（25% 短い。ただし HW22 が 1 回落ちた。T-25）。遅い上位 10 個と重なりの候補 31 個の秒数は docs/plans/v37.md 4 章。
+v38（4 コアのクラウド、full 398 項目）：WORKERS=3 を既定に（直した写しで 413・408 秒。v37 の関門 WORKERS=2 は 542 秒）。並列 3 の重さで落ちた HW22・HW10・HW12・WW23 は、描き直し（rAF）が実時間で届くのを待つ・Playwright の時計の巻き戻りでカードを閉じた直後の 300ms に押さない、に直した（T-25。docs/plans/v38.md 1 章）。
+重なりの候補 11 個は V8 だけ消した（ほかの 10 個は、その項目にしかない確かめ（文言・44px・音・性能・保存）を持つ。docs/plans/v38.md 3 章）。
+
 ## キリトリ道場のテストのしかた
 
 - **判定ロジックは Node で**（L7〜L9）：`games/kiritori/index.html` の script を vm で動かし、公開 API `window.KiritoriLogic`（`segCircle`・`comboBonus`・`swipePoints`・`loseLife`・`difficulty`・`launch`・`step`・`parseBest`）を直接呼ぶ。経過時間基準（60/120Hz で同じ位置）・軌道（頂点は上端から 12〜45%）もここで確かめる。
@@ -177,11 +187,11 @@ A5（メニューの pointerdown の処理 ≤16ms）は、負荷の高い並列
 - 直ると「★ 既知の不具合が解消した」と表示されるので、そのとき登録を外します（外さないと、また壊れても気づけない）。
 - 登録は「すぐには直さない」と決めたものだけ。直すつもりの不具合は登録せず、不合格のまま直します。
 
-いま登録しているもの：なし。
+いま登録しているもの：なし（K-AST2 は 2026-10-23 に PM が 4 台の場の高さの目安を 4 割 2 分にしたので外した）。
 
 解消したもの（ほしくだき）：K-AST1（SE 横・Safari（568×270）で武器の行の4行目・あたらしい ぶき が画面の下にはみ出して押せない。docs/issues-done.md の AS-T1）は、低い横画面の行を 44px にする直し（契約 §18.1 A）で解消し、登録を外した（2026-10-21）。
 
-解消したもの：K1（iPhone SE を Safari で横持ち＝高さ約 270〜319px にすると、ブロックの DROP が LEVEL/LINES に、HOLD が NEXT に重なる）は feature/kiritori で直し（高さ 319px 以下の横持ちだけ HOLD 欄・スコア欄・NEXT 欄を低くする）、登録を外した。V2（smoke、568×270）・V3・V4（285・311・319/320 の境界）・V8（568×270・568×300 の桁数）で確かめる。K2（遅い回線・無応答で common/sfx.js をネットワークで待ち続け、表示が遅れる）は hotfix/k2（CACHE_VERSION v11）で直し、登録を外した。S4・S6・S7 で確かめる。
+解消したもの：K1（iPhone SE を Safari で横持ち＝高さ約 270〜319px にすると、ブロックの DROP が LEVEL/LINES に、HOLD が NEXT に重なる）は feature/kiritori で直し（高さ 319px 以下の横持ちだけ HOLD 欄・スコア欄・NEXT 欄を低くする）、登録を外した。V2（smoke、568×270）・V3・V4（285・311・319/320 の境界）・V12（568×270・568×300 の桁数。v38 で V8 を消して V12 へ）で確かめる。K2（遅い回線・無応答で common/sfx.js をネットワークで待ち続け、表示が遅れる）は hotfix/k2（CACHE_VERSION v11）で直し、登録を外した。S4・S6・S7 で確かめる。
 
 ## 版を上げるとき（メニュー最下部の「v16・2026-10-18」）
 
@@ -220,6 +230,7 @@ sw.js にも版を直接書く二重持ちにしているのは、import 先だ�
 8. 外部（インターネット）に出ない・リポジトリや作業ツリーに書き込まない・決まったポート以外を使わない（ただし RL は、中継を空いているポート（`--port 0`）で起動する）。
 9. **古いページから書き戻さない（X-20）**：途中の保存を持つゲームは、表に戻ったとき（visibilitychange・pageshow）に保存が自分の覚えた文字と違えば、書かずに `location.reload()` する。裏へ回る（hidden）・閉じる（pagehide）ときの保存の前にも `staleOnHide()` で比べ直し、storage イベントが届く前に古い状態を書かない。reload は1回だけ。テストは pageshow を `new PageTransitionEvent('pageshow', { persisted: true })` で送って再現し、別のタブは同じ context の 2 つ目のページから書く（本物の storage イベント）。storage イベントが届かない場合は、同じページから localStorage を直接書き換えて再現する（各ゲームの X-20 の項目の (d)。もくもくこうば WW26 は (e)）。QW2 は setItem を見張る形に変えた。確かめる手順は `lib.mjs` の `x20Run(page, ctx, { key, newer, fp, hiddenWrite })` と、合否の文を作る `x20Text(r)` の1か所にある（T-14。以前は6ファイルに同じ写しがあった）。ゲームごとの違い（保存のキー・新しい保存4つ・中身の印・裏での自分の保存）は引数で渡す。
 10. **メニューのカードは `nth()` でなく href で押す**：メニューは最近遊んだ順に並びが変わる（X-21）ので、`a.game[href="…"]` で押す。
+11. ハシわたりで、カードを閉じた直後に池を押すときは passBlock（閉じたときのページの時刻から 350ms を確かに過ぎるまで待つ）を使う。重いと Playwright の時計が巻き戻り、wait の分だけ進まないことがある（T-25・T-26）。
 
 ## Chromium・WebKit と実機の違い
 
@@ -376,6 +387,10 @@ iPhone の Safari で「ボタンが押せない」「表示がずれる」「�
 14. ピカッと早押し（v31〜）：対戦で点が入ってから「？」や結果カードの「メニューへ」を押すと、確認のカード（つづける／メニューへ もどる）が出る。「つづける」で元のカードに戻る。点がまだ無いとき・ひとりで れんしゅう・最終結果では、確かめずにメニューへ戻る。「よーい」の間に押すと「いまは おさなくて いいよ。まってね」と出てフライングにならない。「メニューへ」をすばやく2回押しても、確認のカードの「メニューへ もどる」は押されない（点が消えない）。
 15. iPhone SE（または小さい iPhone）を Safari で横持ちにして、ブロックのスコア欄の LEVEL・LINES が「…」で切れない（X-18、V12）。スコア欄が左へ約 7px 寄るので、窮屈に見えないか（7 と一緒に見る）。
 16. ハシわたり（v31〜）：茎を最大の長さまで伸ばすと、伸びる音が止まり、tap の音と光で知らせる。その tap の音が小さすぎて気づけない、ということがないか。
+17. ちきゅうを守れ！ほしくだき（作り直し、v34 ごろ〜）：(a) iPhone SE（または小さい iPhone）の縦で、1 マス約 3.8px の小惑星の模様（てつの格子・こおりの斜め線・きんの星）と ひび が見えるか。(b) `?debug=1` で gostar 30（または遊んで星 30 ごろ）の大きな星で、かくかくしないか。(c) 前の版（v:1）の保存がある iPhone で開くと「あたらしい ほしくだきに なったよ」と遊び方が出て、かけら が残っている・メニューの「ほし N まで クリア」（ベスト）が残っている。(d) 入れ替え：4 台のあと「あたらしい ぶき（ひかえへ）」で ひかえ に入り、「いれかえ」のカードで予約すると行に「つぎから ○○」、次の星（または はね返しのあと）で砲台の武器が替わり、外した武器の Lv が残っている。
+18. いろびん（v37〜）：41 面（ちいさい びん）・71 面（いろ きまりの びん）・101 面（かぎの びん）で、新しい仕掛けが初めての説明で分かるか、短い瓶の「3」の札・首の色の札・錠の絵が見分けられるか、40 面から先が難しすぎないか（IB-29）。
+19. ハシわたり（v37〜）：どこまでもで落ちたあと、ぴったりを 3 回続けると ♥ が 1 つ戻る（「あと 2かいで ♥」→「♥ もどった！」）。「つぎは ボーナス」の案内が読める（HS-09）。
+20. ミチビキ空港（v37〜）：何回か続けて遊んで滑走路の並びが回ごとに変わる。並びが変わった回の最初に「こんかいは かっそうろの ならびが ちがうよ」の案内が出て読める（MC-15）。
 
 ## 変異テスト
 
@@ -398,14 +413,14 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | M3 ブロックのベストを低い得点でも上書きする | 検出（D5） | 検出（D5, D7） |
 | M4 2048 の保存データで負のスコアを受け入れる | 検出（D2） | 検出（D2） |
 | M5 2048 のゲームオーバー画面から「メニューへ」が消える | 検出（E2） | 検出（E2, P2） |
-| M6 ブロックが safe-area 上端を空けない | 検出（V1） | 検出（V1, V3, V8） |
+| M6 ブロックが safe-area 上端を空けない | 検出（V1） | v38 の関門で検出 |
 | M7 事前キャッシュに存在しないファイル（install 失敗） | 検出（L5, S1, S2） | 検出（L5, S1〜S6） |
 | M8 更新時に古いアプリ用キャッシュを消さない | 検出（S2） | 検出（S2） |
 | M9 詰んでから結果カードまでの待ちが 0.3 秒 | 見逃し（設計どおり full のみ） | 検出（P2） |
 | M10 ブロックの盤面で touchend を止めない | 検出（T5） | 検出（T5） |
 | M11 common/sfx.js を事前キャッシュから外す | 検出（L5, S1, X1） | 検出（L5, S1, S3, X1） |
 | M12 効果音オフの設定を読まない | 検出（D4, A4） | 検出（D4, A4） |
-| M13 ブロックのスコア欄の数字を縮めない（「…」で省略） | 検出（V1） | 検出（V1, V8） |
+| M13 ブロックのスコア欄の数字を縮めない（「…」で省略） | 検出（V1） | v38 の関門で検出 |
 | M14 sfx.js などをネットワーク優先・打ち切りなしに戻す（K2） | 見逃し（遅い回線は full のみ） | 検出（S4, S6） |
 | M15 新しい版が出ていても古い sfx.js をキャッシュから返す | 見逃し（full のみ） | 検出（S7） |
 | M16 中身の違う新しい版のファイルを旧キャッシュに混ぜる | 見逃し（full のみ） | 検出（S7） |
@@ -597,48 +612,80 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | MW62 もくもくこうば：さいしょから で保存を止めずに消す（pagehide で古い状態を書き戻す） | 見逃し（smoke では見逃す設計） | 検出（WW25） |
 | MW63 もくもくこうば：さいしょから で seizai.best も消す | 見逃し（smoke では見逃す設計） | 検出（WW25） |
 | MW64 もくもくこうば：さいしょからの「やめる」でも保存を消す | 見逃し（smoke では見逃す設計） | 検出（WW25） |
-| MK1 ほしくだき：2択の間も場が進む（choose でも step が進み、fly に戻る） | 検出（KL7, KW2） | 検出（KL7, KW2, KW12, KW14） |
-| MK2 ほしくだき：とどいたら かけら・武器を消す | 検出（KL5, KW3） | 検出（KL5, KL11, KW3） |
-| MK3 ほしくだき：とどいたとき星を最初からにしない（残りのまま続く） | 検出（KL5, KL13, KL14, KW3） | 検出（KL5, KL13, KL14, KW3） |
-| MK4 ほしくだき：エンディングを2回出す（星 ENDING_STAR より先のクリアでも出す） | 検出（KL6, KW5） | 検出（KL6, KW5） |
-| MK5 ほしくだき：場を押すと進む（#field のクリックで step を進める。#fieldCanvas は pointer-events: none なので親の #field に付ける） | 検出（KW4） | 検出（KW4, KW17） |
-| MK6 ほしくだき：壊れた保存を bak に写さず上書き | 検出（KW6） | 検出（KW6） |
-| MK7 ほしくだき：bak が既にあっても上書き（最初の壊れた保存が消える） | 検出（KW6） | 検出（KW6） |
-| MK8 ほしくだき：hidden でも進む（visibilitychange の hidden で sleep を呼ばない） | 見逃し | 検出（KW11） |
-| MK9 ほしくだき：logic.js を APP_FILES から外す | 見逃し | 検出（KW16） |
-| MK10 ほしくだき：render.js を APP_FILES から外す | 見逃し | 検出（KW16） |
-| MK11 ほしくだき：2択のカードの 400ms のロックなし（出た直後に押せる） | 検出（KW2, KW5） | 検出（KW2, KW5, KW12） |
-| MK12 ほしくだき：#kakera が 1 ずれる（表示の1ずれ） | 検出（KW1） | 検出（KW1） |
-| MK13 ほしくだき：行の値段が upCostOf と 1 割ずれる（表示の1ずれ） | 検出（KW1） | 検出（KW1） |
-| MK14 ほしくだき：#starBar がこわした割合とずれる | 検出（KW1） | 検出（KW1） |
-| MK15 ほしくだき：はね返しの「あと N%」をこわした割合で出す | 検出（KW3） | 検出（KW3） |
-| MK16 ほしくだき：クリアしても asteroid.best を書かない | 検出（KW5） | 検出（KW5） |
-| MK17 ほしくだき：かけらが足りないとき音 deny もヒントも出さない | 検出（KW1） | 検出（KW1, KW11, KW14） |
-| MK18 ほしくだき：開き直すと かけらが 0 になる（保存を読んでも かけらを捨てる） | 検出（KW6） | 検出（KW6） |
-| MK19 ほしくだき：pagehide でタイマーを片付けない | 見逃し | 検出（KW11） |
-| MK20 ほしくだき：遊び方を開いている間も止めない（いまは置換元がずれていて「置換対象なし」。ほしくだきの修正のときに直す。T-15） | 見逃し | 検出（KW11） |
-| MK21 ほしくだき：動きを減らす設定を見ない | 見逃し | 検出（KW13） |
-| MK22 ほしくだき：2択が開き直しで変わる（保存の offer を入れ替えて読む） | 検出（KL7, KL9, KW2） | 検出（KL7, KL9, KW2） |
-| MK23 ほしくだき：区切りをやり直し（はね返し）でもらい直せる | 検出（KL13, KW18） | 検出（KL13, KW18） |
-| MK24 ほしくだき：星のベスト時間を遅いほうにする | 検出（KL14, KW19） | 検出（KL14, KW19） |
-| MK25 ほしくだき：もろい底なし（下の行も体力 1 倍） | 検出（KL1, KL15, KW6） | 検出（KL1, KL11, KL15） |
-| MK26 ほしくだき：相性の倍率 aff がいつも 1 | 検出（KL1, KL15） | 検出（KL1, KL15） |
-| MK27 ほしくだき：星の途中の保存（mid）を捨てる | 検出（KL9, KL13, KL14, KW6） | 検出（KL9, KL11, KL13, KL14, KW6） |
-| MK28 ほしくだき：区切りの帯 #msBanner を出さない | 検出（KW18） | 検出（KW18） |
-| MK29 ほしくだき：開き直しで いまの挑戦の始め（tryAt）をずらさない（クリアの時間に遊んだ合計の秒が足される） | 検出（KW5, KW6） | 検出（KW5, KW6） |
-| MK30 ほしくだき：◎ を星の札に関係なく得意のある武器ぜんぶに付ける | 見逃し | 検出（KW20） |
-| MK31 ほしくだき：クリアの帯の「ちきゅうまで あと N%」を近さの逆で出す | 検出（KW19） | 検出（KW19） |
-| MK32 ほしくだき：買った行に「＋N%」を出さない | 検出（KW1） | 検出（KW1） |
-| MK33 ほしくだき：買えない間の「あと N」を不足分でなく値段で出す | 検出（KW1） | 検出（KW1） |
-| MK34 ほしくだき：はね返しのおすすめをいつも 1 行目にする（いちばん安い行を見ない） | 検出（KW3） | 検出（KW3） |
-| MK35 ほしくだき：2択の冒頭の案内 #choiceLead を出さない | 見逃し | 検出（KW20） |
-| MK36 ほしくだき：クリアの演出中の保存を同じ星にする（開き直すと同じ星をもう一度） | 検出（KL9, KL13, KL14, KW6） | 検出（KL9, KL13, KL14, KW6） |
-| MK37 ほしくだき：壊れた bestT（キーが整数でない・0 以下・大きすぎ）を捨てない | 検出（KL14, KW19） | 検出（KL14, KW19） |
-| MK38 ほしくだき：さいしょからで asteroid.save.bak を消さない | 見逃し（smoke では見逃す設計） | 検出（KW21） |
-| MK39 ほしくだき：さいしょからのあと保存を止めない（pagehide・hidden でメモリ上の古い状態を書き戻す） | 見逃し（smoke では見逃す設計） | 検出（KW21） |
-| MK40 ほしくだき：さいしょからで asteroid.best も消す | 見逃し（smoke では見逃す設計） | 検出（KW21） |
-| MK41 ほしくだき：さいしょからの確認で「やめる」を押しても消す | 見逃し（smoke では見逃す設計） | 検出（KW21） |
-| MK42 ほしくだき：さいしょからで消せないとき #hint で知らせない（古い保存が残ったのに気づけない） | 見逃し（smoke では見逃す設計） | 検出（KW21） |
+| MK1 ほしくだき：2択の間も場が進む（choose でも step が進み、fly に戻る） | —（作り直しでは full だけ流した） | 検出（KL7, KL12） |
+| MK2 ほしくだき：とどいたら かけら・武器を消す | —（作り直しでは full だけ流した） | 検出（KL5, KL11, KL19, KW3, KW23） |
+| MK3 ほしくだき：とどいたとき星を最初からにしない（残りのまま続く） | —（作り直しでは full だけ流した） | 検出（KL5, KL11, KL12, KL13, KL14, KW3） |
+| MK4 ほしくだき：エンディングを2回出す（星 ENDING_STAR より先のクリアでも出す） | —（作り直しでは full だけ流した） | 検出（KL6, KW5） |
+| MK5 ほしくだき：場を押すと進む（#field のクリックで step を進める。#fieldCanvas は pointer-events: none なので親の #field に付ける） | —（作り直しでは full だけ流した） | 検出（KW4, KW22, KW17） |
+| MK6 ほしくだき：壊れた保存を bak に写さず上書き | —（作り直しでは full だけ流した） | 検出（KW6） |
+| MK7 ほしくだき：bak が既にあっても上書き（最初の壊れた保存が消える） | —（作り直しでは full だけ流した） | 検出（KW6, KW24） |
+| MK8 ほしくだき：hidden でも進む（visibilitychange の hidden で sleep を呼ばない） | —（作り直しでは full だけ流した） | 検出（KW11） |
+| MK9 ほしくだき：logic.js を APP_FILES から外す | —（作り直しでは full だけ流した） | 検出（KW16） |
+| MK10 ほしくだき：render.js を APP_FILES から外す | —（作り直しでは full だけ流した） | 検出（KW16） |
+| MK11 ほしくだき：2択のカードの 400ms のロックなし（出た直後に押せる） | —（作り直しでは full だけ流した） | 検出（KW2, KW5, KW12, KW21, KW23） |
+| MK12 ほしくだき：#kakera が 1 ずれる（表示の1ずれ） | —（作り直しでは full だけ流した） | 検出（KW1） |
+| MK13 ほしくだき：行の値段が upCostOf と 1 割ずれる（表示の1ずれ） | —（作り直しでは full だけ流した） | 検出（KW1） |
+| MK14 ほしくだき：#starBar がこわした割合とずれる | —（作り直しでは full だけ流した） | 検出（KW1） |
+| MK15 ほしくだき：はね返しの「あと N%」をこわした割合で出す | —（作り直しでは full だけ流した） | 検出（KW3） |
+| MK16 ほしくだき：クリアしても asteroid.best を書かない | —（作り直しでは full だけ流した） | 検出（KW5） |
+| MK17 ほしくだき：かけらが足りないとき音 deny もヒントも出さない | —（作り直しでは full だけ流した） | 検出（KW1, KW11, KW14） |
+| MK18 ほしくだき：開き直すと かけらが 0 になる（保存を読んでも かけらを捨てる） | —（作り直しでは full だけ流した） | 検出（KW6, KW24） |
+| MK19 ほしくだき：pagehide でタイマーを片付けない | —（作り直しでは full だけ流した） | 検出（KW11） |
+| MK20 ほしくだき：カード（遊び方・2択・入れ替え・エンディング・さいしょから）が出ている間も止めない（running から overlay === null を外す。T-15・§21.4） | —（作り直しでは full だけ流した） | 検出（KW11, KW21, KW23） |
+| MK21 ほしくだき：動きを減らす設定を見ない | —（作り直しでは full だけ流した） | 検出（KW13） |
+| MK22 ほしくだき：2択が開き直しで変わる（保存の offer を入れ替えて読む） | —（作り直しでは full だけ流した） | 検出（KL7, KL9, KW2） |
+| MK23 ほしくだき：区切りをやり直し（はね返し）でもらい直せる | —（作り直しでは full だけ流した） | 検出（KL13, KW18） |
+| MK24 ほしくだき：星のベスト時間を遅いほうにする | —（作り直しでは full だけ流した） | 検出（KL14, KW19） |
+| MK25 ほしくだき：もろい底なし（下の行も体力 1 倍） | —（作り直しでは full だけ流した） | 検出（KL1, KL11, KL15, KL19） |
+| MK26 ほしくだき：相性の倍率 aff がいつも 1 | —（作り直しでは full だけ流した） | 検出（KL1, KL3, KL15, KL19） |
+| MK27 ほしくだき：星の途中の保存（mid）を捨てる | —（作り直しでは full だけ流した） | 検出（KL9, KL11, KL13, KL14, KW6） |
+| MK28 ほしくだき：区切りの帯 #msBanner を出さない | —（作り直しでは full だけ流した） | 検出（KW18） |
+| MK29 ほしくだき：開き直しで いまの挑戦の始め（tryAt）をずらさない（クリアの時間に遊んだ合計の秒が足される） | —（作り直しでは full だけ流した） | 検出（KW5, KW6） |
+| MK30 ほしくだき：◎ を星の札に関係なく得意のある武器ぜんぶに付ける | —（作り直しでは full だけ流した） | 検出（KW20） |
+| MK31 ほしくだき：クリアの帯の「ちきゅうまで あと N%」を近さの逆で出す | —（作り直しでは full だけ流した） | 検出（KW19） |
+| MK32 ほしくだき：買った行に「＋N%」を出さない | —（作り直しでは full だけ流した） | 検出（KL19, KW1） |
+| MK33 ほしくだき：買えない間の「あと N」を不足分でなく値段で出す | —（作り直しでは full だけ流した） | 検出（KW1） |
+| MK34 ほしくだき：はね返しのおすすめをいつも 1 行目にする（いちばん安い行を見ない） | —（作り直しでは full だけ流した） | 検出（KW3） |
+| MK35 ほしくだき：2択の冒頭の案内 #choiceLead を出さない | —（作り直しでは full だけ流した） | 検出（KW20） |
+| MK36 ほしくだき：クリアの演出中の保存を同じ星にする（開き直すと同じ星をもう一度） | —（作り直しでは full だけ流した） | 検出（KL9, KL13, KL14, KW6） |
+| MK37 ほしくだき：壊れた bestT（キーが整数でない・0 以下・大きすぎ）を捨てない | —（作り直しでは full だけ流した） | 検出（KL14, KW19） |
+| MK38 ほしくだき：さいしょからで asteroid.save.bak を消さない | —（作り直しでは full だけ流した） | 検出（KW21） |
+| MK39 ほしくだき：さいしょからのあと保存を止めない（pagehide・hidden でメモリ上の古い状態を書き戻す） | —（作り直しでは full だけ流した） | 検出（KW21, KW25） |
+| MK40 ほしくだき：さいしょからで asteroid.best も消す | —（作り直しでは full だけ流した） | 検出（KL19, KW21） |
+| MK41 ほしくだき：さいしょからの確認で「やめる」を押しても消す | —（作り直しでは full だけ流した） | 検出（KW21） |
+| MK42 ほしくだき：さいしょからで消せないとき #hint で知らせない（古い保存が残ったのに気づけない） | —（作り直しでは full だけ流した） | 検出（KW21） |
+| MK43 ほしくだき：砲台の x がねらうマスへ動く（AS-01 の戻り） | —（作り直しでは full だけ流した） | 検出（KL3, KL11, KL12, KL13, KL16, KL18, KW22） |
+| MK44 ほしくだき：弾がいつも真上へ飛ぶ（たま・ほのお・どかん以外の砲身の向き ang を見ない） | —（作り直しでは full だけ流した） | 検出（KL3, KL5, KL6, KL9, KL11, KL13, KL14, KL17, KL19, KW5, KW7, KW22） |
+| MK45 ほしくだき：ビームが最初のマスで止まる（奥へ掘らない） | —（作り直しでは full だけ流した） | 検出（KL3, KL11, KL19） |
+| MK46 ほしくだき：いなずまが違う種類のマスにも広がる | —（作り直しでは full だけ流した） | 検出（KL3） |
+| MK47 ほしくだき：いなずまが BOLT_CELLS（しんかの数）を見ない | —（作り直しでは full だけ流した） | 検出（KL3, KL11, KL19） |
+| MK48 ほしくだき：てつ を すじ で入れる（かたまりにしない） | —（作り直しでは full だけ流した） | 検出（KL2, KL11, KW21） |
+| MK49 ほしくだき：入れ替えが星の途中ですぐ当たる | —（作り直しでは full だけ流した） | 検出（KL5, KL6, KL9, KL10, KL11, KL12, KL17, KW23） |
+| MK50 ほしくだき：はね返しのやり直しで入れ替えが当たらない | —（作り直しでは full だけ流した） | 検出（KL5, KW23） |
+| MK51 ほしくだき：入れ替えで外した武器の Lv を忘れる（ひかえで Lv 1 になる） | —（作り直しでは full だけ流した） | 検出（KL5, KL6, KL9, KL17, KW23） |
+| MK52 ほしくだき：入れ替えで載せた武器が外した武器の Lv を引き継ぐ（Lv が武器ごとでない） | —（作り直しでは full だけ流した） | 検出（KL5, KL6, KL9, KL17, KW23） |
+| MK53 ほしくだき：持ったことが無い武器を入れ替えで選べる | —（作り直しでは full だけ流した） | 検出（KL17, KW23） |
+| MK54 ほしくだき：4 台のあと「あたらしい ぶき」を出さない（ひかえへ入れられない） | —（作り直しでは full だけ流した） | 検出（KL1, KL7, KL10, KL11, KL12, KW8, KW12, KW23） |
+| MK55 ほしくだき：6 種類そろっても #unlockBtn を出す | —（作り直しでは full だけ流した） | 検出（KW8, KW23） |
+| MK56 ほしくだき：ひかえの武器も強くできる（upgrade の枠の番号が砲台の数をこえたら ひかえ の Lv を上げる） | —（作り直しでは full だけ流した） | 検出（KL17） |
+| MK57 ほしくだき：v:1 から星・武器も引き継ぐ（v:2 と同じに読む） | —（作り直しでは full だけ流した） | 検出（KL9, KW24） |
+| MK58 ほしくだき：v:1 で かけらを 0 にする | —（作り直しでは full だけ流した） | 検出（KL9, KW24） |
+| MK59 ほしくだき：v:1 のとき元の保存を asteroid.save.bak に写さない | —（作り直しでは full だけ流した） | 検出（KW24） |
+| MK60 ほしくだき：v:1 のとき asteroid.best を消す | —（作り直しでは full だけ流した） | 検出（KW24） |
+| MK61 ほしくだき：デバッグの lose で hold にしない（撃ちきって clear になりうる。T-19） | —（作り直しでは full だけ流した） | 検出（KW3） |
+| MK62 ほしくだき：表に戻ったとき保存がほかで変わっていても開き直さない（X-20） | —（作り直しでは full だけ流した） | 検出（KW25, X1） |
+| MK63 ほしくだき：saveNow が stale を見ない（writeKey で止まるが「ほぞんが できないよ」が出る。X-20） | —（作り直しでは full だけ流した） | 検出（KW25）※ KW25 を直したあとに流し直し |
+| MK64 ほしくだき：裏へ回る・閉じるときの保存で比べ直さない（staleOnHide。storage イベントが届く前に古い状態を書き戻す。X-20） | —（作り直しでは full だけ流した） | 検出（KW25）※ KW25 を直したあとに流し直し |
+| MK65 ほしくだき：裏で別のタブが書いても保存を止めない（storage を見ない。X-20） | —（作り直しでは full だけ流した） | 検出（KW25） |
+| MK66 ほしくだき：2択の候補に ひかえの武器が出る | —（作り直しでは full だけ流した） | 検出（KL7, KL9, KL17, KW23） |
+| MK67 ほしくだき：4 台のあとの2択で「えらんだ ぶきは ひかえ（いま つかわない ぶき）に はいるよ」を出さない | —（作り直しでは full だけ流した） | 検出（KW23） |
+| MK68 ほしくだき：残りの武器が 1 つでも #choiceB を隠さない | —（作り直しでは full だけ流した） | 検出（KW23） |
+| MK69 ほしくだき：ひかえが空でも #swapCard を開く | —（作り直しでは full だけ流した） | 検出（KW23） |
+| MK70 ほしくだき：予約の札「つぎから ○○」を出さない | —（作り直しでは full だけ流した） | 検出（KW8, KW23） |
+| MK71 ほしくだき：入れ替えの予約を保存しない（開き直すと予約が消える） | —（作り直しでは full だけ流した） | 検出（KL9, KL17, KW23） |
+| MK72 ほしくだき：クリアの演出中の保存で予約を当てない（開き直すと予約が消える） | —（作り直しでは full だけ流した） | 検出（KL9, KL17） |
+| MK73 ほしくだき：はね返しの間の保存で予約を当てない（開き直すとやり直しに予約が当たらない。T1） | —（full だけ流した） | 検出（KL17） |
+| MK74 ほしくだき：2択の間の保存で戻り先（bounce・clear）を見ない（T1） | —（full だけ流した） | 検出（KL17） |
 | MR1 メニュー：最近遊んだゲームを先頭でなく後ろに足す（X-21） | 見逃し（smoke では見逃す設計） | 検出（E7, E8） |
 | MR2 メニュー：最近遊んだ順に並べ替えない（X-21） | 見逃し（smoke では見逃す設計） | 検出（E7, E8） |
 | MR3 メニュー：壊れた yubi.recent で落ちる（X-21） | 見逃し（smoke では見逃す設計） | 検出（E8, X1） |
@@ -646,6 +693,9 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | MW65 もくもくこうば：表に戻ったとき保存がほかで変わっていても開き直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（WW26） |
 | MW66 もくもくこうば：開き直す前（stale）でも保存を書く（X-20） | 見逃し（smoke では見逃す設計） | 検出（WW26） |
 | MW67 もくもくこうば：裏へ回る・閉じるときの保存で比べ直さない（storage イベントが届く前に古い状態を書き戻す。X-20） | 見逃し（smoke では見逃す設計） | 検出（WW26） |
+| MW68 もくもくこうば：かんな の baseTime を 5 に戻す（全部さいだい・はやい でも かんな が いちばん遅いまま。SZ-08） | 検出（WL14） | 検出（WL14, WW27） |
+| MW69 もくもくこうば：もう強くできない部署にも「ここが おそい！」の札を出す（SZ-08） | 見逃し（smoke では見逃す設計） | 検出（WW27） |
+| MW70 もくもくこうば：次の段で上限（CAPS）が増える部署でも「これいじょう はやく できないよ」と言う（moreNextStage が CAPS を見ない。S1） | —（full だけ流した） | 検出（WL14, WW27） |
 | M24 ばいばいタイル：表に戻ったとき保存がほかで変わっていても開き直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（P10） |
 | M25 ばいばいタイル：裏で別のタブが書いても保存を止めない（storage を見ない。X-20） | 見逃し（smoke では見逃す設計） | 検出（P10） |
 | M26 ばいばいタイル：裏へ回る・閉じるときの保存で比べ直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（P10） |
@@ -658,6 +708,9 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | MB23 いろびん：表に戻ったとき保存がほかで変わっていても開き直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（BW20） |
 | MB24 いろびん：開き直す前（stale）でも保存を書く（X-20） | 見逃し（smoke では見逃す設計） | 検出（BW20） |
 | MB25 いろびん：裏へ回る・閉じるときの保存で比べ直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（BW20） |
+| MB26 いろびん：makeSave が上限を超えた手も書く（読むときに捨てられ面の最初に戻る。IB-09） | smoke は流していない | 検出（v36 の関門。BL・BW の全項目） |
+| MB27 いろびん：予備の固定面（fallback 2）を verify に通さない（IB-11） | smoke は流していない | 検出（v36 の関門。BL・BW の全項目） |
+| MB28 いろびん：最後の手まで保存された面を、クリアのカードなしで次の面にする（IB-22） | smoke は流していない | 検出（v36 の関門。BL・BW の全項目） |
 | MQ42 まとめてポン：表に戻ったとき保存がほかで変わっていても開き直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（QW21） |
 | MQ43 まとめてポン：裏で別のタブが書いても保存を止めない（storage を見ない。X-20） | 見逃し（smoke では見逃す設計） | 検出（QW21） |
 | MQ44 まとめてポン：裏へ回る・閉じるときの保存で比べ直さない（X-20） | 見逃し（smoke では見逃す設計） | 検出（QW21） |
@@ -677,6 +730,30 @@ node tests/mutants/mutate.mjs both     # M=M10,M11 で絞り込み
 | MH28 ハシわたり：茎が最大のまま押下が取り消されても案内を戻さない（隠すと「いちばん ながい！ はなしてね」が残る。R1） | （未計測。HW21 は full なので見逃す設計） | 検出（HW21） |
 | MP13 ピカッと：メニューへの確認カードに鍵をかけない（「メニューへ」の2度押しで点が消える。R2） | （未計測。PK20 は full なので見逃す設計） | 検出（PK20） |
 | MP14 ピカッと：Space の押しっぱなし（repeat）を止めない（隅で押したままの Space で「つぎへ」が押される。R3） | （未計測。PK21 は full なので見逃す設計） | 検出（PK21） |
+| MB29 いろびん：ちいさい びんにも 4 段入る（注ぐ量の上限を瓶ごとに見ない。IB-29） | smoke は流していない | 検出（v37 の関門） |
+| MB30 いろびん：ちいさい びんを短く描かない（data-cap をいつも 4 にする） | smoke は流していない | 検出（v37 の関門） |
+| MB31 いろびん：いろ きまりの びんにほかの色も入る | smoke は流していない | 検出（v37 の関門） |
+| MB32 いろびん：いろ きまりの びんの札（色と記号）を描かない | smoke は流していない | 検出（v37 の関門） |
+| MB33 いろびん：鍵の色をそろえても かぎの びんが開かない | smoke は流していない | 検出（v37 の関門） |
+| MB34 いろびん：かぎの びんを押すと選べる（main の判定を外す） | smoke は流していない | 検出（v37 の関門） |
+| MH29 ハシわたり：ぴったりを続けても いのちが戻らない（HS-09） | smoke は流していない | 検出（v37 の関門） |
+| MH30 ハシわたり：いのちが上限を超えて戻る（HS-09） | smoke は流していない | 検出（v37 の関門） |
+| MH31 ハシわたり：ステージでも いのちが戻る（HS-09） | smoke は流していない | 検出（v37 の関門） |
+| MH32 ハシわたり：案内に倍々・回復の言葉を出さない（HS-09） | smoke は流していない | 検出（v37 の関門） |
+| MH33 ハシわたり：画面の大きさが変わっても空と水のグラデーションを作り直さない（HS-10・T-25） | v38 の関門で検出 | v38 の関門で検出 |
+| MF30 ミチビキ空港：newGame が置き方を見ない（MC-15） | smoke は流していない | 検出（v37 の関門） |
+| MF31 ミチビキ空港：着陸の判定だけ置き方 0 の滑走路で見る（MC-15） | smoke は流していない | 検出（v37 の関門） |
+| MF32 ミチビキ空港：毎回同じ置き方を選ぶ（MC-15） | smoke は流していない | 検出（v37 の関門） |
+
+v38（2026-10-24）：V8 を消したあと M6・M13、HW22 の直しの MH33v38 の関門で検出。
+
+v37（2026-10-24）：新しい変異 13 個（v37 の関門で full 13/13 検出。MB32 は置換元をレビューの直しに合わせて検出）。MB2・MB15・MB16 は置換前の文字を新しいコードに合わせた。局面のキーの 3 文字目（仕掛けの印）を落とす変異は、瓶が印ごとに分かれて並び、落としても局面が重ならないので作らない。
+
+v36（2026-10-24）：MB7・MB17・MB26〜MB28 を full で流し、5/5 検出（見逃し・置換対象なし 0。ONLY は BL1〜BL15・BW1〜BW24・X1）。MB26〜MB28 は IB-09・IB-11・IB-22 の新しい変異。
+
+かんな の直し（2026-10-23、v33、SZ-08。Chromium・`PORT=8800 WORKERS=2`、`ONLY=WL14,WW27,X1`）：MW68・MW69 を smoke 1/2・full 2/2 で検出（MW68 は WL14・WW27、MW69 は WW27。smoke の見逃し MW69 は WW27 が full なので見逃す設計）。かんな の数値を変えたので、かんな に関わる既存の MW51〜MW54・MW57〜MW60 も `ONLY=WL1〜WL10,WL12〜WL14,X1` で流し、8/8 検出（置換元はずれていない）。
+
+レビュー後の直し（2026-10-23。Chromium・`WORKERS=3`、full だけ）：ほしくだき T1（はね返し・2択の間に閉じたときの予約）と UX の文言・札・知らせ・目盛りの位置。`ONLY=KL1〜KL19,KW1〜KW25,X1` で `M=MK59,MK60,MK67,MK68,MK70,MK71,MK72,MK73,MK74` を 9/9 検出（置換対象なし 0。MK67 は文言に合わせて置換元を直した）。もくもくこうば S1（次の段で上限が増える部署は「つぎの だんで もっと ふやせるよ」）・S2（maxedOut を組が変わったときだけ聞く）。`ONLY=WL1〜WL14,WW1〜WW27,X1` で `M=MW68,MW69,MW70` を 3/3 検出（MW68 は WL14・WL11・WW10・WW27）。KW3 は 10 回続けて 0 回落ちた。
 
 v31（2026-10-22、合流の作業。Chromium・`WORKERS=2 PORT=8800`、項目を絞って full）：MR1〜MR6（`ONLY=E1,E7,E8,X1`）6/6、M27（`ONLY=V12,X1`）1/1、MP11・MP12（`ONLY=PK4,PK20,X1`）2/2、MH24〜MH27（`ONLY=HW21,X1`）4/4、MW41・MW42（`ONLY=WW18,X1`）2/2 を検出。smoke は MR5・MR6・MP11・MP12 だけ流し、MR5（E7）・MP11（PK4）を検出、MR6・MP12 は full の E8・PK20 で見つける設計。MR4 は click の中身が変わったので置換元を差し替え、MW41・MW42 は今の `readingCard()` に合わせた（T-15）。X-20 の部品を lib.mjs にまとめた（T-14）あとの確かめとして、X-20 の変異 21 個（MW65〜67・M24〜26・MD9〜11・MZ5〜7・MB23〜25・MQ42〜44・MH21〜23、`ONLY=WW26,P10,I20,ZU16,BW20,QW21,HW20,X1`）を full で 21/21 検出（見逃しなし。まとめる前と同じ項目が見つける）。
 
@@ -687,6 +764,8 @@ v31 のレビュー後の直し（2026-10-22。Chromium・既定の PORT、項�
 さいしょから（2026-10-22、v29、fix/seizai-carry。Chromium・`WORKERS=2`）：もくもくこうば `ONLY=WW25 M=MW61〜MW64 PORT=8800` で smoke 0/4・full 4/4、ほしくだき `ONLY=KW6,KW21 M=MK6,MK7,MK18,MK38〜MK41 PORT=8900` で smoke 3/7・full 7/7 を検出（smoke の見逃しは MW61〜64・MK38〜41 で、WW25・KW21 は full なので見逃す設計）。同日、消せないときの扱い（契約 §19.2 R6）を直したあと `ONLY=KW21 M=MK38,MK39,MK40,MK41,MK42 PORT=8900` で smoke 0/5・full 5/5 を検出（MK42「消せないときヒントを出さない」を足した）。保存の既存の変異 MK6・MK7・MK18 も KW6 で引き続き検出。もくもくこうばの保存の既存の変異（分類「保存」の MW18〜MW21・MW35・MW38・MW44・MW47・MW49・MW53、`ONLY=WL1〜WL13,WW1〜WW25 PORT=9640`）も smoke 10/10・full 10/10 で検出。
 
 ちきゅうを守れ！ほしくだき（2026-10-21、feature/asteroid-test。Chromium・`PORT=9650 WORKERS=2`、`ONLY=KL1〜KL12,KW1〜KW17`、10 個ずつ 3 回）：MK1〜MK22 を smoke 16/22・full 22/22 で検出。smoke の見逃し MK8・MK19・MK20（中断）・MK9・MK10（オフライン）・MK21（動きを減らす）は full の KW11・KW16・KW13 で見つける設計。MK5（場を押すと進む）は最初 #fieldCanvas に付けたが、canvas は `pointer-events: none` で押しても届かない（同じ動きの変異）ので、親の #field に付け直して KW4 で検出。ロジックの数値は調整中（契約 §17）なので、数値を変えたら KL・KW と MK1〜MK4・MK22 を流し直す。
+
+ちきゅうを守れ！ほしくだき 作り直し（2026-10-23、claude/v30-handoff-docs-tftm14。Chromium・`WORKERS=3 PORT=9650`、`ONLY=KL1〜KL19,KW1〜KW25,X1`、`M=MK1〜MK72` を 1 回で full だけ）：置換対象なし 0、MK1〜MK72 を full 72/72 で検出。置換元を直したのは MK3・MK6・MK8・MK20（「カードが出ている間も止めない」。T-15）・MK22・MK23・MK39 で、ほかは同じ文字が今のコードに 1 回だけある。足したのは MK43〜MK72（契約 §11.4）。最初は MK63（saveNow が stale を見ない）・MK64（staleOnHide）を見逃した：x20Run の (d2) は直前の pagehide で sleep 済みのページで行うので、ほしくだき（sleep は 1 回だけ）では hidden の保存が起きない。KW25 に「起きているページで見えている間に書かれ、そのまま裏へ回る」と「「ほぞんが できないよ」は pagehide の前に待って読む」を足して 2/2 を検出。KL19（重さ。1 step の中央 1ms 以下）は 3 並列の負荷で落ちることがあり、main.js の変異（MK32・MK40）でも「検出」に名前が出る（KL19 だけでは数えていない。どれもほかの項目で検出）。mutate.mjs は M に 72 個を並べると結果のファイル名が長すぎて最後の表の書き出しで止まる（ENAMETOOLONG。1 行ずつの結果は表示される）。
 
 ちきゅうを守れ！ほしくだき §18 のあと（2026-10-21、feature/asteroid-test2。Chromium・`PORT=9650 WORKERS=2`、`ONLY=KL1〜KL15,KW1〜KW20`、10 個ずつ 4 回）：MK1〜MK37 を smoke 29/37・full 37/37 で検出。smoke の見逃しは MK8・MK19・MK20（中断）・MK9・MK10（オフライン）・MK21（動きを減らす）・MK30・MK35（◎・2択の案内。KW20 は full）で、どれも full で見つける設計。MK25（もろい底なし）は smoke では KW6 でも落ちた（星の途中の保存の検査で、底が硬いと再読み込みまでの間の欠け方が変わる）が、full の KW6 は合格し KL1・KL11・KL15 で検出。MK29（tryAt をずらさない）は、このとき直した AS-T5 の戻りを KW5・KW6 で見つける。
 

@@ -12,7 +12,7 @@
  *     （Enter・Space はボタンの標準の click に任せる。キーで押した click は via 'key'）
  *   - ダブルタップ拡大の抑止：#board と .tools で、350ms 以内の2回目のタップの touchend を止め、click は自分で送る。
  *     dblclick・gesturestart/change/end も止める。
- *   - キーボード：←→ で左右、↑↓ で上下の段（board.dataset.cols。空いた置き場所は飛ばす）、1〜9・0 で置き場所の番号（id+1）の瓶、U・Backspace で undo、R で restart、
+ *   - キーボード：←→ で左右、↑↓ で上下の段（board.dataset.cols。空いた置き場所は飛ばす）、1〜9・0・- で置き場所の番号（id+1。0 は 10、- は 11）の瓶、U・Backspace で undo、R で restart、
  *     Esc で deselect（カードが開いていれば close）、M で sound、? / で help。
  *     #overlay が見えている間は Esc 以外を無視する。修飾キー（Ctrl・Cmd・Alt）つきは無視する。
  *   - isBlocked() が true の間は onPick を呼ばない。
@@ -161,9 +161,9 @@
         case "?": case "/": e.preventDefault(); command("help"); return;
         default: break;
       }
-      if (/^[0-9]$/.test(key)) {
-        // 番号は置き場所の番号（id + 1）で、届けても変わらない。空いた場所の番号は何もしない
-        const n = key === "0" ? 10 : Number(key);
+      if (/^[0-9-]$/.test(key)) {
+        // 番号は置き場所の番号（id + 1）で、届けても変わらない。0 は 10 本目、- は 11 本目（瓶は最大 11 本。IB-10）。空いた場所の番号は何もしない
+        const n = key === "-" ? 11 : key === "0" ? 10 : Number(key);
         const list = bottles();
         const i = list.findIndex((b) => placeOf(b) === n - 1);
         e.preventDefault();

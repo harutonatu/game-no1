@@ -314,26 +314,6 @@ export const tests = [
     },
   },
   {
-    id: 'V8', tier: 'full', title: 'ブロックのスコア欄の桁数：14 画面（iPhone 縦横・SE の Safari 横・iPad 縦横）で SCORE/BEST 7桁・LINES 4桁・LEVEL 2桁が省略されない',
-    async run({ browser, check }) {
-      const cases = [
-        [320, 568, [20, 0, 0, 0]], [375, 667, [20, 0, 0, 0]], [390, 844, [47, 0, 34, 0]], [430, 932, [59, 0, 34, 0]],
-        [568, 320, [0, 0, 0, 0]], [667, 375, [0, 0, 0, 0]], [844, 390, [0, 47, 21, 47]], [932, 430, [0, 59, 21, 59]],
-        [768, 1024, [24, 0, 20, 0]], [1024, 768, [24, 0, 20, 0]], [810, 1080, [24, 0, 20, 0]], [1080, 810, [24, 0, 20, 0]],
-        [568, 270, null], [568, 300, null],                  // K1：SE を Safari で横持ち
-      ];
-      const bad = [];
-      for (const [w, h, safe] of cases) {
-        if (w === 320 && h === 568) continue;              // smoke の V1 で確認済み
-        const { ctx, page } = await newPage(browser, custom(w, h, safe), `V8 ${w}x${h}`, { clock: true });
-        const d = await blocksStatsProbe(page, safe);
-        if (!d.ok) bad.push({ v: `${w}x${h}`, bad: d.bad });
-        await ctx.close();
-      }
-      check(`${cases.length - 1} 画面すべてで数字が省略されず、重なり・safe-area 外・横スクロールなし、ボタン 44px 以上`, bad.length === 0, bad);
-    },
-  },
-  {
     id: 'V12', tier: 'full', title: 'ブロックの上の帯（X-18）：LEVEL・LINES 5桁（99999）と SCORE/BEST 7桁を同時に入れても、15 画面（SE 縦・iPhone 縦横・SE の Safari 横・切り欠きのある低い横・iPad 縦横）で「…」にならず、はみ出し・重なり・高さの変化なし',
     async run({ browser, check }) {
       const vals = [['score', '1,234,567'], ['best', '1,234,567'], ['lines', '99999'], ['level', '99999']];
@@ -413,6 +393,75 @@ export const tests = [
           await ctx.close();
         }
       }
+    },
+  },
+  {
+    id: 'V13', tier: 'full', title: 'メニューのベスト表示の最大の桁（MT-02 の横展開）：SE 縦（320×568）・SE 横・iPhone 13 縦で、全部のゲームの「ありうる長い記録」が「…」で切れず（2 行まで）、カードが画面からはみ出さない。ゼンマイの「45 / 45」は行の途中で割れない',
+    async run({ browser, check }) {
+      const stars = Object.fromEntries(Array.from({ length: 15 }, (_, i) => ['z' + String(i + 1).padStart(2, '0'), 3]));
+      const ITEMS = {
+        'blockpuzzle.best': '9999999', 'tile2048.best': '3932100', 'kiritori.best': '99999', 'irocode.stats': JSON.stringify({ best: 10 }),
+        'zenmai.progress': JSON.stringify({ stars, unlocked: 15 }), 'pikatto.bestSolo': '5000', 'hashi.best': '9999', 'irobin.best': '999',
+        'matomete.best': '9999999', 'michibiki.best': '9999', 'seizai.best': '3', 'asteroid.best': '9999',
+      };
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app'), view('i13', 'p', 'app')]) {
+        const { ctx, page } = await newPage(browser, v, 'V13 ' + v.label, { clock: true });
+        await seed(page, ITEMS);
+        await page.goto(BASE); await wait(page, 200);
+        const r = await page.evaluate(() => [...document.querySelectorAll('a.game')].map((a) => {
+          const b = a.querySelector('.best b'), cs = getComputedStyle(b), q = a.getBoundingClientRect();
+          const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.3;
+          return { url: a.getAttribute('href'), t: b.textContent, none: b.classList.contains('none'), fit: b.scrollWidth <= b.clientWidth + 0.5, lines: Math.round(b.getBoundingClientRect().height / lh), right: Math.round(q.right), iw: innerWidth };
+        }));
+        const z = await page.evaluate(() => {
+          const tn = document.querySelector('a.game[href="games/zenmai/"] .best b').firstChild, s = tn.textContent, i = s.indexOf('45');
+          if (i < 0) return { s, rows: 0 };
+          const rg = document.createRange(); rg.setStart(tn, i); rg.setEnd(tn, s.length);
+          return { s, rows: new Set([...rg.getClientRects()].map((x) => Math.round(x.top))).size };
+        });
+        const hs = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+        const bad = r.filter((x) => x.none || !x.fit || x.lines > 2 || x.right > x.iw);
+        check(`${v.label} ${v.w}×${v.h}：${r.length} 本の長い記録（${r.map((x) => `${x.t}${x.lines > 1 ? '（2 行）' : ''}`).join('・')}）が「…」で切れず 2 行まで、カードがはみ出さない、横スクロールなし`,
+          r.length === GAME_URLS.length && bad.length === 0 && !hs, { bad, hs });
+        check(`${v.label}：ゼンマイの「${z.s}」の「45 / 45」が行の途中で割れない（${z.rows} 行）`, z.rows === 1, z);
+        await ctx.close();
+      }
+    },
+  },
+  {
+    id: 'V14', tier: 'full', title: '最初のカード（遊び方・タイトル・あそびかたの選択）：全部のゲームで、SE 縦横（ホーム画面・Safari）の 4 画面とも、スクロールしなくても全部のボタンに届き 44px 以上（ボタンの帯は画面の下に残る）、見出しが切れず、いちばん下までスクロールしても最後の文がボタンに隠れない。遊び方の表（dl.howto）の説明の欄が潰れない（X-15・PK-39）',
+    async run({ browser, check }) {
+      const rows = [];
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari')]) {
+        for (const url of GAME_URLS) {
+          const { ctx, page } = await newPage(browser, v, `V14 ${url} ${v.label}`, { clock: true });
+          await seed(page, {});
+          await page.goto(BASE + url); await wait(page, 800);
+          const r = await page.evaluate(() => {
+            const vis = (e) => { const q = e.getBoundingClientRect(), cs = getComputedStyle(e); return q.width > 0 && q.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && !e.closest('[hidden]'); };
+            const ov = [...document.querySelectorAll('.overlay')].find(vis);
+            if (!ov) return null;
+            const card = ov.querySelector('.card, [role=dialog]') || ov.firstElementChild;
+            ov.scrollTop = 0;
+            const head = card.querySelector('h1, h2');
+            const headTop = head ? Math.round(head.getBoundingClientRect().top) : -1;
+            const all = [...card.querySelectorAll('button')].filter(vis);
+            const btns = all.map((b) => { const q = b.getBoundingClientRect(), t = document.elementFromPoint(q.left + q.width / 2, Math.min(innerHeight - 1, q.top + q.height / 2)); return { t: b.textContent.trim().slice(0, 10), h: Math.round(q.height), hit: !!t && (t === b || b.contains(t)) && q.bottom <= innerHeight + 0.5 }; });
+            const dd = [...card.querySelectorAll('dl.howto dd')].map((d) => Math.round(d.getBoundingClientRect().width));
+            ov.scrollTop = ov.scrollHeight;
+            const texts = [...card.querySelectorAll('p, dd, li')].filter((e) => vis(e) && !e.closest('button'));
+            const last = texts.pop(), first = all[0];
+            const covered = !!(last && first && (last.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING) && last.getBoundingClientRect().bottom > first.getBoundingClientRect().top + 1);
+            ov.scrollTop = 0;
+            return { title: head ? head.textContent.trim().slice(0, 12) : null, headTop, btns, dd, covered };
+          });
+          if (r) rows.push({ v: v.label, url, ...r });
+          await ctx.close();
+        }
+      }
+      const bad = rows.filter((x) => x.headTop < 0 || x.btns.length === 0 || x.btns.some((b) => !b.hit || b.h < 43.5) || x.covered || x.dd.some((w) => w < 80));
+      check(`SE 縦横 4 画面 × ${GAME_URLS.length} 本：最初のカード ${rows.length} 枚の全部のボタンにスクロールなしで届き 44px 以上、見出しが切れない、最後の文がボタンに隠れない、遊び方の表の説明の欄が 80px 以上（だめ：${bad.map((x) => `${x.url} ${x.v}`).join('、') || 'なし'}）`,
+        rows.length === (GAME_URLS.length - 1) * 4 && bad.length === 0, bad.map((x) => ({ url: x.url, v: x.v, headTop: x.headTop, btns: x.btns, covered: x.covered, dd: x.dd })));
     },
   },
 ];

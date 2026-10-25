@@ -335,6 +335,8 @@
   .card .brow { display: flex; gap: 10px; }
   /* ボタンの段：1段目は主ボタンを横幅いっぱい、2段目に残りを並べる */
   .card .btns { display: flex; flex-direction: column; gap: 10px; }
+  /* 閉じるボタンは、カードが長くてもスクロールしなくても押せるよう、画面の下に見えたままにする（いろびんと同じ。X-15） */
+  .card .btns { position: sticky; bottom: 0; z-index: 1; background: var(--panel); padding-top: 6px; margin-bottom: -6px; padding-bottom: 6px; }
   .card .cta { min-height: 50px; }
   .card .cta small { display: block; font-size: 12px; font-weight: 500; opacity: 0.8; }
   .answer { display: flex; justify-content: center; gap: 8px; }
@@ -503,7 +505,7 @@
   const soundBtn = $("soundBtn");
   function renderSoundBtn() {
     soundBtn.setAttribute("aria-pressed", String(!!sfx.on));
-    soundBtn.setAttribute("aria-label", sfx.on ? "効果音：オン" : "効果音：オフ");
+    soundBtn.setAttribute("aria-label", "効果音");   // オン・オフは aria-pressed だけで伝える（名前に入れると読み上げが二重になる。X-25）
   }
   soundBtn.addEventListener("click", () => { sfx.toggle(); renderSoundBtn(); });
   renderSoundBtn();

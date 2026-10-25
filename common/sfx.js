@@ -13,7 +13,7 @@
  *   const sfx = YubiSfx.create("matomete"); // まとめてポン（select(n)/pop(n)/fall/allclear/over/deny/undo/blast(r)/streak(n)）
  *   const sfx = YubiSfx.create("michibiki"); // ミチビキ空港（warn/pick/lock/land(n)/near/crash/bounce/open(color)/over）
  *   const sfx = YubiSfx.create("seizai");   // もくもくこうば（chop/saw/sell/buy/hire/tool/cheer/deny/order/deliver(kind)/stage(n)/away）
- *   const sfx = YubiSfx.create("asteroid"); // ちきゅうを守れ！ほしくだき（shot(w)/crack(n)/break(mat)/chunk(n)/absorb/up/evolve/unlock/clear/bounce/boss/deny）
+ *   const sfx = YubiSfx.create("asteroid"); // ちきゅうを守れ！ほしくだき（shot(w)/crack(n)/break(mat)/chunk(n)/absorb/up/evolve/unlock/swap/clear/bounce/boss/deny）
  *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
@@ -25,6 +25,9 @@
   const KEY = "blockpuzzle.sound";      // ゲーム集で共通の効果音設定
   const PENTA = [0, 2, 4, 7, 9];        // ド・レ・ミ・ソ・ラ（どの順に鳴っても濁らない音階）
   const MAX_VOICES = 36;                // 同時に鳴らす部品の上限（連打で濁らないように）
+  // 結果の音は、連打で上限を使い切った直後でも鳴らす（上限の外に PRIORITY_EXTRA 個まで。over＋allclear の 2 つぶん。MT-03）
+  const PRIORITY = { over: 1, allclear: 1, clear: 1, best: 1, win: 1 };
+  const PRIORITY_EXTRA = 48;
   // 同じ音を続けて鳴らす最短の間隔（秒）。長押しの連続移動（45ms 間隔）は通す
   // 同じ処理の中で続けて鳴らすとき、鳴らす時刻をこの秒数ずつずらす（currentTime は1つの処理の中では進まないため、間引かずに順に鳴らす）
   const STAGGER = { slice: 0.03 };
@@ -37,7 +40,7 @@
   const GROUP_SEIZAI = { chop: "work", saw: "work" };
   // ちきゅうを守れ！ほしくだきだけの間引き（約束 §9）。shot は全武器を合わせて 0.12 秒に 1 回（名前が1つなので自然に合わさる）、
   // break は 0.05 秒・absorb は 0.1 秒に 1 回まで。clear・bounce・deny は ほかのゲームにも同じ名前があるので、このゲームだけに効かせる
-  const GAP_ASTEROID = { shot: 0.12, crack: 0.08, break: 0.05, chunk: 0.12, absorb: 0.1, up: 0.05, bounce: 0.3, deny: 0.2, boss: 1, evolve: 0.2, unlock: 0.3, clear: 0.5 };
+  const GAP_ASTEROID = { shot: 0.12, crack: 0.08, break: 0.05, chunk: 0.12, absorb: 0.1, up: 0.05, bounce: 0.3, deny: 0.2, boss: 1, evolve: 0.2, unlock: 0.3, swap: 0.1, clear: 0.5 };
 
   function create(game, opts) {
     opts = opts || {};
@@ -46,6 +49,7 @@
     if (!opts.ignoreSetting) { try { on = localStorage.getItem(KEY) !== "off"; } catch (e) { /* 読めなければオン */ } }
     const last = {}, nextAt = {};
     let voices = [];
+    let prio = false;                   // 結果の音を鳴らしている間だけ true（slot が上限の外も使う。MT-03）
 
     function ensure() {
       if (!ctx) {
@@ -89,7 +93,7 @@
     function slot(end) {
       const now = ctx.currentTime;
       if (voices.length > 8) voices = voices.filter((e) => e > now);
-      if (voices.length >= MAX_VOICES) return false;
+      if (voices.length >= MAX_VOICES + (prio ? PRIORITY_EXTRA : 0)) return false;
       voices.push(end);
       return true;
     }
@@ -677,6 +681,15 @@
         [C5, E5, G5].forEach((f) => partial(f, t + 0.18, 0.5, { vol: 0.03, a: 0.01 }));
         bell(E6, t + 0.24, { vol: 0.04, decay: 0.4 });
       },
+      // 入れ替え「かちゃっ」：短い機械の音 2 つ（unlock より控えめ。約 0.1 秒。予約の取り消しは共通の toggle）
+      swap: () => {
+        const t = N();
+        noise(t, 0.015, { freq: 2600, q: 3, vol: 0.03, a: 0.001 });
+        partial(1320, t, 0.03, { vol: 0.03, a: 0.001 });
+        noise(t + 0.06, 0.02, { freq: 1800, q: 3, vol: 0.035, a: 0.001 });
+        partial(880, t + 0.06, 0.045, { vol: 0.035, a: 0.001 });
+        partial(880 * 2.4, t + 0.06, 0.025, { vol: 0.01, a: 0.001 });
+      },
       // 星をクリア：大きなお祝い（約 1.2 秒）
       clear: () => {
         const t = N();
@@ -731,7 +744,8 @@
             off = Math.min(STAGGER_MAX, Math.max(0, (nextAt[name] || 0) - base));
             nextAt[name] = base + off + STAGGER[name];
           }
-          table[name](arg, off);
+          prio = !!PRIORITY[name];
+          try { table[name](arg, off); } finally { prio = false; }
         } catch (e) { /* 音が出なくてもゲームは続ける */ }
       },
       // 振動は Android のみ（iPhone の Safari には振動の機能がない）
