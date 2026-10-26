@@ -542,7 +542,7 @@ export const tests = [
     },
   },
   {
-    id: 'WW10', tier: 'full', solo: true, cdp: 'CDP の CPU 低速化', title: 'もくもくこうば 性能：みなとで全部最大（人 60 前後）にして、CPU 4 倍遅く（CDP）で 6 秒、人の数 66 以下、34ms を超えるコマが 5% 以下',
+    id: 'WW10', tier: 'full', solo: true, cdp: 'CDP の CPU 低速化', title: 'もくもくこうば 性能：みなとで全部最大（人 60 前後）にして、CPU 4 倍遅く（CDP）で 6 秒、人の数 66 以下、34ms を超えるコマが 10% 以下（ユーザー決定 2026-10-26。T-33）',
     async run({ browser, check }) {
       const { ctx, page } = await newPage(browser, view('SE', 'p', 'app'), 'WW10');
       await seed(page, { 'seizai.help': '1' });
@@ -561,7 +561,7 @@ export const tests = [
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
       const frames = b.frames - a.frames, slow = b.slowFrames - a.slowFrames;
       check(`人の数 ${b.actors}（40〜66。§19.3.1）`, b.actors >= 40 && b.actors <= 66, b.actors);
-      check(`CPU 4 倍遅くで 6 秒：${frames} コマのうち 34ms を超えたのは ${slow}（${(slow / Math.max(1, frames) * 100).toFixed(1)}%、5% 以下）`, frames >= 100 && slow / frames <= 0.05, { frames, slow });
+      check(`CPU 4 倍遅くで 6 秒：${frames} コマのうち 34ms を超えたのは ${slow}（${(slow / Math.max(1, frames) * 100).toFixed(1)}%、10% 以下）`, frames >= 100 && slow / frames <= 0.10, { frames, slow });   // 6 秒で約 280 コマなので 5% だと 1 コマで合否が入れ替わった（T-33）。ユーザー決定「引っかかるコマの割合が10%以下なら合格にして」
       await ctx.close();
     },
   },
