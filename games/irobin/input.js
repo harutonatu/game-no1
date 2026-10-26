@@ -12,7 +12,7 @@
  *     （Enter・Space はボタンの標準の click に任せる。キーで押した click は via 'key'）
  *   - ダブルタップ拡大の抑止：#board と .tools で、350ms 以内の2回目のタップの touchend を止め、click は自分で送る。
  *     dblclick・gesturestart/change/end も止める。
- *   - キーボード：←→ で左右、↑↓ で上下の段（board.dataset.cols。空いた置き場所は飛ばす）、1〜9・0・- で置き場所の番号（id+1。0 は 10、- は 11）の瓶、U・Backspace で undo、R で restart、
+ *   - キーボード：←→ で左右、↑↓ で上下の段（board.dataset.cols。空いた置き場所は飛ばす）、1〜9・0・-・= と ^ で置き場所の番号（id+1。0 は 10、- は 11、= と ^ は 12 本目）の瓶、U・Backspace で undo、R で restart、
  *     Esc で deselect（カードが開いていれば close）、M で sound、? / で help。
  *     #overlay が見えている間は Esc 以外を無視する。修飾キー（Ctrl・Cmd・Alt）つきは無視する。
  *   - isBlocked() が true の間は onPick を呼ばない。

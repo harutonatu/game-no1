@@ -74,9 +74,9 @@
   // cloths＝布の瓶の本数、clothEmpty＝布の瓶1本ごとに空き瓶になる確率（それ以外は中身あり＝色水が入っている）
   // clothCover＝中身ありの布の cover（何人届けたら取れるか）の決め方（契約 §17.9）：
   //   "intro"＝1（5 面（CLOTH_INTRO_LEVEL）だけ。はじめての布は中身あり・すぐ開く）、"early"＝1〜total の 1/3、
-  //   "mid"＝total の 1/3〜1/2、"late"＝total の半分前後（9 色で 4〜6）。"late" の面は、布の中の色のお客さんが
+  //   "mid"＝total の 1/3〜1/2、"late"＝total の半分前後（9〜10 色で 4〜6）。"late" の面は、布の中の色のお客さんが
   //   前の方に来る列を選び、さらに「cover を 1 にしたときより解く探索量が 1.5 倍以上」の面を優先して選ぶ
-  // clothsOn: "even"＝布は偶数面だけ（奇数面は布なし）。9 色の面は瓶が 11 本で空き瓶の布を足せず、中身ありの布だけになる
+  // clothsOn: "even"＝布は偶数面だけ（奇数面は布なし）。9 色の面は瓶が 11 本（10 色の面は 12 本）で空き瓶の布を足せず、中身ありの布だけになる
   const LEVELS = Object.freeze([
     { from: 1,  colors: 2, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0, clothCover: "early" },
     { from: 2,  colors: 3, empties: 2, hidden: "none", order: "easy",   cloths: 0, clothEmpty: 0, clothCover: "early" },
@@ -227,7 +227,7 @@
   const TAG_SHIFT = 28, SMALL_TAG = 15, KEY_COVER = 15;
   const TAG_MASK = 15 << TAG_SHIFT;
   const SMALL_BIT = SMALL_TAG << TAG_SHIFT;                    // ちいさい びんの印（負の数になる）
-  function tagOf(b) { return b >>> TAG_SHIFT; }               // 0＝ふつう、1〜9＝色＋1（いろ きまり・かぎ）、15＝ちいさい
+  function tagOf(b) { return b >>> TAG_SHIFT; }               // 0＝ふつう、1〜10＝色＋1（いろ きまり・かぎ）、15＝ちいさい
   function isKeyP(b) { return tagOf(b) !== 0 && coverOf(b) === KEY_COVER; }
 
   function packBottle(cells, hidden, sealed) {
