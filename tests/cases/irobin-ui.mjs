@@ -1543,13 +1543,13 @@ export const tests = [
     },
   },
   {
-    id: 'BW29', tier: 'full', title: 'いろびん IB-25：詰んだ・予備軍になった最初の 1 回だけ「とける ところまで もどす」のカード（44px 以上・出てすぐは押せない）、押すと解ける最後の局面へ戻る（保存も同じ・開き直しても同じ）、「このまま つづける」は閉じるだけ、setState の詰みでも出る、SE 縦・横で収まる',
+    id: 'BW29', tier: 'full', title: 'いろびん IB-25：詰んだ・予備軍になった最初の 1 回だけ「とける ところまで もどす」のカード（44px 以上・出てすぐは押せない）、押すと解ける最後の局面へ戻る（保存も同じ・開き直しても同じ。3,000 では言い切れない局面でも面の最初まで落ちない＝IB-46）、「このまま つづける」は閉じるだけ、setState の詰みでも出る、SE 縦・横で収まる',
     async run({ browser, check }) {
       // 解ける最後の局面の確かめ：面の最初から手（位置）を当てた局面の列で、k が solved、k+1〜n がどれも solved でない
       const lastSolvable = (page, lv, path, k) => page.evaluate(([lv, path, k]) => {
         const L = window.IrobinLogic; const st = [L.createLevel(lv).state];
         for (const [f, t] of path) st.push(L.applyMove(st[st.length - 1], f, t).state);
-        const sv = (x) => L.solve(x, { nodeLimit: 3000 }).solved === true;
+        const sv = (x) => L.solve(x, { nodeLimit: 3000000 }).solved === true;   // 本当に解けるか（IB-46：3,000 では言い切れない局面がある）
         const after = st.slice(k + 1).map(sv);
         return { atK: sv(st[k]), after, ok: sv(st[k]) && after.every((x) => !x) };
       }, [lv, path, k]);
@@ -1666,6 +1666,40 @@ export const tests = [
           check(`(g) 遊び方が開いていてカードが取りやめ（overlay ${g1.overlay}・doomed ${g1.doomed}）→ 閉じても出ない（${g2.overlay}）→ 予備軍のまま次の手を指すとカード（${g3.overlay}・doomed ${g3.doomed}）`, g1.overlay === 'help' && g1.doomed === true && g2.overlay === null && g3.overlay === 'rescue' && g3.doomed === true, { g1: g1.overlay, g2: g2.overlay, g3: g3.overlay });
         }
         await cg.ctx.close();
+      }
+      // (h) IB-46：解ける最後の局面が 1 局面 3,000 では言い切れない（直す前は面の最初まで戻っていた）。v42 の 80 面、5 手目で予備軍、解ける最後は 2 手
+      {
+        const ch = await openG(browser, 'BW29 IB-46', { extra: { 'irobin.best': '127' } });
+        const hp = ch.page;
+        await hp.evaluate(() => window.IrobinGame.setLevel(80)); await wait(hp, 100);
+        const path80 = [[10, 8], [6, 10], [2, 6], [11, 4], [5, 11]];
+        const pre = await hp.evaluate((path) => {
+          const L = window.IrobinLogic; const st = [L.createLevel(80).state];
+          for (const [f, t] of path) st.push(L.applyMove(st[st.length - 1], f, t).state);
+          const r = (x, n) => { const o = L.solve(x, { nodeLimit: n }); return o.solved ? 's' : o.exhausted ? 'e' : 'x'; };
+          return { small: st.map((x) => r(x, 3000)).join(''), big: st.map((x) => r(x, 3000000)).join('') };
+        }, path80);
+        check(`(h) 80 面の場面：3,000 では 1〜4 手が言い切れず（${pre.small}）、本当は 2 手まで解ける（${pre.big}）`, /^.eeeex$/.test(pre.small) && pre.big === 'sssxxx', pre);
+        await playMoves(hp, path80); await wait(hp, 100);
+        const h1 = await gs(hp);
+        const t0 = Date.now();
+        await wait(hp, 450);
+        // 押した直後（探している間・探し終えた直後）の「1手もどす」と瓶の押下は受けない（止まっている間の 2 回目のタップ）
+        await hp.evaluate(() => new Promise((res) => { document.querySelector('#overlay [data-cmd="rewindYes"]').click(); document.getElementById('undoBtn').click(); setTimeout(() => { document.getElementById('undoBtn').click(); const b = document.querySelector('#board button, #board [data-index]'); if (b) b.click(); res(); }, 5); }));
+        await wait(hp, 150);
+        const h2 = await gs(hp), hh = await hintText(hp);
+        const ls = await lastSolvable(hp, 80, path80, h2.moves);
+        check(`(h) 押すと面の最初でなく解ける最後の 2 手へ（5 手→${h2.moves} 手。すぐあとの「1手もどす」と瓶の押下は受けない・選択 ${h2.selected}。k が解ける ${ls.atK}・k+1〜5 は解けない ${J(ls.after)}）・ヒント「ここからなら」（${hh}）`, h1.overlay === 'rescue' && h1.moves === 5 && h2.moves === 2 && h2.selected === null && ls.ok && h2.overlay === null && /ここからなら/.test(hh || ''), { h1: h1.overlay, h2: h2.moves, ls, ms: Date.now() - t0 });
+        // (h2) 何回か上限を広げ、合計 30,000 を超えて見つかる場面：v42 の 128 面、8 手で詰み（stuck）、解ける最後は 1 手（約 75,000 局面。上限 30,000・広げ方 2 倍では 0 手に落ちる）
+        await hp.evaluate(() => window.IrobinGame.setLevel(128)); await wait(hp, 100);
+        const path128 = [[7, 11], [2, 6], [11, 2], [4, 11], [9, 11], [1, 7], [6, 1], [2, 6]];
+        await playMoves(hp, path128); await wait(hp, 100);
+        const i1 = await gs(hp);
+        await wait(hp, 450); await clickCmd(hp, 'rewindYes'); await wait(hp, 400);
+        const i2 = await gs(hp);
+        const ls2 = await lastSolvable(hp, 128, path128, i2.moves);
+        check(`(h2) 128 面：8 手で詰みのカード（${i1.overlay}・stuck ${i1.stuck}）→ 押すと 1 手へ（${i2.moves} 手。k が解ける ${ls2.atK}・k+1〜8 は解けない ${J(ls2.after)}）`, i1.overlay === 'rescue' && i1.stuck === true && i1.moves === 8 && i2.moves === 1 && ls2.ok && i2.overlay === null, { i1: i1.overlay, i2: i2.moves, ls2 });
+        await ch.ctx.close();
       }
       // (e) setState の詰み（BW7 の局面）でもカード、押すと詰みでなくなる
       const c3 = await openG(browser, 'BW29 setState');

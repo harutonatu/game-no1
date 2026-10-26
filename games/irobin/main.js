@@ -37,7 +37,9 @@
   const DOOM_NODE_LIMIT = 3000;   // 詰み予備軍を調べる上限（局面の数。上限に届いたら何も言わない）
   // 詰んだときの「とける ところまで もどす」（IB-25。契約 §20）
   const HINT_REWOUND = "ここからなら ぜんぶ とどけられるよ";
-  const REWIND_BUDGET = 30000;    // 戻し先を探すときに調べる局面の合計の上限（1 局面ずつは DOOM_NODE_LIMIT まで。超えたら面の最初）
+  const REWIND_BUDGET = 100000;   // 戻し先を探すときに調べる局面の合計の上限（超えたら、それまでに解けると確かめた一番新しい局面。IB-46）
+  const REWIND_GROW = 4;          // 言い切れなかった局面は、1 局面ずつの上限を DOOM_NODE_LIMIT から 4 倍ずつ広げて調べ直す
+  const REWIND_ROUND = 8;         // 1 回の調べで使う量は 1 局面の上限の 8 倍まで（届いたら打ち切って上限を広げる。言い切れない局面が長く続く面で 1 回目に使い切らない）
   // 布の瓶（§17.4）
   const HINT_CLOTH_FIRST = "ぬのの びんは なかが みえないよ。おきゃくさんに とどけると ぬのが とれるよ";
   const HINT_CLOTH_AGAIN = "おきゃくさんに とどけると ぬのが とれるよ";   // はじめての布の面（CLOTH_INTRO_LEVEL）以外で説明を出すとき
@@ -156,6 +158,8 @@
   let custom = null;            // setState で入れた最初の局面（テスト用。保存しない）
   let cardShownAt = -Infinity;
   let blockUntil = -Infinity;
+  let rewindRun = -1;           // 「とける ところまで もどす」の探しを待っている回（runId）。その間と、探し終えた直後 BOARD_BLOCK_MS は押下を受けない（IB-46）
+  let rewindBlockUntil = -Infinity;
   let pending = null;           // 演出が終わったら続ける処理 { token, fn }
   let pourSeq = 0;
   let lastClear = null;         // { level, moves, improved, par }
@@ -598,7 +602,7 @@
 
   // ===== お助け =====
   function undo() {
-    if (overlayKind || !state || state.won || phase === "clear") return;
+    if (overlayKind || !state || state.won || phase === "clear" || rewindBusy()) return;
     if (!history.length) return;
     flush();
     if (state.won || phase === "clear") return;
@@ -635,36 +639,60 @@
       cardShownAt = now();
     }, 0);
   }
-  // 戻し先：新しい方から 1 手ずつ、解ける最後の局面（R4）。history[k]＝k 手 注いだあとの局面
+  // 戻し先：解ける最後の局面（R4。IB-46 で探し方を変えた）。history[k]＝k 手 注いだあとの局面。
+  // 解ける局面から注いだ手を戻した局面も解けるので、解ける局面は 0〜K 手の続き。lo＝解けると確かめた一番新しい k（0 は生成で確かめ済み）、
+  // hi＝解けないと言い切れた一番古い k（今の局面）。lo と hi の間を新しい方から上限 lim で調べ、言い切れない局面は lim を広げて調べ直す。
+  // 合計が REWIND_BUDGET を超えたら lo（直す前は 1 局面 3,000 までで言い切れないと面の最初まで落ちていた）
   function rewindTarget() {
-    let spent = 0;
-    for (let k = history.length - 1; k >= 1; k--) { const r = safeCall(() => L.solve(history[k], { nodeLimit: DOOM_NODE_LIMIT }), null); spent += r && Number.isFinite(r.nodes) ? r.nodes : 0; if (r && r.solved === true) return k; if (spent > REWIND_BUDGET) break; }
-    return 0;   // 見つからない・探しきれない：面の最初（生成で解けると確かめ済み。setState の局面ならその局面）
+    let lo = 0, hi = history.length, spent = 0, lim = DOOM_NODE_LIMIT;
+    while (hi - lo > 1 && spent < REWIND_BUDGET) {
+      let round = 0;
+      for (let k = hi - 1; k > lo; k--) {
+        const r = safeCall(() => L.solve(history[k], { nodeLimit: Math.max(1, Math.min(lim, REWIND_BUDGET - spent)) }), null);
+        const used = r && Number.isFinite(r.nodes) && r.nodes > 0 ? r.nodes : DOOM_NODE_LIMIT;   // 壊れた結果でも必ず進む（止まらない）
+        spent += used; round += used;
+        if (r && r.solved === true) { lo = k; break; }
+        if (r && r.solved === false && r.exhausted === false) hi = k;
+        if (spent >= REWIND_BUDGET || round >= lim * REWIND_ROUND) break;
+      }
+      lim *= REWIND_GROW;
+    }
+    return lo;   // 見つからない・探しきれない：確かめた一番新しい局面（無ければ面の最初。setState の局面ならその局面）
   }
+  // カードを先に消してから、次のひと区切りで探す（探す間に止まっても、カードが残って見えない）。
+  // 探す前に局面が変わっていたら何もしない（showRescue と同じ守り方）。探す間と探し終えた直後は押下を受けない（止まっている間のタップで瓶が選ばれない）
+  function rewindBusy() { return rewindRun === runId || now() < rewindBlockUntil; }
   function doRewind() {
     hideOverlay();
     if (!document.hidden) render.resume();
     if (!state || state.won || phase === "clear") return;
     flush();
     if (state.won || phase === "clear") return;
-    const k = rewindTarget();
-    if (k >= history.length) return;
-    state = history[k];
-    history.length = k;
-    moves.length = k;
-    selected = null;
-    doomed = false;
-    render.update(state, { selected: null });
-    save();
-    hud();
-    sfx.play("undo");
-    setPhase(restPhase());
-    checkDoomed();
-    renderTools();
-    setHint(custom && k === 0 ? idleHint() : HINT_REWOUND);   // setState の局面の最初へ戻ったとき（解けるとは限らない）は、ふつうのヒント
+    const mark = moves.length, myState = state;
+    rewindRun = runId;
+    later(() => {
+      rewindRun = -1;
+      if (overlayKind || !state || state !== myState || moves.length !== mark || state.won || phase === "clear") return;
+      const k = rewindTarget();
+      rewindBlockUntil = now() + BOARD_BLOCK_MS;
+      if (k >= history.length) return;
+      state = history[k];
+      history.length = k;
+      moves.length = k;
+      selected = null;
+      doomed = false;
+      render.update(state, { selected: null });
+      save();
+      hud();
+      sfx.play("undo");
+      setPhase(restPhase());
+      checkDoomed();
+      renderTools();
+      setHint(custom && k === 0 ? idleHint() : HINT_REWOUND);   // setState の局面の最初へ戻ったとき（解けるとは限らない）は、ふつうのヒント
+    }, 0);
   }
   function askRestart() {
-    if (overlayKind || !state || phase === "clear") return;
+    if (overlayKind || !state || phase === "clear" || rewindBusy()) return;
     if (!moves.length) return;
     flush();
     render.pause();
@@ -801,7 +829,7 @@
     }
   }
   const input = I && typeof I.attach === "function"
-    ? I.attach({ board: el.board, root: document }, { onPick, onCommand }, { isBlocked: () => !!overlayKind || paused || now() < blockUntil })
+    ? I.attach({ board: el.board, root: document }, { onPick, onCommand }, { isBlocked: () => !!overlayKind || paused || now() < blockUntil || rewindBusy() })
     : null;
   if (!input) console.error("いろびん: IrobinInput が読み込まれていません（input.js）。キーボードとタップの一部が使えません");
 
