@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { BASE, view, custom, newPage, seed, wait, frozen, layoutProbe, swInfo, sleep, touch, SFX_SPY, plays, x20Run, x20Text } from '../lib.mjs';
+import { BASE, view, custom, newPage, seed, wait, frozen, layoutProbe, swInfo, sleep, touch, SFX_SPY, plays, IS_CHROMIUM, x20Run, x20Text } from '../lib.mjs';
 
 const IR = BASE + 'games/irobin/';
 const SMOKE_V = () => view('SE', 'p', 'app');
@@ -2097,6 +2097,85 @@ export const tests = [
         const nx = await g.page.evaluate(() => { const n = document.querySelector('#card .next-note'); return n && !n.closest('[hidden]') && n.getBoundingClientRect().height > 0 ? n.textContent.trim() : null; });
         check(`best 59 で 60 面をクリア：予告「つぎは 61めん。いろが ふえるよ」（${nx}）`, s0.level === 60 && nx === 'つぎは 61めん。いろが ふえるよ', nx);
         await g.ctx.close();
+      }
+    },
+  },
+  {
+    id: 'BW34', tier: 'full', title: 'いろびん v44（IB-36）：はじめての遊び方カードは短い（「？」と布は その面まで来たら・キーの説明はキーボードのときだけ）。SE の Safari 縦でも「わかった」までスクロールせずに読める',
+    async run({ browser, check }) {
+      const info = (p) => p.evaluate(() => {
+        const ov = document.querySelector('#overlay');
+        const bt = ov.querySelector('[data-cmd="close"]'); const rr = bt.getBoundingClientRect();
+        const t = document.elementFromPoint(rr.left + rr.width / 2, rr.top + rr.height / 2);
+        const lis = [...ov.querySelectorAll('ol.rules li')].map((e) => e.textContent);
+        return { items: lis.length, text: lis.join(''), chars: (document.querySelector('#card').textContent || '').replace(/\s+/g, '').length, note: (ov.querySelector('.note') || {}).textContent || '', sh: ov.scrollHeight, ch: ov.clientHeight, btnBottom: rr.bottom, cardBottom: document.querySelector('#card').getBoundingClientRect().bottom, ih: innerHeight, hit: !!t && (t === bt || bt.contains(t)) };
+      });
+      // (a) はじめて：SE 縦 Safari
+      const a = await openG(browser, 'BW34 はじめて', { v: view('SE', 'p', 'safari'), help: false });
+      const ra = await info(a.page);
+      check(`はじめて（SE 縦 Safari）：項目が 2 つ（${ra.items}）、「うえを どかすと」「ぬのの びん」が無い、カードの字が 130 字以下（${ra.chars}）、「わかった」・カードの下端が画面内（${Math.round(ra.btnBottom)}・${Math.round(ra.cardBottom)}/${ra.ih}）、「わかった」を押せる`,
+        // scrollHeight が 7px 超えるのはカードの外側の下の余白で、文もボタンも全部見えている（BW16 と同じ形で見る）
+        ra.items === 2 && !/うえを どかすと/.test(ra.text) && !/ぬのの びん/.test(ra.text) && ra.chars <= 130 && ra.btnBottom <= ra.ih && ra.cardBottom <= ra.ih && ra.hit, ra);
+      await a.ctx.close();
+      // (b) その面まで来たら増える
+      const rows = async (best) => {
+        const g = await openG(browser, `BW34 best ${best}`, { v: view('SE', 'p', 'app'), help: false, extra: { 'irobin.best': best } });
+        const r = await info(g.page); await g.ctx.close(); return r;
+      };
+      const b4 = await rows('4'), b11 = await rows('11'), b39 = await rows('39');
+      check(`best 4（5 面まで来た）：3 つ目に「ぬのの びん」があり「うえを どかすと」は無い（${b4.items} 項目）`, b4.items === 3 && /ぬのの びん/.test(b4.text) && !/うえを どかすと/.test(b4.text), b4);
+      check(`best 11（12 面まで来た）：両方ある（${b11.items} 項目）`, b11.items === 3 && /ぬのの びん/.test(b11.text) && /うえを どかすと/.test(b11.text), b11);
+      check(`best 39：3 項目（BW28 と同じ）`, b39.items === 3, b39);
+      // (c) キーの説明（Chromium だけ）
+      if (IS_CHROMIUM) {
+        const t = await openG(browser, 'BW34 さわる', { help: false });
+        const rt = await info(t.page); await t.ctx.close();
+        check(`さわる画面：.note に「キー：」が無い（「${rt.note}」）`, !/キー：/.test(rt.note) && /こまったら/.test(rt.note), rt);
+        const k = await openG(browser, 'BW34 キーボード', { help: false, opts: { touch: false } });
+        const rk = await info(k.page); await k.ctx.close();
+        check(`キーボード（touch: false）：「= は 12ぽんめ」がある`, /= は 12ぽんめ/.test(rk.note), rk);
+      }
+    },
+  },
+  {
+    id: 'BW35', tier: 'full', title: 'いろびん v44（IB-45）：かぎの錠が上の段の瓶にかからない（109 面・SE 縦横の Safari・SE 縦ホーム画面・iPhone 13 縦・iPad 縦）。錠の記号は 12px 以上、iPhone 13 縦と iPad では錠の幅 26px のまま',
+    async run({ browser, check }) {
+      const VS = [view('SE', 'p', 'safari'), view('SE', 'l', 'safari'), view('SE', 'p', 'app'), view('i13', 'p', 'safari'), view('iPad', 'p', 'app')];
+      for (const v of VS) {
+        const { ctx, page } = await openG(browser, `BW35 ${v.label}`, { v, extra: { 'irobin.cloth': '1', 'irobin.small': '1', 'irobin.only': '1', 'irobin.lock': '1', 'irobin.save': J({ v: 3, level: 109, moves: [] }) } });
+        const m = await page.evaluate(() => {
+          const boxes = [...document.querySelectorAll('#board .lockbox')];
+          const bottles = [...document.querySelectorAll('#board .bottle')];
+          let worst = 0;
+          for (const lb of boxes) {
+            const a = lb.getBoundingClientRect(), own = lb.closest('.bottle');
+            for (const b of bottles) {
+              if (b === own) continue;
+              const r = b.getBoundingClientRect();
+              const ox = Math.min(a.right, r.right) - Math.max(a.left, r.left), oy = Math.min(a.bottom, r.bottom) - Math.max(a.top, r.top);
+              if (ox > 0.5 && oy > 0.5) worst = Math.max(worst, Math.min(ox, oy));
+            }
+          }
+          const marks = [...document.querySelectorAll('#board .lockmark')].map((e) => { const r = e.getBoundingClientRect(); return Math.min(r.width, r.height); });
+          return { n: boxes.length, worst, minMark: marks.length ? Math.min(...marks) : 0, w: boxes.length ? boxes[0].getBoundingClientRect().width : 0 };
+        });
+        const big = v.label.startsWith('i13') || v.label.startsWith('iPad');
+        check(`${v.label} ${v.w}×${v.h}｜109 面：錠 ${m.n} 個が他の瓶と重ならない（重なり ${m.worst.toFixed(1)}px）、記号 ${m.minMark.toFixed(1)}px（12px 以上）${big ? `、幅 ${m.w.toFixed(1)}px（26px のまま）` : ''}`,
+          m.n >= 1 && m.worst === 0 && m.minMark >= 12 && (!big || Math.abs(m.w - 26) <= 0.5), m);
+        await ctx.close();
+      }
+      // 101 面（かぎの最初の面。錠が上の段）：錠がお客さんの棚（#shop）にかからない
+      for (const v of VS) {
+        const { ctx, page } = await openG(browser, `BW35 101 ${v.label}`, { v, extra: { 'irobin.cloth': '1', 'irobin.small': '1', 'irobin.only': '1', 'irobin.lock': '1', 'irobin.save': J({ v: 3, level: 101, moves: [] }) } });
+        const g = await page.evaluate(() => {
+          const shop = document.querySelector('#shop').getBoundingClientRect();
+          // 横向きは #shop が盤の左にある。縦横どちらでも、錠の箱と #shop の箱が重ならない（重なり幅・高さの小さい方が 0.5px 以下）
+          const ls = [...document.querySelectorAll('#board .lockbox')].map((l) => l.getBoundingClientRect());
+          const ov = ls.map((r) => Math.min(Math.min(r.right, shop.right) - Math.max(r.left, shop.left), Math.min(r.bottom, shop.bottom) - Math.max(r.top, shop.top)));
+          return { n: ls.length, ov: ov.length ? Math.max(...ov) : null };
+        });
+        check(`${v.label} ${v.w}×${v.h}｜101 面：錠 ${g.n} 個が #shop（お客さんの棚）にかからない（重なり ${g.ov === null ? '-' : Math.max(0, g.ov).toFixed(1)}px）`, g.n >= 1 && g.ov <= 0.5, g);
+        await ctx.close();
       }
     },
   },

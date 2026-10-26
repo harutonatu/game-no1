@@ -346,4 +346,33 @@ export const tests = [
       check(`メニュー：description と og:description が「${head}」で始まる（N は GAMES の { name: の数）`, N > 0 && M.description.startsWith(head) && M.desc.startsWith(head), { N, M });
     },
   },
+  {
+    id: 'L13', tier: 'smoke', node: true, title: '共有の見た目の横展開（X-26）：いろびん以外の 11 本の head に description・og:*・twitter:card が 1 つずつ、og:url はそのゲームの公開の場所、og:image はメニューの絵、meta は title より前、文は「広告なし・登録なし。」で始まり og:title は「名前｜ゆびあそび」',
+    run({ check, root }) {
+      const BASE = 'https://harutonatu.github.io/game-no1/';
+      const rd = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+      const games = [...rd('index.html').matchAll(/\{ name: "([^"]+)"[^\n]*?url: "games\/([a-z0-9]+)\/"/g)].map((m) => ({ name: m[1], dir: m[2] })).filter((g) => g.dir !== 'irobin');
+      check(`いろびん以外のゲームが 11 本（${games.map((g) => g.dir).join(',')}）`, games.length === 11, games);
+      for (const g of games) {
+        const f = `games/${g.dir}/index.html`;
+        const html = rd(f);
+        const head = html.slice(0, html.indexOf('</head>'));
+        const ms = [...head.matchAll(/<meta\s+([^>]*?)\/?>/g)].map((m) => { const a = {}; for (const x of m[1].matchAll(/([\w:-]+)="([^"]*)"/g)) a[x[1]] = x[2]; return { ...a, idx: m.index }; });
+        const one = (k, v) => { const r = ms.filter((m) => m[k] === v); return r.length === 1 ? r[0].content : null; };
+        const V = {
+          description: one('name', 'description'), title: one('property', 'og:title'), desc: one('property', 'og:description'),
+          url: one('property', 'og:url'), image: one('property', 'og:image'), w: one('property', 'og:image:width'), h: one('property', 'og:image:height'),
+          alt: one('property', 'og:image:alt'), card: one('name', 'twitter:card'), type: one('property', 'og:type'), site: one('property', 'og:site_name'),
+        };
+        check(`${f}：description・og:*・twitter:card が 1 つずつ`, Object.values(V).every((x) => typeof x === 'string' && x.length > 0), V);
+        check(`${f}：og:url が ${BASE}games/${g.dir}/、og:image が ${BASE}icons/og-menu.png、1200×630、summary_large_image`,
+          V.url === `${BASE}games/${g.dir}/` && V.image === `${BASE}icons/og-menu.png` && V.w === '1200' && V.h === '630' && V.card === 'summary_large_image', V);
+        check(`${f}：description と og:description が同じで「広告なし・登録なし。」で始まる、og:title は「${g.name}｜ゆびあそび」、2048 の字を含まない`,
+          V.description === V.desc && V.description.startsWith('広告なし・登録なし。') && V.title === `${g.name}｜ゆびあそび` && !/2048/.test(V.description + V.title), V);
+        const titleAt = html.indexOf('<title>');
+        const late = ms.filter((m) => /^og:|^twitter:/.test(m.property || m.name || '') || m.name === 'description').filter((m) => m.idx > titleAt);
+        check(`${f}：共有の meta はどれも <title> より前（DG1 を崩さない）`, titleAt > 0 && late.length === 0, late);
+      }
+    },
+  },
 ];

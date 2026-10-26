@@ -43,6 +43,12 @@ const SCREENS = {
     // 詳しい画面内の確認（横向き・iPad・16桁）は BW5。ここは他のゲームと同じ画面ごとの共通確認
     probe: (page, safe) => layoutProbe(page, 'a#back, .tool, .bottle, .cta, .head, #shop, #board, #hint, #tools', safe, { overlapSel: '.head, #shop, #board, #hint, #tools', minSel: 'a#back, .tool, .bottle, .cta' }),
   },
+  hashi: {
+    label: 'ハシわたり（どこまでも・プレイ中）',
+    async open(page) { await seed(page, { 'hashi.help': '1' }); await page.goto(BASE + 'games/hashi/'); await wait(page, 300); await page.evaluate(() => document.querySelector('#overlay:not([hidden]) [data-cmd="endless"]').click()); await wait(page, 400); },
+    // 詳しい画面内の確認（16 桁・茎の先）は HW5。ここは他のゲームと同じ画面ごとの共通確認
+    probe: (page, safe) => layoutProbe(page, '#back, #helpBtn, #soundBtn, #hud, #stageWrap, #hint', safe, { overlapSel: '.head, #hud, #stageWrap, #hint', minSel: '#back, #helpBtn, #soundBtn' }),
+  },
   matomete: {
     label: 'まとめてポン（プレイ中・ベスト 7 桁）',
     async open(page) { await seed(page, { 'matomete.help': '1', 'matomete.best': '9999999' }); await page.goto(BASE + 'games/matomete/'); await wait(page, 200); },
@@ -462,6 +468,28 @@ export const tests = [
       const bad = rows.filter((x) => x.headTop < 0 || x.btns.length === 0 || x.btns.some((b) => !b.hit || b.h < 43.5) || x.covered || x.dd.some((w) => w < 80));
       check(`SE 縦横 4 画面 × ${GAME_URLS.length} 本：最初のカード ${rows.length} 枚の全部のボタンにスクロールなしで届き 44px 以上、見出しが切れない、最後の文がボタンに隠れない、遊び方の表の説明の欄が 80px 以上（だめ：${bad.map((x) => `${x.url} ${x.v}`).join('、') || 'なし'}）`,
         rows.length === (GAME_URLS.length - 1) * 4 && bad.length === 0, bad.map((x) => ({ url: x.url, v: x.v, headTop: x.headTop, btns: x.btns, covered: x.covered, dd: x.dd })));
+    },
+  },
+  {
+    id: 'V15', tier: 'full', title: 'SE の Safari（縦 320×454・横 568×270）で、まだ見ていなかった遊ぶ画面（2048 縦横・ハシわたり縦横・ブロック縦・キリトリ縦横・ピカッと 4 人 縦横）のボタンが画面内・重ならない・44px 以上（X-27。いろびん IB-44 の横展開）',
+    async run({ browser, check }) {
+      const p = view('SE', 'p', 'safari'), l = view('SE', 'l', 'safari');
+      for (const [v, k] of [[p, 't2048'], [l, 't2048'], [p, 'hashi'], [l, 'hashi'], [p, 'blocks'], [p, 'kiri'], [l, 'kiri'], [p, 'pikatto'], [l, 'pikatto']]) await screenCheck(browser, check, v, k);
+    },
+  },
+  {
+    id: 'V16', tier: 'full', title: '遊び方のキーの説明は指だけの画面では出さない（まとめてポン・キリトリ道場。ハシわたり HS-05 の横展開）：触る画面（isMobile・hasTouch）では出ず、マウスのある画面では出る。キリトリは dt/dd の組ごと',
+    async run({ browser, check }) {
+      for (const touch of [true, false]) {
+        const { ctx, page } = await newPage(browser, view('SE', 'p', 'safari'), `V16 ${touch ? '触る' : 'マウス'}`, { touch });
+        await seed(page, {}); await page.goto(BASE + 'games/matomete/'); await wait(page, 300);
+        const m = await page.evaluate(() => ({ card: !!document.querySelector('#cardTitle'), key: /キー：/.test(document.querySelector('.note')?.textContent || ''), undo: /1手もどす/.test(document.querySelector('.note')?.textContent || '') }));
+        check(`まとめてポン：遊び方の「キー：」は ${touch ? '触る画面では出ない' : 'マウスのある画面では出る'}（カード ${m.card}・「1手もどす」${m.undo}）`, m.card && m.undo && m.key === !touch, m);
+        await seed(page, {}); await page.goto(KIRI); await wait(page, 200);
+        const k = await page.evaluate(() => { const dts = [...document.querySelectorAll('dl.howto dt')]; const i = dts.findIndex((d) => d.textContent.trim() === 'キーボード'); return { n: dts.length, kb: i >= 0, dd: [...document.querySelectorAll('dl.howto dd')].some((d) => /Enter・Space/.test(d.textContent)) }; });
+        check(`キリトリ道場：遊び方の「キーボード」の項は ${touch ? '触る画面では dt も dd も出ない' : 'マウスのある画面では出る'}（項目 ${k.n}）`, k.n >= 4 && k.kb === !touch && k.dd === !touch, k);
+        await ctx.close();
+      }
     },
   },
 ];

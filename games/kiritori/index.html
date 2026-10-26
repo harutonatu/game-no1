@@ -7,6 +7,18 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ゆびあそび">
 <meta name="theme-color" content="#1b1f2e">
+<meta name="description" content="広告なし・登録なし。飛んでくる的を 指でなぞって切る。爆弾に注意。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ゆびあそび">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:title" content="キリトリ道場｜ゆびあそび">
+<meta property="og:description" content="広告なし・登録なし。飛んでくる的を 指でなぞって切る。爆弾に注意。">
+<meta property="og:url" content="https://harutonatu.github.io/game-no1/games/kiritori/">
+<meta property="og:image" content="https://harutonatu.github.io/game-no1/icons/og-menu.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="ゆびあそびの ゲームの絵">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="manifest" href="../../manifest.webmanifest">
 <link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
 <title>キリトリ道場</title>
@@ -654,6 +666,8 @@
     if (isBest) bl.classList.add("newbest");
     if (isBest && !bestFlashed) sfx.play("best");   // ベスト更新の音は1ゲーム1回（プレイ中に鳴らしていれば鳴らさない）
   }
+  // キーボードの項は、マウス・トラックパッドがあるとき（パソコン・iPad にキーボード）だけ出す。指だけの画面では出さない（ハシわたり HS-05 と同じ判定）
+  const hasFinePointer = () => { try { return !!(window.matchMedia && window.matchMedia("(any-pointer: fine)").matches); } catch (e) { return false; } };
   function showTitle() {
     showCard(`
       <h1>キリトリ道場</h1>
@@ -663,7 +677,7 @@
         <dt>黒い爆弾</dt><dd>切るとライフ −1</dd>
         <dt>落とす</dt><dd>的を切らずに落とすとライフ −1。0 でおしまい（はじめの 10 秒は減りません）</dd>
         <dt>コンボ</dt><dd>ひと振りで 3 つ以上切ると加点（3つ +3、4つ +5…）</dd>
-        <dt>キーボード</dt><dd>Enter・Space で的を1つ切る / P 一時停止 / M 効果音</dd>
+        ${hasFinePointer() ? "<dt>キーボード</dt><dd>Enter・Space で的を1つ切る / P 一時停止 / M 効果音</dd>" : ""}
         <dt>II / ♪</dt><dd>一時停止 / 効果音のオン・オフ（iPhone は消音モード中は鳴りません）</dd>
       </dl>
       <div class="row">

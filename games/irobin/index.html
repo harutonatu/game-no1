@@ -468,7 +468,7 @@
   .lockbox {
     position: absolute; left: 50%; bottom: 84%;
     transform: translateX(-50%);
-    width: min(60%, 26px);
+    width: min(60%, clamp(19px, calc((var(--rgap, 22px) + var(--bh, 200px) * 0.16 - 1px) / 1.24), 26px));   /* 段のすき間（--rgap）と口の上の出っぱり（瓶の 16%）に収まる幅。錠の高さは幅の約 1.24 倍。記号 12px を守るため 19px より小さくしない（IB-45） */
     pointer-events: none;
     display: flex; flex-direction: column; align-items: center;
     filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));

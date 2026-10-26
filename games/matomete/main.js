@@ -548,6 +548,8 @@
     const fb = focusBack; focusBack = null;
     if (fb && fb.isConnected && fb !== document.body) { try { fb.focus({ preventScroll: true }); } catch (e) { /* 無視 */ } }
   }
+  // キーの説明は、マウス・トラックパッドがあるとき（パソコン・iPad にキーボード）だけ出す。指だけの画面では出さない（ハシわたり HS-05 と同じ判定）
+  const hasFinePointer = () => { try { return !!(window.matchMedia && window.matchMedia("(any-pointer: fine)").matches); } catch (e) { return false; } };
   function showHelp() {
     if (overlayKind) return;   // 終わり・確認のカードの上には重ねない
     if (phase === "anim" || render.busy) flush();
@@ -559,7 +561,7 @@
         <li><b>たくさん</b> けすほど てんが ふえる。<b>${BIG}こ いじょう けすと まわりも ポン！ 3かい つづけると もっと ひろく</b>。ぜんぶ けすと ＋1000。</li>
         <li>けせる ところが なくなったら おしまい。<b>とちゅうで やめても つづきから あそべるよ。</b></li>
       </ol>
-      <p class="note">「1手もどす」は なんかいでも。キー：やじるしで うごかす、エンターで えらぶ・けす、U もどす、M おと</p>
+      <p class="note">「1手もどす」は なんかいでも。${hasFinePointer() ? "キー：やじるしで うごかす、エンターで えらぶ・けす、U もどす、M おと" : ""}</p>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");
   }
   function closeCard() {

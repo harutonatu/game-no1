@@ -758,6 +758,16 @@
     if (reach >= (L.KEY_FROM || 101)) parts.push('<b>かぎの びん</b>は かぎの いろを そろえると あく。');
     return parts.length ? `<li class="gimhelp">${parts.join("")}</li>` : "";
   }
+  // 遊び方の 3 つ目の行（IB-36）：「？」（12 面から）と 布（5 面から）は、その面まで来た人にだけ書く（はじめての人のカードを短く）
+  function laterHelp() {
+    const reach = Math.max(level, (Number(best) || 0) + 1);
+    const parts = [];
+    if (reach >= 12) parts.push("「？」は うえを どかすと みえるよ。");   // 12 面＝はじめての隠れ（logic.js NEWS の [12, "hidden"]）
+    if (reach >= (L.CLOTH_INTRO_LEVEL || 5)) parts.push("<b>ぬのの びん</b>は、とどけた にんずで あくよ。");
+    return parts.length ? `<li>${parts.join("")}</li>` : "";
+  }
+  // マウス・トラックパッドがあるときだけ キーの説明を出す（ハシわたりの hasFinePointer と同じ。iPhone では出さない。IB-36）
+  const hasFinePointer = () => { try { return !!(window.matchMedia && window.matchMedia("(any-pointer: fine)").matches); } catch (e) { return false; } };
   function showHelp() {
     if (overlayKind === "help") return;
     if (overlayKind) return;   // クリア・確認のカードの上には重ねない
@@ -766,10 +776,10 @@
       <h2 id="cardTitle">あそびかた</h2>
       <ol class="rules">
         <li>びんを おして、べつの びんを おすと <b>そそげる</b>よ（<b>おなじ いろ</b>の うえ か、<b>からの びん</b>に）。</li>
-        <li>4つ そろうと <b>せん</b>。うえの <b>トレイと おなじ いろ</b>なら おきゃくさんに とどくよ。まだ いない いろは、その ばしょで まつよ。</li>
-        <li>「？」は うえを どかすと みえるよ。<b>ぬのの びん</b>は、とどけた にんずで あくよ。</li>${gimHelp()}
+        <li>4つ そろうと <b>せん</b>。うえの <b>トレイと おなじ いろ</b>なら おきゃくさんに とどくよ。まだ いない いろは、そのまま まつよ。</li>
+        ${laterHelp()}${gimHelp()}
       </ol>
-      <p class="note">こまったら「1手もどす」「やりなおし」。キー：やじるし・エンター・すうじ（0 は 10、- は 11、= は 12ぽんめ）で えらぶ。U もどす、M おと。</p>
+      <p class="note">こまったら<span style="white-space:nowrap">「1手もどす」</span><span style="white-space:nowrap">「やりなおし」</span>。${hasFinePointer() ? "キー：やじるし・エンター・すうじ（0 は 10、- は 11、= は 12ぽんめ）で えらぶ。U もどす、M おと。" : ""}</p>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");
   }
   function closeCard() {
