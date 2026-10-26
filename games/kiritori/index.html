@@ -677,13 +677,14 @@
         <dt>黒い爆弾</dt><dd>切るとライフ −1</dd>
         <dt>落とす</dt><dd>的を切らずに落とすとライフ −1。0 でおしまい（はじめの 10 秒は減りません）</dd>
         <dt>コンボ</dt><dd>ひと振りで 3 つ以上切ると加点（3つ +3、4つ +5…）</dd>
-        ${hasFinePointer() ? "<dt>キーボード</dt><dd>Enter・Space で的を1つ切る / P 一時停止 / M 効果音</dd>" : ""}
+        <dt data-kbd>キーボード</dt><dd data-kbd>Enter・Space で的を1つ切る / P 一時停止 / M 効果音</dd>
         <dt>II / ♪</dt><dd>一時停止 / 効果音のオン・オフ（iPhone は消音モード中は鳴りません）</dd>
       </dl>
       <div class="row">
         <button class="cta" type="button" data-cmd="menu">メニューへ</button>
         <button class="cta primary" type="button" data-cmd="restart">はじめる</button>
       </div>`);
+    if (!hasFinePointer()) card.querySelectorAll("[data-kbd]").forEach((e) => e.remove());   // テンプレートに値を埋め込まない（L6）ので、出したあとで外す
   }
   // カードは HTML の骨組みだけを書き、数値などは data-f の要素に textContent で入れる
   // カードを閉じたら、開く前にフォーカスのあった所へ戻す（カードの中のボタンは消えるため）
