@@ -44,29 +44,45 @@
 
 ---
 
-## 3. v45 の保存の形（先に決めること。PM の決定。質問の答えで変わる所は ⏸ 印）
+## 3. v45 の保存の形（PM の決定。7 章の答え〔2026-10-26〕で決まった）
+
+- 決まったこと（8 章の答えから）：Q1＝**動物ごとに違う おしゃれ・3 段**、Q2＝**クリアのカードから開く**、Q3＝**0 から数える**（古い保存から数を作らない）、Q4＝**動物の数＋面ごとの★と手数**。
 
 ### 3.1 キーと形
 
 - **新しいキー `irobin.book`**（なかよしちょう）。今の `irobin.save`（v:3）・`irobin.best` は**変えない**。
 - 形：`{ "v": 1, "a": { "kuma": 12, "usagi": 9, … }, "s": { "1": [3, 6], "2": [2, 17], … }, "last": 2 }`
   - `a`：動物 6 種（`ANIMAL_KEYS`）ごとの届けた数。0 のものは書かない。上限 1e9。
-  - `s`：面ごとの記録 `[星 1〜3, 一番少ない手数]`。キーは面の番号の文字（`"1"`〜）。星 0（めやすが無い面）は書かない。⏸Q4
+  - `s`：面ごとの記録 `[星 1〜3, 一番少ない手数]`。キーは面の番号の文字（`"1"`〜）。星 0（めやすが無い面）は書かない（Q4＝A）。
   - `last`：最後に動物の数を足した面（二重に数えないための印。3.3）。
-- なかよしの段：届けた数が **10・30・100・300・1000** で 1 段ずつ上がる（`BOOK_STEPS`）。決まった数で必ず上がる（ガチャではない）。⏸Q1
-  - 事実（Node）：1 面の注文の数＝色の数（1〜300 面で `createLevel().state.total === paramsFor().colors` を確かめた）。1 匹あたり 60 面で約 80 人、5000 面で約 8,300 人。10 人は約 9 面、30 人は約 24 面、100 人は約 75 面、300 人は約 190 面、1000 人は約 600 面で届く。
-  - 3 段（10・30・100）だと 75 面ほどで全部そろい、ユーザーの報告にある 238 面まで来た人は、引き継いだ時点で全部そろってしまう（質問 1 の理由）。
+- なかよしの段（0〜3）：届けた数が **10・50・200** で 1 段ずつ上がる（`BOOK_STEPS = [10, 50, 200]`）。決まった数で必ず上がる（ガチャではない）。
+  - 理由（事実、Node。`logic-book.js` で数えた）：だれでも 0 から数えるので、1 面から始めると **10 人＝最初の動物が 10 面・6 匹そろうのが 13 面**、**50 人＝38 面・44 面**、**200 人＝127 面・135 面**。いまの 239 面から続ける人（ユーザー）は 10 人＝5〜7 面・50 人＝28〜32 面・200 人＝116〜123 面。最初のご褒美は 10 面ほどですぐ、最後は 130 面ほど先の長い目標になる。10・30・100 だと最後が 75 面（239 面からは 63 面）で早くそろいすぎ、15・60・250 だと最初が 13〜18 面で遅い。
+- おしゃれ（Q1＝C。動物ごとに違う 3 つ。段が上がるたびに**重ねて**付ける。顔の目・口・鼻は隠さない）：
 
-### 3.2 古い保存からの引き継ぎ・壊れた保存・新しい版の保存（`readBook(raw, best)`）
+| 動物 | 段 1（10 人） | 段 2（50 人） | 段 3（200 人） |
+|---|---|---|---|
+| くま | あかい ちょうネクタイ（首） | むぎわらぼうし（頭の上・耳のあいだ） | きんの メダル（胸の右・青い ひも） |
+| うさぎ | にんじんの バッジ（胸の左） | はなかんむり（頭のてっぺん・花 5 つ） | ほしの ステッキ（体の右に持つ） |
+| ねこ | すずの くびわ（首・赤い わに金の すず） | さかなの バッジ（胸の左・青） | おうかん（頭の上・金に赤い玉） |
+| ペンギン | あかい マフラー（首・右に たれる） | ニットぼう（みどり・白い ふちと ぼんぼり） | ふうせん（体の右から ひもで上へ・ピンク） |
+| りす | どんぐりの バッジ（胸の左） | はっぱの ぼうし（頭の左上・こい みどり） | まるい めがね（目を囲む わ・目は見える） |
+| ひつじ | あおい リボン（毛の右上） | ハートの バッジ（胸の左・ピンク） | とんがりぼうし（むらさきに きいろの水玉） |
+
+  - 名前と動き（文に使う）は `render.js` の `DRESS_ITEMS`（T45-04）に 1 か所だけ書く：`[名前, 動き]`。動き：つけて・かぶって・かけて・もって・まいて。
+  - 計画担当が試しに描いた絵（事実）：`/tmp/claude-0/-home-user-game-no1/05d90edc-3e79-52f4-9c0f-1e4cb2d395a2/scratchpad/v45dress/dress.png`（上から段 0〜3 を 56×60px、5 行目は段 3 の よろこぶ顔、下の段は 112×120px）。中の写し：同じ所の `www/game-no1/games/irobin/render.js`（`render-dress.diff`）、かたまりごとの写し `dress-frame.js`・`dress-a.js`・`dress-b.js`・`dress-c.js`。どの動物も顔を隠さず、56px でも見分けられた。メダル（くま）と すず（ねこ）は 56px では小さめ（確認 T45-13 で実機の大きさを見る）。
+
+### 3.2 古い保存からの引き継ぎ・壊れた保存・新しい版の保存（`readBook(raw)`）
+
+Q3＝B「0から数える」：**古い保存（`irobin.best`・`irobin.save`）から数を作らない**。帳面が無い人は、だれでも 0 から。`readBook` は `best` を受け取らない。
 
 | `irobin.book` の中身 | 扱い | 書くか |
 |---|---|---|
-| 無い（null） | **1〜best 面（最大 2000 面）の注文の動物を `animalFor(面, i)` で数えて入れる**（おおよそ。星は入れない）。⏸Q3 | 起動時に 1 回書く |
-| JSON でない・オブジェクトでない・配列・`v` が 1 以上の整数でない | 無いときと同じ（壊れていたので作り直す） | 起動時に 1 回書く |
-| `v` が 2 以上（これより新しい版が書いた） | 空の帳面として扱う | **書かない**（新しい版の記録をこわさない。古い版のページが残っていた場合の守り） |
-| `v` が 1 | 使える分だけ使う：知らない動物・0 以下・小数・1e9 超の数は捨てる。面の記録は、キーが `^[1-9][0-9]{0,15}$` の安全な整数で、値が `[1〜3, 1〜1e9 の整数]` のものだけ。読むのは最初の 5000 件まで。`last` が 0 以上の整数でなければ 0 | 書く |
+| 無い（null） | **空の帳面**（`{ v:1, a:{}, s:{}, last:0 }`） | 起動時には書かない（最初のクリアで書く） |
+| JSON でない・オブジェクトでない・配列・`v` が 1 以上の整数でない | 無いときと同じ（空の帳面。最初のクリアで上書きして直る） | 起動時には書かない |
+| `v` が 2 以上（これより新しい版が書いた） | 空の帳面として扱う | **書かない**（`write: false`。新しい版の記録をこわさない。古い版のページが残っていた場合の守り） |
+| `v` が 1 | 使える分だけ使う：知らない動物・0 以下・小数・1e9 超の数は捨てる。面の記録は、キーが `^[1-9][0-9]{0,15}$` の安全な整数で、値が `[1〜3, 1〜1e9 の整数]` のものだけ。読むのは最初の 5000 件まで。`last` が 0 以上の整数でなければ 0 | クリアのときに書く |
 
-- 数える時間（事実、Node）：2000 面で約 25ms（5000 面で 62ms）。SE（CPU 1/4）でも 0.1 秒ほどの見込み（推測）。起動時に 1 回だけ。
+- `readBook` の返す形：`{ book, write }`（前の計画の `fresh` と `estimateBook`・`BOOK_EST_MAX` は**作らない**）。起動の重さは増えない（面を数え直さない）。
 
 ### 3.3 二重に数えない（クリアのカードから続けたとき。IB-22）
 
@@ -81,11 +97,11 @@
 - 帳面は**書くたびに保存から読み直して足す**（メモリの値から書かない）。だから契約 §18 G7（「メモリの値から書く保存を足すときは書き込みの回数で比べる」）の場面にならない。見張るキー（`WATCH_KEYS`）は `irobin.save` のまま、足さない。
 - 書くのは `writeKey` を通すので、`stale`（ほかのタブが書いた・開き直す前）の間は書かない（G3 のまま）。
 - 2 つのタブで同時に遊んでクリアしたとき：どちらも読み直して足すので、両方の分が残る（後勝ちで消えない）。
-- 画面の おしゃれ（どの動物が何段か）はメモリに持つが、見せるだけで保存には書かない。
+- 画面の おしゃれ（どの動物が何段か。0〜3）はメモリに持つが、見せるだけで保存には書かない。
 
 ### 3.5 変えないもの
 
-`irobin.save`（v:3）・`irobin.best`・面の作り（指紋）・効果音の表・テンポ・遊び方の決まり・共有の文・`sw.js` の `APP_FILES`（ファイルの追加なし）。
+`irobin.save`（v:3）・`irobin.best`・面の作り（指紋）・効果音の表・テンポ・遊び方の決まり・共有の文・`sw.js` の `APP_FILES`（ファイルの追加なし。おしゃれの絵は `render.js` の中に描く）。
 
 ---
 
@@ -353,20 +369,25 @@ cd /home/user/wt-v44 && git fetch origin && git merge --no-edit origin/master &&
 
 ---
 
-## 5. v45 のタスク（第 2 弾「なかよしちょう」。⏸ の付いたタスクは、7 章の質問の答えが出るまで実行しない）
+## 5. v45 のタスク（第 2 弾「なかよしちょう」。7 章の答えで決まったので、⏸ は外した）
 
-作業の場所：`/home/user/wt-v45`（v44 を公開したあとの `origin/master` から）。行番号は `d4136d3` のもの（v44 で main.js の showHelp の所が数行ずれる。前後の文字で探す）。
+作業の場所：`/home/user/wt-v45`（v44 を公開したあとの `origin/master` から）。行番号は `d4136d3` のもの（v44 で main.js の showHelp の所が数行ずれる。前後の文字で探す）。`render.js`・`logic.js` は v44 で変わらない。
+
+- 答え（そのまま。担当への指示に引用する）：質問 1「動物ごとに違う」・質問 2「クリアのカードから (Recommended)」・質問 3「0から数える」・質問 4「動物＋★と手数 (Recommended)」。
+- 試し描きの写し（あれば使う。無ければ 5 章の文と T45-10 (h) で確かめる）：`S=/tmp/claude-0/-home-user-game-no1/05d90edc-3e79-52f4-9c0f-1e4cb2d395a2/scratchpad/v45dress`。`$S/dress.png` が見本、`$S/shot.mjs` が `$S/www/game-no1/dress.html`（6 匹 × 段 0〜3）を写す台本。
+- 絵は 4 つに分ける（同じ `render.js` なので**順に**。1 つが 35〜40 行）：T45-04（土台）→ T45-04a（くま・うさぎ）→ T45-04b（ねこ・ペンギン）→ T45-04c（りす・ひつじ）。
 
 | 順 | 同時に進めてよい組 |
 |---|---|
 | 1 | T45-01（Haiku） |
-| 2 | T45-02 ⏸ ∥ T45-04 ⏸ ∥ T45-08 ⏸ |
-| 3 | T45-03（T45-02 のあと）∥ T45-05（T45-02・T45-04 のあと）∥ T45-11（T45-08 のあと） |
-| 4 | T45-06 ⏸（Opus。T45-05 のあと）∥ T45-09（T45-05 のあと。T45-03 と同じファイルでないこと：T45-03 は irobin-logic.mjs、T45-09 は irobin-ui.mjs） |
-| 5 | T45-07（T45-06 のあと）→ T45-10（T45-06・07・09 のあと） |
-| 6 | T45-12（T45-02・05 のあと。mutate.mjs だけ。いつでも） |
-| 7 | T45-13 確認（Opus）→ T45-14 レビュー 3 人 → 直し |
-| 8 | T45-15 文書 ∥ T45-16 版 → T45-17 関門 → T45-18 変異 → T45-19 コミット → 承認 → T45-20 公開 |
+| 2 | T45-02 ∥ T45-04 ∥ T45-08（触るファイル：logic.js ／ render.js ／ ルートの index.html） |
+| 3 | T45-03（T45-02 のあと）∥ T45-04a（T45-04 のあと）∥ T45-11（T45-08 のあと） |
+| 4 | T45-04b（T45-04a のあと）∥ T45-05（T45-02・T45-04 のあと。main.js） |
+| 5 | T45-04c（T45-04b のあと）∥ T45-06（Opus。T45-05 のあと）∥ T45-09（T45-05 のあと。irobin-ui.mjs。T45-03 は irobin-logic.mjs なので重ならない） |
+| 6 | T45-07（T45-06 のあと）→ T45-10（T45-04c・06・07・09 のあと） |
+| 7 | T45-12（T45-02・05 のあと。mutate.mjs だけ。いつでも） |
+| 8 | T45-13 確認（Opus）→ T45-14 レビュー 3 人 → 直し |
+| 9 | T45-15 文書 ∥ T45-16 版 → T45-17 関門 → T45-18 変異 → T45-19 コミット → 承認 → T45-20 公開 |
 
 ### T45-01 作業の場所を作る（Haiku）
 
@@ -375,7 +396,7 @@ cd /home/user/game-no1 && git fetch origin && git worktree add -b claude/v45-iro
 ```
 - 確かめ：版が v44。違えば止まって報告。
 
-### T45-02 ⏸Q1・Q3・Q4 logic.js：帳面の関数（Sonnet）
+### T45-02 logic.js：帳面の関数（Sonnet）
 
 - ファイル：`games/irobin/logic.js` だけ。
 - (1) 51 行（`const SAVE_KEY_LOCK = "irobin.lock";`）の次に：`  const SAVE_KEY_BOOK = "irobin.book";   // なかよしちょう（v45・IB-34。契約 §24）：動物ごとの届けた数・面ごとの星と一番少ない手数`
@@ -384,32 +405,22 @@ cd /home/user/game-no1 && git fetch origin && git worktree add -b claude/v45-iro
   // ---------------------------------------------------------------- なかよしちょう（v45・IB-34。契約 §24）
   // 形 { v: 1, a: { 動物: 届けた数 }, s: { "面": [星 1〜3, 一番少ない手数] }, last: 最後に数を足した面 }。
   // main は書くたびに保存から読み直して足す（メモリの値から書かない。契約 §18 G7 の場面にしない）
+  // 帳面が無い人は 0 から数える（古い irobin.best・irobin.save から数を作らない。ユーザー決定 2026-10-26「0から数える」）
   const BOOK_V = 1;
-  const BOOK_STEPS = Object.freeze([10, 30, 100, 300, 1000]);   // なかよしの段：届けた数がこの数になったら 1 段上がる（決まった数で必ず。ガチャではない）
+  const BOOK_STEPS = Object.freeze([10, 50, 200]);   // なかよしの段（0〜3）：届けた数がこの数になったら 1 段上がる（決まった数で必ず。ガチャではない）
   const BOOK_MAX_COUNT = 1e9;     // 数・手数の上限（大きすぎる値は捨てる）
   const BOOK_MAX_LEVELS = 5000;   // 面の記録を読む数の上限
-  const BOOK_EST_MAX = 2000;      // 帳面が無い人の数をおおよそで入れるとき、数える面の上限（起動を重くしない）
   function emptyBook() { return { v: BOOK_V, a: {}, s: {}, last: 0 }; }
   function bookStep(n) { let s = 0; for (const t of BOOK_STEPS) if (Number(n) >= t) s += 1; return s; }
   // 次の段になる数（もう最後の段なら 0）
   function nextStepAt(n) { for (const t of BOOK_STEPS) if (!(Number(n) >= t)) return t; return 0; }
-  // 帳面が無い・壊れている人：1〜best 面の注文の動物を数えて入れる（おおよそ。IB-08 でずらした動物は数えない。星は分からないので入れない）
-  function estimateBook(best) {
-    const b = emptyBook();
-    const n = Math.min(validateBest(best), BOOK_EST_MAX);
-    for (let lv = 1; lv <= n; lv++) {
-      const total = paramsFor(lv).colors;   // 注文の数＝色の数（1〜300 面で createLevel の total と同じことを確かめた）
-      for (let i = 0; i < total; i++) { const k = animalFor(lv, i); b.a[k] = (b.a[k] || 0) + 1; }
-    }
-    return b;
-  }
-  // 読む。返す { book, write, fresh }。無い・壊れている → estimateBook（write・fresh）。v が新しい版 → 空の帳面で write は false（こわさない）。
-  // v が BOOK_V → 使える分だけ使う（知らない動物・0 以下・小数・大きすぎる数・形の違う面の記録は捨てる）
-  function readBook(raw, best) {
+  // 読む。返す { book, write }。無い・壊れている → 空の帳面（write true。最初のクリアで書いて直る）。
+  // v が新しい版 → 空の帳面で write は false（こわさない）。v が BOOK_V → 使える分だけ使う（知らない動物・0 以下・小数・大きすぎる数・形の違う面の記録は捨てる）
+  function readBook(raw) {
     let o = null;
     if (typeof raw === "string") { try { o = JSON.parse(raw); } catch (e) { o = null; } }
-    if (!o || typeof o !== "object" || Array.isArray(o) || !Number.isSafeInteger(o.v) || o.v < 1) return { book: estimateBook(best), write: true, fresh: true };
-    if (o.v > BOOK_V) return { book: emptyBook(), write: false, fresh: false };
+    if (!o || typeof o !== "object" || Array.isArray(o) || !Number.isSafeInteger(o.v) || o.v < 1) return { book: emptyBook(), write: true };
+    if (o.v > BOOK_V) return { book: emptyBook(), write: false };
     const b = emptyBook();
     const a = o.a && typeof o.a === "object" && !Array.isArray(o.a) ? o.a : {};
     for (const k of ANIMAL_KEYS) { const n = a[k]; if (Number.isSafeInteger(n) && n > 0 && n <= BOOK_MAX_COUNT) b.a[k] = n; }
@@ -424,7 +435,7 @@ cd /home/user/game-no1 && git fetch origin && git worktree add -b claude/v45-iro
       kept += 1;
     }
     b.last = Number.isSafeInteger(o.last) && o.last >= 0 ? o.last : 0;
-    return { book: b, write: true, fresh: false };
+    return { book: b, write: true };
   }
   // 1 面のクリアを足す（新しい帳面を返し、元は変えない）。c = { level, animals: [動物の key…（届けた順）], star: 0〜3, moves, count }
   // count が false（開き直してクリアのカードから続けた面で、もう数えてある）なら動物の数は足さない。星と手数は良い方を残すだけ
@@ -464,53 +475,236 @@ cd /home/user/game-no1 && git fetch origin && git worktree add -b claude/v45-iro
     return JSON.stringify({ v: BOOK_V, a: b.a || {}, s: b.s || {}, last: Number.isSafeInteger(b.last) ? b.last : 0 });
   }
 ```
-- (3) `const api = Object.freeze({`（1150 行）の 2 行目の `SAVE_KEY_LOCK,` の後ろに `SAVE_KEY_BOOK,` を足し、`animalFor, colorName,` の行の前に 1 行 `    BOOK_V, BOOK_STEPS, emptyBook, bookStep, nextStepAt, estimateBook, readBook, addClear, bookStars, makeBook,` を足す。
-- 答えで変わる所：Q1 が B なら `BOOK_STEPS` を `[10, 30, 100]`。Q3 が B なら `readBook` の 1 つ目の `return` の `estimateBook(best)` を `emptyBook()` に（`estimateBook` は残す）。Q4 が B なら `addClear` の星の 3 行を消し、`s` は読むだけにする。
-- 頭の説明（14 行目あたり）に 1 行：「v45（IB-34）：なかよしちょう `irobin.book`（readBook・addClear・makeBook。契約 §24）」。
-- 写したあと、`node -e 'const L=require("./games/irobin/logic.js");console.log(L.readBook(null,60).book.a, L.bookStep(9), L.bookStep(10), L.nextStepAt(1000))'` が `{ … 6 匹の数 … } 0 1 0` を出すことを確かめる。
+- (3) `const api = Object.freeze({`（1150 行）の 2 行目の `SAVE_KEY_LOCK,` の後ろに `SAVE_KEY_BOOK,` を足し、`animalFor, colorName,` の行の前に 1 行 `    BOOK_V, BOOK_STEPS, emptyBook, bookStep, nextStepAt, readBook, addClear, bookStars, makeBook,` を足す。
+- 前の計画との違い（Q1＝C・Q3＝B）：`BOOK_STEPS` は `[10, 50, 200]`（3 段）。`estimateBook`・`BOOK_EST_MAX`・返す値の `fresh`・`readBook` の `best` は**作らない**。
+- 頭の説明（14 行目あたり）に 1 行：「v45（IB-34）：なかよしちょう `irobin.book`（readBook・addClear・makeBook。0 から数える。契約 §24）」。
+- 写したあと、`node -e 'const L=require("./games/irobin/logic.js");console.log(JSON.stringify(L.readBook(null)), L.bookStep(9), L.bookStep(10), L.bookStep(200), L.nextStepAt(50), L.nextStepAt(200))'` が `{"book":{"v":1,"a":{},"s":{},"last":0},"write":true} 0 1 3 200 0` を出すことを確かめる。
 - 流すテスト（PORT=8730）：`PORT=8730 WORKERS=1 ONLY=BL1,BL19,BL23,BL24,BL25 node tests/run.mjs smoke`（面は変わらない）。
 - 前：T45-01。同時：T45-04・T45-08。
 
 ### T45-03 BL26 を足す（帳面のロジックのテスト。Sonnet）
 
 - ファイル：`tests/cases/irobin-logic.mjs` の最後（BL25 の次）。tier `smoke`、node。
-- 題：`いろびん v45（IB-34）なかよしちょう：読む（無い・壊れた・新しい版・使える分だけ）、足す（数・段・星と手数は良い方・count false）、おおよその引き継ぎ、書いて読み直すと同じ`
+- 題：`いろびん v45（IB-34）なかよしちょう：読む（無い・壊れた・新しい版・使える分だけ）、0 から数える、足す（数・段・星と手数は良い方・count false）、書いて読み直すと同じ`
 - 確かめること：
-  - (a) `readBook(null, 0)` が `{ book: { v:1, a:{}, s:{}, last:0 }, write: true, fresh: true }`。`readBook(null, 60).book.a` の合計が `Σ paramsFor(1..60).colors`、各動物が `animalFor` で数えた数と同じ。`readBook(null, 99999).book.a` の合計が 1〜2000 面の分（上限 BOOK_EST_MAX）。
-  - (b) 壊れた 8 種（`'{'`・`'[]'`・`'null'`・`'"x"'`・`'{"v":"1"}'`・`'{"v":0}'`・`'{"v":1.5}'`・`'{"a":{}}'`）は (a) と同じく fresh。
+  - (a) `readBook(null)` と `readBook(undefined)` が `{ book: { v:1, a:{}, s:{}, last:0 }, write: true }`（0 から。`fresh` は無い）。`readBook(null, 999)` も同じ（2 つ目の引数を見ない＝古い best から数を作らない）。
+  - (b) 壊れた 8 種（`'{'`・`'[]'`・`'null'`・`'"x"'`・`'{"v":"1"}'`・`'{"v":0}'`・`'{"v":1.5}'`・`'{"a":{}}'`）は (a) と同じ。
   - (c) `'{"v":2,"a":{"kuma":50}}'` は `write: false` で `a` が空。
-  - (d) 使える分だけ：`{"v":1,"a":{"kuma":-5,"neko":1.5,"dog":3,"usagi":12,"risu":2e9},"s":{"0":[3,5],"x":[1,1],"7":[4,9],"8":[2,10],"9":[1,0],"010":[1,3]},"last":-1}` → `a` が `{ usagi: 12 }` だけ、`s` が `{ "8": [2,10] }` だけ、`last` 0、`write` true・`fresh` false。
-  - (e) `addClear`：`a` 9 匹の kuma に kuma を 1 → `ups` に `{ kind:'kuma', step:1 }`、10→11 では ups なし。29→30 で step 2。`count:false` では数も `last` も変わらない。星：`[2,20]` に `star 3, moves 25` → `[3,20]`、`star 1, moves 15` → `[2,15]`。`star 0` は書かない。元の帳面は変わらない（`JSON.stringify` が前後で同じ）。
-  - (f) `bookStep`：9→0・10→1・29→1・30→2・999→4・1000→5・`'abc'`→0。`nextStepAt(0)`=10・`(1000)`=0。
+  - (d) 使える分だけ：`{"v":1,"a":{"kuma":-5,"neko":1.5,"dog":3,"usagi":12,"risu":2e9},"s":{"0":[3,5],"x":[1,1],"7":[4,9],"8":[2,10],"9":[1,0],"010":[1,3]},"last":-1}` → `a` が `{ usagi: 12 }` だけ、`s` が `{ "8": [2,10] }` だけ、`last` 0、`write` true。
+  - (e) `addClear`：`a` 9 匹の kuma に kuma を 1 → `ups` に `{ kind:'kuma', step:1 }`、10→11 では ups なし。49→50 で step 2、199→200 で step 3、200→201 では ups なし。`count:false` では数も `last` も変わらない。星：`[2,20]` に `star 3, moves 25` → `[3,20]`、`star 1, moves 15` → `[2,15]`。`star 0` は書かない。元の帳面は変わらない（`JSON.stringify` が前後で同じ）。
+  - (f) `bookStep`：9→0・10→1・49→1・50→2・199→2・200→3・1e9→3・`'abc'`→0。`nextStepAt(0)`=10・`(10)`=50・`(50)`=200・`(200)`=0。`BOOK_STEPS` が `[10,50,200]`。
   - (g) `makeBook` で書いて `readBook` で読むと同じ（`a`・`s`・`last`）。
   - (h) `bookStars`：`s` が `{1:[3,6],2:[1,9]}` で 4。
 - 直す前に落ちる：v44 の logic.js（関数が無い）で (a)〜(h) が落ちる（`PORT=8732 ONLY=BL26 node tests/run.mjs smoke /home/user/game-no1`）。
 - 流すテスト（PORT=8731）：`PORT=8731 ONLY=BL26 node tests/run.mjs smoke`
-- 前：T45-02。同時：T45-05・T45-09・T45-11。
+- 前：T45-02。同時：T45-04a・T45-11。
 
-### T45-04 ⏸Q1 render.js：おしゃれを描く（Sonnet）
+### T45-04 render.js：おしゃれの土台（名前の表・描く入口・お店の動物へ渡す。Sonnet）
 
-- ファイル：`games/irobin/render.js` だけ。参考の写し：scratchpad `v44/www/game-no1/games/irobin/render.js`（`render-dress.diff`。`dress.png` が描いた結果）。
-- (1) 166 行（`cheeks` の閉じかっこ）と 167 行（`  /*`）の間に、`render-dress.diff` の `DRESS_COL`・`starPts`・`drawDress` のかたまり（約 33 行）をそのまま写す。中身：dress（0〜5）で、頭は 1〜2 リボン・3〜4 ぼうし・5 おうかん、2 から えりまき、4 から ほしの バッジ。顔は隠さない。
-- (2) 278 行（`drawMouth(ctx, cx, mouthY, …);`）の次に `      drawDress(ctx, k, cx, cy, r, h, o.dress);`
-- (3) 169 行の説明に「dress：なかよしの段 0〜5（v45。おしゃれ）」を足す。
+- ファイル：`games/irobin/render.js` だけ。動物ごとの絵はまだ描かない（T45-04a〜c）。この時点では `DRESS_DRAW` が空なので、見た目は変わらない。
+- (1) 166 行（`cheeks` の閉じかっこ 165 行の次の空行）と 167 行（`  /*`）の間に、そのまま写す（35 行）：
+```js
+  // ===== なかよしの おしゃれ（v45・IB-34。契約 §24） =====
+  // dress＝なかよしの段 0〜3（届けた数 10・50・200 で 1 段ずつ。logic の bookStep）。動物ごとに違う 3 つを、段が上がるたびに重ねて付ける。
+  // 顔（目・口・鼻）は隠さない。色は体の色に埋もれないものにする
+  // 名前と動き（クリアのカード・なかよしちょうの文に使う）：[名前, 「〜を ○○ くるよ」の ○○]
+  const DRESS_ITEMS = Object.freeze({
+    kuma: Object.freeze([["ちょうネクタイ", "つけて"], ["むぎわらぼうし", "かぶって"], ["きんの メダル", "かけて"]]),
+    usagi: Object.freeze([["にんじんの バッジ", "つけて"], ["はなかんむり", "かぶって"], ["ほしの ステッキ", "もって"]]),
+    neko: Object.freeze([["すずの くびわ", "つけて"], ["さかなの バッジ", "つけて"], ["おうかん", "かぶって"]]),
+    penguin: Object.freeze([["あかい マフラー", "まいて"], ["ニットぼう", "かぶって"], ["ふうせん", "もって"]]),
+    risu: Object.freeze([["どんぐりの バッジ", "つけて"], ["はっぱの ぼうし", "かぶって"], ["まるい めがね", "かけて"]]),
+    hitsuji: Object.freeze([["あおい リボン", "つけて"], ["ハートの バッジ", "つけて"], ["とんがりぼうし", "かぶって"]])
+  });
+  const DRESS_MAX = 3;
+  function starPts(x, y, ro, ri) {
+    const pts = [];
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? ri : ro; pts.push([x + Math.cos(a) * rr, y + Math.sin(a) * rr]); }
+    return pts;
+  }
+  function strokeLine(ctx, pts, col, lw) {
+    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, lw); ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.stroke();
+  }
+  function heart(ctx, x, y, s, col) {   // ハート：中心 (x,y)、大きさ s（幅の半分）
+    disc(ctx, x - s * 0.48, y - s * 0.2, s * 0.52, col);
+    disc(ctx, x + s * 0.48, y - s * 0.2, s * 0.52, col);
+    poly(ctx, [[x - s * 0.98, y - s * 0.05], [x + s * 0.98, y - s * 0.05], [x, y + s * 0.95]], col);
+  }
+  const DRESS_DRAW = {};   // 動物 → function (ctx, d, g)。g＝{ cx, cy, r, h, neckY（あごの下）, chestX・chestY（胸の左） }
+  function drawDress(ctx, k, cx, cy, r, h, dress) {
+    const d = Number.isSafeInteger(dress) ? Math.max(0, Math.min(DRESS_MAX, dress)) : 0;
+    const f = DRESS_DRAW[k];
+    if (d <= 0 || typeof f !== "function") return;
+    f(ctx, d, { cx, cy, r, h, neckY: cy + r * 1.0, chestX: cx - r * 0.62, chestY: h - r * 0.34 });
+  }
+```
+- (2) 278 行（`drawMouth(ctx, cx, mouthY, …);`）の次に `      drawDress(ctx, k, cx, cy, r, h, o.dress);`（顔を描いたあと。おしゃれが顔の上に乗るが、どの絵も目・口・鼻には重ならない）
+- (3) 169 行の説明（`kind: ANIMALS のどれか…`）の行の次に ` * dress：なかよしの段 0〜3（v45。動物ごとに違う おしゃれ。DRESS_ITEMS）` を足す。
 - (4) `create` の中：
-  - 323 行（`const seenKind = new Map();…`）の次に `    let dress = {};                 // なかよしの段（動物 → 0〜5）。見せるだけで保存しない（v45・IB-34）`
-  - 同じ所に `    const dressOf = (k) => (k && Number.isSafeInteger(dress[k]) ? Math.max(0, Math.min(5, dress[k])) : 0);`
+  - 323 行（`const seenKind = new Map();…`）の次に `    let dress = {};                 // なかよしの段（動物 → 0〜3）。見せるだけで保存しない（v45・IB-34）`
+  - 同じ所に `    const dressOf = (k) => (k && Number.isSafeInteger(dress[k]) ? Math.max(0, Math.min(DRESS_MAX, dress[k])) : 0);`
   - 762 行：`const sig = [c.kind, c.mood, W, H, …].join("|");` → `const sig = [c.kind, dressOf(c.kind), c.mood, W, H, t ? Math.floor(t * 30) : 0].join("|");`
   - 772 行：`drawAnimal(ctx, c.kind || "kuma", { w, h, mood: …, t: t || 0 });` → `{ w, h, mood: …, t: t || 0, dress: dressOf(c.kind) }`（mood の式はそのまま）
   - 801 行（`if (c.kind) c.el.style.setProperty("--fur", FUR[c.kind]);`）の次に `      c.el.dataset.dress = String(dressOf(c.kind));`
   - 1473 行（`build, layout, update, …, setCalm,`）の次に：
     ```js
-      // なかよしの段（v45・IB-34）：{ 動物: 0〜5 }。お客さんを描き直す
+      // なかよしの段（v45・IB-34）：{ 動物: 0〜3 }。お客さんを描き直す
       setDress(map) {
         dress = map && typeof map === "object" ? Object.assign({}, map) : {};
         for (let i = 0; i < custs.length; i++) { const c = custs[i]; if (!c || !c.el) continue; c.el.dataset.dress = String(dressOf(c.kind)); c.sig = ""; drawCust(i); }
       },
     ```
-- 答えで変わる所：Q1 が B（3 段）なら `drawDress` を「1 リボン・2 ぼうし・3 おうかん（えりまき・バッジなし）」に、`Math.min(5, …)` を 3 に。C なら止まって PM に戻す（絵の作り直しは Opus が計画し直す）。
-- 流すテスト（PORT=8733）：`PORT=8733 WORKERS=1 ONLY=BW1,BW2,BW17,BW31 node tests/run.mjs smoke` と `PORT=8733 WORKERS=1 ONLY=BW10,BW14 node tests/run.mjs full`（dress がまだ渡らないので見た目は変わらない）。
+- (5) 1482 行：`const api = Object.freeze({ ANIMALS, ANIMAL_NAMES, FUR, drawAnimal, markSvg, create });` → `const api = Object.freeze({ ANIMALS, ANIMAL_NAMES, FUR, DRESS_ITEMS, DRESS_MAX, drawAnimal, markSvg, create });`
+- 確かめ：`node --check games/irobin/render.js`。
+- 流すテスト（PORT=8733）：`PORT=8733 WORKERS=1 ONLY=BW1,BW2,BW17,BW31 node tests/run.mjs smoke` と `PORT=8733 WORKERS=1 ONLY=BW10,BW14 node tests/run.mjs full`（見た目は変わらない）。
 - 前：T45-01。同時：T45-02・T45-08。
+
+### T45-04a render.js：くま・うさぎの おしゃれ（Sonnet）
+
+- ファイル：`games/irobin/render.js` だけ。T45-04 で足した `drawDress` の閉じかっこ（`f(ctx, d, { cx, cy, r, … });` の次の `  }`）の次に、そのまま写す（40 行）。
+- 描くもの（3 章の表）：くま＝1 あかい ちょうネクタイ（首。左右の三角＋まん中の玉）・2 むぎわらぼうし（耳のあいだ。つば・山・赤い帯）・3 きんの メダル（胸の右。青い ひもの V・金の玉・星）。うさぎ＝1 にんじんの バッジ（胸の左。だいだいの三角＋葉 2 枚）・2 はなかんむり（頭のてっぺんの弧に 5 つの花、ピンクと きいろを交互、まん中は白）・3 ほしの ステッキ（体の右。むらさきの棒＋金の星）。
+```js
+  // くま：1 ちょうネクタイ・2 むぎわらぼうし・3 きんの メダル
+  DRESS_DRAW.kuma = function (ctx, d, g) {
+    const { cx, cy, r, h, neckY, chestX, chestY } = g;
+    if (d >= 3) {   // 3 きんの メダル：胸の右（青い ひもを V の形に。ふちの こい金・星）
+      const mx = cx + r * 0.62, my = chestY;
+      strokeLine(ctx, [[mx - r * 0.17, my - r * 0.36], [mx, my - r * 0.05], [mx + r * 0.17, my - r * 0.36]], "#4f9dff", r * 0.1);
+      disc(ctx, mx, my, r * 0.24, "#a8781a");
+      disc(ctx, mx, my, r * 0.19, "#ffd34d");
+      poly(ctx, starPts(mx, my, r * 0.12, r * 0.05), "#a8781a");
+    }
+    // 1 あかい ちょうネクタイ
+    poly(ctx, [[cx, neckY], [cx - r * 0.42, neckY - r * 0.2], [cx - r * 0.42, neckY + r * 0.2]], "#e8434f");
+    poly(ctx, [[cx, neckY], [cx + r * 0.42, neckY - r * 0.2], [cx + r * 0.42, neckY + r * 0.2]], "#e8434f");
+    disc(ctx, cx, neckY, r * 0.11, "#b8202f");
+    if (d >= 2) {   // 2 むぎわらぼうし：頭の上（耳のあいだ）
+      oval(ctx, cx, cy - r * 0.8, r * 0.7, r * 0.15, "#e9c46a");
+      oval(ctx, cx, cy - r * 0.92, r * 0.4, r * 0.3, "#f2d68a");
+      ctx.fillStyle = "#e8434f"; ctx.fillRect(cx - r * 0.4, cy - r * 0.9, r * 0.8, r * 0.1);
+    }
+  };
+  // うさぎ：1 にんじんの バッジ・2 はなかんむり・3 ほしの ステッキ
+  DRESS_DRAW.usagi = function (ctx, d, g) {
+    const { cx, cy, r, h, neckY, chestX, chestY } = g;
+    // 1 にんじんの バッジ（胸の左）
+    poly(ctx, [[chestX - r * 0.17, chestY - r * 0.2], [chestX + r * 0.17, chestY - r * 0.2], [chestX, chestY + r * 0.32]], "#ff8a3d");
+    oval(ctx, chestX - r * 0.08, chestY - r * 0.3, r * 0.06, r * 0.13, "#3fae5a", -0.4);
+    oval(ctx, chestX + r * 0.08, chestY - r * 0.3, r * 0.06, r * 0.13, "#3fae5a", 0.4);
+    if (d >= 2) {   // 2 はなかんむり：頭のてっぺんに 5 つの花（ピンク・きいろ を交互に、まん中は白）
+      for (let i = 0; i < 5; i++) {
+        const a = Math.PI * (1.18 + i * 0.16);
+        const x = cx + Math.cos(a) * r * 0.86, y = cy + Math.sin(a) * r * 0.86;
+        disc(ctx, x, y, r * 0.16, i % 2 ? "#ffd34d" : "#ff7fae");
+        disc(ctx, x, y, r * 0.06, "#ffffff");
+      }
+    }
+    if (d >= 3) {   // 3 ほしの ステッキ：体の右に持つ
+      strokeLine(ctx, [[cx + r * 1.0, h - r * 0.05], [cx + r * 1.12, cy + r * 0.25]], "#8a5cd6", r * 0.1);
+      poly(ctx, starPts(cx + r * 1.14, cy + r * 0.05, r * 0.32, r * 0.14), "#ffd34d");
+    }
+  };
+```
+- 確かめ：`node --check games/irobin/render.js`。試し描きの写しがあれば、`cp games/irobin/render.js $S/www/game-no1/games/irobin/render.js && OUT=check-a.png PORT=8745 node $S/shot.mjs` で `$S/check-a.png` を写し、くま・うさぎの列が `$S/dress.png` と同じか見る（ほかの 4 匹は まだ段 0 のまま）。
+- 流すテスト（PORT=8746）：`PORT=8746 WORKERS=1 ONLY=BW1,BW2 node tests/run.mjs smoke`
+- 前：T45-04。同時：T45-03・T45-11。
+
+### T45-04b render.js：ねこ・ペンギンの おしゃれ（Sonnet）
+
+- ファイル：`games/irobin/render.js` だけ。T45-04a で足した `DRESS_DRAW.usagi = function … };` の次に、そのまま写す（38 行）。
+- 描くもの：ねこ＝1 すずの くびわ（首。赤い わ＋金の すず＋すずの すじ）・2 さかなの バッジ（胸の左。青い だ円＋しっぽの三角＋黒い目）・3 おうかん（耳のあいだ。金の 7 点の形＋赤い玉）。ペンギン＝1 あかい マフラー（首の だ円＋右に たれる はし＋白い すじ）・2 ニットぼう（みどりの半円＋白い ふち＋白い ぼんぼり）・3 ふうせん（体の右から白い ひも、ピンクの だ円＋結び目の三角＋光）。
+```js
+  // ねこ：1 すずの くびわ・2 さかなの バッジ・3 おうかん
+  DRESS_DRAW.neko = function (ctx, d, g) {
+    const { cx, cy, r, h, neckY, chestX, chestY } = g;
+    // 1 すずの くびわ（赤い わと きんの すず）
+    oval(ctx, cx, neckY - r * 0.02, r * 0.62, r * 0.11, "#e8434f");
+    disc(ctx, cx, neckY + r * 0.14, r * 0.15, "#ffd34d");
+    strokeLine(ctx, [[cx - r * 0.08, neckY + r * 0.18], [cx + r * 0.08, neckY + r * 0.18]], "#8a6a10", r * 0.05);
+    if (d >= 2) {   // 2 さかなの バッジ（胸の左。青い さかな）
+      oval(ctx, chestX + r * 0.04, chestY, r * 0.24, r * 0.13, "#4f9dff");
+      poly(ctx, [[chestX - r * 0.16, chestY], [chestX - r * 0.36, chestY - r * 0.15], [chestX - r * 0.36, chestY + r * 0.15]], "#4f9dff");
+      disc(ctx, chestX + r * 0.14, chestY - r * 0.03, r * 0.04, "#141826");
+    }
+    if (d >= 3) {   // 3 おうかん：頭の上（耳のあいだ。きんに赤い玉）
+      const top = cy - r * 0.86;
+      poly(ctx, [[cx - r * 0.42, top + r * 0.1], [cx - r * 0.42, top - r * 0.34], [cx - r * 0.2, top - r * 0.1], [cx, top - r * 0.42], [cx + r * 0.2, top - r * 0.1], [cx + r * 0.42, top - r * 0.34], [cx + r * 0.42, top + r * 0.1]], "#ffd34d");
+      disc(ctx, cx, top - r * 0.02, r * 0.08, "#e8434f");
+    }
+  };
+  // ペンギン：1 あかい マフラー・2 ニットぼう・3 ふうせん
+  DRESS_DRAW.penguin = function (ctx, d, g) {
+    const { cx, cy, r, h, neckY, chestX, chestY } = g;
+    // 1 あかい マフラー：首と、右に たれる はし
+    oval(ctx, cx, neckY - r * 0.05, r * 0.7, r * 0.16, "#ff5a5a");
+    poly(ctx, [[cx + r * 0.22, neckY - r * 0.05], [cx + r * 0.5, neckY - r * 0.05], [cx + r * 0.58, neckY + r * 0.5], [cx + r * 0.3, neckY + r * 0.5]], "#ff5a5a");
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(cx + r * 0.3, neckY + r * 0.34, r * 0.27, r * 0.07);
+    if (d >= 2) {   // 2 ニットぼう：みどりの半円＋白い ふち＋白い ぼんぼり
+      const top = cy - r * 0.78;
+      ctx.beginPath(); ctx.arc(cx, top, r * 0.58, Math.PI, 0); ctx.closePath(); ctx.fillStyle = "#3fbf6a"; ctx.fill();
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(cx - r * 0.66, top - r * 0.04, r * 1.32, r * 0.16);
+      disc(ctx, cx, top - r * 0.62, r * 0.15, "#ffffff");
+    }
+    if (d >= 3) {   // 3 ふうせん：体の右から ひもで上へ（ピンク）
+      strokeLine(ctx, [[cx + r * 0.95, h - r * 0.1], [cx + r * 1.05, cy - r * 0.2], [cx + r * 1.0, cy - r * 0.55]], "#e6e9f2", r * 0.05);
+      oval(ctx, cx + r * 1.0, cy - r * 0.9, r * 0.3, r * 0.36, "#ff7fae");
+      poly(ctx, [[cx + r * 1.0, cy - r * 0.56], [cx + r * 0.93, cy - r * 0.48], [cx + r * 1.07, cy - r * 0.48]], "#ff7fae");
+      disc(ctx, cx + r * 0.9, cy - r * 1.02, r * 0.07, "rgba(255,255,255,.7)");
+    }
+  };
+```
+- 確かめ：`node --check games/irobin/render.js`。写しがあれば `OUT=check-b.png PORT=8747 node $S/shot.mjs`（cp は T45-04a と同じ）で、ねこ・ペンギンの列が `dress.png` と同じか見る。
+- 流すテスト（PORT=8748）：`PORT=8748 WORKERS=1 ONLY=BW1,BW2 node tests/run.mjs smoke`
+- 前：T45-04a。同時：T45-05。
+
+### T45-04c render.js：りす・ひつじの おしゃれ（Sonnet）
+
+- ファイル：`games/irobin/render.js` だけ。T45-04b で足した `DRESS_DRAW.penguin = function … };` の次に、そのまま写す（37 行）。
+- 描くもの：りす＝1 どんぐりの バッジ（胸の左。明るい実＋こげ茶の ぼうし＋柄）・2 はっぱの ぼうし（頭の左上に ななめの こい みどりの葉＋すじ）・3 まるい めがね（目を囲む むらさきの わ 2 つ＋ブリッジ。目は見える）。ひつじ＝1 あおい リボン（毛の右上。三角 2 つ＋こい青の玉）・2 ハートの バッジ（胸の左。ピンク）・3 とんがりぼうし（頭の上。むらさきの三角＋きいろの水玉 3 つ＋白い ぼんぼり）。
+```js
+  // りす：1 どんぐりの バッジ・2 はっぱの ぼうし・3 まるい めがね
+  DRESS_DRAW.risu = function (ctx, d, g) {
+    const { cx, cy, r, h, neckY, chestX, chestY } = g;
+    // 1 どんぐりの バッジ（胸の左。こげ茶の ぼうしと 明るい実）
+    oval(ctx, chestX, chestY + r * 0.06, r * 0.18, r * 0.22, "#e8b45c");
+    oval(ctx, chestX, chestY - r * 0.1, r * 0.22, r * 0.11, "#5a3518");
+    strokeLine(ctx, [[chestX, chestY - r * 0.2], [chestX + r * 0.04, chestY - r * 0.3]], "#5a3518", r * 0.06);
+    if (d >= 2) {   // 2 はっぱの ぼうし：頭の左上に ななめの はっぱ（こい みどり＋すじ）
+      oval(ctx, cx - r * 0.3, cy - r * 0.98, r * 0.42, r * 0.2, "#2f9e4f", -0.35);
+      strokeLine(ctx, [[cx - r * 0.66, cy - r * 0.86], [cx + r * 0.06, cy - r * 1.1]], "#1d6b33", r * 0.05);
+      strokeLine(ctx, [[cx + r * 0.06, cy - r * 1.1], [cx + r * 0.16, cy - r * 1.22]], "#1d6b33", r * 0.07);
+    }
+    if (d >= 3) {   // 3 まるい めがね：目を囲む わ（目は見える）
+      const ey = cy - r * 0.04;
+      ctx.strokeStyle = "#3a2a6a"; ctx.lineWidth = Math.max(1.2, r * 0.06);
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(cx + s * r * 0.36, ey, r * 0.24, 0, Math.PI * 2); ctx.stroke(); }
+      strokeLine(ctx, [[cx - r * 0.12, ey - r * 0.03], [cx + r * 0.12, ey - r * 0.03]], "#3a2a6a", r * 0.06);
+    }
+  };
+  // ひつじ：1 あおい リボン・2 ハートの バッジ・3 とんがりぼうし
+  DRESS_DRAW.hitsuji = function (ctx, d, g) {
+    const { cx, cy, r, h, neckY, chestX, chestY } = g;
+    // 1 あおい リボン：毛の右上
+    const x = cx + r * 0.55, y = cy - r * 0.8;
+    poly(ctx, [[x, y], [x - r * 0.38, y - r * 0.24], [x - r * 0.38, y + r * 0.24]], "#4f7dff");
+    poly(ctx, [[x, y], [x + r * 0.38, y - r * 0.24], [x + r * 0.38, y + r * 0.24]], "#4f7dff");
+    disc(ctx, x, y, r * 0.12, "#2d4fc2");
+    if (d >= 2) heart(ctx, chestX, chestY, r * 0.24, "#ff5a8a");   // 2 ハートの バッジ（胸の左）
+    if (d >= 3) {   // 3 とんがりぼうし：頭の上（むらさきに きいろの水玉、てっぺんに ぼんぼり）
+      const base = cy - r * 0.95;
+      poly(ctx, [[cx - r * 0.4, base], [cx + r * 0.4, base], [cx + r * 0.05, base - r * 0.85]], "#8a5cd6");
+      disc(ctx, cx - r * 0.12, base - r * 0.2, r * 0.07, "#ffd34d");
+      disc(ctx, cx + r * 0.14, base - r * 0.3, r * 0.07, "#ffd34d");
+      disc(ctx, cx + r * 0.0, base - r * 0.52, r * 0.06, "#ffd34d");
+      disc(ctx, cx + r * 0.05, base - r * 0.86, r * 0.12, "#ffffff");
+    }
+  };
+```
+- 確かめ：`node --check games/irobin/render.js`。写しがあれば `OUT=check-c.png PORT=8749 node $S/shot.mjs` で、6 匹すべてが `dress.png` と同じか見る（`diff $S/render.base.js games/irobin/render.js` が `$S/render-dress.diff` と同じなら なお良い。`render.base.js` は d4136d3 の render.js）。
+- 流すテスト（PORT=8750）：`PORT=8750 WORKERS=1 ONLY=BW1,BW2,BW17,BW31 node tests/run.mjs smoke`
+- 前：T45-04b。同時：T45-06・T45-09。
 
 ### T45-05 main.js：クリアで数えて保存する・起動で おしゃれを渡す（Sonnet）
 
@@ -523,8 +717,8 @@ cd /home/user/game-no1 && git fetch origin && git worktree add -b claude/v45-iro
 ```
 - (2) 136 行（`function safeCall…`）の次に：
 ```js
-  // なかよしちょう：いつも保存から読み直す（メモリの値から書かない。X-20 の G7 の場面にしない）
-  function readBookNow() { return typeof L.readBook === "function" ? safeCall(() => L.readBook(readKey(KEY_BOOK), best), null) : null; }
+  // なかよしちょう：いつも保存から読み直す（メモリの値から書かない。X-20 の G7 の場面にしない）。無い人は 0 から（古い保存から数を作らない）
+  function readBookNow() { return typeof L.readBook === "function" ? safeCall(() => L.readBook(readKey(KEY_BOOK)), null) : null; }
   function dressMap(book) { const m = {}; for (const k of R.ANIMALS || []) m[k] = safeCall(() => L.bookStep(book && book.a ? book.a[k] || 0 : 0), 0) || 0; return m; }
 ```
 - (3) 318 行：`      onClear();`（startLevel の中、IB-22 の開き直し）→ `      onClear({ restored: true });`
@@ -541,7 +735,7 @@ cd /home/user/game-no1 && git fetch origin && git worktree add -b claude/v45-iro
         if (rb.write) writeKey(KEY_BOOK, L.makeBook(r2.book));
         ups = r2.ups;
         dress = dressMap(r2.book);
-        render.setDress(dress);
+        if (typeof render.setDress === "function") render.setDress(dress);
       }
     }
 ```
@@ -549,27 +743,29 @@ cd /home/user/game-no1 && git fetch origin && git worktree add -b claude/v45-iro
 - (7) 523 行と 559 行の `const star = !p ? 0 : c.moves <= p ? 3 : c.moves <= Math.ceil(p * 1.5) ? 2 : 1;` → `const star = starOf(c.moves, p);`（2 か所。式は同じ）
 - (8) boot（975 行の `(function boot() {` の次の行）に：
 ```js
-    // なかよしちょう：無い・壊れていれば おおよそで作って 1 回書く。お客さんの おしゃれを渡す（IB-34）
+    // なかよしちょう：お客さんの おしゃれを渡す（IB-34）。起動では書かない（無い人は 0 から。最初のクリアで書く）
     const rb = readBookNow();
-    if (rb) { if (rb.fresh && rb.write) writeKey(KEY_BOOK, L.makeBook(rb.book)); render.setDress(dressMap(rb.book)); }
+    if (rb && typeof render.setDress === "function") render.setDress(dressMap(rb.book));
 ```
+- 前の計画との違い（Q3＝B）：起動で帳面を書かない（`fresh` を見ない）。`readBook` に `best` を渡さない。
 - 変えないもの：`WATCH_KEYS`（`irobin.save` だけ）・`save()`・共有の文・効果音。
 - 流すテスト（PORT=8734）：`PORT=8734 WORKERS=1 node tests/run.mjs smoke` と `PORT=8734 WORKERS=1 ONLY=BW3,BW6,BW7,BW11,BW12,BW20,BW21,BW22,BW31,BW32 node tests/run.mjs full`
-- 前：T45-02・T45-04。同時：T45-03・T45-11。
+- 前：T45-02・T45-04（`setDress` があること。T45-04a〜c は待たなくてよい）。同時：T45-04b・T45-03・T45-11。
 
-### T45-06 ⏸Q2・Q4 クリアのカードの一言・「なかよしちょう」のカード・ホーム画面の一言（**Opus**）
+### T45-06 クリアのカードの一言・「なかよしちょう」のカード・ホーム画面の一言（**Opus**）
 
-- **なぜ Opus か**：クリアのカードのボタンが 3 つ→4 つになり、SE 縦横（ホーム画面・Safari）の 4 画面で「つぎの めんへ」が動かない・スクロールしないで押せる並べ方を、測りながら決める必要がある（BW23・BW31・BW32 の基準を守る）。決めた並べ方は確認のときに Sonnet が写せる形で 5.1 に書き足す。
+- **なぜ Opus か**：クリアのカードのボタンが 3 つ→4 つになり、SE 縦横（ホーム画面・Safari）の 4 画面で「つぎの めんへ」が動かない・スクロールしないで押せる並べ方を、測りながら決める必要がある（BW23・BW31・BW32 の基準を守る）。決めた並べ方は確認のときに Sonnet が写せる形で 5 章のこのタスクに書き足す。
 - ファイル：`games/irobin/main.js`・`games/irobin/index.html`。
-- 決めてあること（写す所）：
-  - クリアのカード：`p.next-note` の次に `<p class="friend" data-f="f"></p>`。文：段が上がった動物が 1 匹なら、段 1 は「${名前}さんと なかよしに なったよ！ リボンを つけて くるよ」、段 2〜5 は「${名前}さんと もっと なかよしに なったよ！ ${おしゃれ}を つけて くるよ」（おしゃれ：えりまき・ぼうし・ほしの バッジ・おうかん）。2 匹以上なら「${名前・名前}さんと なかよしに なったよ！」。無いときは `hidden`。音：上がったときは `best`（`showRecord` で鳴らすときは 1 回だけ）。
+- 決めてあること（写す所。Q2＝A「クリアのカードから」・Q4＝A）：
+  - おしゃれの名前は `R.DRESS_ITEMS[動物][段 − 1]` の `[名前, 動き]` を使う（main.js に名前の表を持たない。1 か所だけ）。
+  - クリアのカード：`p.next-note` の次に `<p class="friend" data-f="f"></p>`。文：段が上がった動物が 1 匹なら、段 1 は「${名前}さんと なかよしに なったよ！ ${おしゃれ}を ${動き} くるよ」、段 2・3 は「${名前}さんと もっと なかよしに なったよ！ ${おしゃれ}を ${動き} くるよ」（例：「くまさんと なかよしに なったよ！ ちょうネクタイを つけて くるよ」「ペンギンさんと もっと なかよしに なったよ！ ふうせんを もって くるよ」）。2 匹以上なら「${名前・名前}さんと なかよしに なったよ！」。無いときは `hidden`。音：上がったときは `best`（`showRecord` で鳴らすときは 1 回だけ）。
   - 動物の列（`.served`）の絵に `dress: c.dress ? c.dress[kind] || 0 : 0` を渡す（上がったおしゃれを付けた顔）。
   - ボタン `<button class="cta book" type="button" data-cmd="book">なかよしちょう</button>`（「メニューへ」の次。共有と並ぶ）。押すと `showBook()`。
-  - `showBook()`：`overlayKind` を `"book"`。見出し「なかよしちょう」、★の合計「あつめた ★ ${n}こ」（0 なら出さない。⏸Q4）、6 匹の行（絵 56×60・名前・「${数}にん」・「あと ${次−数}にんで ${次のおしゃれ}」か「ぜんぶ そろったよ」）、ホーム画面に追加していないときだけ（`navigator.standalone !== true` かつ `(display-mode: standalone)` でない）「ホーム画面に ついかすると、きろくが きえにくいよ」（IB-41）、ボタン「もどる」（`data-cmd="bookClose"`）。閉じる（もどる・Esc）とクリアのカードに戻る（`showClearCard({ again: true })`：音と 400ms の押せない時間はくり返さない）。
-  - 帳面は `readBookNow()` で読む（メモリの値を出さない）。
+  - `showBook()`：`overlayKind` を `"book"`。見出し「なかよしちょう」、★の合計「あつめた ★ ${n}こ」（0 なら出さない）、6 匹の行（絵 56×60 に今の段の おしゃれ・名前・「${数}にん」・「あと ${次−数}にんで ${次のおしゃれの名前}」か「ぜんぶ そろったよ」）、ホーム画面に追加していないときだけ（`navigator.standalone !== true` かつ `(display-mode: standalone)` でない）「ホーム画面に ついかすると、きろくが きえにくいよ」（IB-41）、ボタン「もどる」（`data-cmd="bookClose"`）。閉じる（もどる・Esc）とクリアのカードに戻る（`showClearCard({ again: true })`：音と 400ms の押せない時間はくり返さない）。
+  - 帳面は `readBookNow()` で読む（メモリの値を出さない）。まだ 1 人も届けていない動物の行は「0にん」「あと 10にんで ${段 1 の名前}」（0 から数えるので、v45 を開いた直後はみな 0）。
 - 足すテスト：T45-10（BW37）。BW31 (d) の「ボタンは next,menu」は「next,menu,book」に変わる（T45-10 で直す）。
 - 流すテスト（PORT=8735）：`PORT=8735 WORKERS=1 ONLY=BW4,BW16,BW23,BW31,BW32,V11,V14 node tests/run.mjs full`
-- 前：T45-05。同時：T45-09。
+- 前：T45-05。同時：T45-04c・T45-09。
 
 ### T45-07 IB-42：105 面から先の節目の予告に、なかよしの「あと ○にん」（Sonnet）
 
@@ -587,17 +783,18 @@ cd /home/user/game-no1 && git fetch origin && git worktree add -b claude/v45-iro
       }
       return pick;
     }, null);
-    if (near) return `つぎは ${next}めん。${R.ANIMAL_NAMES[near.k] || "おきゃくさん"}さん あと ${near.left}にんで ${DRESS_NAME[near.step]}`;
+    const item = near && R.DRESS_ITEMS && R.DRESS_ITEMS[near.k] ? R.DRESS_ITEMS[near.k][near.step - 1] : null;
+    if (near && item) return `つぎは ${next}めん。${R.ANIMAL_NAMES[near.k] || "おきゃくさん"}さん あと ${near.left}にんで ${item[0]}`;
     return `つぎは ${next}めん`;
 ```
-  （`DRESS_NAME` は T45-06 で足す `["", "リボン", "えりまき", "ぼうし", "ほしの バッジ", "おうかん"]`。並びが同じ数なら `R.ANIMALS` の順で先の動物）
-- 足すテスト：T45-10 の (g)。BW32 (g)「つぎは 106めん」だけ → 帳面を全部 1000 にしてから開くと「つぎは 106めん」、帳面なし（best 104 の おおよそ）では「あと ○にんで」に変わる（T45-10 で直す）。
+  （並びが同じ数なら `R.ANIMALS` の順で先の動物）
+- 足すテスト：T45-10 の (g)。BW32 (g)「つぎは 106めん」だけ → 帳面を 6 匹とも 200 にしてから開くと「つぎは 106めん」のまま、帳面なし（0 から）では「あと ○にんで」に変わる（T45-10 で直す）。
 - 流すテスト（PORT=8736）：`PORT=8736 WORKERS=1 ONLY=BW32 node tests/run.mjs smoke`（(g) は T45-10 で直すまで落ちてよい。ほかが合格なら次へ）
 - 前：T45-06。
 
-### T45-08 ⏸Q4 メニューのいろびんのカードに ★の合計（Sonnet）
+### T45-08 メニューのいろびんのカードに ★の合計（Sonnet）
 
-- ファイル：`index.html`（ルート）だけ。
+- ファイル：`index.html`（ルート）だけ。Q4＝A のとおり。
 - 819〜826 行の `irobinBest()` を次に替える（ルートのメニューは logic.js を読まないので、ここで小さく読む）：
 ```js
   // いろびん：irobin.best（クリアした一番大きい面）。安全な整数で 1 以上のときだけ「N めん クリア」、それ以外は空。
@@ -620,41 +817,42 @@ cd /home/user/game-no1 && git fetch origin && git worktree add -b claude/v45-iro
 - 流すテスト（PORT=8737）：`PORT=8737 WORKERS=1 ONLY=BW15,V13 node tests/run.mjs full`（BW15 は帳面なしなので今のまま合格）
 - 前：T45-01。同時：T45-02・T45-04。
 
-### T45-09 BW36 を足す（数える・保存・二重に数えない・壊れた帳面・X-20。Sonnet）
+### T45-09 BW36 を足す（数える・保存・0 から・二重に数えない・壊れた帳面・X-20。Sonnet）
 
 - ファイル：`tests/cases/irobin-ui.mjs` の最後。tier `full`。
-- 題：`いろびん v45（IB-34）なかよしちょうの保存：クリアで動物の数・星・手数が残る、前から遊んでいる人は おおよそで引き継ぐ、開き直したクリアのカードで二重に数えない、壊れた帳面でも落ちない・新しい版の帳面を書きかえない、古いページから書き戻さない`
+- 題：`いろびん v45（IB-34）なかよしちょうの保存：クリアで動物の数・星・手数が残る、前から遊んでいる人も 0 から数える、開き直したクリアのカードで二重に数えない、壊れた帳面でも落ちない・新しい版の帳面を書きかえない、古いページから書き戻さない`
 - 確かめること（`irobin.book` は `localStorage` から読む）：
-  - (a) 帳面なし・best なし：開くと `irobin.book` が `{"v":1,"a":{},"s":{},"last":0}`。1 面を solution で解くと、`a` の合計が 1 面の注文の数（`getState().total`）、どの動物も `IrobinLogic.animalFor(1, i)`（ずらしを含めるなら `render.animalsSeen` と同じ。クリアのカードの `.served` の aria-label の順）と合う、`s["1"]` が `[星, 手数]`（星は `.stars` の `data-stars`、手数は `getState().moves`）、`last` 1。
-  - (b) best 60・帳面なし：開くと `a` の合計が Σ`paramsFor(1..60).colors`、`s` が空。
+  - (a) 帳面なし・best なし：開いただけでは `irobin.book` が `null`（起動で書かない）。1 面を solution で解くと、`a` の合計が 1 面の注文の数（`getState().total`）、どの動物もクリアのカードの `.served` の aria-label の順（ずらしを含む）と合う、`s["1"]` が `[星, 手数]`（星は `.stars` の `data-stars`、手数は `getState().moves`）、`last` 1。
+  - (b) 0 から：best 60・`irobin.save` が 61 面・帳面なしで開く → `irobin.book` は `null` のまま、`#shop .customer` の `data-dress` がみな `0`。61 面を解くと `a` の合計が 61 面の注文の数だけ（1〜60 面の分は入らない）。
   - (c) 開き直し：3 面の solution の手を全部 `irobin.save` に入れ、帳面の `last` を 3 にして開く → クリアのカード（`overlay 'clear'`）、`a` が変わらない。`last` を 2 にして開く → `a` の合計が 3 面の注文の数だけ増える（1 回だけ。もう一度開き直しても増えない）。
-  - (d) 壊れた帳面 `'{'`・`'[]'` と、(d) の混ざった帳面（BL26 (d) と同じ文字）で開いて 1 面を解く：コンソールエラー 0、クリアのカードが出る、混ざった帳面の `usagi` 12 は残る（＋届けた分）。
+  - (d) 壊れた帳面 `'{'`・`'[]'` と、混ざった帳面（BL26 (d) と同じ文字）で開いて 1 面を解く：コンソールエラー 0、クリアのカードが出る、壊れた帳面は 1 面の分の正しい帳面に書きかわる、混ざった帳面の `usagi` 12 は残る（＋届けた分）。
   - (e) `'{"v":2,"a":{"kuma":50}}'` で開いて 1 面を解く：`irobin.book` の文字が前と同じ（書きかえない）。
   - (f) X-20：1 面を開き、`x20Hidden(page, true)`、同じ context の別のページが `irobin.save` を `{v:3,level:7,moves:[]}` にする → `pagehide` を起こしても `irobin.book` の文字が変わらない。表に戻すと開き直し（7 面）、帳面の文字は前と同じ。
 - 直す前に落ちる：v44（`/home/user/game-no1` を v44 にしてから、または v44 の公開の場所）で (a)〜(e) が落ちる。
 - 流すテスト（PORT=8738）：`PORT=8738 WORKERS=1 ONLY=BW36 node tests/run.mjs full`
-- 前：T45-05。同時：T45-03・T45-06。
+- 前：T45-05。同時：T45-03・T45-04c・T45-06。
 
 ### T45-10 BW37 を足し、BW31・BW32 を直す（画面。Sonnet）
 
 - ファイル：`tests/cases/irobin-ui.mjs`。
-- BW31 (d)（1919 行あたり）：「ボタンは next,menu」→「next,menu,book」（T45-06 の並べ方のとおり。共有のあるカードの順も T45-06 に合わせる）。BW32 (g)（2014 行）：開く前に `irobin.book` を 6 匹とも 1000 にして「つぎは 106めん」のまま。
-- 足す BW37（tier `full`）。題：`いろびん v45（IB-34・IB-41・IB-42）：段が上がった面のクリアのカードに一言と音 best 1 回、お店の動物が おしゃれを付けて来る（data-dress）、なかよしちょうのカード（6 匹・数・あと ○にん・★の合計）が SE 縦横のホーム画面と Safari で押せてはみ出さない、もどるでクリアのカードへ戻る、ホーム画面に追加していないときだけ一言、105 面の予告に「あと ○にんで」`
-  - (a) 帳面の kuma を 9 にして、1 面の注文に くま がいる面（`animalFor(n, i) === 'kuma'` の面を 1〜20 面から探す）を solution で解く：`.friend` が「くまさんと なかよしに なったよ！ リボンを つけて くるよ」、音 best が 1 回（`SFX_SPY`・`plays`）。段が上がらない面では `.friend` が隠れている。
-  - (b) 帳面の 6 匹を 30 にして開く：`#shop .customer` の `data-dress` が `2`（お客さんがいる枠）。
-  - (c) クリアのカードで「なかよしちょう」を押す：`overlay 'book'`、行が 6 つ、くまの行に「30にん」「あと 70にんで ぼうし」、★の合計の行。`view('SE','p','app')`・`view('SE','p','safari')`・`view('SE','l','app')`・`view('SE','l','safari')` で「もどる」がスクロールなしで押せる・44px 以上・カードが画面の中・横スクロールなし。
+- BW31 (d)（1919 行あたり）：「ボタンは next,menu」→「next,menu,book」（T45-06 の並べ方のとおり。共有のあるカードの順も T45-06 に合わせる）。BW32 (g)（2014 行）：開く前に `irobin.book` を 6 匹とも 200 にして「つぎは 106めん」のまま。
+- 足す BW37（tier `full`）。題：`いろびん v45（IB-34・IB-41・IB-42）：段が上がった面のクリアのカードに一言と音 best 1 回、お店の動物が 動物ごとの おしゃれを付けて来る（data-dress・絵が段ごとに変わる）、なかよしちょうのカード（6 匹・数・あと ○にん・★の合計）が SE 縦横のホーム画面と Safari で押せてはみ出さない、もどるでクリアのカードへ戻る、ホーム画面に追加していないときだけ一言、105 面の予告に「あと ○にんで」`
+  - (a) 帳面の kuma を 9 にして、1 面の注文に くま がいる面（`animalFor(n, i) === 'kuma'` の面を 1〜20 面から探す）を solution で解く：`.friend` が「くまさんと なかよしに なったよ！ ちょうネクタイを つけて くるよ」、音 best が 1 回（`SFX_SPY`・`plays`）。段が上がらない面では `.friend` が隠れている。kuma を 49 にして同じ面を解くと「くまさんと もっと なかよしに なったよ！ むぎわらぼうしを かぶって くるよ」。
+  - (b) 帳面の 6 匹を 50 にして開く：`#shop .customer` の `data-dress` が `2`（お客さんがいる枠）。200 にすると `3`、1000 でも `3`。
+  - (c) クリアのカードで「なかよしちょう」を押す（帳面は kuma 50・ほか 0）：`overlay 'book'`、行が 6 つ、くまの行に「50にん」「あと 150にんで きんの メダル」、うさぎの行に「0にん」「あと 10にんで にんじんの バッジ」、★の合計の行。`view('SE','p','app')`・`view('SE','p','safari')`・`view('SE','l','app')`・`view('SE','l','safari')` で「もどる」がスクロールなしで押せる・44px 以上・カードが画面の中・横スクロールなし。6 匹とも 200 のときは 6 行とも「ぜんぶ そろったよ」。
   - (d) 「もどる」と Escape でクリアのカードに戻る（`overlay 'clear'`、ボタンがすぐ押せる＝`aria-disabled` なし、音 best が増えない）。
   - (e) IB-41：ふつうの開き方で「ホーム画面に ついかすると」がある。`initScript` で `navigator.standalone = true` にすると無い。
   - (f) 帳面が `v:2` のときも、なかよしちょうのカードは落ちずに開く（数は 0）。
-  - (g) best 104・帳面を kuma 295・ほか 1000 にして 105 面をクリア：予告が「つぎは 106めん。くまさん あと 5にんで ほしの バッジ」。
+  - (g) best 104・帳面を kuma 195・ほか 200 にして 105 面をクリア：予告が「つぎは 106めん。くまさん あと 5にんで きんの メダル」。
+  - (h) 絵（Q1＝C の守り）：ページの中で `IrobinRender.drawAnimal` を 6 匹 × 段 0〜3 で 112×120 の canvas に描き、`toDataURL()` が どの動物も段 0→1→2→3 で毎回変わる（描き忘れた動物・段が無い）。段 4・`'x'`・`-1` は段 3・0・0 と同じ絵。`IrobinRender.DRESS_ITEMS` が 6 匹 × 3 つで、名前 18 個がみな違う。
 - 流すテスト（PORT=8739）：`PORT=8739 WORKERS=1 ONLY=BW31,BW32,BW36,BW37 node tests/run.mjs full`
-- 前：T45-06・T45-07・T45-09。
+- 前：T45-04c・T45-06・T45-07・T45-09。
 
-### T45-11 ⏸Q4 V13 にいろびんの ★ を足す（Sonnet）
+### T45-11 V13 にいろびんの ★ を足す（Sonnet）
 
 - ファイル：`tests/cases/layout.mjs` だけ。V13（399 行〜）の seed の `'irobin.best': '999'` の後ろに `'irobin.book': JSON.stringify({ v: 1, a: {}, s: Object.fromEntries(Array.from({ length: 999 }, (_, i) => [String(i + 1), [3, 30]])), last: 999 })` を足す（「999 めん クリア・★2997」が「…」で切れず 2 行までか、を今の V13 の確かめ方のまま見る）。
 - 流すテスト（PORT=8740）：`PORT=8740 WORKERS=1 ONLY=V13 node tests/run.mjs full`
-- 前：T45-08。
+- 前：T45-08。同時：T45-03・T45-04a。
 
 ### T45-12 変異の行を足す（Sonnet）
 
@@ -662,32 +860,31 @@ cd /home/user/game-no1 && git fetch origin && git worktree add -b claude/v45-iro
 ```
   ['MB52 いろびん：開き直したクリアのカードで、なかよしちょうの数を二重に足す（IB-34）', '保存', 'games/irobin/main.js', 'count: !(o && o.restored && rb.book.last === level)', 'count: true'],
   ['MB53 いろびん：なかよしちょうの負の数・小数を捨てない（IB-34）', '保存', 'games/irobin/logic.js', 'if (Number.isSafeInteger(n) && n > 0 && n <= BOOK_MAX_COUNT) b.a[k] = n;', 'if (typeof n === "number") b.a[k] = n;'],
-  ['MB54 いろびん：新しい版の なかよしちょうを書きかえる（IB-34）', '保存', 'games/irobin/logic.js', 'if (o.v > BOOK_V) return { book: emptyBook(), write: false, fresh: false };', 'if (o.v > BOOK_V) return { book: emptyBook(), write: true, fresh: false };'],
+  ['MB54 いろびん：新しい版の なかよしちょうを書きかえる（IB-34）', '保存', 'games/irobin/logic.js', 'if (o.v > BOOK_V) return { book: emptyBook(), write: false };', 'if (o.v > BOOK_V) return { book: emptyBook(), write: true };'],
   ['MB55 いろびん：なかよしの段が 1 つ遅れる（10 にんで上がらない。IB-34）', '保存', 'games/irobin/logic.js', 'for (const t of BOOK_STEPS) if (Number(n) >= t) s += 1;', 'for (const t of BOOK_STEPS) if (Number(n) > t) s += 1;'],
   ['MB56 いろびん：面の星を良い方でなく今回の値で上書きする（IB-34）', '保存', 'games/irobin/logic.js', '[Math.max(prev[0], star), Math.min(prev[1], mv)]', '[star, mv]'],
-  ['MB57 いろびん：前から遊んでいる人の数を引き継がない（IB-34）', '保存', 'games/irobin/logic.js', 'return { book: estimateBook(best), write: true, fresh: true };', 'return { book: emptyBook(), write: true, fresh: true };'],
 ```
-- 見込み：MB52 は BW36 (c)、MB53〜MB57 は BL26（MB55 は BW37 (a) も）。Q3 が B なら MB57 は入れない。Q4 が B なら MB56 は入れない。
+- 見込み：MB52 は BW36 (c)、MB53〜MB56 は BL26（MB55 は BW37 (a) も）。前の計画の MB57（引き継ぎ）は、Q3＝B で引き継ぎを作らないので**入れない**。
 - テストは流さない（T45-18 で流す）。前：T45-02・T45-05。
 
 ### T45-13 確認（Opus）
 
-- 差分が 5 章のとおりか（render は `render-dress.diff`、logic は T45-02 の写しと比べる）。
+- 差分が 5 章のとおりか（render は `diff $S/render.base.js games/irobin/render.js` が `$S/render-dress.diff` と同じか、logic は T45-02 の写しと比べる）。
 - `PORT=8741 WORKERS=1 ONLY=BL1,BL19,BL23,BL24,BL25,BL26 node tests/run.mjs smoke`、`PORT=8741 WORKERS=1 ONLY=BW3,BW4,BW15,BW20,BW22,BW23,BW31,BW32,BW36,BW37,V13,V14 node tests/run.mjs full`。
-- スクリーンショット：お店の動物（段 0〜5）を iPhone 13 縦・SE 縦 Safari で、クリアのカード（段が上がった面）と なかよしちょうのカードを SE 縦横の 4 画面で。見ること：おしゃれが顔を隠さない、ほしの バッジが見分けられる（計画の絵では 56px で小さめ）、色覚（えりまきの色が体の色に埋もれない。ねこ×きいろ・りす×みどり）。
+- スクリーンショット：お店の動物（6 匹 × 段 0〜3）を iPhone 13 縦・SE 縦 Safari で、クリアのカード（段が上がった面）と なかよしちょうのカードを SE 縦横の 4 画面で。見ること：おしゃれが顔（目・口・鼻）を隠さない、小さい物（くまの メダル・ねこの すず・りすの どんぐり）が実機の大きさで見分けられる、ステッキ・ふうせん・りすの しっぽが 枠の外に はみ出さない、色覚（どの おしゃれも体の色に埋もれない）。
 - 横展開：ほかのゲームで、保存を書くたびに読み直していない（メモリの値から書く）新しい保存が無いか（X-22 の注意）。
 
 ### T45-14 レビュー（遊び方が変わる版：技術 Opus ∥ UX Sonnet ∥ 中毒性 Sonnet）
 
-- 技術（Opus）：3 章の保存の決めごと（書く順・二重に数えない・壊れた帳面・新しい版・X-20）、起動の重さ（2000 面のおおよそ）、`irobin.book` の大きさ（5000 面で約 70KB）、`setDress` で描き直す回数。
-- UX（Sonnet）：クリアのカードの一言の長さ（SE 横）、なかよしちょうの言葉（ひらがな・子ども）、ホーム画面の一言、ボタンが 1 つ増えたカードで迷わないか。
-- 中毒性（Sonnet。A の 10 項目、特に 7「上達が見える」・10「小さなご褒美」）：段の間隔（約 9・24・75・190・600 面）がちょうどよいか、ご褒美が控えめの範囲か（ガチャ・時間で急かす仕掛けなし）。v32 の 33/50 からどれだけ上がるかを採点。
+- 技術（Opus）：3 章の保存の決めごと（書く順・二重に数えない・0 から・起動で書かない・壊れた帳面・新しい版・X-20）、`irobin.book` の大きさ（5000 面で約 70KB）、`setDress` で描き直す回数、`drawDress` が 1 匹あたり何回の描画か（毎フレーム描く所は無いか）。
+- UX（Sonnet）：クリアのカードの一言の長さ（SE 横。「ペンギンさんと もっと なかよしに なったよ！ ニットぼうを かぶって くるよ」がいちばん長い）、なかよしちょうの言葉（ひらがな・子ども）、ホーム画面の一言、ボタンが 1 つ増えたカードで迷わないか、18 の おしゃれが何か分かるか。
+- 中毒性（Sonnet。A の 10 項目、特に 7「上達が見える」・10「小さなご褒美」・6「毎回少し違う」）：段の間隔（0 から約 10・40・130 面）がちょうどよいか、ご褒美が控えめの範囲か（ガチャ・時間で急かす仕掛けなし）、動物ごとに違うことで「次はだれ」が楽しみになるか。v32 の 33/50 からどれだけ上がるかを採点。
 - 指摘を直してからコミットする（W-03）。
 
 ### T45-15 文書（Sonnet。関門の前。テストは流さない）
 
-- `docs/irobin-contract.md`：**§24 を足す**（題「なかよしちょう（2026-10-xx、v45、IB-34・IB-41・IB-42）」）：ユーザーの言葉と質問の答え（そのまま）、3 章の保存の形・表・二重に数えない・X-20、段と おしゃれ、画面（クリアのカード・なかよしちょう・お店の動物・メニューの ★）、BL26・BW36・BW37・MB52〜MB57、直したテスト（BW31・BW32・V13）。§8.3（保存）と §18 G1 に「`irobin.book` は見張らない（読み直して足すため）」を 1 行。
-- `tests/README.md`：いろびんの行の ONLY に `BW36,BW37`（full）・`BL26`（smoke）、M に `MB52〜MB57`。変異の表に T45-18 の結果。
+- `docs/irobin-contract.md`：**§24 を足す**（題「なかよしちょう（2026-10-xx、v45、IB-34・IB-41・IB-42）」）：ユーザーの言葉と質問の答え（そのまま。8 章）、3 章の保存の形・表・0 から数える・二重に数えない・X-20、段（10・50・200）と 6 匹 × 3 の おしゃれの表、画面（クリアのカード・なかよしちょう・お店の動物・メニューの ★）、BL26・BW36・BW37、MB52〜MB56、直したテスト（BW31・BW32・V13）。§8.3（保存）と §18 G1 に「`irobin.book` は見張らない（読み直して足すため）」を 1 行。
+- `tests/README.md`：いろびんの行の ONLY に `BW36,BW37`（full）・`BL26`（smoke）、M に `MB52〜MB56`。変異の表に T45-18 の結果。
 - `tests/design.md`：いろびんの節に BL26・BW36・BW37、直す前に落ちたこと。
 - `docs/issues.md` → `issues-done.md`：IB-34・IB-41・IB-42 を v45 で済に。IB-37 の対応に「v45 で IB-41 を入れた。消えた報告があれば つづきコードを考える」。
 - `docs/business/irobin/0-summary.md` の注に「第 2 弾は v45 で済」を 1 行。
@@ -711,17 +908,17 @@ HEADED=1 BROWSER=webkit WORKERS=1 PORT=8743 xvfb-run -a node tests/run.mjs smoke
 
 ```sh
 cd /home/user/wt-v45
-PORT=8744 WORKERS=1 ONLY=BL26,BW36,BW37 M=MB52,MB53,MB54,MB55,MB56,MB57 node tests/mutants/mutate.mjs both
+PORT=8744 WORKERS=1 ONLY=BL26,BW36,BW37 M=MB52,MB53,MB54,MB55,MB56 node tests/mutants/mutate.mjs both
 ```
 - 全部「検出」が合格。表をそのまま報告し、T45-15 の担当が tests/README.md に写す。
 
 ### T45-19 コミット（Haiku。PM の指示があってから）
 
-1. `games/irobin/logic.js` `tests/cases/irobin-logic.mjs`：`feat(irobin): なかよしちょうの保存 irobin.book（動物ごとの数・面ごとの星と手数。壊れた帳面・新しい版・前からの人の引き継ぎ。IB-34）。BL26`
-2. `games/irobin/render.js`：`feat(irobin): お客さんの動物に おしゃれ（なかよしの段 0〜5。IB-34）`
+1. `games/irobin/logic.js` `tests/cases/irobin-logic.mjs`：`feat(irobin): なかよしちょうの保存 irobin.book（動物ごとの数・面ごとの星と手数。0 から数える。壊れた帳面・新しい版。IB-34）。BL26`
+2. `games/irobin/render.js`：`feat(irobin): お客さんの動物に おしゃれ（動物ごとに違う 3 段。なかよしの段 0〜3。IB-34）`
 3. `games/irobin/main.js` `games/irobin/index.html` `tests/cases/irobin-ui.mjs`：`feat(irobin): クリアで数えて保存（二重に数えない）、クリアのカードの一言と なかよしちょうのカード、ホーム画面の一言（IB-41）、105 面から先の予告（IB-42）。BW36・BW37、BW31・BW32 を直す`
 4. `index.html` `tests/cases/layout.mjs`：`feat: メニューのいろびんに ★の合計（IB-34）。V13`
-5. `tests/mutants/mutate.mjs` `common/version.js` `sw.js` `docs/`：`v45：版を上げる、変異 MB52〜MB57、契約書 §24・テストの説明・課題表`
+5. `tests/mutants/mutate.mjs` `common/version.js` `sw.js` `docs/`：`v45：版を上げる、変異 MB52〜MB56、契約書 §24・テストの説明・課題表`
 - 署名の行は PM が渡すものを一字一句そのまま（W-05）。
 
 ### T45-20 公開（Haiku。ユーザーの承認の言葉を PM が引用して渡してから）
@@ -729,6 +926,8 @@ PORT=8744 WORKERS=1 ONLY=BL26,BW36,BW37 M=MB52,MB53,MB54,MB55,MB56,MB57 node tes
 ```sh
 cd /home/user/wt-v45 && git fetch origin && git merge --no-edit origin/master && git push origin claude/v45-irobin-book:master
 ```
+
+- v45 のタスクの数と担当（6 章の v45 の行は前の計画のまま。こちらが新しい）：**22**（＋レビュー 3）＝ Haiku 6（T45-01・16・17・18・19・20）・Sonnet 14（T45-02・03・04・04a・04b・04c・05・07・08・09・10・11・12・15）・Opus 2（T45-06 画面の並べ方・T45-13 確認）＋レビュー技術。
 
 ---
 
@@ -745,26 +944,19 @@ cd /home/user/wt-v45 && git fetch origin && git merge --no-edit origin/master &&
 
 ---
 
-## 7. ユーザーに決めてもらうこと（v45 の ⏸ のタスクは答えが出るまで実行しない）
+## 7. ユーザーに決めてもらったこと（決定。2026-10-26。答えは 8 章にそのまま）
 
-**質問 1：おしゃれの段と見た目**（⏸ T45-02・T45-04）
-- **A（おすすめ）**：5 段。届けた数 10・30・100・300・1000 で、リボン → えりまき → ぼうし → ほしの バッジ → おうかん（重ねて付く。6 匹とも同じ形で色だけ違う）。理由：3 段だと 75 面ほどで全部そろい、238 面まで来た人は引き継いだ時点で全部そろってしまう。5 段なら 600 面ほどまで次の目標がある。絵は試しに描いた（`dress.png`）。
-- B：3 段（10・30・100。リボン → ぼうし → おうかん）。中毒性の報告のまま。
-- C：動物ごとに違うおしゃれ（6 匹 × 3 段）。絵の手間が約 3 倍。
+**決定 1：おしゃれの段と見た目**（T45-02・T45-04〜04c）
+- **動物ごとに違う おしゃれ・3 段**（前の案の C）。届けた数 **10・50・200** で 1 段ずつ（0 から数えるので、最初は約 10 面、最後は約 130 面先。3.1）。6 匹 × 3 つの中身は 3.1 の表。絵は計画担当が試しに描いた（`v45dress/dress.png`）。絵の手間が大きいので、土台と 2 匹ずつの 4 つのタスクに分けた。
 
-**質問 2：なかよしちょうの開き方と名前**（⏸ T45-06）
-- **A（おすすめ）**：クリアのカードに「なかよしちょう」ボタン。遊ぶ画面（上の帯・瓶）は変えない。名前は「なかよしちょう」。
-- B：上の帯に 📖 のボタン（いつでも開ける。ただし SE 縦では場所が足りず、「いろびん」の文字を隠す）。
-- C：開く画面は作らず、お店の動物の おしゃれと、クリアのカードの一言だけ。
+**決定 2：なかよしちょうの開き方と名前**（T45-06）
+- **クリアのカードに「なかよしちょう」ボタン**（前の案の A・おすすめ）。遊ぶ画面（上の帯・瓶）は変えない。名前は「なかよしちょう」。
 
-**質問 3：前から遊んでいる人の なかよしの数**（⏸ T45-02）
-- **A（おすすめ）**：クリアした面の数から、おおよその数を入れる（星は入れない）。遊んだ分が無駄にならない。
-- B：0 から数える（だれでも同じところから）。
+**決定 3：前から遊んでいる人の なかよしの数**（T45-02・T45-05）
+- **0 から数える**（前の案の B）。古い `irobin.best`・`irobin.save` から数を作らない。帳面が無い人は空の帳面から始まり、起動では書かず、最初のクリアで書く（3.2）。前の計画の `estimateBook`・変異 MB57 は作らない。
 
-**質問 4：残す記録**（⏸ T45-02・T45-06・T45-08・T45-11）
-- **A（おすすめ）**：動物の数に加えて、面ごとの★と一番少ない手数を残す。★の合計をメニューと なかよしちょうに出す。クリアした面を選んで遊び直す（★の地図・IB-38）は次の版で決める。
-- B：動物の数だけ（★と手数は残さない）。
-- C：A に加えて、★の地図と「もういちど」（IB-38）も v45 に入れる（v45 がひとまわり大きくなる。保存の続きの面の扱いも決め直す）。
+**決定 4：残す記録**（T45-02・T45-06・T45-08・T45-11）
+- **動物の数＋面ごとの★と一番少ない手数**（前の案の A・おすすめ）。★の合計をメニューと なかよしちょうに出す。クリアした面を選んで遊び直す（★の地図・IB-38）は次の版（v46 以降）で決める。
 
 ## 8. ユーザーの答え（2026-10-26。そのまま）
 
