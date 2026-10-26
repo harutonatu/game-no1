@@ -741,7 +741,7 @@
         <li>4つ そろうと <b>せん</b>。うえの <b>トレイと おなじ いろ</b>なら おきゃくさんに とどくよ。まだ いない いろは、その ばしょで まつよ。</li>
         <li>「？」は うえを どかすと みえるよ。<b>ぬのの びん</b>は、とどけた にんずで あくよ。</li>${gimHelp()}
       </ol>
-      <p class="note">こまったら「1手もどす」「やりなおし」。キー：やじるし・エンター・すうじ（0 は 10ぽんめ、- は 11ぽんめ）で えらぶ。U もどす、M おと。</p>
+      <p class="note">こまったら「1手もどす」「やりなおし」。キー：やじるし・エンター・すうじ（0 は 10、- は 11、= は 12ぽんめ）で えらぶ。U もどす、M おと。</p>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");
   }
   function closeCard() {
@@ -858,7 +858,7 @@
   // ===== テスト用（§8.6） =====
   function cloneState(s) { return s ? JSON.parse(JSON.stringify(s)) : null; }
   function validCustom(s) {
-    if (!s || typeof s !== "object" || !Array.isArray(s.bottles) || !s.bottles.length || s.bottles.length > 11) return null;
+    if (!s || typeof s !== "object" || !Array.isArray(s.bottles) || !s.bottles.length || s.bottles.length > (L.MAX_BOTTLES || 11)) return null;
     const capN = L.CAP || 4;
     const okColor = (c) => Number.isInteger(c) && c >= 0 && c < (L.COLORS ? L.COLORS.length : 9);
     const bottles = [];

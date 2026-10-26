@@ -33,15 +33,16 @@ const colorsOf = (s) => s.bottles.map((b) => b.cells.join(''));
 
 export const tests = [
   {
-    id: 'BL1', tier: 'smoke', node: true, title: 'いろびん：定数・COLORS（9色・色と記号がすべて違う）・paramsFor が面の表どおり（境界・壊れた値）',
+    id: 'BL1', tier: 'smoke', node: true, title: 'いろびん：定数・COLORS（10色・色と記号がすべて違う）・paramsFor が面の表どおり（境界・壊れた値）',
     run({ check, root }) {
       const L = load(root);
-      const K = { NAME: 'いろびん', CAP: 4, ORDER_SLOTS: 2, MAX_COLORS: 9, MAX_MOVES_SAVED: 2000, SOLVE_NODE_LIMIT: 40000, GEN_NODE_BUDGET: 100000, GEN_TRIES: 40, SAVE_KEY_BEST: 'irobin.best', SAVE_KEY_SAVE: 'irobin.save', SAVE_KEY_HELP: 'irobin.help' };
+      const K = { NAME: 'いろびん', CAP: 4, ORDER_SLOTS: 2, MAX_COLORS: 10, MAX_MOVES_SAVED: 2000, SOLVE_NODE_LIMIT: 40000, GEN_NODE_BUDGET: 100000, GEN_TRIES: 40, SAVE_KEY_BEST: 'irobin.best', SAVE_KEY_SAVE: 'irobin.save', SAVE_KEY_HELP: 'irobin.help' };
       const kBad = Object.entries(K).filter(([k, v]) => L[k] !== v).map(([k, v]) => ({ k, want: v, got: L[k] }));
       check('定数が契約 §3 のとおり', kBad.length === 0, kBad);
       const C = L.COLORS;
-      const idOk = Array.isArray(C) && C.length === 9 && C.every((c, i) => c.id === i);
-      check('COLORS は 9 色で id が 0〜8', idOk, C);
+      const idOk = Array.isArray(C) && C.length === 10 && C.every((c, i) => c.id === i);
+      check('COLORS は 10 色で id が 0〜9', idOk, C);
+      check('MAX_BOTTLES が 12', L.MAX_BOTTLES === 12, L.MAX_BOTTLES);
       const uniq = (key) => new Set(C.map((c) => c[key])).size === C.length;
       check('key・name・hex・mark がすべて違う（色だけに頼らない＝記号も違う）', uniq('key') && uniq('name') && uniq('hex') && uniq('mark') && C.every((c) => /^#[0-9A-Fa-f]{6}$/.test(c.hex) && c.mark && c.name), C);
       check('COLORS が凍結されている', Object.isFrozen(C), null);
@@ -53,11 +54,11 @@ export const tests = [
         T(10, 7, 2, false, 'random'), T(11, 7, 2, false, 'random'), T(12, 7, 2, true, 'random'), T(13, 7, 2, false, 'random'), T(14, 7, 2, true, 'random'),
         T(15, 8, 2, true, 'random'), T(16, 8, 2, false, 'random'), T(23, 8, 2, true, 'random'), T(24, 8, 2, false, 'random'),
         T(25, 9, 2, true, 'random'), T(26, 9, 2, false, 'random'), T(39, 9, 2, true, 'random'),
-        T(40, 9, 2, true, 'random'), T(41, 9, 2, true, 'random'), T(1000, 9, 2, true, 'random'),
+        T(40, 9, 2, true, 'random'), T(41, 9, 2, true, 'random'), T(60, 9, 2, true, 'random'), T(61, 10, 2, true, 'random'), T(1000, 10, 2, true, 'random'),
       ];
       const bad = table.filter((r) => { const p = L.paramsFor(r.lv); return !(p && p.colors === r.colors && p.empties === r.empties && p.hidden === r.hidden && p.order === r.order); })
         .map((r) => ({ want: r, got: L.paramsFor(r.lv) }));
-      check('paramsFor が表どおり（1・2・5・6・9・10・12・14・15・24・25・39・40・1000 の境界を含む）', bad.length === 0, bad);
+      check('paramsFor が表どおり（1・2・5・6・9・10・12・14・15・24・25・39・40・60・61・1000 の境界を含む）', bad.length === 0, bad);
       const broken = [0, -3, 1.5, NaN, Infinity, null, undefined, {}, [], 1e400];
       const bBad = broken.filter((v) => { let p; try { p = L.paramsFor(v); } catch { return true; } return !(p && p.colors === 2 && p.empties === 2 && p.hidden === false && p.order === 'easy'); })
         .map((v) => String(v));
@@ -604,7 +605,7 @@ export const tests = [
           if (b.cells.length === L.CAP && b.cells.every((x) => x === b.cells[0])) bad.push(`${lv}: 布の瓶に同じ色 4 段（取れた瞬間にそろってしまう）`);
           if (!(Number.isInteger(b.cover) && b.cover >= 1 && b.cover <= s.total - 1)) bad.push(`${lv}: cover ${b.cover} が 1〜total-1 でない`);
         }
-        if (s.bottles.length > (L.MAX_BOTTLES || 11)) bad.push(`${lv}: 瓶が ${s.bottles.length} 本（11 本を超える）`);
+        if (s.bottles.length > (L.MAX_BOTTLES || 11)) bad.push(`${lv}: 瓶が ${s.bottles.length} 本（MAX_BOTTLES を超える）`);
         if (!(info.nodes <= L.GEN_NODE_BUDGET)) bad.push(`${lv}: nodes ${info.nodes}`);
         // 解ける：solution を applyMove で再生して won。布は途中で全部取れる
         let st = s, unv = 0;
@@ -621,7 +622,7 @@ export const tests = [
       check(`paramsFor の布の表（1〜4 面 0 本、5〜24 面 1 本・空き瓶 5 面 0／6〜7 面 1／8〜14 面 0.7／15〜24 面 0.4、25 面以降は偶数面 1 本・奇数面 0 本・空き瓶 0）が 1〜${N} 面で正しい`, tbl.length === 0, tbl.slice(0, 6));
       check(`中身ありの布の cover の幅（5 面は中身あり cover 1、〜14 面 1〜total/3、15〜24 面 total/3〜total/2、25 面以降 total/2±1）`, covBad.length === 0, covBad.slice(0, 6));
       check(`25〜600 面の布の面の半分以上で布が効いている（cover 1 より探索量 1.5 倍以上）：${effYes}/${effN}＝${Math.round(100 * effYes / Math.max(1, effN))}%`, effN > 0 && effYes * 2 >= effN, { effYes, effN });
-      check(`1〜${N} 面：布の本数・中身（空き瓶か 4 段、同じ色 4 段なし）・cover・瓶 11 本以内・solution を再生すると won で布は全部取れる（布の面 ${clothLv}・空き瓶の布 ${emptyCl}・中身ありの布 ${fullCl}）`, bad.length === 0 && clothLv > 0 && emptyCl > 0 && fullCl > 0, bad.slice(0, 8));
+      check(`1〜${N} 面：布の本数・中身（空き瓶か 4 段、同じ色 4 段なし）・cover・瓶 MAX_BOTTLES（12 本）以内・solution を再生すると won で布は全部取れる（布の面 ${clothLv}・空き瓶の布 ${emptyCl}・中身ありの布 ${fullCl}）`, bad.length === 0 && clothLv > 0 && emptyCl > 0 && fullCl > 0, bad.slice(0, 8));
       check(`決定的（1〜30 面と 7 の倍数の面を 2 回作って JSON が一致）`, det.length === 0, det.slice(0, 8));
       check(`fallback 2（固定の予備の面）が出ない（0:${fb[0]} 1:${fb[1]} 2:${fb[2]}）`, !fb[2], fb);
       check(`生成が速い：1 面の最大 CPU ${maxMs}ms（${maxAt} 面。目安 300ms 以内）、合計 CPU ${total}ms・壁の時計 ${wallTotal}ms`, maxMs <= 300, { maxMs, maxAt, total, wallTotal });
@@ -767,7 +768,7 @@ export const tests = [
       const lm = L.legalMoves(S);
       check('legalMoves に ちがう色を いろ きまりの びんへ注ぐ手が無い（同じ色の手 3→2 はある）', !lm.some(([f, t]) => (t === 2 && f === 0) || (t === 1 && f === 3)) && lm.some(([f, t]) => f === 3 && t === 2), lm);
       const nz = (b) => L.normalizeState(mk([b, []], { slots: [0, null], queue: [], total: 1 }));
-      check('only に ちがう色の中身・only 9・only "0"（文字）・only と布の重ね は normalizeState が null', nz({ c: [1], only: 0 }) === null && nz({ c: [], only: 9 }) === null && nz({ c: [], only: '0' }) === null && nz({ c: [], only: 0, cover: 1 }) === null && nz({ c: [], only: 0, lock: 1 }) === null, null);
+      check('only に ちがう色の中身・only 10・only "0"（文字）・only と布の重ね は normalizeState が null', nz({ c: [1], only: 0 }) === null && nz({ c: [], only: 10 }) === null && nz({ c: [], only: '0' }) === null && nz({ c: [], only: 0, cover: 1 }) === null && nz({ c: [], only: 0, lock: 1 }) === null, null);
       const ok = nz({ c: [3, 3], only: 3 });
       check('only 3 で中身が 3 なら読める（only・cap 4・lock null）', ok && ok.bottles[0].only === 3 && ok.bottles[0].cap === 4 && ok.bottles[0].lock === null, ok && ok.bottles[0]);
       // ソルバー：いろ きまりの びんしか空きが無い盤。0 を入れる手しか無いので、0 を先に出せる並びだけ解ける
@@ -800,7 +801,7 @@ export const tests = [
       check('届けた数がいくつでも、ほかの色（2）をそろえても開かない', r3.outcome.kind === 'pour' && r3.outcome.sealed !== null && r3.state.bottles[0].lock === 1 && r3.outcome.unlocked.length === 0, r3.outcome);
       check('元の state は変わらない（イミュータブル）', J(S) === snap, null);
       const nz = (b) => L.normalizeState(mk([b, []], { slots: [0, null], queue: [], total: 1 }));
-      check('lock と栓・lock と布・lock 9・lock "1"（文字）は normalizeState が null', nz({ c: [0, 0, 0, 0], lock: 1, sealed: true }) === null && nz({ c: [0], lock: 1, cover: 2 }) === null && nz({ c: [0], lock: 9 }) === null && nz({ c: [0], lock: '1' }) === null, null);
+      check('lock と栓・lock と布・lock 10・lock "1"（文字）は normalizeState が null', nz({ c: [0, 0, 0, 0], lock: 1, sealed: true }) === null && nz({ c: [0], lock: 1, cover: 2 }) === null && nz({ c: [0], lock: 10 }) === null && nz({ c: [0], lock: '1' }) === null, null);
       // ソルバー：鍵を開けないと解けない盤
       const K = mk([{ c: [0, 0, 0], lock: 1 }, [1, 1, 1], [1], [0]], { slots: [0, 1], queue: [] });
       const sv = L.solve(K);
@@ -822,6 +823,7 @@ export const tests = [
       const G = (lv) => { const p = L.paramsFor(lv); return [p.smalls, p.onlys, p.keys, p.pick].join(','); };
       // 表（契約 §19.2）
       const want = { 1: '0,0,0,soft', 40: '0,0,0,soft', 41: '1,0,0,soft', 42: '0,0,0,soft', 43: '0,0,0,soft', 49: '1,0,0,soft', 50: '1,0,0,soft', 51: '1,0,0,soft', 54: '1,0,0,soft', 55: '2,0,0,soft', 56: '0,0,0,soft',
+        61: '1,0,0,soft', 62: '0,0,0,soft', 63: '0,0,0,soft', 65: '1,0,0,soft', 66: '0,0,0,soft', 67: '0,0,0,soft', 69: '1,0,0,soft',
         70: '0,0,0,soft', 71: '0,1,0,soft', 72: '0,0,0,soft', 73: '0,1,0,hard', 74: '1,0,0,soft', 76: '1,0,0,soft', 77: '2,0,0,soft', 100: '1,0,0,soft', 101: '0,0,1,soft', 103: '1,1,0,soft', 104: '2,0,0,soft', 105: '1,0,1,soft', 107: '0,0,1,hard',
         150: '2,0,0,soft', 151: '1,1,0,soft', 152: '1,0,0,soft', 153: '0,0,1,hard', 154: '0,0,0,soft', 155: '1,1,0,hard', 157: '0,1,0,hard', 2001: '0,0,1,hard' };
       const tb = Object.entries(want).filter(([lv, w]) => G(Number(lv)) !== w).map(([lv, w]) => ({ lv, want: w, got: G(Number(lv)) }));
@@ -873,13 +875,16 @@ export const tests = [
       check(`41〜600 面：全部 表どおりに作れた（fallback 0）・仕掛けの本数と形が表どおり・solution を再生すると won・鍵は全部開く（仕掛けの面 ${lv0}・開いた鍵 ${unl}）`, gb.length === 0 && lv0 > 300 && unl > 50, gb.slice(0, 8));
       // 重さ：生成の上限は時間ではなく局面の数（どの端末でも同じ面）。調べた局面が v36 の最大（25,671。1〜2000 面）と同じくらいなら、1 面の時間も v36 と同じくらい
       // （Node で最大 約 30ms。目安 50ms 以内は scratchpad の台本で静かなときに測る）。CPU 時間は並列のテストで混むと延びるので、ゆるい上限 150ms だけ見る
-      check(`生成で調べた局面が 32,000 以内（v36 の最大 25,671 の 1.25 倍。最大 ${maxNodes}・${nodesAt} 面）`, maxNodes <= 32000, { maxNodes, nodesAt });
+      check(`生成で調べた局面が 40,000 以内（v42 の最大 32,767・494 面の約 1.2 倍。最大 ${maxNodes}・${nodesAt} 面）`, maxNodes <= 40000, { maxNodes, nodesAt });
       check(`1 面の生成が CPU 150ms 以内（重い面は 3 回の一番短い時間）：最大 ${Math.round(maxMs)}ms（${maxAt} 面）`, slow.length === 0, slow.slice(0, 6));
       // 仕掛けの無い面は前（v36）と同じ面（瓶の中身・隠れ・布・注文の列の指紋）
       const fnv = (str) => { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); };
-      const lvs = []; for (let lv = 1; lv <= 200; lv++) { const p = L.paramsFor(lv); if (!(p.smalls || p.onlys || p.keys) && (lv < 5 || lv > 7)) lvs.push(lv); }
-      const fp = fnv(lvs.map((lv) => { const s = L.createLevel(lv).state; return J([s.bottles.map((b) => [b.cells, b.hidden, b.cover]), s.slots, s.queue]); }).join('|'));
-      check(`1〜200 面のうち仕掛けの無い ${lvs.length} 面（布を前倒しした 5〜7 面を除く）は v36 と同じ面（指紋 ${fp}。v36 の logic.js で取った値 4c324cd0・69 面）`, lvs.length === 69 && fp === '4c324cd0', { n: lvs.length, fp });
+      const fpLv = (lvs) => fnv(lvs.map((lv) => { const s = L.createLevel(lv).state; return J([s.bottles.map((b) => [b.cells, b.hidden, b.cover]), s.slots, s.queue]); }).join('|'));
+      const plain = (a, b) => { const o = []; for (let lv = a; lv <= b; lv++) { const p = L.paramsFor(lv); if (!(p.smalls || p.onlys || p.keys) && (lv < 5 || lv > 7)) o.push(lv); } return o; };
+      const lvsA = plain(1, 60), fpA = fpLv(lvsA);
+      check(`1〜60 面のうち仕掛けの無い ${lvsA.length} 面（布を前倒しした 5〜7 面を除く）は v36 と同じ面（指紋 ${fpA}／f08fb003）`, lvsA.length === 47 && fpA === 'f08fb003', { n: lvsA.length, fpA });
+      const lvsB = plain(61, 200), fpB = fpLv(lvsB);
+      check(`61〜200 面のうち仕掛けの無い ${lvsB.length} 面は v42 の 10 色の面（指紋 ${fpB}／cca8d0a9）`, lvsB.length === 26 && fpB === 'cca8d0a9', { n: lvsB.length, fpB });
       // 保存 v:3：途中保存を replay すると、仕掛けの状態（cap・only・lock）も同じ局面
       const sv = [];
       for (const lv of [41, 71, 101, 104, 150]) {
@@ -935,17 +940,17 @@ export const tests = [
     },
   },
   {
-    id: 'BL22', tier: 'smoke', node: true, title: 'いろびん IB-12：生成の上限 GEN_NODE_BUDGET が 100000・調べる局面が多い面（1334・4774・100878 面）が v38 と同じ面・局面の数が上限以内・fallback 0',
+    id: 'BL22', tier: 'smoke', node: true, title: 'いろびん IB-12：生成の上限 GEN_NODE_BUDGET が 100000・調べる局面が多い面（3792・494・100260 面）が v42 の面・局面の数が上限以内・fallback 0',
     run({ check, root }) {
       const L = load(root);
       const fnv = (str) => { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); };
       check(`GEN_NODE_BUDGET が 100000（${L.GEN_NODE_BUDGET}）`, L.GEN_NODE_BUDGET === 100000, L.GEN_NODE_BUDGET);
-      const lvs = [1334, 4774, 100878];
+      const lvs = [3792, 494, 100260];
       const cs = lvs.map((lv) => L.createLevel(lv));
       const h = fnv(cs.map((c) => JSON.stringify([c.state.bottles, c.state.slots, c.state.queue])).join('|'));
       const nodes = cs.map((c) => c.info.nodes), fb = cs.map((c) => c.info.fallback);
-      check(`面の指紋が v38 と同じ（${h}／9852e4a9）`, h === '9852e4a9', h);
-      check(`調べた局面の数が 30187・58457・33173（${nodes.join('・')}）で、どれも上限以内`, J(nodes) === J([30187, 58457, 33173]) && nodes.every((n) => n <= L.GEN_NODE_BUDGET), nodes);
+      check(`面の指紋が v42 の面（${h}／74b04ac3）`, h === '74b04ac3', h);
+      check(`調べた局面の数が 57945・32767・45111（${nodes.join('・')}）で、どれも上限以内`, J(nodes) === J([57945, 32767, 45111]) && nodes.every((n) => n <= L.GEN_NODE_BUDGET), nodes);
       check(`fallback 0（${fb.join('・')}）`, fb.every((x) => x === 0), fb);
     },
   },
@@ -960,6 +965,7 @@ export const tests = [
       check('1〜200 面：milestone は 5 の倍数の面だけ・next は次の面・level はその面', mb.length === 0, mb.slice(0, 6));
       // (c) 例（計画 v40 の M6）
       const ex = [
+        [60, { at: 61, kind: 'colors' }, true],
         [5, { at: 6, kind: 'colors' }, true], [10, { at: 12, kind: 'hidden' }, true], [15, null, true], [20, { at: 25, kind: 'colors' }, true],
         [35, { at: 40, kind: 'hiddenAll' }, true], [40, { at: 41, kind: 'small' }, true], [70, { at: 71, kind: 'only' }, true],
         [100, { at: 101, kind: 'key' }, true], [105, null, false],
@@ -967,7 +973,7 @@ export const tests = [
       const exBad = ex.map(([n, news, more]) => ({ n, want: { news, more }, got: L.milestoneFor(n) })).filter((x) => !(x.got.milestone === true && J(x.got.news) === J(x.want.news) && x.got.more === x.want.more));
       const m4 = L.milestoneFor(4);
       if (!(m4.milestone === false && m4.news === null)) exBad.push({ n: 4, got: m4 });
-      check('例：5→6 面 colors、10→12 面 hidden、15→無し、20→25 面 colors、35→40 面 hiddenAll、40→41 面 small、70→71 面 only、100→101 面 key、105→無し・more false、4→節目でない', exBad.length === 0, exBad);
+      check('例：5→6 面 colors、10→12 面 hidden、15→無し、20→25 面 colors、35→40 面 hiddenAll、40→41 面 small、60→61 面 colors、70→71 面 only、100→101 面 key、105→無し・more false、4→節目でない', exBad.length === 0, exBad);
       // (d) 予告が表とずれていない：2〜200 面で paramsFor から「初めて出るもの」を取り出し、節目ごとに次の 5 面の最初のものと比べる
       const ev = [];
       let hidFirst = 0, cloth = 0, small = 0, only = 0, key = 0;
@@ -1039,6 +1045,56 @@ export const tests = [
         else if (st.bottles.some((b) => b.cover !== null) || unv !== cov(c).length) bad.push(`${lv}: 布が残った（取れた ${unv}）`);
       }
       check('5〜7 面：fallback 0・solution を再生すると won・布は全部取れる', bad.length === 0, bad);
+    },
+  },
+  {
+    id: 'BL25', tier: 'smoke', node: true, title: 'いろびん v42（IB-43）瓶を増やす：61 面から 10 色・瓶 12 本、むらさき（つき）、1〜60 面は v41 と同じ面、61〜69 面は仕掛けが軽い、61〜300 面が全部作れて解ける、60 面の節目の予告',
+    run({ check, root }) {
+      const L = load(root);
+      const fnv = (str) => { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); };
+      // (a) 1〜60 面は v41 と同じ面（瓶・注文・枠・解の手）
+      const parts = [];
+      for (let lv = 1; lv <= 60; lv++) { const c = L.createLevel(lv); parts.push(J([c.state.bottles, c.state.slots, c.state.queue, c.info.solution])); }
+      const fpA = fnv(parts.join('|'));
+      check(`(a) 1〜60 面は v41 と同じ面（指紋 ${fpA}／df5616e7）`, fpA === 'df5616e7', fpA);
+      // (b) むらさき
+      check('(b) COLORS[9] がむらさき・つき、colorName(9) と colorName(10)',
+        J(L.COLORS[9]) === J({ id: 9, key: 'purple', name: 'むらさき', hex: '#9933FF', mark: 'moon' }) && L.colorName(9) === 'むらさき' && L.colorName(10) === '？',
+        { c9: L.COLORS[9], n9: L.colorName(9), n10: L.colorName(10) });
+      // (c) paramsFor
+      const cb = [];
+      for (let lv = 1; lv <= 2000; lv++) { const p = L.paramsFor(lv); if (p.colors + p.empties > L.MAX_BOTTLES) cb.push(lv); }
+      check('(c) paramsFor：60 面は 9 色・61 面と 2001 面は 10 色・1〜2000 面で 色＋空き ≦ MAX_BOTTLES',
+        L.paramsFor(60).colors === 9 && L.paramsFor(61).colors === 10 && L.paramsFor(2001).colors === 10 && cb.length === 0,
+        { c60: L.paramsFor(60).colors, c61: L.paramsFor(61).colors, c2001: L.paramsFor(2001).colors, cb: cb.slice(0, 5) });
+      // (d) 61〜69 面の仕掛け
+      const db = [];
+      for (let lv = 61; lv <= 69; lv++) {
+        const p = L.paramsFor(lv);
+        const wantS = (lv === 61 || lv === 65 || lv === 69) ? 1 : 0;
+        if (p.smalls !== wantS || p.onlys !== 0 || p.keys !== 0) db.push({ lv, smalls: p.smalls, onlys: p.onlys, keys: p.keys });
+      }
+      check('(d) 61〜69 面：ちいさい びんは 61・65・69 面だけ 1 本、ほかは 0、いろ きまり・かぎは 0', db.length === 0, db);
+      // (e) 61〜300 面が全部作れて解ける
+      const eb = [];
+      let maxB = 0;
+      for (let lv = 61; lv <= 300; lv++) {
+        const c = L.createLevel(lv), s0 = c.state;
+        if (c.info.fallback !== 0) eb.push(`${lv}: fallback ${c.info.fallback}`);
+        if (s0.bottles.length !== 12) eb.push(`${lv}: 瓶が ${s0.bottles.length} 本`);
+        maxB = Math.max(maxB, s0.bottles.length);
+        const cnt = new Array(10).fill(0);
+        for (const b of s0.bottles) for (const x of b.cells) cnt[x]++;
+        if (cnt.some((n) => n !== 4)) eb.push(`${lv}: 色の段数 ${cnt.join(',')}`);
+        if (!(c.info.nodes <= L.GEN_NODE_BUDGET)) eb.push(`${lv}: nodes ${c.info.nodes}`);
+        let st = s0;
+        for (const [f, t] of c.info.solution) { const r = L.applyMove(st, f, t); if (r.outcome.kind !== 'pour') { eb.push(`${lv}: 注げない手`); break; } st = r.state; }
+        if (!st.won) eb.push(`${lv}: won にならない`);
+        if (eb.length > 12) break;
+      }
+      check(`(e) 61〜300 面：fallback 0・最初の瓶が 12 本・色 0〜9 がちょうど 4 段ずつ（布の中も）・局面が上限以内・solution を再生すると won（最大 ${maxB} 本）`, eb.length === 0, eb.slice(0, 8));
+      // (f) 60 面の節目の予告
+      check('(f) milestoneFor(60).news が 61 面 colors', J(L.milestoneFor(60).news) === J({ at: 61, kind: 'colors' }), L.milestoneFor(60));
     },
   },
   {

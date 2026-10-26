@@ -26,6 +26,7 @@
   const CAP_DEFAULT = 4;
   const SEG_BASIS = 23;          // 1段の高さ（ガラスの内側の高さに対する %）。4段で 92%、上に首の分が残る
   const RATIO = 2.4;             // 瓶のボタンの高さ ÷ 幅
+  const RATIO_MIN = 1.7;         // 背の低い画面（SE の Safari など）で、幅 44px を守るために瓶の背を低くしてよい下限（IB-44）
   const LIFT = 12;               // 選んだ瓶を持ち上げる量（px。CSS と同じ）
   const MAX_PARTS = 48;          // 粒の上限
 
@@ -39,7 +40,8 @@
     { id: 5, key: "red", name: "あか", hex: "#D55E00", mark: "cross" },
     { id: 6, key: "pink", name: "ピンク", hex: "#CC79A7", mark: "heart" },
     { id: 7, key: "white", name: "しろ", hex: "#EEEEEE", mark: "ring" },
-    { id: 8, key: "brown", name: "ちゃいろ", hex: "#9A6A3A", mark: "wave" }
+    { id: 8, key: "brown", name: "ちゃいろ", hex: "#9A6A3A", mark: "wave" },
+    { id: 9, key: "purple", name: "むらさき", hex: "#9933FF", mark: "moon" }
   ];
   function logic() { return root.IrobinLogic || null; }
   function colorList() {
@@ -75,7 +77,8 @@
     cross: '<path d="M9.4 3.5h5.2v5.9h5.9v5.2h-5.9v5.9H9.4v-5.9H3.5V9.4h5.9z"/>',
     heart: '<path d="M12 21s-8.5-5.1-8.5-11.2C3.5 6.7 5.8 4.6 8.4 4.6c1.6 0 2.9.8 3.6 2.1.7-1.3 2-2.1 3.6-2.1 2.6 0 4.9 2.1 4.9 5.2C20.5 15.9 12 21 12 21z"/>',
     ring: '<circle cx="12" cy="12" r="6.4" fill="none" stroke-width="3.6"/>',
-    wave: '<path d="M2.5 13.5c2.4-4.6 4.8-4.6 6.4 0s4.4 4.6 6.4 0 4.4-4.6 6.2 0" fill="none" stroke-width="3.4" stroke-linecap="round"/>'
+    wave: '<path d="M2.5 13.5c2.4-4.6 4.8-4.6 6.4 0s4.4 4.6 6.4 0 4.4-4.6 6.2 0" fill="none" stroke-width="3.4" stroke-linecap="round"/>',
+    moon: '<path d="M15.6 3.2A9 9 0 1 0 20.9 16.4 7.2 7.2 0 0 1 15.6 3.2z"/>'
   };
   const Q_PATH = '<path d="M8.6 9.2a3.5 3.5 0 1 1 5 3.1c-1.1.5-1.6 1.2-1.6 2.5" fill="none" stroke="#ffffff" stroke-width="2.7" stroke-linecap="round"/><circle cx="12" cy="18.7" r="1.7" fill="#ffffff"/>';
   function markSvg(colorId, cls) {
@@ -694,10 +697,24 @@
         const wH = ((H - (rows - 1) * rgap) / rows) / RATIO;
         w = Math.min(w, wH, 76);
         gap = Math.min(gap, Math.max(4, Math.min(18, w * 0.24)));
-        if (!best || w > best.w + 0.5) best = { rows, cols, w, gap, rgap: Math.max(6, Math.min(22, w * 0.28, ((H - rows * w * RATIO) / Math.max(1, rows - 1)))) };
+        if (!best || w > best.w + 0.5) best = { rows, cols, w, gap, ratio: RATIO, rgap: Math.max(6, Math.min(22, w * 0.28, ((H - rows * w * RATIO) / Math.max(1, rows - 1)))) };
+      }
+      // 背の低い画面：今の比（2.4）では幅が 44px を切るときだけ、幅 44px のまま瓶の背を低くした並べ方を探す（IB-44）
+      if (best.w < 44) {
+        let low = null;
+        for (let rows = 1; rows <= Math.min(n, 4); rows++) {
+          const cols = Math.ceil(n / rows);
+          if (rows > 1 && Math.ceil(n / (rows - 1)) === cols) continue;
+          if (cols * 44 + (cols - 1) * 4 > W) continue;
+          const ratio = Math.min(RATIO, ((H - (rows - 1) * 12) / rows) / 44);
+          if (ratio < RATIO_MIN) continue;
+          const gap = cols > 1 ? Math.max(4, Math.min(18, (W - cols * 44) / (cols - 1), 44 * 0.24)) : 4;
+          if (!low || ratio > low.ratio + 0.01) low = { rows, cols, w: 44, gap, ratio, rgap: 12 };
+        }
+        if (low) best = low;
       }
       const bw = Math.max(20, Math.floor(best.w));
-      const bh = Math.floor(bw * RATIO);
+      const bh = Math.floor(bw * best.ratio);
       board.style.setProperty("--bw", bw + "px");
       board.style.setProperty("--bh", bh + "px");
       board.style.setProperty("--gap", Math.round(best.gap) + "px");

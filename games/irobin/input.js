@@ -161,9 +161,9 @@
         case "?": case "/": e.preventDefault(); command("help"); return;
         default: break;
       }
-      if (/^[0-9-]$/.test(key)) {
-        // 番号は置き場所の番号（id + 1）で、届けても変わらない。0 は 10 本目、- は 11 本目（瓶は最大 11 本。IB-10）。空いた場所の番号は何もしない
-        const n = key === "-" ? 11 : key === "0" ? 10 : Number(key);
+      if (/^[0-9=^-]$/.test(key)) {
+        // 番号は置き場所の番号（id + 1）で、届けても変わらない。0 は 10 本目、- は 11 本目、= と ^（日本語のキーボードで - の右）は 12 本目（瓶は最大 12 本。IB-10・IB-43）。空いた場所の番号は何もしない
+        const n = key === "-" ? 11 : key === "=" || key === "^" ? 12 : key === "0" ? 10 : Number(key);
         const list = bottles();
         const i = list.findIndex((b) => placeOf(b) === n - 1);
         e.preventDefault();

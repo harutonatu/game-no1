@@ -2,6 +2,7 @@
  * いろびん — ロジック（DOM・時計・Math.random・localStorage に触れない純粋な計算だけ）
  * 契約：docs/irobin-contract.md §1.1（ルール）・§3（定数・色・面の表）・§4（API）
  * 担当A（ロジック）だけが編集する。
+ * v42（IB-43）：61 面から 10 色（瓶 12 本）。9 色以下の面は 9 色の中から選ぶ（BASE_COLORS）ので 1〜60 面は前と同じ。61〜69 面は仕掛けを軽く。
  *
  * UMD: ブラウザでは window.IrobinLogic、Node では module.exports と globalThis.IrobinLogic。
  *
@@ -34,7 +35,8 @@
   const NAME = "いろびん";          // 表示名（仮名。ここだけ変えれば画面の名前が変わる）
   const CAP = 4;
   const ORDER_SLOTS = 2;
-  const MAX_COLORS = 9;
+  const MAX_COLORS = 10;
+  const BASE_COLORS = 9;              // 1〜60 面は色を 9 色の中から選ぶ（v42 より前と同じ乱数の使い方＝同じ面。IB-43）
   const MAX_MOVES_SAVED = 2000;
   const SOLVE_NODE_LIMIT = 40000;
   const GEN_NODE_BUDGET = 100000;   // 1 面の生成で調べる局面の合計の上限（IB-12：SE で 1 秒より短く。実際の面の最大は 58,457＝4774 面）
@@ -48,7 +50,7 @@
   const SAVE_KEY_ONLY = "irobin.only";
   const SAVE_KEY_LOCK = "irobin.lock";
   const SMALL_CAP = 3;                     // ちいさい びんの段数
-  const MAX_BOTTLES = MAX_COLORS + 2;  // 画面が並べる瓶の最大（11 本）。生成はこれを超えない
+  const MAX_BOTTLES = MAX_COLORS + 2;  // 画面が並べる瓶の最大（12 本。v42 で 11 から。IB-43）。生成はこれを超えない
 
   // 色（契約 §3.1）。Okabe-Ito を土台に、記号つき
   const COLORS = Object.freeze([
@@ -60,7 +62,8 @@
     { id: 5, key: "red",    name: "あか",     hex: "#D55E00", mark: "cross" },
     { id: 6, key: "pink",   name: "ピンク",   hex: "#CC79A7", mark: "heart" },
     { id: 7, key: "white",  name: "しろ",     hex: "#EEEEEE", mark: "ring" },
-    { id: 8, key: "brown",  name: "ちゃいろ", hex: "#9A6A3A", mark: "wave" }
+    { id: 8, key: "brown",  name: "ちゃいろ", hex: "#9A6A3A", mark: "wave" },
+    { id: 9, key: "purple", name: "むらさき", hex: "#9933FF", mark: "moon" }
   ].map((c) => Object.freeze(c)));
 
   // お客さんの動物（render の ANIMALS と同じ並び。logic は render に頼らないので写しを持つ）
@@ -85,7 +88,8 @@
     { from: 10, colors: 7, empties: 2, hidden: Object.freeze([12, 14]), order: "random", cloths: 1, clothEmpty: 0.7, clothCover: "early" },
     { from: 15, colors: 8, empties: 2, hidden: "odd", order: "random",  cloths: 1, clothEmpty: 0.4, clothCover: "mid" },
     { from: 25, colors: 9, empties: 2, hidden: "odd", order: "random",  cloths: 1, clothEmpty: 0, clothCover: "late", clothsOn: "even" },
-    { from: 40, colors: 9, empties: 2, hidden: "all", order: "random",  cloths: 1, clothEmpty: 0, clothCover: "late", clothsOn: "even" }
+    { from: 40, colors: 9, empties: 2, hidden: "all", order: "random",  cloths: 1, clothEmpty: 0, clothCover: "late", clothsOn: "even" },
+    { from: 61, colors: 10, empties: 2, hidden: "all", order: "random", cloths: 1, clothEmpty: 0, clothCover: "late", clothsOn: "even" }   // v42：瓶 12 本（IB-43）
   ].map((r) => Object.freeze(r)));
 
   const CLOTH_INTRO_LEVEL = 5;   // はじめての布の面（v40 で 8 から。IB-33）
@@ -176,6 +180,7 @@
   }
 
   // v37 の新しい仕掛けの出し方（IB-29・契約 §19.2）。[ちいさい びん, いろ きまりの びん, かぎの びん, 色の選び方] を返す。
+  // 61〜69 面は色が増えるので軽い行（IB-43）。
   // 1〜40 面は出さない。新しい仕掛けは最初の面だけ 1 本で、その帯ではほかの仕掛けと重ねない。面が進むほど
   // 「わな手の割合」（うっかり打つと解けなくなる手）が段々に上がるように、帯ごとに測って決めた（契約 §19.2 の表）。
   // 色の選び方 pick："soft"＝いろ きまりは中くらいに埋まった色・かぎは一番上に出ている色（やさしい）、
@@ -194,6 +199,7 @@
   const GIM_BANDS = Object.freeze([
     { from: 41,  odd: [A1S, __, __, __],          even: [__, __, __, __] },       // 41・49 面：ちいさい びんの登場
     { from: 50,  odd: [A1S, A1S, A1S, A2S],       even: [__, A1S, __, A1S] },     // 55 面から 2 本・布の面にも 1 本
+    { from: 61,  odd: [A1S, __, A1S, __],        even: [__, __, __, __] },       // 61 面：色が 10 色に増える。新しいことを 2 つ同時に出さないよう、ここだけ軽く（IB-43）
     { from: 70,  odd: [B1H, A1S, A2S, B1S],       even: [__, A1S, A1S, __] },     // 71 面：いろ きまりの登場
     { from: 100, odd: [A1C1S, C1H, C1S, A1B1S],   even: [A2S, A1S, A1S, __] },    // 101 面：かぎの登場。104 面から布の面に 2 本
     { from: 150, odd: [C1H, A1B1H, B1H, A1B1S],   even: [A1S, __, A1S, A2S] }     // ここから先は同じ（上限）
@@ -712,7 +718,7 @@
   // 布（p.cloths > 0）：中身ありの布は色の瓶にかぶせ、空き瓶の布は「布をかぶった空き瓶」を1本足す（契約 §17.2）。
   // 布が無い面は、乱数の使い方を布の追加前と同じにする（1〜7 面は前と同じ面になる）
   function deal(rng, p, shuffleOrder) {
-    const ids = shuffle(rng, COLORS.map((x) => x.id)).slice(0, p.colors);
+    const ids = shuffle(rng, COLORS.slice(0, p.colors > BASE_COLORS ? MAX_COLORS : BASE_COLORS).map((x) => x.id)).slice(0, p.colors);
     const cloths = p.cloths | 0;
     if (cloths > 0) return dealCloth(rng, p, ids, shuffleOrder);
     let chunks = null;
@@ -1105,7 +1111,7 @@
 
   // 節目（IB-24）：5 面ごとにクリアのカードで次の予告を出す。news＝次の 5 面の中で最初に出る新しいもの
   const MILESTONE_EVERY = 5;
-  const NEWS = Object.freeze([[CLOTH_INTRO_LEVEL, "cloth"], [6, "colors"], [10, "colors"], [12, "hidden"], [15, "colors"], [25, "colors"], [40, "hiddenAll"], [SMALL_FROM, "small"], [ONLY_FROM, "only"], [KEY_FROM, "key"]].map((x) => Object.freeze(x)));
+  const NEWS = Object.freeze([[CLOTH_INTRO_LEVEL, "cloth"], [6, "colors"], [10, "colors"], [12, "hidden"], [15, "colors"], [25, "colors"], [40, "hiddenAll"], [SMALL_FROM, "small"], [61, "colors"], [ONLY_FROM, "only"], [KEY_FROM, "key"]].map((x) => Object.freeze(x)));
   function milestoneFor(level) {
     const n = normLevel(level);
     const milestone = n % MILESTONE_EVERY === 0;

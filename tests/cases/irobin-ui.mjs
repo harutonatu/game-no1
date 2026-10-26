@@ -1287,7 +1287,7 @@ export const tests = [
       await k.page.keyboard.press('Escape'); await wait(k.page, 80);
       await k.page.keyboard.press('Shift+/'); await wait(k.page, 100);
       const help = await overlayInfo(k.page);
-      check('遊び方に「- は 11ぽんめ」がある', help.shown && /- は 11ぽんめ/.test(help.text), help.text);
+      check('遊び方に「- は 11、= は 12ぽんめ」がある', help.shown && /- は 11、= は 12ぽんめ/.test(help.text), help.text);
       await k.ctx.close();
       // ---- IB-19：SE 横ホーム画面の遊び方とクリアのカード ----
       const v = view('SE', 'l', 'app');
@@ -1691,7 +1691,7 @@ export const tests = [
     },
   },
   {
-    id: 'BW30', tier: 'full', title: 'いろびん IB-08 の画面：115 面と 68 面（ずらされた動物が見えている間に新しい人が来る）を solution で遊び、2 人いる各局面で #cust0Text・#cust1Text の動物の名前が違う',
+    id: 'BW30', tier: 'full', title: 'いろびん IB-08 の画面：115 面と 110 面（ずらされた動物が見えている間に新しい人が来る）を solution で遊び、2 人いる各局面で #cust0Text・#cust1Text の動物の名前が違う',
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'BW30', { extra: { 'irobin.best': '114' } });
       await page.evaluate(() => window.IrobinGame.setLevel(115)); await wait(page, 100);
@@ -1708,39 +1708,39 @@ export const tests = [
       await look(0);
       for (let k = 0; sol && k < sol.length - 1; k++) { await playMoves(page, [sol[k]]); await look(k + 1); }
       check(`2 人いる ${both} 局面のどれも、2 つの枠の動物の名前が違う（同じ ${dup.length}）`, both > 5 && dup.length === 0, dup.slice(0, 8));
-      // ずらされた動物が見えている間に新しい人が来る場面（68 面の解の道。先の人が帰っても、ずらされた人はそのまま待つ）：
+      // ずらされた動物が見えている間に新しい人が来る場面（110 面の解の道。先の人が帰っても、ずらされた人はそのまま待つ）：
       // 新しい人は、いま見えている動物と違う動物で来る
-      await page.evaluate(() => window.IrobinGame.setLevel(68)); await wait(page, 100);
-      const sol68 = await page.evaluate(() => window.IrobinLogic.createLevel(68).info.solution.map((m) => [m[0], m[1]]));   // 生成の解の道（この道で起きることを stateful の台本で確かめた）
-      const ord68 = await page.evaluate(() => { const s = window.IrobinLogic.createLevel(68).state; return [].concat(s.slots, s.queue).filter(Number.isInteger); });
-      const base = await page.evaluate((ord) => { const N = window.IrobinRender.ANIMAL_NAMES; return ord.map((_, i) => N[window.IrobinLogic.animalFor(68, i)]); }, ord68);
+      await page.evaluate(() => window.IrobinGame.setLevel(110)); await wait(page, 100);
+      const sol110 = await page.evaluate(() => window.IrobinLogic.createLevel(110).info.solution.map((m) => [m[0], m[1]]));   // 生成の解の道（この道で起きることを stateful の台本で確かめた）
+      const ord110 = await page.evaluate(() => { const s = window.IrobinLogic.createLevel(110).state; return [].concat(s.slots, s.queue).filter(Number.isInteger); });
+      const base = await page.evaluate((ord) => { const N = window.IrobinRender.ANIMAL_NAMES; return ord.map((_, i) => N[window.IrobinLogic.animalFor(110, i)]); }, ord110);
       const cols = () => page.evaluate(() => ['cust0', 'cust1'].map((id) => { const e = document.getElementById(id); return e && e.dataset.color ? Number(e.dataset.color) : null; }));
-      let prev = await cols(), scene = 0, both68 = 0; const dup68 = [];
+      let prev = await cols(), scene = 0, both110 = 0; const dup110 = [];
       const slow = [await names()];   // 演出つきで遊んだときの、各手のあとの 2 つの枠の動物（下で、飛ばしたとき・もどしたときと比べる）
       // 演出を飛ばさずに進める
       const playSlow = async ([f, t]) => {
         await page.evaluate(([f, t]) => { window.IrobinGame.pick(f); window.IrobinGame.pick(t); }, [f, t]);
         for (let j = 0; j < 100; j++) { await wait(page, 100); const g = await gs(page); if (!g.busy && g.phase !== 'pouring') break; }
       };
-      for (let k = 0; sol68 && k < sol68.length - 1; k++) {
-        await playSlow(sol68[k]);
+      for (let k = 0; sol110 && k < sol110.length - 1; k++) {
+        await playSlow(sol110[k]);
         const c = await cols(), nm = await names();
         slow.push(nm);
-        if (nm[0] && nm[1]) { both68++; if (nm[0] === nm[1]) dup68.push(`${k + 1} 手：${nm[0]}`); }
+        if (nm[0] && nm[1]) { both110++; if (nm[0] === nm[1]) dup110.push(`${k + 1} 手：${nm[0]}`); }
         for (let y = 0; y < 2; y++) {
           const x = 1 - y;
           // y に新しい人が来た・x は前から待っている人で、x の動物が ずらされている（2 引数の animalFor と違う）
-          if (c[y] !== null && c[y] !== prev[y] && c[x] !== null && c[x] === prev[x] && nm[x] !== base[ord68.indexOf(c[x])]) scene++;
+          if (c[y] !== null && c[y] !== prev[y] && c[x] !== null && c[x] === prev[x] && nm[x] !== base[ord110.indexOf(c[x])]) scene++;
         }
         prev = c;
       }
-      check(`68 面：ずらされた動物が見えている間に新しい人が来る場面が ${scene} 回あり、2 人いる ${both68} 局面のどれも動物が違う（同じ ${dup68.length}）`, scene > 0 && both68 > 5 && dup68.length === 0, dup68.slice(0, 8));
+      check(`110 面：ずらされた動物が見えている間に新しい人が来る場面が ${scene} 回あり、2 人いる ${both110} 局面のどれも動物が違う（同じ ${dup110.length}）`, scene > 0 && both110 > 5 && dup110.length === 0, dup110.slice(0, 8));
       // 演出を飛ばしても、各局面の動物は演出つきのときと同じ（並べ直しで注文の順を作り直さない・待っている人の動物を決め直さない。IB-08）
-      await page.evaluate(() => window.IrobinGame.setLevel(68)); await wait(page, 100);
+      await page.evaluate(() => window.IrobinGame.setLevel(110)); await wait(page, 100);
       const fast = [await names()];
-      for (let k = 0; sol68 && k < sol68.length - 1; k++) { await playMoves(page, [sol68[k]]); fast.push(await names()); }
+      for (let k = 0; sol110 && k < sol110.length - 1; k++) { await playMoves(page, [sol110[k]]); fast.push(await names()); }
       const diffF = fast.map((x, k) => (J(x) === J(slow[k]) ? null : `${k} 手：${x}／${slow[k]}`)).filter(Boolean);
-      check(`68 面：演出を飛ばしても、各局面の動物は演出つきのときと同じ（ちがう ${diffF.length}）`, slow.length > 5 && fast.length === slow.length && diffF.length === 0, diffF.slice(0, 5));
+      check(`110 面：演出を飛ばしても、各局面の動物は演出つきのときと同じ（ちがう ${diffF.length}）`, slow.length > 5 && fast.length === slow.length && diffF.length === 0, diffF.slice(0, 5));
       // 1手もどすで面の最初まで戻っても、各局面の動物は演出つきのときと同じ（面の中で一度見せた動物を覚えている）・同じ動物は並ばない
       const dupU = [], diffU = [];
       for (let k = fast.length - 2; k >= 0; k--) {
@@ -1749,7 +1749,7 @@ export const tests = [
         if (x[0] && x[1] && x[0] === x[1]) dupU.push(`${k} 手：${x[0]}`);
         if (J(x) !== J(slow[k])) diffU.push(`${k} 手：${x}／${slow[k]}`);
       }
-      check(`68 面：1手もどすで面の最初まで戻っても、各局面の動物は演出つきのときと同じ（ちがう ${diffU.length}）・同じ動物が並ばない（同じ ${dupU.length}）`, diffU.length === 0 && dupU.length === 0 && (await gs(page)).moves === 0, { diffU: diffU.slice(0, 5), dupU: dupU.slice(0, 5) });
+      check(`110 面：1手もどすで面の最初まで戻っても、各局面の動物は演出つきのときと同じ（ちがう ${diffU.length}）・同じ動物が並ばない（同じ ${dupU.length}）`, diffU.length === 0 && dupU.length === 0 && (await gs(page)).moves === 0, { diffU: diffU.slice(0, 5), dupU: dupU.slice(0, 5) });
       await ctx.close();
     },
   },
@@ -1992,6 +1992,78 @@ export const tests = [
       const dis2 = await t.page.evaluate(() => [...document.querySelectorAll('#card .btns button')].map((b) => b.getAttribute('aria-disabled')));
       check(`(h) 最後の手の 850ms 後はまだカードが無い（${o850.shown}）、出た直後は aria-disabled（${dis}）、400ms 後に外れる（${dis2}）`, !o850.shown && dis.length >= 2 && dis.every((x) => x === 'true') && dis2.every((x) => x === null), { o850, dis, dis2 });
       await t.ctx.close();
+    },
+  },
+  {
+    id: 'BW33', tier: 'full', title: 'いろびん v42（IB-43・IB-44）：61 面（瓶 12 本）と 40 面（11 本）が、SE 縦横のホーム画面と Safari・13 横・iPad 縦横で、瓶が 44×44 以上・#board の中・#shop／#hint／#tools／.head と重ならない・記号 12px 以上。むらさきは「つき」の記号。= と ^ キーで 12 本目。60 面のクリアで「つぎは 61めん。いろが ふえるよ」',
+    async run({ browser, check }) {
+      // ---- (a) 画面 ----
+      const VS = [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari'), view('i13', 'l', 'safari'), view('iPad', 'p', 'app'), view('iPad', 'l', 'app')];
+      const SEL = 'a#back, #helpBtn, #soundBtn, #board .bottle, #undoBtn, #restartBtn, .head, #shop, #board, #hint, #tools';
+      for (const v of VS) {
+        for (const [lv, want] of [[61, 12], [40, 11]]) {
+          const { ctx, page } = await openG(browser, `BW33 ${v.label} ${lv}`, { v, extra: { 'irobin.save': J({ v: 3, level: lv, moves: [] }) } });
+          const s = await gs(page);
+          const r = await layoutProbe(page, SEL, v.safe, { overlapSel: '.head, #shop, #board, #hint, #tools', minSel: 'a#back, #helpBtn, #soundBtn, #board .bottle, #undoBtn, #restartBtn' });
+          const m = await page.evaluate(() => {
+            const bd = document.querySelector('#board').getBoundingClientRect();
+            const bs = [...document.querySelectorAll('#board .bottle')].map((b) => b.getBoundingClientRect());
+            const outB = bs.filter((b) => b.left < bd.left - 0.5 || b.right > bd.right + 0.5 || b.top < bd.top - 0.5 || b.bottom > bd.bottom + 0.5).length;
+            const segs = [...document.querySelectorAll('#board .seg')].filter((x) => x.querySelector('.mark'));
+            const hs = segs.map((x) => x.querySelector('.mark').getBoundingClientRect().height);
+            const outM = segs.filter((x) => { const a = x.getBoundingClientRect(), b = x.querySelector('.mark').getBoundingClientRect(); return b.left < a.left - 0.5 || b.right > a.right + 0.5 || b.top < a.top - 0.5 || b.bottom > a.bottom + 0.5; }).length;
+            return { n: bs.length, outB, minMark: hs.length ? Math.min(...hs) : 0, outM };
+          });
+          check(`${v.label} ${v.w}×${v.h}｜${lv} 面（瓶 ${m.n} 本）：瓶が #board の中・44×44 以上・重なりなし・記号 ${m.minMark.toFixed(1)}px（12px 以上）で段からはみ出さない・横スクロールなし`,
+            s.level === lv && m.n === want && s.bottles.length === want && r.n > 0 && r.outside.length === 0 && r.overlaps.length === 0 && r.small.length === 0 && !r.hscroll && m.outB === 0 && m.minMark >= 12 && m.outM === 0, { level: s.level, ...r, ...m });
+          await ctx.close();
+        }
+      }
+      // ---- (b) むらさき・つき ----
+      {
+        const g = await openG(browser, 'BW33 むらさき', { extra: { 'irobin.save': J({ v: 3, level: 61, moves: [] }) } });
+        const seg = await g.page.evaluate(() => { const m = [...document.querySelectorAll('#board .seg[data-color="9"] .mark')]; return { n: m.length, marks: m.map((e) => e.getAttribute('data-mark')), circles: m.filter((e) => e.querySelector('circle')).length }; });
+        check(`61 面：むらさきの段 ${seg.n} 個の記号が data-mark="moon" で、予備の ● ではない`, seg.n > 0 && seg.marks.every((x) => x === 'moon') && seg.circles === 0, seg);
+        // むらさきの注文が来る局面を setState で作る（61 面の最初の局面の slots を差し替える）
+        const okSet = await g.page.evaluate(() => { const s = JSON.parse(JSON.stringify(window.IrobinLogic.createLevel(61).state)); s.slots = [9, 0]; return window.IrobinGame.setState(s); });
+        await wait(g.page, 200);
+        const cust = await g.page.evaluate(() => { for (const id of ['cust0', 'cust1']) { const e = document.getElementById(id); if (e && e.dataset.color === '9') { const m = e.querySelector('.tray .mark'); return { mark: m ? m.getAttribute('data-mark') : null, circle: !!(m && m.querySelector('circle')) }; } } return null; });
+        check(`61 面：むらさきの注文のお客さんの記号が moon（setState ${okSet}・${J(cust)}）`, okSet === true && !!cust && cust.mark === 'moon' && !cust.circle, cust);
+        await g.ctx.close();
+      }
+      // ---- (c) キー ----
+      {
+        const k = await openG(browser, 'BW33 キー', { extra: { 'irobin.save': J({ v: 3, level: 61, moves: [] }) }, opts: { touch: false } });
+        const sel = async () => { const s = await gs(k.page); return { sel: s.selected, id: await k.page.evaluate(() => { const b = document.querySelector('#board .bottle[data-selected="1"]'); return b ? b.dataset.id : null; }) }; };
+        await k.page.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
+        await k.page.keyboard.press('='); await wait(k.page, 80);
+        const a = await sel();
+        await k.page.keyboard.press('Escape'); await wait(k.page, 80);
+        const mid = await sel();
+        await k.page.keyboard.press('^'); await wait(k.page, 80);
+        const b = await sel();
+        check(`61 面：= で 12 本目（置き場所 11）が選ばれ（${J(a)}）、Escape で外れ（${J(mid)}）、^ でも同じ（${J(b)}）`, a.sel === 11 && a.id === '11' && mid.sel === null && b.sel === 11 && b.id === '11', { a, mid, b });
+        await k.ctx.close();
+        const k2 = await openG(browser, 'BW33 キー40', { extra: { 'irobin.save': J({ v: 3, level: 40, moves: [] }) }, opts: { touch: false } });
+        await k2.page.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
+        await k2.page.keyboard.press('='); await wait(k2.page, 80);
+        const c = await gs(k2.page);
+        check(`40 面（11 本）で = は何もしない（selected ${c.selected}）`, c.selected === null, c.selected);
+        // ---- (d) 遊び方カード ----
+        await k2.page.keyboard.press('Shift+/'); await wait(k2.page, 100);
+        const help = await overlayInfo(k2.page);
+        check('遊び方に「= は 12ぽんめ」がある', help.shown && /= は 12ぽんめ/.test(help.text), help.text);
+        await k2.ctx.close();
+      }
+      // ---- (e) 60 面のクリアの予告 ----
+      {
+        const g = await openG(browser, 'BW33 予告', { extra: { 'irobin.best': '59', 'irobin.save': J({ v: 3, level: 60, moves: [] }) } });
+        const s0 = await gs(g.page);
+        await solveToClear(g.page); await wait(g.page, 1500);
+        const nx = await g.page.evaluate(() => { const n = document.querySelector('#card .next-note'); return n && !n.closest('[hidden]') && n.getBoundingClientRect().height > 0 ? n.textContent.trim() : null; });
+        check(`best 59 で 60 面をクリア：予告「つぎは 61めん。いろが ふえるよ」（${nx}）`, s0.level === 60 && nx === 'つぎは 61めん。いろが ふえるよ', nx);
+        await g.ctx.close();
+      }
     },
   },
 ];
