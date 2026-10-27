@@ -407,7 +407,7 @@ export const tests = [
       const stars = Object.fromEntries(Array.from({ length: 15 }, (_, i) => ['z' + String(i + 1).padStart(2, '0'), 3]));
       const ITEMS = {
         'blockpuzzle.best': '9999999', 'tile2048.best': '3932100', 'kiritori.best': '99999', 'irocode.stats': JSON.stringify({ best: 10 }),
-        'zenmai.progress': JSON.stringify({ stars, unlocked: 15 }), 'pikatto.bestSolo': '5000', 'hashi.best': '9999', 'irobin.best': '999',
+        'zenmai.progress': JSON.stringify({ stars, unlocked: 15 }), 'pikatto.bestSolo': '5000', 'hashi.best': '9999', 'irobin.best': '999', 'irobin.book': JSON.stringify({ v: 1, a: {}, s: Object.fromEntries(Array.from({ length: 999 }, (_, i) => [String(i + 1), [3, 30]])), last: 999 }),
         'matomete.best': '9999999', 'michibiki.best': '9999', 'seizai.best': '3', 'asteroid.best': '9999',
       };
       for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app'), view('i13', 'p', 'app')]) {

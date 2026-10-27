@@ -2,6 +2,7 @@
  * いろびん — ロジック（DOM・時計・Math.random・localStorage に触れない純粋な計算だけ）
  * 契約：docs/irobin-contract.md §1.1（ルール）・§3（定数・色・面の表）・§4（API）
  * 担当A（ロジック）だけが編集する。
+ * v45（IB-34）：なかよしちょう `irobin.book`（readBook・addClear・makeBook。0 から数える。契約 §24）
  * v42（IB-43）：61 面から 10 色（瓶 12 本）。9 色以下の面は 9 色の中から選ぶ（BASE_COLORS）ので 1〜60 面は前と同じ。61〜69 面は仕掛けを軽く。
  *
  * UMD: ブラウザでは window.IrobinLogic、Node では module.exports と globalThis.IrobinLogic。
@@ -49,6 +50,7 @@
   const SAVE_KEY_SMALL = "irobin.small";
   const SAVE_KEY_ONLY = "irobin.only";
   const SAVE_KEY_LOCK = "irobin.lock";
+  const SAVE_KEY_BOOK = "irobin.book";   // なかよしちょう（v45・IB-34。契約 §24）：動物ごとの届けた数・面ごとの星と一番少ない手数
   const SMALL_CAP = 3;                     // ちいさい びんの段数
   const MAX_BOTTLES = MAX_COLORS + 2;  // 画面が並べる瓶の最大（12 本。v42 で 11 から。IB-43）。生成はこれを超えない
 
@@ -1147,9 +1149,83 @@
     return okColor(id) ? COLORS[id].name : "？";
   }
 
+  // ---------------------------------------------------------------- なかよしちょう（v45・IB-34。契約 §24）
+  // 形 { v: 1, a: { 動物: 届けた数 }, s: { "面": [星 1〜3, 一番少ない手数] }, last: 最後に数を足した面 }。
+  // main は書くたびに保存から読み直して足す（メモリの値から書かない。契約 §18 G7 の場面にしない）
+  // 帳面が無い人は 0 から数える（古い irobin.best・irobin.save から数を作らない。ユーザー決定 2026-10-26「0から数える」）
+  const BOOK_V = 1;
+  const BOOK_STEPS = Object.freeze([10, 50, 200]);   // なかよしの段（0〜3）：届けた数がこの数になったら 1 段上がる（決まった数で必ず。ガチャではない）
+  const BOOK_MAX_COUNT = 1e9;     // 数・手数の上限（大きすぎる値は捨てる）
+  const BOOK_MAX_LEVELS = 5000;   // 面の記録を読む数の上限
+  function emptyBook() { return { v: BOOK_V, a: {}, s: {}, last: 0 }; }
+  function bookStep(n) { let s = 0; for (const t of BOOK_STEPS) if (Number(n) >= t) s += 1; return s; }
+  // 次の段になる数（もう最後の段なら 0）
+  function nextStepAt(n) { for (const t of BOOK_STEPS) if (!(Number(n) >= t)) return t; return 0; }
+  // 読む。返す { book, write }。無い・壊れている → 空の帳面（write true。最初のクリアで書いて直る）。
+  // v が新しい版 → 空の帳面で write は false（こわさない）。v が BOOK_V → 使える分だけ使う（知らない動物・0 以下・小数・大きすぎる数・形の違う面の記録は捨てる）
+  function readBook(raw) {
+    let o = null;
+    if (typeof raw === "string") { try { o = JSON.parse(raw); } catch (e) { o = null; } }
+    if (!o || typeof o !== "object" || Array.isArray(o) || !Number.isSafeInteger(o.v) || o.v < 1) return { book: emptyBook(), write: true };
+    if (o.v > BOOK_V) return { book: emptyBook(), write: false };
+    const b = emptyBook();
+    const a = o.a && typeof o.a === "object" && !Array.isArray(o.a) ? o.a : {};
+    for (const k of ANIMAL_KEYS) { const n = a[k]; if (Number.isSafeInteger(n) && n > 0 && n <= BOOK_MAX_COUNT) b.a[k] = n; }
+    const s = o.s && typeof o.s === "object" && !Array.isArray(o.s) ? o.s : {};
+    let kept = 0;
+    for (const key of Object.keys(s)) {
+      if (kept >= BOOK_MAX_LEVELS) break;
+      const r = s[key];
+      if (!/^[1-9][0-9]{0,15}$/.test(key) || !Number.isSafeInteger(Number(key))) continue;
+      if (!Array.isArray(r) || r.length !== 2 || !(r[0] === 1 || r[0] === 2 || r[0] === 3) || !Number.isSafeInteger(r[1]) || r[1] < 1 || r[1] > BOOK_MAX_COUNT) continue;
+      b.s[key] = [r[0], r[1]];
+      kept += 1;
+    }
+    b.last = Number.isSafeInteger(o.last) && o.last >= 0 ? o.last : 0;
+    return { book: b, write: true };
+  }
+  // 1 面のクリアを足す（新しい帳面を返し、元は変えない）。c = { level, animals: [動物の key…（届けた順）], star: 0〜3, moves, count }
+  // count が false（開き直してクリアのカードから続けた面で、もう数えてある）なら動物の数は足さない。星と手数は良い方を残すだけ
+  // 返す { book, ups: [{ kind, step }]（段が上がった動物）, rec: { star, moves } | null（この面の前の記録） }
+  function addClear(book, c) {
+    const src = book && typeof book === "object" ? book : emptyBook();
+    const b = { v: BOOK_V, a: Object.assign({}, src.a), s: Object.assign({}, src.s), last: Number.isSafeInteger(src.last) ? src.last : 0 };
+    const o = c || {};
+    const lv = normLevel(o.level);
+    const ups = [];
+    if (o.count !== false) {
+      for (const k of Array.isArray(o.animals) ? o.animals : []) {
+        if (!ANIMAL_KEYS.includes(k)) continue;
+        const before = Number.isSafeInteger(b.a[k]) ? b.a[k] : 0;
+        const after = Math.min(before + 1, BOOK_MAX_COUNT);
+        b.a[k] = after;
+        const st = bookStep(after);
+        if (st > bookStep(before)) ups.push({ kind: k, step: st });
+      }
+      b.last = lv;
+    }
+    const key = String(lv);
+    const prev = Array.isArray(b.s[key]) ? b.s[key] : null;
+    const star = o.star === 1 || o.star === 2 || o.star === 3 ? o.star : 0;
+    const mv = Number.isSafeInteger(o.moves) && o.moves >= 1 ? Math.min(o.moves, BOOK_MAX_COUNT) : 0;
+    if (star && mv) b.s[key] = prev ? [Math.max(prev[0], star), Math.min(prev[1], mv)] : [star, mv];
+    return { book: b, ups, rec: prev ? { star: prev[0], moves: prev[1] } : null };
+  }
+  function bookStars(book) {
+    const s = book && book.s && typeof book.s === "object" ? book.s : {};
+    let n = 0;
+    for (const k of Object.keys(s)) { const r = s[k]; if (Array.isArray(r) && (r[0] === 1 || r[0] === 2 || r[0] === 3)) n += r[0]; }
+    return n;
+  }
+  function makeBook(book) {
+    const b = book && typeof book === "object" ? book : emptyBook();
+    return JSON.stringify({ v: BOOK_V, a: b.a || {}, s: b.s || {}, last: Number.isSafeInteger(b.last) ? b.last : 0 });
+  }
+
+
   const api = Object.freeze({
     NAME, CAP, ORDER_SLOTS, MAX_COLORS, MAX_MOVES_SAVED, SOLVE_NODE_LIMIT, GEN_NODE_BUDGET, GEN_TRIES,
-    SAVE_KEY_BEST, SAVE_KEY_SAVE, SAVE_KEY_HELP, SAVE_KEY_CLOTH, SAVE_KEY_SMALL, SAVE_KEY_ONLY, SAVE_KEY_LOCK, COLORS, LEVELS,
+    SAVE_KEY_BEST, SAVE_KEY_SAVE, SAVE_KEY_HELP, SAVE_KEY_CLOTH, SAVE_KEY_SMALL, SAVE_KEY_ONLY, SAVE_KEY_LOCK, SAVE_KEY_BOOK, COLORS, LEVELS,
     SMALL_CAP, SMALL_FROM, ONLY_FROM, KEY_FROM,
     MAX_BOTTLES, ANIMAL_KEYS,
     makeRng, seedFor, paramsFor, createLevel,
@@ -1157,6 +1233,7 @@
     solve,
     replay, hud, validateBest, validateSave, makeSave, recordBest, validateFlag,
     MILESTONE_EVERY, milestoneFor,
+    BOOK_V, BOOK_STEPS, emptyBook, bookStep, nextStepAt, readBook, addClear, bookStars, makeBook,
     animalFor, colorName,
     normalizeState
   });

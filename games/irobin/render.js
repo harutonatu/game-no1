@@ -164,9 +164,161 @@
     oval(ctx, cx + r * 0.6, cy + r * 0.26, r * 0.17, r * 0.11, `rgba(255,128,150,${a})`);
   }
 
+  // ===== なかよしの おしゃれ（v45・IB-34。契約 §24） =====
+  // dress＝なかよしの段 0〜3（届けた数 10・50・200 で 1 段ずつ。logic の bookStep）。動物ごとに違う 3 つを、段が上がるたびに重ねて付ける。
+  // 顔（目・口・鼻）は隠さない。色は体の色と見分けられるものにする（ねこ×きいろ・りす×みどり を避ける）
+  // 名前と動き（クリアのカード・なかよしちょうの文に使う）：[名前, 「〜を ○○ くるよ」の ○○]
+  const DRESS_ITEMS = Object.freeze({
+    kuma: Object.freeze([["ちょうネクタイ", "つけて"], ["むぎわらぼうし", "かぶって"], ["きんの メダル", "かけて"]]),
+    usagi: Object.freeze([["にんじんの バッジ", "つけて"], ["はなかんむり", "かぶって"], ["ほしの ステッキ", "もって"]]),
+    neko: Object.freeze([["すずの くびわ", "つけて"], ["さかなの バッジ", "つけて"], ["おうかん", "かぶって"]]),
+    penguin: Object.freeze([["あかい マフラー", "まいて"], ["ニットぼう", "かぶって"], ["ふうせん", "もって"]]),
+    risu: Object.freeze([["どんぐりの バッジ", "つけて"], ["はっぱの ぼうし", "かぶって"], ["まるい めがね", "かけて"]]),
+    hitsuji: Object.freeze([["あおい リボン", "つけて"], ["ハートの バッジ", "つけて"], ["とんがりぼうし", "かぶって"]])
+  });
+  const DRESS_MAX = 3;
+  function starPts(x, y, ro, ri) {
+    const pts = [];
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? ri : ro; pts.push([x + Math.cos(a) * rr, y + Math.sin(a) * rr]); }
+    return pts;
+  }
+  function strokeLine(ctx, pts, col, lw) {
+    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, lw); ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.stroke();
+  }
+  function heart(ctx, x, y, s, col) {   // ハート：中心 (x,y)、大きさ s（幅の半分）
+    disc(ctx, x - s * 0.48, y - s * 0.2, s * 0.52, col);
+    disc(ctx, x + s * 0.48, y - s * 0.2, s * 0.52, col);
+    poly(ctx, [[x - s * 0.98, y - s * 0.05], [x + s * 0.98, y - s * 0.05], [x, y + s * 0.95]], col);
+  }
+  const DRESS_DRAW = {};   // 動物 → function (ctx, d, g)。g＝{ cx, cy, r, h, neckY（あごの下）, chestX・chestY（胸の左） }
+  function drawDress(ctx, k, cx, cy, r, h, dress) {
+    const d = Number.isSafeInteger(dress) ? Math.max(0, Math.min(DRESS_MAX, dress)) : 0;
+    const f = DRESS_DRAW[k];
+    if (d <= 0 || typeof f !== "function") return;
+    f(ctx, d, { cx, cy, r, h, neckY: cy + r * 1.0, chestX: cx - r * 0.62, chestY: h - r * 0.34 });
+  }
+  // くま：1 ちょうネクタイ・2 むぎわらぼうし・3 きんの メダル
+  DRESS_DRAW.kuma = function (ctx, d, g) {
+    const { cx, cy, r, h, neckY, chestX, chestY } = g;
+    if (d >= 3) {   // 3 きんの メダル：胸の右（青い ひもを V の形に。ふちの こい金・星）
+      const mx = cx + r * 0.62, my = chestY;
+      strokeLine(ctx, [[mx - r * 0.17, my - r * 0.36], [mx, my - r * 0.05], [mx + r * 0.17, my - r * 0.36]], "#4f9dff", r * 0.1);
+      disc(ctx, mx, my, r * 0.24, "#a8781a");
+      disc(ctx, mx, my, r * 0.19, "#ffd34d");
+      poly(ctx, starPts(mx, my, r * 0.12, r * 0.05), "#a8781a");
+    }
+    // 1 あかい ちょうネクタイ
+    poly(ctx, [[cx, neckY], [cx - r * 0.42, neckY - r * 0.2], [cx - r * 0.42, neckY + r * 0.2]], "#e8434f");
+    poly(ctx, [[cx, neckY], [cx + r * 0.42, neckY - r * 0.2], [cx + r * 0.42, neckY + r * 0.2]], "#e8434f");
+    disc(ctx, cx, neckY, r * 0.11, "#b8202f");
+    if (d >= 2) {   // 2 むぎわらぼうし：頭の上（耳のあいだ）
+      oval(ctx, cx, cy - r * 0.8, r * 0.7, r * 0.15, "#e9c46a");
+      oval(ctx, cx, cy - r * 0.92, r * 0.4, r * 0.3, "#f2d68a");
+      ctx.fillStyle = "#e8434f"; ctx.fillRect(cx - r * 0.4, cy - r * 0.9, r * 0.8, r * 0.1);
+    }
+  };
+  // うさぎ：1 にんじんの バッジ・2 はなかんむり・3 ほしの ステッキ
+  DRESS_DRAW.usagi = function (ctx, d, g) {
+    const { cx, cy, r, h, neckY, chestX, chestY } = g;
+    // 1 にんじんの バッジ（胸の左）
+    poly(ctx, [[chestX - r * 0.17, chestY - r * 0.2], [chestX + r * 0.17, chestY - r * 0.2], [chestX, chestY + r * 0.32]], "#ff8a3d");
+    oval(ctx, chestX - r * 0.08, chestY - r * 0.3, r * 0.06, r * 0.13, "#3fae5a", -0.4);
+    oval(ctx, chestX + r * 0.08, chestY - r * 0.3, r * 0.06, r * 0.13, "#3fae5a", 0.4);
+    if (d >= 2) {   // 2 はなかんむり：頭のてっぺんに 5 つの花（ピンク・きいろ を交互に、まん中は白）
+      for (let i = 0; i < 5; i++) {
+        const a = Math.PI * (1.18 + i * 0.16);
+        const x = cx + Math.cos(a) * r * 0.86, y = cy + Math.sin(a) * r * 0.86;
+        disc(ctx, x, y, r * 0.16, i % 2 ? "#ffd34d" : "#ff7fae");
+        disc(ctx, x, y, r * 0.06, "#ffffff");
+      }
+    }
+    if (d >= 3) {   // 3 ほしの ステッキ：体の右に持つ
+      strokeLine(ctx, [[cx + r * 1.0, h - r * 0.05], [cx + r * 1.12, cy + r * 0.25]], "#8a5cd6", r * 0.1);
+      poly(ctx, starPts(cx + r * 1.14, cy + r * 0.05, r * 0.32, r * 0.14), "#ffd34d");
+    }
+  };
+  // ねこ：1 すずの くびわ・2 さかなの バッジ・3 おうかん
+  DRESS_DRAW.neko = function (ctx, d, g) {
+    const { cx, cy, r, h, neckY, chestX, chestY } = g;
+    // 1 すずの くびわ（赤い わと きんの すず）
+    oval(ctx, cx, neckY - r * 0.02, r * 0.62, r * 0.11, "#e8434f");
+    disc(ctx, cx, neckY + r * 0.14, r * 0.15, "#ffd34d");
+    strokeLine(ctx, [[cx - r * 0.08, neckY + r * 0.18], [cx + r * 0.08, neckY + r * 0.18]], "#8a6a10", r * 0.05);
+    if (d >= 2) {   // 2 さかなの バッジ（胸の左。青い さかな）
+      oval(ctx, chestX + r * 0.04, chestY, r * 0.24, r * 0.13, "#4f9dff");
+      poly(ctx, [[chestX - r * 0.16, chestY], [chestX - r * 0.36, chestY - r * 0.15], [chestX - r * 0.36, chestY + r * 0.15]], "#4f9dff");
+      disc(ctx, chestX + r * 0.14, chestY - r * 0.03, r * 0.04, "#141826");
+    }
+    if (d >= 3) {   // 3 おうかん：頭の上（耳のあいだ。きんに赤い玉）
+      const top = cy - r * 0.86;
+      poly(ctx, [[cx - r * 0.42, top + r * 0.1], [cx - r * 0.42, top - r * 0.34], [cx - r * 0.2, top - r * 0.1], [cx, top - r * 0.42], [cx + r * 0.2, top - r * 0.1], [cx + r * 0.42, top - r * 0.34], [cx + r * 0.42, top + r * 0.1]], "#ffd34d");
+      disc(ctx, cx, top - r * 0.02, r * 0.08, "#e8434f");
+    }
+  };
+  // ペンギン：1 あかい マフラー・2 ニットぼう・3 ふうせん
+  DRESS_DRAW.penguin = function (ctx, d, g) {
+    const { cx, cy, r, h, neckY, chestX, chestY } = g;
+    // 1 あかい マフラー：首と、右に たれる はし
+    oval(ctx, cx, neckY - r * 0.05, r * 0.7, r * 0.16, "#ff5a5a");
+    poly(ctx, [[cx + r * 0.22, neckY - r * 0.05], [cx + r * 0.5, neckY - r * 0.05], [cx + r * 0.58, neckY + r * 0.5], [cx + r * 0.3, neckY + r * 0.5]], "#ff5a5a");
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(cx + r * 0.3, neckY + r * 0.34, r * 0.27, r * 0.07);
+    if (d >= 2) {   // 2 ニットぼう：みどりの半円＋白い ふち＋白い ぼんぼり
+      const top = cy - r * 0.78;
+      ctx.beginPath(); ctx.arc(cx, top, r * 0.58, Math.PI, 0); ctx.closePath(); ctx.fillStyle = "#3fbf6a"; ctx.fill();
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(cx - r * 0.66, top - r * 0.04, r * 1.32, r * 0.16);
+      disc(ctx, cx, top - r * 0.62, r * 0.15, "#ffffff");
+    }
+    if (d >= 3) {   // 3 ふうせん：体の右から ひもで上へ（ピンク）
+      strokeLine(ctx, [[cx + r * 0.95, h - r * 0.1], [cx + r * 1.05, cy - r * 0.2], [cx + r * 1.0, cy - r * 0.55]], "#e6e9f2", r * 0.05);
+      oval(ctx, cx + r * 1.0, cy - r * 0.9, r * 0.3, r * 0.36, "#ff7fae");
+      poly(ctx, [[cx + r * 1.0, cy - r * 0.56], [cx + r * 0.93, cy - r * 0.48], [cx + r * 1.07, cy - r * 0.48]], "#ff7fae");
+      disc(ctx, cx + r * 0.9, cy - r * 1.02, r * 0.07, "rgba(255,255,255,.7)");
+    }
+  };
+  // りす：1 どんぐりの バッジ・2 はっぱの ぼうし・3 まるい めがね
+  DRESS_DRAW.risu = function (ctx, d, g) {
+    const { cx, cy, r, h, neckY, chestX, chestY } = g;
+    // 1 どんぐりの バッジ（胸の左。こげ茶の ぼうしと 明るい実）
+    oval(ctx, chestX, chestY + r * 0.06, r * 0.18, r * 0.22, "#e8b45c");
+    oval(ctx, chestX, chestY - r * 0.1, r * 0.22, r * 0.11, "#5a3518");
+    strokeLine(ctx, [[chestX, chestY - r * 0.2], [chestX + r * 0.04, chestY - r * 0.3]], "#5a3518", r * 0.06);
+    if (d >= 2) {   // 2 はっぱの ぼうし：頭の左上に ななめの はっぱ（こい みどり＋すじ）
+      oval(ctx, cx - r * 0.3, cy - r * 0.98, r * 0.42, r * 0.2, "#2f9e4f", -0.35);
+      strokeLine(ctx, [[cx - r * 0.66, cy - r * 0.86], [cx + r * 0.06, cy - r * 1.1]], "#1d6b33", r * 0.05);
+      strokeLine(ctx, [[cx + r * 0.06, cy - r * 1.1], [cx + r * 0.16, cy - r * 1.22]], "#1d6b33", r * 0.07);
+    }
+    if (d >= 3) {   // 3 まるい めがね：目を囲む わ（目は見える）
+      const ey = cy - r * 0.04;
+      ctx.strokeStyle = "#3a2a6a"; ctx.lineWidth = Math.max(1.2, r * 0.06);
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(cx + s * r * 0.36, ey, r * 0.24, 0, Math.PI * 2); ctx.stroke(); }
+      strokeLine(ctx, [[cx - r * 0.12, ey - r * 0.03], [cx + r * 0.12, ey - r * 0.03]], "#3a2a6a", r * 0.06);
+    }
+  };
+  // ひつじ：1 あおい リボン・2 ハートの バッジ・3 とんがりぼうし
+  DRESS_DRAW.hitsuji = function (ctx, d, g) {
+    const { cx, cy, r, h, neckY, chestX, chestY } = g;
+    // 1 あおい リボン：毛の右上
+    const x = cx + r * 0.55, y = cy - r * 0.8;
+    poly(ctx, [[x, y], [x - r * 0.38, y - r * 0.24], [x - r * 0.38, y + r * 0.24]], "#4f7dff");
+    poly(ctx, [[x, y], [x + r * 0.38, y - r * 0.24], [x + r * 0.38, y + r * 0.24]], "#4f7dff");
+    disc(ctx, x, y, r * 0.12, "#2d4fc2");
+    if (d >= 2) heart(ctx, chestX, chestY, r * 0.24, "#ff5a8a");   // 2 ハートの バッジ（胸の左）
+    if (d >= 3) {   // 3 とんがりぼうし：頭の上（むらさきに きいろの水玉、てっぺんに ぼんぼり）
+      const base = cy - r * 0.95;
+      poly(ctx, [[cx - r * 0.4, base], [cx + r * 0.4, base], [cx + r * 0.05, base - r * 0.85]], "#8a5cd6");
+      disc(ctx, cx - r * 0.12, base - r * 0.2, r * 0.07, "#ffd34d");
+      disc(ctx, cx + r * 0.14, base - r * 0.3, r * 0.07, "#ffd34d");
+      disc(ctx, cx + r * 0.0, base - r * 0.52, r * 0.06, "#ffd34d");
+      disc(ctx, cx + r * 0.05, base - r * 0.86, r * 0.12, "#ffffff");
+    }
+  };
+
   /*
    * 動物を1匹描く（純粋な描画関数。メニューの絵でも使える）。
    * kind: ANIMALS のどれか（知らない値は kuma）。mood: enter|wait|happy|leave|empty。t: 秒（まばたき用。0 なら目を開けたまま）
+ * dress：なかよしの段 0〜3（v45。動物ごとに違う おしゃれ。DRESS_ITEMS）
    * 描く範囲は (0,0)-(w,h)。下の端に肩、上に頭と耳。
    */
   function drawAnimal(ctx, kind, opts) {
@@ -276,6 +428,7 @@
       drawEyes(ctx, cx, cy, r, mood, t, eyeCol);
       const mouthY = k === "kuma" ? cy + r * 0.38 : k === "penguin" ? cy + r * 0.5 : k === "hitsuji" ? cy + r * 0.55 : cy + r * 0.34;
       drawMouth(ctx, cx, mouthY, r, mood, k === "hitsuji" ? "#fff7e8" : "#3a2a2a");
+      drawDress(ctx, k, cx, cy, r, h, o.dress);
     } finally {
       ctx.restore();
     }
@@ -321,6 +474,8 @@
     let level = 1;
     let orders = [];                // 面の最初の注文の順（色 id の列）。動物の種類を決めるのに使う
     const seenKind = new Map();     // この面で一度見せた「注文の番号 → 動物」。もどして戻ってきた人も同じ動物で出す（画面の中だけ。新しい面・局面で空にする。IB-08）
+    let dress = {};                 // なかよしの段（動物 → 0〜3）。見せるだけで保存しない（v45・IB-34）
+    const dressOf = (k) => (k && Number.isSafeInteger(dress[k]) ? Math.max(0, Math.min(DRESS_MAX, dress[k])) : 0);
     let places = 0;                 // 置き場所の数（面の最初の瓶の本数。§17.7）
     let servedView = 0;             // 布の札「あと N」に使う届けた数（届けの演出の途中は 1 人ずつ進める）
     const custs = [0, 1].map((i) => {
@@ -759,7 +914,7 @@
       if (!w || !h) return;
       const dpr = Math.min(2, win.devicePixelRatio || 1);
       const W = Math.round(w * dpr), H = Math.round(h * dpr);
-      const sig = [c.kind, c.mood, W, H, t ? Math.floor(t * 30) : 0].join("|");
+      const sig = [c.kind, dressOf(c.kind), c.mood, W, H, t ? Math.floor(t * 30) : 0].join("|");
       if (sig === c.sig) return;
       c.sig = sig;
       if (cv.width !== W) cv.width = W;
@@ -769,7 +924,7 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, W, H);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawAnimal(ctx, c.kind || "kuma", { w, h, mood: c.color === null && c.mood !== "happy" ? "empty" : c.mood, t: t || 0 });
+      drawAnimal(ctx, c.kind || "kuma", { w, h, mood: c.color === null && c.mood !== "happy" ? "empty" : c.mood, t: t || 0, dress: dressOf(c.kind) });
     }
     function setMood(i, mood) {
       const c = custs[i];
@@ -799,6 +954,7 @@
       c.el.dataset.color = has ? String(c.color) : "";
       c.el.dataset.mood = c.mood;
       if (c.kind) c.el.style.setProperty("--fur", FUR[c.kind]);
+      c.el.dataset.dress = String(dressOf(c.kind));
       if (c.tray) {
         if (has) {
           const info = colorInfo(c.color);
@@ -1471,6 +1627,11 @@
 
     return {
       build, layout, update, pour, deny, celebrate, finishAll, pause, resume, setCalm,
+      // なかよしの段（v45・IB-34）：{ 動物: 0〜3 }。お客さんを描き直す
+      setDress(map) {
+        dress = map && typeof map === "object" ? Object.assign({}, map) : {};
+        for (let i = 0; i < custs.length; i++) { const c = custs[i]; if (!c || !c.el) continue; c.el.dataset.dress = String(dressOf(c.kind)); c.sig = ""; drawCust(i); }
+      },
       // この面の注文の順（0 番から）に、画面で見せた動物（まだ見せていない番号は null）。クリアのカードと共有の文に使う（IB-33・IB-31）
       animalsSeen() { return orders.map((_, i) => (seenKind.has(i) ? seenKind.get(i) : null)); },
       get busy() { return !!cur; },
@@ -1479,7 +1640,7 @@
     };
   }
 
-  const api = Object.freeze({ ANIMALS, ANIMAL_NAMES, FUR, drawAnimal, markSvg, create });
+  const api = Object.freeze({ ANIMALS, ANIMAL_NAMES, FUR, DRESS_ITEMS, DRESS_MAX, drawAnimal, markSvg, create });
   root.IrobinRender = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

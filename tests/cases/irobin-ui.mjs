@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { BASE, view, custom, newPage, seed, wait, frozen, layoutProbe, swInfo, sleep, touch, SFX_SPY, plays, IS_CHROMIUM, x20Run, x20Text } from '../lib.mjs';
+import { BASE, view, custom, newPage, seed, wait, frozen, layoutProbe, swInfo, sleep, touch, SFX_SPY, plays, IS_CHROMIUM, x20Run, x20Text, x20Hidden } from '../lib.mjs';
 
 const IR = BASE + 'games/irobin/';
 const SMOKE_V = () => view('SE', 'p', 'app');
@@ -1859,15 +1859,15 @@ export const tests = [
       const c = await open1('BW31 c', { opts: { initScript: SHARE_SPY } });
       await wait(c.page, 100);
       const k0 = await card(c.page);
-      check(`(c) 出た直後：ボタンは押せない（aria-disabled）（${k0.btns.map((b) => b.dis)}）`, k0.btns.length === 3 && k0.btns.every((b) => b.dis), k0.btns);
+      check(`(c) 出た直後：ボタンは押せない（aria-disabled）（${k0.btns.map((b) => b.dis)}）`, k0.btns.length === 4 && k0.btns.every((b) => b.dis), k0.btns);
       await wait(c.page, 500);
       const k = await card(c.page);
       const order = k.btns.map((b) => b.cmd).join();
-      const gaps = k.btns.slice(1).map((b, i) => Math.round(b.top - k.btns[i].bottom));
+      const gaps = k.btns.slice(1).map((b, i) => Math.round(b.top - k.btns[i].bottom)); // menu と book は同じ行（間は負）。行どうしの間だけ見る
       const want = await names(c.page, 1, c.total);
       check(`(c) .served の canvas が注文の数（${k.served && k.served.n}/${c.total}）、aria-label が「とどけた おきゃくさん：${want}」（${k.served && k.served.label}）、見えている`, !!k.served && k.served.n === c.total && k.served.label === `とどけた おきゃくさん：${want}` && k.served.vis, k.served);
-      check(`(c) ボタンの順が next,menu,share（${order}）・文字（${k.btns.map((b) => b.text)}）、間 ${gaps}px が 12 以上、共有ボタンの背景が透明（${k.btns[2] && k.btns[2].bg}）、どれも 44px 以上、出て 500ms 後は押せる`,
-        order === 'next,menu,share' && k.btns[0].text === 'つぎの めんへ' && k.btns[2].text === 'ともだちに おしえる' && gaps.every((g) => g >= 12) && /rgba\(0, 0, 0, 0\)|transparent/.test(k.btns[2].bg) && k.btns.every((b) => b.h >= 43.5 && b.w >= 43.5 && !b.dis), k.btns);
+      check(`(c) ボタンの順が next,menu,book,share（${order}）・文字（${k.btns.map((b) => b.text)}）、間 ${gaps}px が 12 以上、共有ボタンの背景が透明（${k.btns[3] && k.btns[3].bg}）、どれも 44px 以上、出て 500ms 後は押せる`,
+        order === 'next,menu,book,share' && k.btns[0].text === 'つぎの めんへ' && k.btns[2].text === 'なかよしちょう' && k.btns[3].text === 'ともだちに おしえる' && gaps.filter((g) => g > 0).every((g) => g >= 12) && /rgba\(0, 0, 0, 0\)|transparent/.test(k.btns[3].bg) && k.btns.every((b) => b.h >= 43.5 && b.w >= 43.5 && !b.dis), k.btns);
       check('(c) ★3 の 1 面は節目でないので、予告の行も「あたらしい きろく！」も出ない（記録は「ここまで 1めん」）', !k.next && k.best && k.best.quiet && k.best.text === 'ここまで 1めん', { next: k.next, best: k.best });
       // (e) share を押す
       const topBefore = k.btns[0].top;
@@ -1916,7 +1916,7 @@ export const tests = [
       if (sol) {
         await playMoves(d.page, sol); await toClear(d.page); await wait(d.page, 600);
         const kd = await card(d.page);
-        check(`(d) 節目でなく ★3 でもない面：共有ボタンも .share-note も無い（${kd.btns.map((b) => b.cmd)}・${kd.note}）`, kd.btns.map((b) => b.cmd).join() === 'next,menu' && kd.note === null, { btns: kd.btns, note: kd.note });
+        check(`(d) 節目でなく ★3 でもない面：共有ボタンも .share-note も無い（${kd.btns.map((b) => b.cmd)}・${kd.note}）`, kd.btns.map((b) => b.cmd).join() === 'next,menu,book' && kd.note === null, { btns: kd.btns, note: kd.note });
       }
       await d.ctx.close();
       // (g) share が無く clipboard がある
@@ -1926,10 +1926,10 @@ export const tests = [
       const kg = await card(g.page);
       const clip = await g.page.evaluate(() => window.__clips);
       check(`(g) コピーした文の最後の行が URL（${clip[0] && JSON.stringify(clip[0].split('\n').pop())}）・1 行目に「1めん クリア！」`, clip.length === 1 && clip[0].split('\n').pop() === URL_ && clip[0].startsWith('いろびん 1めん クリア！'), clip);
-      check(`(g) ボタンの文字が「コピーしました」（${kg.btns[2].text}）、知らせが「LINE などの」で始まり 16px 以上（${kg.note && kg.note.text}・${kg.note && kg.note.fs}）`, kg.btns[2].text === 'コピーしました' && !!kg.note && kg.note.text.startsWith('LINE などの') && kg.note.fs >= 16, { btn: kg.btns[2].text, note: kg.note });
+      check(`(g) ボタンの文字が「コピーしました」（${kg.btns[3].text}）、知らせが「LINE などの」で始まり 16px 以上（${kg.note && kg.note.text}・${kg.note && kg.note.fs}）`, kg.btns[3].text === 'コピーしました' && !!kg.note && kg.note.text.startsWith('LINE などの') && kg.note.fs >= 16, { btn: kg.btns[3].text, note: kg.note });
       await wait(g.page, 3100);
       const kg2 = await card(g.page);
-      check(`(g) 3 秒後にボタンの文字が戻り、成功の吹き出しも同時に消える（${kg2.btns[2].text}・${JSON.stringify(kg2.note && kg2.note.text)}）`, kg2.btns[2].text === 'ともだちに おしえる' && !!kg2.note && kg2.note.text === '', { btn: kg2.btns[2].text, note: kg2.note });
+      check(`(g) 3 秒後にボタンの文字が戻り、成功の吹き出しも同時に消える（${kg2.btns[3].text}・${JSON.stringify(kg2.note && kg2.note.text)}）`, kg2.btns[3].text === 'ともだちに おしえる' && !!kg2.note && kg2.note.text === '', { btn: kg2.btns[3].text, note: kg2.note });
       await g.ctx.close();
       // (h) clipboard も無い
       const h = await open1('BW31 h', { opts: { initScript: NOSHARE_NOCLIP } });
@@ -1946,8 +1946,8 @@ export const tests = [
       await solveToClear(jp.page); await wait(jp.page, 600);
       const kj = await card(jp.page);
       const inside = (r) => r && r.top >= 0 && r.bottom <= vs.h + 0.5;
-      check(`(j) SE 縦 5 面：h2・★・予告・3 つのボタンがスクロールなしで画面の中（予告「${kj.next && kj.next.text}」・ボタン ${kj.btns.map((b) => Math.round(b.bottom))}・scroll ${kj.ov.sh}/${kj.ov.ch}）`,
-        inside(kj.h2) && inside(kj.stars) && !!kj.next && inside(kj.next) && kj.btns.length === 3 && kj.btns.every(inside) && kj.ov.sh <= kj.ov.ch + 1, kj);
+      check(`(j) SE 縦 5 面：h2・★・予告・4 つのボタンがスクロールなしで画面の中（予告「${kj.next && kj.next.text}」・ボタン ${kj.btns.map((b) => Math.round(b.bottom))}・scroll ${kj.ov.sh}/${kj.ov.ch}）`,
+        inside(kj.h2) && inside(kj.stars) && !!kj.next && inside(kj.next) && kj.btns.length === 4 && kj.btns.every(inside) && kj.ov.sh <= kj.ov.ch + 1, kj);
       check(`(j) SE 縦：.served は見えない（${kj.served && kj.served.vis}）、p.moves の span が 1 行ずつ（高さ ${kj.moves}）`, !!kj.served && !kj.served.vis && kj.moves.length >= 1 && kj.moves.every((x) => x < 36), { served: kj.served, moves: kj.moves });
       await jp.ctx.close();
       const vl = view('SE', 'l', 'app');
@@ -1960,8 +1960,8 @@ export const tests = [
         const bs = [...document.querySelectorAll('.btns button')].map((b) => { const q = b.getBoundingClientRect(); return { top: q.top, left: q.left, w: q.width, h: q.height, lines: Math.round(q.height) <= 52 && b.scrollWidth <= b.clientWidth + 1 ? 1 : 2 }; });
         return { nnBottom: nn.bottom, btnsTop: bt.top, bs, n: bs.length, min: Math.min(...bs.map((b) => b.h)) };
       });
-      check(`(j) SE 横：ボタンが 2 行（1 行目 つぎの めんへ・メニューへ が横並びで、つぎの めんへ が左、2 行目 ともだちに おしえる が幅いっぱい・文字が 1 行）、行の間 12px 以上、一番下までスクロールすると予告の下端 ${Math.round(kl.nnBottom)} が .btns の上端 ${Math.round(kl.btnsTop)} より上、どのボタンも 44px 以上（${Math.round(kl.min)}）で押せる（overlayProbe ${overlayOk(pr)}）`,
-        kl.n === 3 && kl.bs[0].left < kl.bs[1].left && Math.abs(kl.bs[0].top - kl.bs[1].top) < 1 && kl.bs[2].top - (kl.bs[0].top + kl.bs[0].h) >= 11.5 && kl.bs[2].w > kl.bs[0].w * 1.8 && kl.bs[2].lines === 1 && kl.nnBottom <= kl.btnsTop + 0.5 && kl.min >= 43.5 && overlayOk(pr), { kl, pr });
+      check(`(j) SE 横：ボタンが 2 行（1 行目 つぎの めんへ・メニューへ・なかよしちょう が横並びで、つぎの めんへ が左、2 行目 ともだちに おしえる が幅いっぱい・文字が 1 行）、行の間 12px 以上、一番下までスクロールすると予告の下端 ${Math.round(kl.nnBottom)} が .btns の上端 ${Math.round(kl.btnsTop)} より上、どのボタンも 44px 以上（${Math.round(kl.min)}）で押せる（overlayProbe ${overlayOk(pr)}）`,
+        kl.n === 4 && kl.bs[0].left < kl.bs[1].left && kl.bs[1].left < kl.bs[2].left && Math.abs(kl.bs[0].top - kl.bs[1].top) < 1 && Math.abs(kl.bs[0].top - kl.bs[2].top) < 1 && kl.bs[3].top - (kl.bs[0].top + kl.bs[0].h) >= 11.5 && kl.bs[3].w > kl.bs[0].w * 1.8 && kl.bs[3].lines === 1 && kl.nnBottom <= kl.btnsTop + 0.5 && kl.min >= 43.5 && overlayOk(pr), { kl, pr });
       await jl.ctx.close();
       // (k) 共有の知らせ（吹き出し）：文＋URL（clipboard なし）でも、3 つのボタンに重ならず、画面の中に収まり、カードの左右の内側。SE 縦・SE 横・iPad 縦
       for (const vk of [view('SE', 'p', 'app'), view('SE', 'l', 'app'), view('iPad', 'p', 'app')]) {
@@ -1984,8 +1984,8 @@ export const tests = [
   {
     id: 'BW32', tier: 'smoke', title: 'いろびん v40（IB-24）：節目（5 面ごと）だけ「あたらしい きろく！」と音 best と次の予告。節目でない面で記録が伸びたら音なしの「ここまで ○めん」。予告は 5 面「いろが ふえるよ」・10 面「12めんで かくれた いろが でるよ」・15 面は動物の名前・105 面は「つぎは 106めん」だけ。クリアのテンポ（850ms ではカードなし、出た直後は押せない）は変えない',
     async run({ browser, check }) {
-      const run = async (lv, best, label) => {
-        const g = await openG(browser, `BW32 ${label}`, { opts: { initScript: SFX_SPY }, extra: { 'irobin.best': String(best), 'irobin.save': J({ v: 3, level: lv, moves: [] }) } });
+      const run = async (lv, best, label, bookRaw) => {
+        const g = await openG(browser, `BW32 ${label}`, { opts: { initScript: SFX_SPY }, extra: { 'irobin.best': String(best), 'irobin.save': J({ v: 3, level: lv, moves: [] }), ...(bookRaw ? { 'irobin.book': bookRaw } : {}) } });
         const s0 = await gs(g.page);
         await solveToClear(g.page); await wait(g.page, 1500);
         const info = await g.page.evaluate(() => {
@@ -2010,8 +2010,8 @@ export const tests = [
       const nm = await (async () => { const g = await openG(browser, 'BW32 nm'); const v = await g.page.evaluate(() => window.IrobinRender.ANIMAL_NAMES[window.IrobinLogic.animalFor(16, 0)]); await g.ctx.close(); return v; })();
       r = await run(15, 14, 'f');
       check(`(f) best 14 で 15 面：「つぎは 16めん。${nm}さんが まってるよ」（${J(r)}）`, r.lv === 15 && r.next === `つぎは 16めん。${nm}さんが まってるよ`, r);
-      r = await run(105, 104, 'g');
-      check(`(g) best 104 で 105 面：「つぎは 106めん」だけ（${J(r)}）`, r.lv === 105 && r.next === 'つぎは 106めん', r);
+      r = await run(105, 104, 'g', J({ v: 1, a: { kuma: 200, usagi: 200, neko: 200, penguin: 200, risu: 200, hitsuji: 200 }, s: {}, last: 104 }));
+      check(`(g) best 104 で 105 面・帳面が 6 匹とも 200：「つぎは 106めん」だけ（${J(r)}）`, r.lv === 105 && r.next === 'つぎは 106めん', r);
       // (h) テンポ：最後の手のあと 850ms ではまだカードが無く、出た直後のボタンは aria-disabled
       const t = await openG(browser, 'BW32 h', { extra: { 'irobin.best': '3', 'irobin.save': J({ v: 3, level: 4, moves: [] }) } });
       const sol = await solutionOf(t.page);
@@ -2176,6 +2176,379 @@ export const tests = [
         });
         check(`${v.label} ${v.w}×${v.h}｜101 面：錠 ${g.n} 個が #shop（お客さんの棚）にかからない（重なり ${g.ov === null ? '-' : Math.max(0, g.ov).toFixed(1)}px）`, g.n >= 1 && g.ov <= 0.5, g);
         await ctx.close();
+      }
+    },
+  },
+  {
+    id: 'BW36', tier: 'full', title: 'いろびん v45（IB-34）なかよしちょうの保存：クリアで動物の数・星・手数が残る、前から遊んでいる人も 0 から数える、開き直したクリアのカードで二重に数えない、壊れた帳面でも落ちない・新しい版の帳面を書きかえない、古いページから書き戻さない',
+    async run({ browser, check, root }) {
+      const f = path.join(root, 'games/irobin/logic.js');
+      const L = createRequire(f)(f);
+      const book = async (p) => { const raw = await stored(p, 'irobin.book'); try { return JSON.parse(raw); } catch { return raw; } };
+      const sum = (a) => Object.values(a || {}).reduce((x, y) => x + y, 0);
+      // クリアのカードの .served の aria-label（とどけた おきゃくさん：くま、うさぎ…）を動物の key の数にする
+      const servedCounts = (p) => p.evaluate(() => {
+        const lab = document.querySelector('.served')?.getAttribute('aria-label') || '';
+        const names = window.IrobinRender.ANIMAL_NAMES, inv = {};
+        for (const k of Object.keys(names)) inv[names[k]] = k;
+        const out = {};
+        for (const n of lab.replace(/^[^：]*：/, '').split('、')) { const k = inv[n]; if (k) out[k] = (out[k] || 0) + 1; }
+        return out;
+      });
+      const cnt = (o) => J(Object.keys(o).sort().map((k) => [k, o[k]]));
+
+      // (a) 帳面なし・best なし
+      {
+        const { ctx, page } = await openG(browser, 'BW36 a');
+        const b0 = await stored(page, 'irobin.book');
+        const total = (await gs(page)).total;
+        await solveToClear(page);
+        const st = await gs(page);
+        const per = await servedCounts(page);
+        const stars = await page.evaluate(() => { const e = document.querySelector('.stars'); return e && !e.hidden ? Number(e.dataset.stars) : 0; });
+        const bk = await book(page);
+        const rec = bk && bk.s && bk.s['1'];
+        check(`(a) 開いただけでは irobin.book は null（${b0}）、1 面を解くと a の合計 ${sum(bk && bk.a)} = 注文の数 ${total}・動物ごとにクリアのカードの並びと同じ（${bk && cnt(bk.a || {})}／${cnt(per)}）・s["1"] = [★${stars}, ${st.moves}手]（${J(rec)}）・last 1（${bk && bk.last}）`,
+          b0 === null && !!bk && bk.v === 1 && sum(bk.a) === total && total > 0 && cnt(bk.a) === cnt(per) && stars >= 1 && J(rec) === J([stars, st.moves]) && bk.last === 1, { b0, total, per, stars, moves: st.moves, bk });
+        await ctx.close();
+      }
+
+      // (b) 0 から：best 60・save 61 面・帳面なし
+      {
+        const raw = L.makeSave(61, []);
+        const { ctx, page } = await openG(browser, 'BW36 b', { extra: { 'irobin.best': '60', 'irobin.save': raw } });
+        const b0 = await stored(page, 'irobin.book');
+        const dress = await page.evaluate(() => [...document.querySelectorAll('#shop .customer')].map((e) => e.dataset.dress));
+        const total = (await gs(page)).total;
+        await solveToClear(page);
+        const bk = await book(page);
+        check(`(b) 前から遊んでいる人（best 60・61 面）も帳面は null のまま（${b0}）・お客さんの data-dress がみな 0（${J(dress)}）・61 面を解くと a の合計 ${sum(bk && bk.a)} = 61 面の注文の数 ${total}（1〜60 面の分は入らない）・last 61`,
+          b0 === null && dress.length >= 1 && dress.every((d) => d === '0') && !!bk && sum(bk.a) === total && total > 0 && bk.last === 61, { b0, dress, total, bk });
+        await ctx.close();
+      }
+
+      // (c) 開き直し：3 面の最後の手まで保存。last が 3 なら数えない・2 なら 1 回だけ数える
+      {
+        const raw = L.makeSave(3, L.createLevel(3).info.solutionIds.map((m) => [m[0], m[1]]));
+        const total3 = L.createLevel(3).state.total;
+        const b3 = J({ v: 1, a: { kuma: 5 }, s: {}, last: 3 });
+        const x = await openG(browser, 'BW36 c last 3', { extra: { 'irobin.best': '2', 'irobin.save': raw, 'irobin.book': b3 } });
+        const s1 = await toClear(x.page);
+        const k1 = await book(x.page);
+        check(`(c) 帳面の last が 3 で開く → 3 面のクリアのカード（${s1.overlay}）・a は変わらない（${k1 && J(k1.a)}）・last 3`, s1.overlay === 'clear' && s1.level === 3 && !!k1 && J(k1.a) === J({ kuma: 5 }) && k1.last === 3, { s1, k1 });
+        await x.ctx.close();
+        const b2 = J({ v: 1, a: { kuma: 5 }, s: {}, last: 2 });
+        const y = await openG(browser, 'BW36 c last 2', { extra: { 'irobin.best': '2', 'irobin.save': raw, 'irobin.book': b2 } });
+        const s2 = await toClear(y.page);
+        const k2 = await book(y.page);
+        const added = sum(k2 && k2.a) - 5;
+        const ok1 = s2.overlay === 'clear' && !!k2 && added > 0 && k2.last === 3 && total3 > 0 && added === total3;
+        await y.page.reload(); await wait(y.page, 300);
+        const k3 = await book(y.page);
+        const s3 = await gs(y.page);
+        check(`(c) last が 2 で開く → a の合計が 3 面の注文の数だけ増える（+${added}）・last 3 → もう一度開き直しても増えない（${sum(k3 && k3.a) - 5}）`,
+          ok1 && !!k3 && sum(k3.a) === sum(k2.a), { s2, k2, k3, s3, total3 });
+        await y.ctx.close();
+      }
+
+      // (d) 壊れた帳面・混ざった帳面（BL26 (d) と同じ文字）
+      {
+        const mixed = '{"v":1,"a":{"kuma":-5,"neko":1.5,"dog":3,"usagi":12,"risu":2e9},"s":{"0":[3,5],"x":[1,1],"7":[4,9],"8":[2,10],"9":[1,0],"010":[1,3]},"last":-1}';
+        const rows = [];
+        for (const [name, raw] of [['{', '{'], ['[]', '[]'], ['混ざった', mixed]]) {
+          const { ctx, page } = await openG(browser, `BW36 d ${name}`, { extra: { 'irobin.book': raw } });
+          const total = (await gs(page)).total;
+          const s = (await solveToClear(page)).s;
+          const bk = await book(page);
+          const ov = await overlayInfo(page);
+          rows.push({ name, ov: s.overlay, shown: ov.shown, bk, total });
+          await ctx.close();
+        }
+        const bad = rows.filter((r) => !(r.ov === 'clear' && r.shown && r.bk && typeof r.bk === 'object' && r.bk.v === 1 && r.bk.last === 1 && sum(r.bk.a) >= r.total && J(r.bk.s['1'] || null) !== 'null'));
+        const m = rows[2].bk;
+        const okMixed = !!m && m.a.usagi >= 12 && sum(m.a) === 12 + rows[2].total && !('dog' in m.a) && Object.values(m.a).every((n) => n <= 12 + rows[2].total) && J(m.s['8']) === J([2, 10]) && !('7' in m.s) && !('9' in m.s);
+        const okBroken = [0, 1].every((i) => sum(rows[i].bk && rows[i].bk.a) === rows[i].total);
+        check(`(d) 壊れた帳面 '{'・'[]' と混ざった帳面で、クリアのカードが出る（コンソールエラー 0 は流れの確認）・壊れた帳面は 1 面の分の正しい帳面に書きかわる（${okBroken}）・混ざった帳面は usagi 12 が残り（＋届けた分）、使えない値は捨てて 8 面の [2,10] は残る（${okMixed}）`,
+          bad.length === 0 && okBroken && okMixed, rows);
+      }
+
+      // (e) 新しい版の帳面は書きかえない
+      {
+        const raw = '{"v":2,"a":{"kuma":50}}';
+        const { ctx, page } = await openG(browser, 'BW36 e', { extra: { 'irobin.book': raw } });
+        const s = (await solveToClear(page)).s;
+        const after = await stored(page, 'irobin.book');
+        check(`(e) v:2 の帳面で 1 面を解いても irobin.book の文字が同じ（${after}）・クリアのカードは出る（${s.overlay}）`, after === raw && s.overlay === 'clear', { after, overlay: s.overlay });
+        await ctx.close();
+      }
+
+      // (f) X-20：古いページから書き戻さない
+      {
+        const raw = J({ v: 1, a: { kuma: 5 }, s: { 1: [2, 9] }, last: 1 });
+        const { ctx, page } = await openG(browser, 'BW36 f', { extra: { 'irobin.book': raw } });
+        await x20Hidden(page, true); await wait(page, 50);
+        const p2 = await ctx.newPage();
+        await p2.goto(BASE + 'manifest.webmanifest');
+        await p2.evaluate((r) => localStorage.setItem('irobin.save', r), J({ v: 3, level: 7, moves: [] }));
+        await p2.close();
+        await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false })));
+        const kept = await stored(page, 'irobin.book');
+        const nav = page.waitForEvent('load', { timeout: 5000 }).then(() => true, () => false);
+        await x20Hidden(page, false);
+        const reloaded = await nav; await wait(page, 300);
+        const s = await gs(page);
+        const after = await stored(page, 'irobin.book');
+        check(`(f) 裏にいる間に別のページが irobin.save を 7 面にして、pagehide でも irobin.book の文字が変わらない（${kept === raw}）・表に戻ると開き直して 7 面（${reloaded}・level ${s.level}）・帳面の文字は前と同じ（${after === raw}）`,
+          kept === raw && reloaded && s.level === 7 && after === raw, { kept, reloaded, level: s.level, after });
+        await ctx.close();
+      }
+
+      // (f2) X-20：裏にいる間に別のページが irobin.save を書きかえたあと、裏のまま最後の手を指してクリアさせても、irobin.book の文字が変わらない
+      {
+        const raw = J({ v: 1, a: { kuma: 5 }, s: { 1: [2, 9] }, last: 1 });
+        const { ctx, page } = await openG(browser, 'BW36 f2', { extra: { 'irobin.book': raw } });
+        const sol = await solutionOf(page);
+        await playMoves(page, sol.slice(0, -1));
+        // 最後の手を指す（演出が終わる前＝クリアの処理はまだ）→ 裏へ回り、別のページが保存を書きかえ、裏のまま演出を終わらせる
+        const last = sol[sol.length - 1];
+        await page.evaluate(([f, t]) => { window.IrobinGame.pick(f); window.IrobinGame.pick(t); }, last);
+        await x20Hidden(page, true); await wait(page, 50);
+        const p2 = await ctx.newPage();
+        await p2.goto(BASE + 'manifest.webmanifest');
+        await p2.evaluate((r) => localStorage.setItem('irobin.save', r), J({ v: 3, level: 7, moves: [] }));
+        await p2.close();
+        await page.waitForTimeout(200);
+        await page.evaluate(() => window.IrobinGame.skip());
+        await wait(page, 300);
+        const st = await gs(page);   // 裏にいる間はカードを出さない。クリアの局面（won・phase clear）まで進んだことを見る
+        const after = await stored(page, 'irobin.book');
+        check(`(f2) 裏にいる間に別のページが irobin.save を書きかえたあと、裏のまま最後の手でクリア（won ${st.won}）しても irobin.book の文字が変わらない（${after === raw}）`,
+          st.won === true && after === raw, { won: st.won, phase: st.phase, after });
+        await ctx.close();
+      }
+
+      // (g) 書く順：クリアでは irobin.book を irobin.save（次の面へ）より先に書く。setState の局面のクリアでは irobin.book を書かない
+      {
+        const SET_SPY = () => {
+          window.__setKeys = [];
+          const o = Storage.prototype.setItem;
+          Storage.prototype.setItem = function (k, v) { try { window.__setKeys.push(String(k)); } catch (e) { /* 無視 */ } return o.call(this, k, v); };
+        };
+        const keys = (p) => p.evaluate(() => window.__setKeys.slice());
+        const a = await openG(browser, 'BW36 g1', { opts: { initScript: SET_SPY } });
+        const sol = await solutionOf(a.page);
+        await playMoves(a.page, sol.slice(0, -1));
+        await a.page.evaluate(() => { window.__setKeys.length = 0; });
+        await a.page.evaluate(([f, t]) => { window.IrobinGame.pour(f, t); window.IrobinGame.skip(); }, sol[sol.length - 1]);
+        const s1 = await toClear(a.page); await wait(a.page, 200);
+        const k1 = await keys(a.page);
+        const ib = k1.indexOf('irobin.book'), is = k1.lastIndexOf('irobin.save');
+        check(`(g) クリアの書き込みの順：irobin.book（${ib}）が最後の irobin.save（${is}）より先・book は 1 回（${k1.filter((k) => k === 'irobin.book').length}）（${J(k1)}）`,
+          s1.overlay === 'clear' && ib >= 0 && is > ib && k1.filter((k) => k === 'irobin.book').length === 1, { k1, overlay: s1.overlay });
+        await a.ctx.close();
+        const b = await openG(browser, 'BW36 g2', { opts: { initScript: SET_SPY } });
+        const okSet = await b.page.evaluate(() => window.IrobinGame.setState({ level: 4, params: { colors: 2, empties: 1, hidden: false, order: 'random' }, bottles: [[0, 0, 0], [0], []].map((cs) => ({ cells: cs, hidden: cs.map(() => false), sealed: false })), slots: [0], queue: [], served: 0, total: 1, moves: 0, won: false }));
+        const sol2 = await solutionOf(b.page);
+        await playMoves(b.page, sol2);
+        const s2 = await toClear(b.page); await wait(b.page, 200);
+        const k2 = await keys(b.page);
+        const bk = await stored(b.page, 'irobin.book');
+        check(`(g) setState の局面（${okSet}）でクリア（${s2.overlay}）しても irobin.book を書かない（書いた鍵 ${J(k2)}・保存 ${bk}）`,
+          okSet === true && s2.overlay === 'clear' && !k2.includes('irobin.book') && bk === null, { k2, bk });
+        await b.ctx.close();
+      }
+    },
+  },
+  {
+    id: 'BW37', tier: 'full', title: 'いろびん v45（IB-34・IB-41・IB-42）：段が上がった面のクリアのカードに一言と音 best 1 回、お店の動物が 動物ごとの おしゃれを付けて来る（data-dress・絵が段ごとに変わる）、なかよしちょうのカード（6 匹・数・あと ○にん・★の合計）が SE 縦横のホーム画面と Safari で押せてはみ出さない、もどるでクリアのカードへ戻る、ホーム画面に追加していないときだけ一言、105 面の予告に「あと ○にんで」',
+    async run({ browser, check }) {
+      const KINDS = ['kuma', 'usagi', 'neko', 'penguin', 'risu', 'hitsuji'];
+      const bookOf = (n, extra = {}) => J({ v: 1, a: Object.fromEntries(KINDS.map((k) => [k, n])), s: {}, last: 0, ...extra });
+      const SAVE = (lv) => J({ v: 3, level: lv, moves: [] });
+      const friendOf = (p) => p.evaluate(() => {
+        const f = document.querySelector('#card .friend');
+        const vis = !!f && !f.closest('[hidden]') && getComputedStyle(f).display !== 'none' && f.getBoundingClientRect().height > 0;
+        const nw = f ? [...f.querySelectorAll('span.nw')].map((e) => ({ t: e.textContent, ws: getComputedStyle(e).whiteSpace })) : [];
+        return { vis, text: f ? f.textContent.trim() : null, nw };
+      });
+      const bestPlays = async (p) => (await plays(p)).filter((x) => x.n === 'best').length;
+      // 1〜20 面で、注文に kuma がいて節目（5 の倍数）でない面
+      const probe = await openG(browser, 'BW37 探す');
+      const kumaLv = await probe.page.evaluate(() => {
+        const L = window.IrobinLogic;
+        for (let n = 1; n <= 20; n++) {
+          if (n % 5 === 0) continue;
+          const total = L.createLevel(n).state.total;
+          for (let i = 0; i < total; i++) if (L.animalFor(n, i) === 'kuma') return n;
+        }
+        return 0;
+      });
+      await probe.ctx.close();
+
+      // (a) 段が上がった面の一言と音
+      {
+        const up = async (label, kuma, extraWant) => {
+          const g = await openG(browser, `BW37 a ${label}`, { opts: { initScript: SFX_SPY }, extra: { 'irobin.best': '30', 'irobin.save': SAVE(kumaLv), 'irobin.book': J({ v: 1, a: { kuma }, s: {}, last: 0 }) } });
+          await solveToClear(g.page); await wait(g.page, 1500);
+          const fr = await friendOf(g.page), n = await bestPlays(g.page);
+          await g.ctx.close();
+          return { fr, n };
+        };
+        const r1 = await up('9', 9);
+        check(`(a) 帳面の kuma 9 で ${kumaLv} 面を解く：.friend が「くまさんが ちょうネクタイを つけたよ！」（${J(r1.fr)}）・音 best が 1 回（${r1.n}）`,
+          kumaLv > 0 && r1.fr.vis && r1.fr.text === 'くまさんが ちょうネクタイを つけたよ！' && r1.n === 1, r1);
+        const r2 = await up('49', 49);
+        check(`(a) kuma 49：「くまさんが むぎわらぼうしを つけたよ！」（${J(r2.fr)}）・音 best が 1 回（${r2.n}）`,
+          r2.fr.vis && r2.fr.text === 'くまさんが むぎわらぼうしを つけたよ！' && r2.n === 1, r2);
+        check(`(a) おしゃれの名前は white-space: nowrap の span に入っている（${J(r1.fr.nw)}・${J(r2.fr.nw)}）`,
+          r1.fr.nw.length === 1 && r1.fr.nw[0].t === 'ちょうネクタイ' && r1.fr.nw[0].ws === 'nowrap' && r2.fr.nw.length === 1 && r2.fr.nw[0].t === 'むぎわらぼうし' && r2.fr.nw[0].ws === 'nowrap', { a: r1.fr.nw, b: r2.fr.nw });
+        {
+          const g2 = await openG(browser, 'BW37 a 2 匹', { opts: { initScript: SFX_SPY }, extra: { 'irobin.best': '30', 'irobin.save': SAVE(kumaLv), 'irobin.book': J({ v: 1, a: Object.fromEntries(KINDS.map((k) => [k, 9])), s: {}, last: 0 }) } });
+          await solveToClear(g2.page); await wait(g2.page, 1500);
+          const fr = await friendOf(g2.page);
+          const names = await g2.page.evaluate(() => { const lab = document.querySelector('.served')?.getAttribute('aria-label') || ''; return [...new Set(lab.replace(/^[^：]*：/, '').split('、'))]; });
+          const want = `${names.map((n) => n + 'さん').join('・')}が おしゃれを したよ！`;
+          check(`(a) 2 匹以上が段を上げたら「○さん・△さんが おしゃれを したよ！」（${J(fr.text)}／期待 ${want}）・「なかよしに」「くるよ」は使わない`,
+            names.length >= 2 && fr.vis && fr.text === want && !/なかよしに|くるよ/.test(fr.text), { fr, names });
+          await g2.ctx.close();
+        }
+        const g = await openG(browser, 'BW37 a 上がらない', { opts: { initScript: SFX_SPY }, extra: { 'irobin.best': '30' } });
+        await solveToClear(g.page); await wait(g.page, 1500);
+        const fr = await friendOf(g.page), n = await bestPlays(g.page);
+        check(`(a) 帳面なしの 1 面（段が上がらない）：.friend は隠れている（${J(fr)}）・音 best なし（${n}）`, !fr.vis && n === 0, { fr, n });
+        await g.ctx.close();
+      }
+
+      // (b) お店の動物の data-dress
+      for (const [n, want] of [[50, '2'], [200, '3'], [1000, '3']]) {
+        const { ctx, page } = await openG(browser, `BW37 b ${n}`, { extra: { 'irobin.book': bookOf(n) } });
+        const dress = await page.evaluate(() => [...document.querySelectorAll('#shop .customer')].map((e) => e.dataset.dress));
+        check(`(b) 帳面の 6 匹が ${n}：#shop .customer の data-dress がみな ${want}（${J(dress)}）`, dress.length >= 1 && dress.every((d) => d === want), dress);
+        await ctx.close();
+      }
+
+      // (c) なかよしちょうのカード（クリアのカードを出してから帳面を差し替え、保存から読み直させる）
+      const bookCard = async (page) => page.evaluate(() => {
+        const c = document.querySelector('#card'), r = c.getBoundingClientRect();
+        const vis = (e) => !!e && !e.closest('[hidden]') && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0;
+        const back = c.querySelector('[data-cmd="bookClose"]'), bq = back ? back.getBoundingClientRect() : null;
+        const rows = [...c.querySelectorAll('ul.book li')].map((li) => ({ kind: li.dataset.kind, cnt: li.querySelector('.cnt')?.textContent.trim(), left: li.querySelector('.left')?.textContent.trim() }));
+        const st = c.querySelector('.book-stars');
+        return {
+          rows, stars: st && vis(st) ? st.textContent.trim() : null, card: { top: r.top, bottom: r.bottom, left: r.left, right: r.right },
+          back: bq ? { top: bq.top, bottom: bq.bottom, w: bq.width, h: bq.height } : null, ih: innerHeight, iw: innerWidth,
+        };
+      });
+      const toBook = async (v, raw, label, opts = {}) => {
+        const g = await openG(browser, `BW37 ${label}`, { v, ...opts });
+        await solveToClear(g.page); await wait(g.page, 700);
+        await g.page.evaluate((r) => localStorage.setItem('irobin.book', r), raw);
+        await clickCmd(g.page, 'book'); await wait(g.page, 600);   // カードが出る動き（拡大）が終わるのを待つ
+        return g;
+      };
+      const stars3 = { 1: [3, 20] };
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari')]) {
+        const g = await toBook(v, J({ v: 1, a: { kuma: 50 }, s: stars3, last: 1 }), `c ${v.label}`);
+        const st = await gs(g.page);
+        const bc = await bookCard(g.page);
+        const kuma = bc.rows.find((r) => r.kind === 'kuma') || {}, usagi = bc.rows.find((r) => r.kind === 'usagi') || {};
+        const [, , sb, ] = v.safe || [0, 0, 0, 0];
+        // 低い画面ではカードがはみ出して重なるのを、ボタンを上端に貼り付けて（sticky）押せるようにしている。一番下までスクロールすれば最後の行がボタンの上に出る
+        const end = await g.page.evaluate(() => { const ov = document.querySelector('#overlay'); ov.scrollTop = ov.scrollHeight; const li = [...document.querySelectorAll('#card ul.book li')].pop().getBoundingClientRect(), b = document.querySelector('#card [data-cmd="bookClose"]').getBoundingClientRect(); ov.scrollTop = 0; return { liBottom: li.bottom, btnTop: b.top }; });
+        const pr = await overlayProbe(g.page, v.safe);
+        check(`(c) ${v.label}：overlay は book（${st.overlay}）・行が 6 つ（${bc.rows.length}）・くま「${kuma.cnt}」「${kuma.left}」・うさぎ「${usagi.cnt}」「${usagi.left}」・★の合計の行（${bc.stars}）`,
+          st.overlay === 'book' && bc.rows.length === 6 && kuma.cnt === '50にん' && kuma.left === 'あと 150にんで きんの メダル' && usagi.cnt === '0にん' && usagi.left === 'あと 10にんで にんじんの バッジ' && /^あつめた ★ \d+こ$/.test(bc.stars || ''), { st: st.overlay, bc });
+        check(`(c) ${v.label}：「もどる」がスクロールなしで押せる（${bc.back && Math.round(bc.back.bottom)}/${bc.ih}）・44px 以上（${bc.back && Math.round(bc.back.h)}）・カードは左右が画面の中で上が画面の中、はみ出す分は一番下までスクロールすれば最後の行がボタンの上に出る（${Math.round(end.liBottom)}≦${Math.round(end.btnTop)}）・横スクロールなし（overlayProbe ${overlayOk(pr)}）`,
+          !!bc.back && bc.back.top >= 0 && bc.back.bottom <= bc.ih - sb + 0.5 && bc.back.h >= 43.5 && bc.back.w >= 43.5 && bc.card.top >= -0.5 && bc.card.left >= -0.5 && bc.card.right <= bc.iw + 0.5 && end.liBottom <= end.btnTop + 0.5 && overlayOk(pr), { bc, pr, end });
+        await g.ctx.close();
+      }
+      { const g = await toBook(STD_V(), bookOf(200, { s: stars3, last: 1 }), 'c 200');
+        const bc = await bookCard(g.page);
+        check(`(c) 6 匹とも 200：6 行とも「ぜんぶ そろったよ」（${J(bc.rows.map((r) => r.left))}）`, bc.rows.length === 6 && bc.rows.every((r) => r.left === 'ぜんぶ そろったよ'), bc.rows);
+        await g.ctx.close(); }
+
+      // (d) もどる・Escape でクリアのカードへ。開く・閉じるの直後 300ms は押せない（すぐは押せない）
+      {
+        const g = await openG(browser, 'BW37 d', { opts: { initScript: SFX_SPY } });
+        await solveToClear(g.page); await wait(g.page, 1500);
+        const n0 = await bestPlays(g.page);
+        const dis = () => g.page.evaluate(() => [...document.querySelectorAll('#card .btns button')].map((b) => b.getAttribute('aria-disabled')));
+        await clickCmd(g.page, 'book'); await wait(g.page, 100);
+        const s1 = await gs(g.page);
+        await clickCmd(g.page, 'bookClose'); await wait(g.page, 50);   // 開いた直後（150ms 後）は押せない
+        const s1b = await gs(g.page);
+        await wait(g.page, 300);
+        await clickCmd(g.page, 'bookClose'); await wait(g.page, 50);   // 300ms 後は押せる
+        const s2 = await gs(g.page), d2 = await dis();
+        await clickCmd(g.page, 'book'); await wait(g.page, 100);       // 閉じた直後は、高さの変わったカードのボタン（なかよしちょう）も押せない
+        const s2b = await gs(g.page);
+        await wait(g.page, 300);
+        await clickCmd(g.page, 'book'); await wait(g.page, 150);
+        const s2c = await gs(g.page);
+        await wait(g.page, 300);
+        await g.page.keyboard.press('Escape'); await wait(g.page, 100);
+        const s3 = await gs(g.page), d3 = await dis();
+        const n1 = await bestPlays(g.page);
+        check(`(d) book（${s1.overlay}）→ すぐ もどる は効かない（${s1b.overlay}）→ 300ms 後に もどる → clear（${s2.overlay}）・押せる（aria-disabled ${J(d2)}）→ 閉じた直後の なかよしちょう は効かない（${s2b.overlay}）→ 300ms 後は開く（${s2c.overlay}）→ Escape → clear（${s3.overlay}・${J(d3)}）、音 best が増えない（${n0}→${n1}）`,
+          s1.overlay === 'book' && s1b.overlay === 'book' && s2.overlay === 'clear' && s2b.overlay === 'clear' && s2c.overlay === 'book' && s3.overlay === 'clear' && d2.length >= 3 && d2.every((x) => x === null) && d3.every((x) => x === null) && n1 === n0, { s1, s1b, s2, s2b, s2c, s3, d2, d3, n0, n1 });
+        await g.ctx.close();
+      }
+
+      // (e) IB-41：ホーム画面に追加していないときだけ一言
+      {
+        const homeOf = (p) => p.evaluate(() => { const e = document.querySelector('#card .book-home'); return { has: !!e, vis: !!e && !e.closest('[hidden]') && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0, text: e ? e.textContent.trim() : null }; });
+        const a = await toBook(view('i13', 'p', 'safari'), bookOf(0), 'e 通常');
+        const ha = await homeOf(a.page); await a.ctx.close();
+        const STANDALONE = () => { Object.defineProperty(Navigator.prototype, 'standalone', { configurable: true, get: () => true }); };
+        const b = await toBook(view('i13', 'p', 'safari'), bookOf(0), 'e standalone', { opts: { initScript: STANDALONE } });
+        const hb = await homeOf(b.page); await b.ctx.close();
+        check(`(e) ふつうの開き方では「ホーム画面に ついかすると」が見える（${J(ha)}）、navigator.standalone = true では見えない（${J(hb)}）`,
+          ha.vis && ha.text.includes('ホーム画面に ついかすると') && !hb.vis, { ha, hb });
+      }
+
+      // (f) 帳面が v:2 でも なかよしちょうは落ちずに開く・クリアのカードに一言も「あと ○にん」も出ない
+      {
+        const g = await openG(browser, 'BW37 f', { extra: { 'irobin.book': '{"v":2,"a":{"kuma":50}}' } });
+        await solveToClear(g.page); await wait(g.page, 700);
+        const fr = await friendOf(g.page);
+        await clickCmd(g.page, 'book'); await wait(g.page, 150);
+        const st = await gs(g.page), bc = await bookCard(g.page);
+        check(`(f) 帳面が v:2：なかよしちょうが開く（${st.overlay}）・6 行ともの数が 0（${J(bc.rows.map((r) => r.cnt))}）・クリアのカードに一言は出ない（${J(fr)}）`, st.overlay === 'book' && bc.rows.length === 6 && bc.rows.every((r) => r.cnt === '0にん') && !fr.vis, { st: st.overlay, rows: bc.rows, fr });
+        await g.ctx.close();
+        const h = await openG(browser, 'BW37 f 105', { extra: { 'irobin.best': '104', 'irobin.save': SAVE(105), 'irobin.book': '{"v":2,"a":{"kuma":195}}' } });
+        await solveToClear(h.page); await wait(h.page, 1500);
+        const next = await h.page.evaluate(() => { const n = document.querySelector('#card .next-note'); return n && !n.closest('[hidden]') && n.getBoundingClientRect().height > 0 ? n.textContent.trim() : null; });
+        check(`(f) 帳面が v:2 で 105 面：予告は「つぎは 106めん」だけで「あと ○にん」は出ない（${next}）`, next === 'つぎは 106めん', next);
+        await h.ctx.close();
+      }
+
+      // (g) 105 面の予告
+      {
+        const g = await openG(browser, 'BW37 g', { extra: { 'irobin.best': '104', 'irobin.save': SAVE(105), 'irobin.book': J({ v: 1, a: { kuma: 195, usagi: 200, neko: 200, penguin: 200, risu: 200, hitsuji: 200 }, s: {}, last: 104 }) } });
+        await solveToClear(g.page); await wait(g.page, 1500);
+        const next = await g.page.evaluate(() => { const n = document.querySelector('#card .next-note'); return n && !n.closest('[hidden]') && n.getBoundingClientRect().height > 0 ? n.textContent.trim() : null; });
+        check(`(g) best 104・kuma 195・ほか 200 で 105 面：予告が「つぎは 106めん。くまさん あと 4にんで きんの メダル」（${next}）`, next === 'つぎは 106めん。くまさん あと 4にんで きんの メダル', next);
+        await g.ctx.close();
+      }
+
+      // (h) 絵：6 匹 × 段 0〜3 が毎回変わる・範囲外の段・おしゃれの名前
+      {
+        const g = await openG(browser, 'BW37 h');
+        const r = await g.page.evaluate(() => {
+          const R = window.IrobinRender;
+          const draw = (k, d) => { const cv = document.createElement('canvas'); cv.width = 112; cv.height = 120; R.drawAnimal(cv.getContext('2d'), k, { w: 112, h: 120, mood: 'happy', dress: d }); return cv.toDataURL(); };
+          const out = {};
+          for (const k of R.ANIMALS) {
+            const u = [0, 1, 2, 3].map((d) => draw(k, d));
+            out[k] = { chg: [1, 2, 3].map((i) => u[i] !== u[i - 1]), over: draw(k, 4) === u[3], str: draw(k, 'x') === u[0], neg: draw(k, -1) === u[0] };
+          }
+          const items = R.DRESS_ITEMS, names = R.ANIMALS.flatMap((k) => (items[k] || []).map((x) => x[0]));
+          return { out, kinds: R.ANIMALS.length, shape: R.ANIMALS.map((k) => (items[k] || []).length), names: names.length, uniq: new Set(names).size };
+        });
+        const bad = Object.entries(r.out).filter(([, o]) => !o.chg.every(Boolean) || !o.over || !o.str || !o.neg).map(([k, o]) => `${k}:${J(o)}`);
+        check(`(h) 6 匹 × 段 0→1→2→3 で絵が毎回変わり、段 4・'x'・-1 は 3・0・0 と同じ絵（おかしい ${bad.length}：${bad.join(' ')}）`, r.kinds === 6 && bad.length === 0, r.out);
+        check(`(h) DRESS_ITEMS が 6 匹 × 3 つ（${J(r.shape)}）で、名前 ${r.names} 個がみな違う（${r.uniq}）`, r.shape.length === 6 && r.shape.every((n) => n === 3) && r.names === 18 && r.uniq === 18, r);
+        await g.ctx.close();
       }
     },
   },

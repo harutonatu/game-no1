@@ -1129,4 +1129,52 @@ export const tests = [
       check(`150〜200 面は 40〜49 面より 3 ポイント以上 難しい（${rows[0].now}→${rows[4].now}）`, rows[4].now >= rows[0].now + 3, null);
     },
   },
+  {
+    id: 'BL26', tier: 'smoke', node: true, title: 'いろびん v45（IB-34）なかよしちょう：読む（無い・壊れた・新しい版・使える分だけ）、0 から数える、足す（数・段・星と手数は良い方・count false）、書いて読み直すと同じ',
+    run({ check, root }) {
+      const L = load(root);
+      const empty = { v: 1, a: {}, s: {}, last: 0 };
+      // (a) 無い → 0 から（2 つ目の引数を見ない）
+      const ra = [L.readBook(null), L.readBook(undefined), L.readBook(null, 999)];
+      check('(a) readBook(null)・(undefined)・(null, 999) が空の帳面で write true（fresh なし。古い best から数を作らない）',
+        ra.every((r) => J(r) === J({ book: empty, write: true })), ra);
+      // (b) 壊れた 8 種
+      const bads = ['{', '[]', 'null', '"x"', '{"v":"1"}', '{"v":0}', '{"v":1.5}', '{"a":{}}'];
+      const rb = bads.filter((x) => J(L.readBook(x)) !== J({ book: empty, write: true }));
+      check('(b) 壊れた 8 種は空の帳面で write true', rb.length === 0, rb);
+      // (c) 新しい版
+      const rc = L.readBook('{"v":2,"a":{"kuma":50}}');
+      check('(c) v:2 は write false で a が空', rc.write === false && J(rc.book.a) === '{}', rc);
+      // (d) 使える分だけ
+      const rd = L.readBook('{"v":1,"a":{"kuma":-5,"neko":1.5,"dog":3,"usagi":12,"risu":2e9},"s":{"0":[3,5],"x":[1,1],"7":[4,9],"8":[2,10],"9":[1,0],"010":[1,3]},"last":-1}');
+      check('(d) 使える分だけ：a は usagi 12 だけ・s は 8 面 [2,10] だけ・last 0・write true',
+        J(rd.book.a) === J({ usagi: 12 }) && J(rd.book.s) === J({ 8: [2, 10] }) && rd.book.last === 0 && rd.write === true, rd);
+      // (e) addClear
+      const be = { v: 1, a: { kuma: 9 }, s: { 3: [2, 20] }, last: 0 };
+      const snap = J(be);
+      const e1 = L.addClear(be, { level: 3, animals: ['kuma'], star: 3, moves: 25, count: true });
+      const e2 = L.addClear(e1.book, { level: 3, animals: ['kuma'], star: 1, moves: 15 });
+      const upsAt = (before, after) => L.addClear({ v: 1, a: { kuma: before }, s: {}, last: 0 }, { level: 1, animals: ['kuma'], star: 1, moves: 5 }).ups;
+      const ok1 = J(e1.ups) === J([{ kind: 'kuma', step: 1 }]) && e1.book.a.kuma === 10 && e1.book.last === 3 && J(e1.book.s['3']) === J([3, 20]);
+      const ok2 = e2.ups.length === 0 && e2.book.a.kuma === 11 && J(e2.book.s['3']) === J([3, 15]);
+      const ok3 = J(upsAt(49)) === J([{ kind: 'kuma', step: 2 }]) && J(upsAt(199)) === J([{ kind: 'kuma', step: 3 }]) && upsAt(200).length === 0;
+      const e4 = L.addClear({ v: 1, a: { kuma: 5 }, s: {}, last: 1 }, { level: 9, animals: ['kuma'], star: 2, moves: 8, count: false });
+      const ok4 = e4.book.a.kuma === 5 && e4.book.last === 1 && e4.ups.length === 0 && J(e4.book.s['9']) === J([2, 8]);
+      const e5 = L.addClear({ v: 1, a: {}, s: { 3: [2, 20] }, last: 0 }, { level: 3, animals: [], star: 1, moves: 15 });
+      const e6 = L.addClear({ v: 1, a: {}, s: {}, last: 0 }, { level: 4, animals: [], star: 0, moves: 10 });
+      const ok5 = J(e5.book.s['3']) === J([2, 15]) && J(e6.book.s) === '{}';
+      check('(e) addClear：10 人目で step 1・11 人目は ups なし・49→50 で 2・199→200 で 3・200→201 なし・count:false は数も last も変えない・星と手数は良い方・star 0 は書かない・元は変わらない',
+        ok1 && ok2 && ok3 && ok4 && ok5 && J(be) === snap, { e1, e2, ok3, e4, e5, e6, snapSame: J(be) === snap });
+      // (f) bookStep・nextStepAt
+      const stp = [[9, 0], [10, 1], [49, 1], [50, 2], [199, 2], [200, 3], [1e9, 3], ['abc', 0]].filter(([n, w]) => L.bookStep(n) !== w);
+      const nxt = [[0, 10], [10, 50], [50, 200], [200, 0]].filter(([n, w]) => L.nextStepAt(n) !== w);
+      check('(f) bookStep・nextStepAt・BOOK_STEPS が [10,50,200]', stp.length === 0 && nxt.length === 0 && J(L.BOOK_STEPS) === '[10,50,200]', { stp, nxt, steps: L.BOOK_STEPS });
+      // (g) 書いて読む
+      const bg = { v: 1, a: { kuma: 3, hitsuji: 200 }, s: { 1: [3, 6], 12: [1, 40] }, last: 12 };
+      const rg = L.readBook(L.makeBook(bg));
+      check('(g) makeBook で書いて readBook で読むと a・s・last が同じ', rg.write === true && J(rg.book) === J(bg), rg);
+      // (h) bookStars
+      check('(h) bookStars：s が {1:[3,6],2:[1,9]} で 4・空は 0', L.bookStars({ s: { 1: [3, 6], 2: [1, 9] } }) === 4 && L.bookStars(empty) === 0 && L.bookStars(null) === 0, null);
+    },
+  },
 ];

@@ -25,7 +25,11 @@
   const KEY_CLOTH = L.SAVE_KEY_CLOTH || "irobin.cloth";
   // v37 の新しい仕掛け（契約 §19）：はじめて出た面で説明を見たら "1"
   const GIM_KEYS = { small: L.SAVE_KEY_SMALL || "irobin.small", only: L.SAVE_KEY_ONLY || "irobin.only", lock: L.SAVE_KEY_LOCK || "irobin.lock" };
+  const KEY_BOOK = L.SAVE_KEY_BOOK || "irobin.book";   // なかよしちょう（v45・IB-34。契約 §24）
+  // 星（めやすの手数と比べて 1〜3。めやすが無い面は 0）。クリアのカード・共有・帳面で同じ式を使う
+  const starOf = (mv, p) => (!p ? 0 : mv <= p ? 3 : mv <= Math.ceil(p * 1.5) ? 2 : 1);
   const CARD_LOCK_MS = 400;     // カードを出してから押せない時間
+  const BOOK_LOCK_MS = 300;      // なかよしちょうを開く・閉じるとき、カードの別のボタンを押し間違えない時間（見た目は変えない）
   const BOARD_BLOCK_MS = 300;   // カードを閉じた直後、瓶の押下を受けない時間
 
   const HINT_IDLE = "びんを えらんで、べつの びんに そそいでね";
@@ -134,6 +138,9 @@
   window.addEventListener("storage", (e) => { if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true; });
   let best = safeCall(() => L.validateBest(readKey(KEY_BEST)), 0) || 0;
   function safeCall(fn, fallback) { try { return fn(); } catch (e) { console.error("いろびん:", e); return fallback; } }
+  // なかよしちょう：いつも保存から読み直す（メモリの値から書かない。X-20 の G7 の場面にしない）。無い人は 0 から（古い保存から数を作らない）
+  function readBookNow() { return typeof L.readBook === "function" ? safeCall(() => L.readBook(readKey(KEY_BOOK)), null) : null; }
+  function dressMap(book) { const m = {}; for (const k of R.ANIMALS || []) m[k] = safeCall(() => L.bookStep(book && book.a ? book.a[k] || 0 : 0), 0) || 0; return m; }
 
   // ===== タイマー（later / clearLater / runId） =====
   let runId = 0;
@@ -154,10 +161,11 @@
   let selected = null;
   let phase = "idle";           // idle | selected | pouring | stuck | clear
   let paused = false;           // 裏に回っている
-  let overlayKind = null;       // null | help | clear | confirm | rescue
+  let overlayKind = null;       // null | help | clear | confirm | rescue | book（なかよしちょう。クリアのカードから開く）
   let custom = null;            // setState で入れた最初の局面（テスト用。保存しない）
   let cardShownAt = -Infinity;
   let blockUntil = -Infinity;
+  let bookLockAt = -Infinity;   // なかよしちょうを開いた・閉じた時刻（BOOK_LOCK_MS の間は、クリアのカードとなかよしちょうのボタンを受けない）
   let rewindRun = -1;           // 「とける ところまで もどす」の探しを待っている回（runId）。その間と、探し終えた直後 BOARD_BLOCK_MS は押下を受けない（IB-46）
   let rewindBlockUntil = -Infinity;
   let pending = null;           // 演出が終わったら続ける処理 { token, fn }
@@ -315,7 +323,7 @@
     render.update(state, { selected: null });
     if (state.won) {   // 最後の手まで保存されていた（クリアの記録の前に閉じた）：その面のクリアのカードから続ける（IB-22）
       hud();
-      onClear();
+      onClear({ restored: true });
       return true;
     }
     save();
@@ -469,7 +477,7 @@
   function colorName(id) { return safeCall(() => L.colorName(id), "？") || "？"; }
 
   // ===== 面クリア =====
-  function onClear() {
+  function onClear(o) {
     selected = null;
     setPhase("clear");
     const r = safeCall(() => L.recordBest(best, level), { best, improved: false });
@@ -479,7 +487,20 @@
     const h = L.hud(state);
     const ms = safeCall(() => L.milestoneFor(level), null) || { milestone: false, news: null, next: level + 1, more: true };
     const animals = (safeCall(() => render.animalsSeen(), []) || []).map((k, i) => k || safeCall(() => L.animalFor(level, i), "kuma"));
-    lastClear = { level, moves: h.moves, improved, par, milestone: !!ms.milestone, news: ms.news, next: ms.next, more: ms.more !== false, animals };
+    // なかよしちょう（IB-34）：次の面への保存（irobin.save）より先に書く。開き直してクリアのカードから続けた面で、
+    // もう数えてある（last が この面）なら数は足さない（契約 §24.3）。setState の局面（custom）は書かない
+    let ups = [], dress = null;
+    if (!custom) {
+      const rb = readBookNow();
+      const r2 = rb ? safeCall(() => L.addClear(rb.book, { level, animals, star: starOf(h.moves, par), moves: h.moves, count: !(o && o.restored && rb.book.last === level) }), null) : null;
+      if (r2) {
+        if (rb.write) writeKey(KEY_BOOK, L.makeBook(r2.book));
+        ups = rb.write ? r2.ups : [];   // 新しい版の帳面は読めない（写さない）ので、段が上がった一言は出さない
+        dress = dressMap(r2.book);
+        if (typeof render.setDress === "function") render.setDress(dress);
+      }
+    }
+    lastClear = { level, moves: h.moves, improved, par, milestone: !!ms.milestone, news: ms.news, next: ms.next, more: ms.more !== false, animals, ups, dress };
     writeKey(KEY_SAVE, L.makeSave(level + 1, []));
     setHint(`${level} めん クリア！`);
     sfx.play("clear");
@@ -498,7 +519,41 @@
       const nm = safeCall(() => R.ANIMAL_NAMES[L.animalFor(next, 0)], "") || "おきゃくさん";
       return `つぎは ${next}めん。${nm}さんが まってるよ`;
     }
+    // 105 面から先（more でない）：なかよしの段が一番近い動物を出す（IB-42）。全部そろっていれば今までどおり
+    const near = safeCall(() => {
+      const rb = readBookNow();
+      if (!rb || !rb.write) return null;   // 新しい版の帳面は「あと ○にん」を出さない
+      let pick = null;
+      for (const k of R.ANIMALS || []) {
+        const n = rb.book.a[k] || 0, at = L.nextStepAt(n);
+        if (at && (!pick || at - n < pick.left)) pick = { k, left: at - n, step: L.bookStep(n) + 1 };
+      }
+      return pick;
+    }, null);
+    const item = near && R.DRESS_ITEMS && R.DRESS_ITEMS[near.k] ? R.DRESS_ITEMS[near.k][near.step - 1] : null;
+    if (near && item) return `つぎは ${next}めん。${R.ANIMAL_NAMES[near.k] || "おきゃくさん"}さん あと ${near.left}にんで ${item[0]}`;
     return `つぎは ${next}めん`;
+  }
+  // なかよしの段が上がったときのクリアのカードの一言（IB-34）。ups＝[{ kind, step }]。無ければ []
+  // 返す形は [{ t: 文字, nb: true なら途中で折り返さない }]（おしゃれの名前が「まるい / めがね」と割れないように）
+  function friendParts(ups) {
+    const list = [];
+    for (const u of Array.isArray(ups) ? ups : []) if (u && R.ANIMAL_NAMES[u.kind] && !list.some((x) => x.kind === u.kind)) list.push(u);
+    if (!list.length) return [];
+    if (list.length > 1) return [{ t: `${list.map((u) => R.ANIMAL_NAMES[u.kind] + "さん").join("・")}が おしゃれを したよ！` }];
+    const u = list[0], nm = R.ANIMAL_NAMES[u.kind];
+    const item = R.DRESS_ITEMS && R.DRESS_ITEMS[u.kind] ? R.DRESS_ITEMS[u.kind][u.step - 1] : null;
+    if (!item) return [{ t: `${nm}さんが おしゃれを したよ！` }];
+    return [{ t: `${nm}さんが ` }, { t: item[0], nb: true }, { t: "を つけたよ！" }];
+  }
+  function friendText(ups) { return friendParts(ups).map((x) => x.t).join(""); }
+  // 文字を textContent で入れる。nb の所は white-space: nowrap の span に入れる
+  function fillParts(node, parts) {
+    node.textContent = "";
+    for (const x of parts) {
+      if (x.nb) { const sp = document.createElement("span"); sp.className = "nw"; sp.textContent = x.t; node.appendChild(sp); }
+      else node.appendChild(document.createTextNode(x.t));
+    }
   }
   // 共有（IB-31）。★3 と節目のカードだけ。回数は測らない・印は付けない（ユーザー決定）
   const SHARE_URL = "https://harutonatu.github.io/game-no1/games/irobin/";
@@ -520,7 +575,7 @@
     const c = lastClear;
     if (!c) return;
     const p = Number(c.par) || 0;
-    const star = !p ? 0 : c.moves <= p ? 3 : c.moves <= Math.ceil(p * 1.5) ? 2 : 1;
+    const star = starOf(c.moves, p);
     const text = shareText(c, star);
     try {
       if (typeof navigator.share === "function") {
@@ -551,17 +606,21 @@
       setShareNote("コピーできなかったよ。ながおしで コピーしてね", true);
     }
   }
-  function showClearCard() {
+  // o.again：なかよしちょうから戻ったとき（音と 400ms の押せない時間はくり返さない。フォーカスは「なかよしちょう」へ）
+  function showClearCard(o) {
+    const again = !!(o && o.again);
+    const fb = focusBack;
     sharing = false;   // 共有の返事が来ない端末でも、次のカードでは押せるように戻す
-    const c = lastClear || { level, moves: moves.length, improved: false, par, milestone: false, news: null, next: level + 1, more: true, animals: [] };
+    const c = lastClear || { level, moves: moves.length, improved: false, par, milestone: false, news: null, next: level + 1, more: true, animals: [], ups: [], dress: null };
     // 上達が見えるように、目安の手数と比べて星1〜3（責めない言い方。目安は最短とは限らないので「めやす」と書く）
     const p = Number(c.par) || 0;
-    const star = !p ? 0 : c.moves <= p ? 3 : c.moves <= Math.ceil(p * 1.5) ? 2 : 1;
+    const star = starOf(c.moves, p);
     const starText = star === 3 ? "★★★ すごい！" : star === 2 ? "★★☆ いいね！" : star === 1 ? "★☆☆ つぎは めやすを めざそう" : "";
     const showRecord = c.improved && c.milestone;
     const showQuiet = c.improved && !c.milestone;
     const canShare = star === 3 || !!c.milestone;
     const animals = Array.isArray(c.animals) ? c.animals : [];
+    const friend = friendText(c.ups);
     showCard(`
       <h2 id="cardTitle" data-f="h"></h2>
       <p class="stars" data-f="s"></p>
@@ -569,12 +628,17 @@
       <p class="moves"><span data-f="m1"></span><span data-f="m2"></span></p>
       <p class="best-new" data-f="b"></p>
       <p class="next-note" data-f="n"></p>
+      <p class="friend" data-f="f"></p>
       <div class="btns">
         ${canShare ? '<p class="share-note" aria-live="polite"></p>' : ""}
         <button class="cta primary" type="button" data-cmd="next">つぎの めんへ</button>
-        <button class="cta" type="button" data-cmd="menu">メニューへ</button>
+        <button class="cta half" type="button" data-cmd="menu">メニューへ</button>
+        <button class="cta half book" type="button" data-cmd="book">なかよしちょう</button>
         ${canShare ? '<button class="cta share" type="button" data-cmd="share">ともだちに おしえる</button>' : ""}
-      </div>`, { h: `${c.level} めん クリア！`, s: starText, m1: `${c.moves}かい そそいで とどけたよ`, m2: p ? `（めやす ${p}かい）` : "", b: showRecord ? "あたらしい きろく！" : showQuiet ? `ここまで ${c.level}めん` : "", n: c.milestone ? nextNoteText(c) : "" }, "clear");
+      </div>`, { h: `${c.level} めん クリア！`, s: starText, m1: `${c.moves}かい そそいで とどけたよ`, m2: p ? `（めやす ${p}かい）` : "", b: showRecord ? "あたらしい きろく！" : showQuiet ? `ここまで ${c.level}めん` : "", n: c.milestone ? nextNoteText(c) : "", f: friend }, "clear");
+    if (again) focusBack = fb;   // なかよしちょうへ行く前の戻り先（瓶など）を残す
+    if (!friend) { const fr = el.card.querySelector(".friend"); if (fr) fr.hidden = true; }
+    else { const fr = el.card.querySelector(".friend"); if (fr) fillParts(fr, friendParts(c.ups)); }
     // 動物の顔の列（狭い画面では CSS で隠す）。aria-label は showCard のあとに直接入れる
     const served = el.card.querySelector(".served");
     if (served) {
@@ -582,7 +646,7 @@
       animals.forEach((kind) => {
         const cv = document.createElement("canvas");
         cv.width = Math.round(28 * dpr); cv.height = Math.round(28 * dpr);
-        try { const ctx = cv.getContext("2d"); if (ctx) R.drawAnimal(ctx, kind, { w: cv.width, h: cv.height, mood: "happy" }); } catch (e) { /* 絵が描けなくても続ける */ }
+        try { const ctx = cv.getContext("2d"); if (ctx) R.drawAnimal(ctx, kind, { w: cv.width, h: cv.height, mood: "happy", dress: c.dress ? c.dress[kind] || 0 : 0 }); } catch (e) { /* 絵が描けなくても続ける */ }
         served.appendChild(cv);
       });
       if (animals.length) served.setAttribute("aria-label", `とどけた おきゃくさん：${animals.map((k) => R.ANIMAL_NAMES[k] || "おきゃくさん").join("、")}`);
@@ -594,10 +658,67 @@
     if (!c.milestone) { const nn = el.card.querySelector(".next-note"); if (nn) nn.hidden = true; }
     if (!starText) { const sEl = el.card.querySelector(".stars"); if (sEl) sEl.hidden = true; }
     else { const sEl = el.card.querySelector(".stars"); if (sEl) { sEl.dataset.stars = String(star); sEl.setAttribute("aria-label", `ほし ${star}つ`); } }
+    if (again) {
+      bookLockAt = now();   // 閉じた直後に、高さの変わったカードの別のボタンを押してメニューへ出ないように
+      const bk = el.card.querySelector('button[data-cmd="book"]');
+      if (bk) { try { bk.focus({ preventScroll: true }); } catch (e) { bk.focus(); } }
+      return;
+    }
     cardShownAt = now();
     el.card.querySelectorAll(".btns button").forEach((btn) => btn.setAttribute("aria-disabled", "true"));
     later(() => el.card.querySelectorAll(".btns button[aria-disabled]").forEach((btn) => btn.removeAttribute("aria-disabled")), CARD_LOCK_MS);
-    if (showRecord) later(() => sfx.play("best"), 450);
+    if (showRecord || friend) later(() => sfx.play("best"), 450);   // 記録となかよしが重なっても 1 回だけ
+  }
+  // ===== なかよしちょう（IB-34・IB-41。クリアのカードから開く） =====
+  const isStandalone = () => { try { return navigator.standalone === true || !!(window.matchMedia && window.matchMedia("(display-mode: standalone)").matches); } catch (e) { return false; } };
+  function showBook() {
+    if (overlayKind !== "clear") return;
+    const fb = focusBack;
+    const rb = readBookNow();   // いつも保存から読む（メモリの値を出さない）
+    const book = rb && rb.book && rb.book.a ? rb.book : { a: {}, s: {} };
+    const stars = safeCall(() => L.bookStars(book), 0) || 0;
+    showCard(`
+      <div class="book-head">
+        <h2 id="cardTitle">なかよしちょう</h2>
+        <p class="book-stars" data-f="s"></p>
+      </div>
+      <ul class="book"></ul>
+      <p class="note book-home">ホーム画面に ついかすると、きろくが きえにくいよ</p>
+      <div class="btns"><button class="cta primary" type="button" data-cmd="bookClose">もどる</button></div>`, { s: stars > 0 ? `あつめた ★ ${stars}こ` : "" }, "book");
+    focusBack = fb;   // もどる → クリアのカード → その先の戻り先は、クリアのカードを出す前のまま
+    if (!(stars > 0)) { const sEl = el.card.querySelector(".book-stars"); if (sEl) sEl.hidden = true; }
+    bookLockAt = now();   // 開いた直後に「もどる」を 2 回押して、戻ったカードの別のボタンに当たらないように
+    if (isStandalone()) { const hm = el.card.querySelector(".book-home"); if (hm) hm.hidden = true; }
+    const ul = el.card.querySelector("ul.book");
+    if (!ul) return;
+    const dpr = Math.min(2, Math.max(1, Number(window.devicePixelRatio) || 1));
+    for (const k of R.ANIMALS || []) {
+      const n = Number.isSafeInteger(book.a[k]) && book.a[k] > 0 ? book.a[k] : 0;
+      const step = safeCall(() => L.bookStep(n), 0) || 0;
+      const at = safeCall(() => L.nextStepAt(n), 0) || 0;
+      const items = R.DRESS_ITEMS && R.DRESS_ITEMS[k] ? R.DRESS_ITEMS[k] : [];
+      const li = document.createElement("li");
+      li.dataset.kind = k;
+      li.dataset.step = String(step);
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(56 * dpr); cv.height = Math.round(60 * dpr);
+      cv.setAttribute("aria-hidden", "true");
+      try { const ctx = cv.getContext("2d"); if (ctx) R.drawAnimal(ctx, k, { w: cv.width, h: cv.height, mood: "happy", dress: step }); } catch (e) { /* 絵が描けなくても続ける */ }
+      const who = document.createElement("div");
+      who.className = "who";
+      const nm = document.createElement("b"); nm.className = "name"; nm.textContent = R.ANIMAL_NAMES[k] || "おきゃくさん";
+      const cnt = document.createElement("span"); cnt.className = "cnt"; cnt.textContent = `${n}にん`;
+      const left = document.createElement("span"); left.className = "left";
+      if (at && items[step]) fillParts(left, [{ t: `あと ${at - n}にんで ` }, { t: items[step][0], nb: true }]);
+      else { left.textContent = "ぜんぶ そろったよ"; left.classList.add("done"); }
+      who.append(nm, cnt, left);
+      li.append(cv, who);
+      ul.appendChild(li);
+    }
+  }
+  function closeBook() {
+    if (overlayKind !== "book") return;
+    showClearCard({ again: true });
   }
 
   // ===== お助け =====
@@ -734,6 +855,7 @@
   function showCard(html, fields, kind) {
     focusBack = document.activeElement;
     el.card.innerHTML = html;
+    el.card.dataset.kind = kind;   // CSS がカードの種類で並べ方を変える（なかよしちょう）
     el.card.querySelectorAll("[data-f]").forEach((n) => { n.textContent = fields[n.dataset.f] ?? ""; });
     el.overlay.hidden = false;
     overlayKind = kind;
@@ -793,6 +915,7 @@
       hideOverlay();
       if (!document.hidden) render.resume();
     }
+    if (overlayKind === "book") { closeBook(); return; }   // なかよしちょう（Esc も）→ クリアのカードへ戻る
     // クリアのカードは閉じない（「つぎの めんへ」を選ぶ）
   }
   function goNext() {
@@ -812,6 +935,7 @@
     const btn = e.target && e.target.closest ? e.target.closest("[data-cmd]") : null;
     if (!btn) return;
     if ((overlayKind === "clear" || overlayKind === "rescue") && now() - cardShownAt < CARD_LOCK_MS) return;   // 出た直後の連打で押し間違えない
+    if ((overlayKind === "clear" || overlayKind === "book") && now() - bookLockAt < BOOK_LOCK_MS) return;   // なかよしちょうを開いた・閉じた直後も同じ
     const cmd = btn.dataset.cmd;
     if (cmd === "next") goNext();
     else if (cmd === "menu") goMenu();
@@ -819,6 +943,8 @@
     else if (cmd === "restartYes") doRestart();
     else if (cmd === "rewindYes") doRewind();
     else if (cmd === "share") doShare();
+    else if (cmd === "book") showBook();
+    else if (cmd === "bookClose") closeBook();
   });
   el.helpBtn.addEventListener("click", () => { sfx.unlock(); showHelp(); });
   // 届ける演出の途中でお客さんを押したら、演出を飛ばす（連鎖が長いときに待たせない）
@@ -983,6 +1109,9 @@
 
   // ===== 起動 =====
   (function boot() {
+    // なかよしちょう：お客さんの おしゃれを渡す（IB-34）。起動では書かない（無い人は 0 から。最初のクリアで書く）
+    const rb = readBookNow();
+    if (rb && typeof render.setDress === "function") render.setDress(dressMap(rb.book));
     const sv = safeCall(() => L.validateSave(readKey(KEY_SAVE)), null);
     let ok = false;
     if (sv && Number.isSafeInteger(sv.level) && sv.level >= 1) ok = startLevel(sv.level, sv.moves);

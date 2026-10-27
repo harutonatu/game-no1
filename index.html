@@ -815,13 +815,33 @@
     } catch (e) { return ""; }
   }
 
-  // いろびん：irobin.best（クリアした一番大きい面）。安全な整数で 1 以上のときだけ「N めん クリア」、それ以外は空
+  // いろびん：irobin.best（クリアした一番大きい面）。安全な整数で 1 以上のときだけ「N めん クリア」、それ以外は空。
+  // なかよしちょう（irobin.book、v45）の ★ が 1 つ以上なら「・★M」を足す。壊れた帳面は ★ なしとして扱う
   function irobinBest() {
     try {
       const raw = localStorage.getItem("irobin.best");
       if (raw === null) return "";
       const n = Number(raw);
-      return Number.isSafeInteger(n) && n >= 1 ? n + " めん クリア" : "";
+      if (!(Number.isSafeInteger(n) && n >= 1)) return "";
+      let stars = 0;
+      try {
+        const b = JSON.parse(localStorage.getItem("irobin.book"));
+        // logic.js の readBook と同じ決まり：v は 1 以上 BOOK_V(1) 以下の整数、s の鍵は 1 から始まる 16 桁までの整数、
+        // 値は [星 1〜3, 手数 1〜1e9 の整数] の 2 つ組、読むのは 5000 面まで（条件を満たさない面は数えない）
+        if (b && typeof b === "object" && !Array.isArray(b) && Number.isSafeInteger(b.v) && b.v >= 1 && b.v <= 1 && b.s && typeof b.s === "object" && !Array.isArray(b.s)) {
+          let kept = 0;
+          for (const k of Object.keys(b.s)) {
+            if (kept >= 5000) break;
+            const r = b.s[k];
+            if (!/^[1-9][0-9]{0,15}$/.test(k) || !Number.isSafeInteger(Number(k))) continue;
+            if (!Array.isArray(r) || r.length !== 2 || !(r[0] === 1 || r[0] === 2 || r[0] === 3) || !Number.isSafeInteger(r[1]) || r[1] < 1 || r[1] > 1e9) continue;
+            stars += r[0];
+            kept += 1;
+          }
+        }
+      } catch (e) { stars = 0; }
+      // ★があるときは「N めん クリア」の中を折り返さない空白にし、★の前の空白でだけ 2 行目へ回す（SE 縦でも 2 行まで。V13）
+      return stars > 0 ? n + "\u00a0めん\u00a0クリア ★" + stars : n + " めん クリア";
     } catch (e) { return ""; }
   }
 
