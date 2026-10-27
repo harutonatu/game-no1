@@ -254,7 +254,7 @@ const M = [
   // いろびん v36（IB-09・IB-11・IB-22）。流すときは ONLY に BL・BW の全項目と X1
   ['MB26 いろびん：makeSave が上限を超えた手も書く（読むときに捨てられ面の最初に戻る。IB-09）', '保存', 'games/irobin/logic.js', 'moves.slice(0, MAX_MOVES_SAVED).map(', 'moves.map('],
   ['MB27 いろびん：予備の固定面（fallback 2）を verify に通さない（IB-11）', '生成', 'games/irobin/logic.js', '      if (!verify(lv, params, got)) throw new Error("いろびん: 予備の面が解けません（" + lv + " 面）");\n', ''],
-  ['MB28 いろびん：最後の手まで保存された面を、クリアのカードなしで次の面にする（IB-22）', '保存', 'games/irobin/main.js', '      hud();\n      onClear();\n      return true;', '      const r = L.recordBest(best, level);\n      best = r.best; writeKey(KEY_BEST, String(best));\n      return startLevel(level + 1, []);'],
+  ['MB28 いろびん：最後の手まで保存された面を、クリアのカードなしで次の面にする（IB-22）', '保存', 'games/irobin/main.js', '      hud();\n      onClear({ restored: true });\n      return true;', '      const r = L.recordBest(best, level);\n      best = r.best; writeKey(KEY_BEST, String(best));\n      return startLevel(level + 1, []);'],
   //      v37 の新しい仕掛け（IB-29・契約 §19）。局面のキーの 3 文字目（仕掛けの印）を落とす変異は作らない：瓶は印ごとに分かれて並ぶので、落としても局面が重ならず見つけられない（BL16 の作業で確かめた）
   ['MB29 いろびん：ちいさい びんにも 4 段入る（注ぐ量の上限を瓶ごとに見ない）', 'ルール', 'games/irobin/logic.js', 'const cap = td === SMALL_TAG ? SMALL_CAP : CAP;', 'const cap = CAP;'],
   ['MB30 いろびん：ちいさい びんを短く描かない（data-cap をいつも 4 にする）', '見た目', 'games/irobin/render.js', 'btn.dataset.cap = String(bcap);', 'btn.dataset.cap = "4";'],
