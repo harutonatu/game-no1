@@ -54,14 +54,17 @@
   const GIM_TIP = {
     small: ["ちいさい びんには 3つ までしか はいらないよ。そろえる ばしょには ならないよ", "ちいさい びんは 3つ まで"],
     only: ["くちの しるしと おなじ いろ だけ はいるよ", "しるしと おなじ いろ だけ"],
-    lock: ["かぎの びんは、かぎと おなじ いろを 1ぽん そろえると あくよ", "かぎの いろを そろえると あくよ"]
+    lock: ["かぎの びんは、かぎと おなじ いろを 4つ かさねると あくよ", "かぎの いろを 4つ かさねると あくよ"]
   };
   const HINT_SMALL_FULL = "ちいさい びんには 3つ までしか はいらないよ";
   const onlyHint = (c) => `この びんには ${colorName(c)} しか いれられないよ`;
-  const lockHint = (c) => (shortHint() ? `${colorName(c)}を そろえると あくよ` : `かぎの びんは、${colorName(c)}を 1ぽん そろえると あくよ`);
+  // 色は名前に記号の呼び名を添える（あお と みずいろ のように近い色があるため。v47）
+  const markWord = (c) => safeCall(() => R.markWord(c), "") || "";
+  const colorMark = (c) => `${colorName(c)}（${markWord(c)}）`;
+  const lockHint = (c) => (shortHint() ? `${colorMark(c)}を 4つ かさねると あくよ` : `かぎの びんは、${colorMark(c)}を 4つ かさねると あくよ`);
   const DENY_HINT = {
     covered: "ぬのの びんは、おきゃくさんに とどけると あくよ",
-    locked: "かぎの びんは、かぎの いろを そろえると あくよ",
+    locked: "かぎの びんは、かぎの いろを 4つ かさねると あくよ",
     only: "その びんには しるしの いろ しか いれられないよ",
     mismatch: "いろが ちがうよ。うえの いろが おなじ びんか、からの びんに そそげるよ",
     full: "その びんは いっぱいだよ",
@@ -369,6 +372,7 @@
     }
     const b = state.bottles[i];
     if (!Number.isInteger(i) || !b) return null;
+    if (!Number.isSafeInteger(b.lock)) safeCall(() => render.hideTip(), null);   // 錠の吹き出しは、ほかの瓶を押したら消える（錠の瓶を押したときは下で出し入れする）
     // 布の瓶：選べない。揺らしてヒント。選んでいる瓶があっても、その選びは解除しない（§17.4）
     if (coverOf(b) !== null) {
       const m = Math.max(0, coverOf(b) - (Number(state.served) || 0));
@@ -381,6 +385,7 @@
     if (Number.isSafeInteger(b.lock)) {
       setHint(lockHint(b.lock));
       render.deny(i, "locked");
+      safeCall(() => render.lockTip(i), null);   // 錠の上に「★ を 4つ かさねると あくよ（いま N つ）」。もう一度押すと消える（v47）
       sfx.play("deny");
       return "locked";
     }
@@ -740,6 +745,7 @@
     selected = null;
     doomed = false;
     render.update(state, { selected: null });
+    safeCall(() => render.hideTip(), null);
     save();
     hud();
     sfx.play("undo");
@@ -811,6 +817,7 @@
       selected = null;
       doomed = false;
       render.update(state, { selected: null });
+      safeCall(() => render.hideTip(), null);
       save();
       hud();
       sfx.play("undo");
@@ -885,7 +892,7 @@
     const parts = [];
     if (reach >= (L.SMALL_FROM || 41)) parts.push('<b>ちいさい びん</b>は 3つ まで。');
     if (reach >= (L.ONLY_FROM || 71)) parts.push('<b>いろ きまりの びん</b>は しるしの いろ だけ。');
-    if (reach >= (L.KEY_FROM || 101)) parts.push('<b>かぎの びん</b>は かぎの いろを そろえると あく。');
+    if (reach >= (L.KEY_FROM || 101)) parts.push('<b>かぎの びん</b>は かぎの いろを 4つ かさねると あく。');
     return parts.length ? `<li class="gimhelp">${parts.join("")}</li>` : "";
   }
   // 遊び方の 3 つ目の行（IB-36）：「？」（12 面から）と 布（5 面から）は、その面まで来た人にだけ書く（はじめての人のカードを短く）

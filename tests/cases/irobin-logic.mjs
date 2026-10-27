@@ -1177,4 +1177,23 @@ export const tests = [
       check('(h) bookStars：s が {1:[3,6],2:[1,9]} で 4・空は 0', L.bookStars({ s: { 1: [3, 6], 2: [1, 9] } }) === 4 && L.bookStars(empty) === 0 && L.bookStars(null) === 0, null);
     },
   },
+  {
+    id: 'BL27', tier: 'smoke', node: true, title: 'いろびん v47 錠の数え方 lockProgress：中身が全部見えて全部その色の瓶の段数（いちばん多い数）・別の色や隠れた段がある瓶・鍵の瓶・布の瓶・ちいさい びんは 0・封をした瓶は 4・壊れた入力は 0',
+    run({ check, root }) {
+      const L = load(root);
+      const B = (cells, o = {}) => ({ id: 0, cells, hidden: cells.map((_, i) => (o.hid || []).includes(i)), sealed: !!o.sealed, lock: o.lock === undefined ? null : o.lock, cover: o.cover === undefined ? null : o.cover, cap: o.cap || 4 });
+      const S = (...bs) => ({ bottles: bs });
+      check('(a) 空の盤・空の瓶だけで 0', L.lockProgress(S(B([]), B([])), 4) === 0 && L.lockProgress(S(), 4) === 0, null);
+      check('(b) 中身が全部その色の瓶の段数：[c,c] は 2・[c] は 1・いちばん多い数', L.lockProgress(S(B([4, 4]), B([4]), B([4, 4, 4])), 4) === 3 && L.lockProgress(S(B([4, 4]), B([4])), 4) === 2, null);
+      check('(c) 底に別の色がある [x,c,c] は 0・隠れた c の上の c は 0・隠れた段が 1 つでもあれば 0', L.lockProgress(S(B([1, 4, 4])), 4) === 0 && L.lockProgress(S(B([4, 4], { hid: [0] })), 4) === 0 && L.lockProgress(S(B([4, 4, 4], { hid: [2] })), 4) === 0, null);
+      check('(d) 間に別の色が挟まる [c,x,c]・上が別の色 [c,c,x] は 0', L.lockProgress(S(B([4, 1, 4])), 4) === 0 && L.lockProgress(S(B([4, 4, 1])), 4) === 0, null);
+      check('(e) 封をした瓶は 4（鍵と同じ色だけ）', L.lockProgress(S(B([4, 4, 4, 4], { sealed: true })), 4) === 4 && L.lockProgress(S(B([3, 3, 3, 3], { sealed: true })), 4) === 0, null);
+      check('(f) 鍵の瓶の中身は数えない', L.lockProgress(S(B([4, 4, 4], { lock: 4 }), B([4])), 4) === 1 && L.lockProgress(S(B([4, 4, 4], { lock: 4 })), 4) === 0, null);
+      check('(h) ちいさい びん（cap 3）[c,c,c] は 0', L.lockProgress(S(B([4, 4, 4], { cap: 3 })), 4) === 0 && L.lockProgress(S(B([4, 4, 4], { cap: 3 }), B([4, 4])), 4) === 2, null);
+      check('(i) 布の瓶は 0', L.lockProgress(S(B([4, 4, 4], { cover: 2 })), 4) === 0 && L.lockProgress(S(B([4, 4, 4], { cover: 2 }), B([4])), 4) === 1, null);
+      const bad = [null, undefined, 5, 'x', {}, { bottles: null }, { bottles: [null, 3, {}] }].map((st) => L.lockProgress(st, 4));
+      const bad2 = [undefined, null, -1, NaN, 1.5, 'a'].map((c) => L.lockProgress(S(B([4, 4])), c));
+      check('(g) 壊れた入力は 0 で落ちない', bad.every((x) => x === 0) && bad2.every((x) => x === 0), { bad, bad2 });
+    },
+  },
 ];

@@ -1436,7 +1436,7 @@ export const tests = [
     },
   },
   {
-    id: 'BW27', tier: 'full', title: 'いろびん v37 かぎの びん（101 面）：錠の絵（鍵の色と記号）・data-lock・aria-label「かぎの びん（○○を 1ぽん そろえると あく）」・中身は見える・はじめての説明と irobin.lock・押すと選べずヒントと deny（選んでいた瓶はそのまま）・鍵の色をそろえると開く（錠が消える・音 unveil・「かぎが あいた！」）・動きを減らす設定でも開く・SE 縦で見分けられる・再読み込みで同じ局面',
+    id: 'BW27', tier: 'full', title: 'いろびん v37 かぎの びん（101 面）：錠の絵（鍵の色と記号）・data-lock・aria-label「かぎの びん（○○（記号）を 4つ かさねると あく。いま N つ）」・中身は見える・はじめての説明と irobin.lock・押すと選べずヒントと deny（選んでいた瓶はそのまま）・鍵の色をそろえると開く（錠が消える・音 unveil・「かぎが あいた！」）・動きを減らす設定でも開く・SE 縦で見分けられる・再読み込みで同じ局面',
     async run({ browser, check }) {
       const v = SMOKE_V();
       const { ctx, page } = await openG(browser, 'BW27', { v, opts: { initScript: SFX_SPY, clock: false }, extra: { 'irobin.best': '100', 'irobin.cloth': '1', 'irobin.small': '1', 'irobin.only': '1' } });
@@ -1451,7 +1451,7 @@ export const tests = [
       const d0 = await lockDom(), x = d0.find((y) => y.lock !== null), col = lb[0] && C[lb[0].lock];
       check(`101 面：かぎの びんが 1 本（state ${lb.length}・DOM ${d0.filter((y) => y.lock !== null).length}）`, s0.level === 101 && lb.length === 1 && d0.filter((y) => y.lock !== null).length === 1 && x.id === String(lb[0].id) && x.lock === String(lb[0].lock), d0.filter((y) => y.lock !== null));
       check(`錠の絵は鍵の色の記号（${x && x.mark}＝${col && col.mark}）、中身の段は見える（${x && x.segs} 段）、aria-label「${x && x.label}」`,
-        !!x && !!col && x.mark === col.mark && x.segs === lb[0].cells.length && x.label.startsWith(`${lb[0].id + 1}ばん：かぎの びん（${col.name}を 1ぽん そろえると あく）。`), x);
+        !!x && !!col && x.mark === col.mark && x.segs === lb[0].cells.length && x.label.startsWith(`${lb[0].id + 1}ばん：かぎの びん（${col.name}（`) && /を 4つ かさねると あく。いま \d+つ）。/.test(x.label), x);
       check(`SE 縦：錠が 16px 以上（${x && x.box && Math.round(x.box.w)}×${x && x.box && Math.round(x.box.h)}px）で瓶の幅の中、口の上にあって中身のマスと重ならない（錠の下 ${x && x.box && Math.round(x.box.b)} ≦ 一番上の段の上 ${x && Math.round(x.segTop)}）`,
         !!x && !!x.box && x.box.w >= 16 && x.box.h >= 16 && x.box.l >= x.bt.l - 0.5 && x.box.r <= x.bt.r + 0.5 && x.box.b <= x.segTop + 0.5, x && { box: x.box, segTop: x.segTop });
       const flag = await stored(page, 'irobin.lock'), tip = await page.evaluate(() => document.querySelector('#board').dataset.gimTip);
@@ -1461,7 +1461,7 @@ export const tests = [
       const before = (await plays(page)).length;
       await page.click(`#board .bottle[data-id="${lb[0].id}"]`); await wait(page, 80);
       const s1 = await gs(page), h1 = await hintText(page), pl1 = (await plays(page)).slice(before).map((y) => y.n);
-      check(`かぎの びんを押すと選べない（selected ${s1.selected}）、ヒント「${h1}」、deny の音`, s1.selected === null && new RegExp(`${col.name}を 1ぽん そろえると あく`).test(h1 || '') && pl1.includes('deny'), { h1, pl1 });
+      check(`かぎの びんを押すと選べない（selected ${s1.selected}）、ヒント「${h1}」、deny の音`, s1.selected === null && new RegExp(`${col.name}（[^）]+）を 4つ かさねると あく`).test(h1 || '') && pl1.includes('deny'), { h1, pl1 });
       const other = s0.bottles.findIndex((b, i) => i !== li && b.cells.length > 0 && b.lock === null);
       await page.evaluate(([o, l]) => { window.IrobinGame.pick(o); window.IrobinGame.pick(l); }, [other, li]); await wait(page, 80);
       const s2 = await gs(page);
@@ -2620,6 +2620,114 @@ export const tests = [
         const r = await toBook(STD_V(), bookOf(50, { s: stars3, last: 1 }), 'l 減らす', { opts: { reducedMotion: 'reduce' } });
         const b = await rowsOf(r.page); await r.ctx.close();
         check(`(l) 通常は札に動きがあり（${J(a.map((x) => x.anim))}）、reducedMotion: reduce では animation-name が none（${J(b.map((x) => x.anim))}）`, a.length === 6 && a.every((x) => x.anim !== 'none') && b.length === 6 && b.every((x) => x.anim === 'none'), { a, b });
+      }
+    },
+  },
+  {
+    id: 'BW39', tier: 'full', title: 'いろびん v47：かぎの びんの開け方が分かる（101 面）。錠のそばの「N/4」が lockProgress と同じ・重ねると増える・押すと吹き出し「★ を 4つ かさねると あくよ（いま N つ）」が 4 秒で消える（もう一度押す・ほかを押しても消える）・下の一言と読み上げも同じ言葉・SE 縦横のホーム画面と Safari で重ならない・12px 以上・動きを減らす設定でも出る',
+    async run({ browser, check, root }) {
+      const f = path.join(root, 'games/irobin/logic.js');
+      const L = createRequire(f)(f);
+      const c0 = L.createLevel(101);
+      const st0 = c0.state;
+      const key = st0.bottles.findIndex((b) => Number.isSafeInteger(b.lock));
+      const color = key >= 0 ? st0.bottles[key].lock : -1;
+      const name = L.colorName(color);
+      // ★ を 1 つ重ねる手（lockProgress が増える手）を探す
+      const base = L.lockProgress(st0, color);
+      // 1 手か 2 手で増える手の並び（最初は鍵の色を空き瓶へ移し、次にもう 1 つ重ねる、など）を探す
+      let mvs = null, after = base;
+      search: for (const [a, b] of L.legalMoves(st0)) {
+        const r1 = L.applyMove(st0, a, b);
+        if (!r1.state) continue;
+        if (L.lockProgress(r1.state, color) > base) { mvs = [[a, b]]; after = L.lockProgress(r1.state, color); break; }
+        for (const [c, d] of L.legalMoves(r1.state)) {
+          const r2 = L.applyMove(r1.state, c, d);
+          if (r2.state && L.lockProgress(r2.state, color) > base) { mvs = [[a, b], [c, d]]; after = L.lockProgress(r2.state, color); break search; }
+        }
+      }
+      check(`準備：101 面に鍵の瓶があり（${key} 番・色 ${color} ${name}）、重ねると数が増える手がある（${J(mvs)}。いま ${base}）`, key >= 0 && mvs !== null, { key, color, mvs, base });
+      if (key < 0 || !mvs) return;
+      const EX = { 'irobin.cloth': '1', 'irobin.small': '1', 'irobin.only': '1', 'irobin.lock': '1', 'irobin.save': J({ v: 3, level: 101, moves: [] }) };
+      const info = (p) => p.evaluate((i) => {
+        const btn = document.querySelectorAll('#board .bottle')[i];
+        const ln = btn && btn.querySelector('.lockn');
+        const tip = document.querySelector('.locktip');
+        return { n: ln ? ln.textContent : null, label: btn ? btn.getAttribute('aria-label') : null, tip: tip ? tip.textContent.replace(/\s+/g, ' ').trim() : null, tipMark: tip && tip.querySelector('.tipmark') ? tip.querySelector('.tipmark').dataset.mark : null, hint: document.querySelector('#hint').textContent.trim() };
+      }, key);
+      const markOf = (c) => L.COLORS[c].mark;
+      {
+        const { ctx, page } = await openG(browser, 'BW39 a', { v: SMOKE_V(), extra: EX });
+        const i0 = await info(page);
+        check(`(a) 錠のそばの数が lockProgress と同じ（${i0.n}。期待 ${base}/4）、読み上げに「かさねると あく。いま ${base}つ」と記号の呼び名（${i0.label}）`,
+          i0.n === `${base}/4` && /かさねると あく/.test(i0.label) && i0.label.includes(`いま ${base}つ`) && i0.label.includes(name) && /（[^）]+）を 4つ/.test(i0.label), i0);
+        let ok = 'pour';
+        for (const m of mvs) { const r = await page.evaluate(([a, b]) => window.IrobinGame.pour(a, b), m); if (r !== 'pour') ok = r; await wait(page, 600); }
+        const i1 = await info(page);
+        check(`(b) 重ねると数が増える（${base}/4 → ${i1.n}。期待 ${after}/4）・読み上げも「いま ${after}つ」（pour ${ok}）`, ok === 'pour' && i1.n === `${after}/4` && i1.label.includes(`いま ${after}つ`), i1);
+        // (c) 押すと吹き出し
+        await page.evaluate((i) => window.IrobinGame.pick(i), key);
+        await wait(page, 200);
+        const t1 = await info(page);
+        const want = `を 4つ かさねると あくよ（いま ${after}つ）`;
+        check(`(c) 錠の瓶を押すと吹き出し「${want}」と ${markOf(color)} の記号が出る（${t1.tip}・記号 ${t1.tipMark}）`, !!t1.tip && t1.tip.includes(want) && t1.tipMark === markOf(color), t1);
+        check(`(d) 下の一言も同じ言葉（${t1.hint}）：${name}・記号の呼び名・「4つ かさねると あくよ」・「1ぽん」は出ない`, t1.hint.includes(name) && /（[^）]+）/.test(t1.hint) && t1.hint.includes('4つ かさねると あくよ') && !t1.hint.includes('1ぽん'), t1);
+        await wait(page, 4200);
+        const t2 = await info(page);
+        check(`(c2) 4 秒ほどで消える（${t2.tip}）`, t2.tip === null, t2);
+        // もう一度押すと消える／ほかを押すと消える
+        await page.evaluate((i) => window.IrobinGame.pick(i), key); await wait(page, 100);
+        const u1 = await info(page);
+        await page.evaluate((i) => window.IrobinGame.pick(i), key); await wait(page, 100);
+        const u2 = await info(page);
+        await page.evaluate((i) => window.IrobinGame.pick(i), key); await wait(page, 100);
+        const other = st0.bottles.findIndex((b, j) => j !== key && b.cells.length > 0 && b.cover == null && !b.sealed && !Number.isSafeInteger(b.lock));
+        await page.evaluate((i) => window.IrobinGame.pick(i), other); await wait(page, 100);
+        const u3 = await info(page);
+        check(`(c3) 押すと出て（${!!u1.tip}）、もう一度押すと消え（${u2.tip}）、また出して ほかの瓶（${other} 番）を押すと消える（${u3.tip}）`, !!u1.tip && u2.tip === null && u3.tip === null, { u1, u2, u3 });
+        // 吹き出しを出して遊び方を開くと消える
+        await page.evaluate((i) => window.IrobinGame.pick(i), key); await wait(page, 100);
+        const w1 = await info(page);
+        await page.click('#helpBtn'); await wait(page, 200);
+        const w2 = await info(page);
+        check(`(c4) 吹き出しを出したあと遊び方を開くと消える（出ていた ${!!w1.tip}・開いたあと ${w2.tip}）`, !!w1.tip && w2.tip === null, { w1, w2 });
+        await ctx.close();
+      }
+      // (e) 画面の中・ほかと重ならない・12px 以上（SE 縦横のホーム画面と Safari）
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'safari')]) {
+        const { ctx, page } = await openG(browser, `BW39 e ${v.label}`, { v, extra: EX });
+        await page.evaluate((i) => window.IrobinGame.pick(i), key);
+        await wait(page, 200);
+        const m = await page.evaluate((i) => {
+          const R = (e) => e.getBoundingClientRect();
+          const ov = (a, r) => Math.max(0, Math.min(Math.min(a.right, r.right) - Math.max(a.left, r.left), Math.min(a.bottom, r.bottom) - Math.max(a.top, r.top)));
+          const bs = [...document.querySelectorAll('#board .bottle')];
+          const glasses = bs.filter((_, j) => j !== i).map((b) => R(b.querySelector('.glass') || b));
+          const others = glasses.concat(['#shop', '.head', '#hint'].map((q) => R(document.querySelector(q))));
+          const tip = document.querySelector('.locktip'), ln = bs[i].querySelector('.lockn');
+          const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+          const inside = (r) => r.left >= -0.5 && r.top >= -0.5 && r.right <= vw + 0.5 && r.bottom <= vh + 0.5;
+          const tr = tip ? R(tip) : null, lr = ln ? R(ln) : null;
+          const tm = tip ? tip.querySelector('.tipmark') : null;
+          return {
+            tip: !!tip, tipIn: tr ? inside(tr) : false, tipOv: tr ? Math.max(...others.map((o) => ov(tr, o))) : null,
+            nIn: lr ? inside(lr) : false, nOv: lr ? Math.max(...glasses.concat([R(document.querySelector('#shop')), R(document.querySelector('.head'))]).map((o) => ov(lr, o))) : null,
+            nFont: ln ? parseFloat(getComputedStyle(ln).fontSize) : 0, tipFont: tip ? parseFloat(getComputedStyle(tip).fontSize) : 0,
+            tipMarkSize: tm ? Math.min(R(tm).width, R(tm).height) : 0,
+          };
+        }, key);
+        check(`${v.label} ${v.w}×${v.h}｜吹き出しは画面の中（${m.tipIn}）・瓶のガラス／棚／見出し／ヒントと重ならない（${m.tipOv === null ? '-' : m.tipOv.toFixed(1)}px）・字 ${m.tipFont}px・記号 ${m.tipMarkSize.toFixed(1)}px、「N/4」は画面の中（${m.nIn}）・ほかと重ならない（${m.nOv === null ? '-' : m.nOv.toFixed(1)}px）・字 ${m.nFont}px（12px 以上）`,
+          m.tip && m.tipIn && m.tipOv <= 0.5 && m.tipFont >= 13 && m.tipMarkSize >= 12 && m.nIn && m.nOv <= 0.5 && m.nFont >= 12, m);
+        await ctx.close();
+      }
+      // (f) 動きを減らす設定でも出る（ふわっと出さず、そのまま）
+      {
+        const { ctx, page } = await openG(browser, 'BW39 f', { v: SMOKE_V(), opts: { reducedMotion: 'reduce' }, extra: EX });
+        await page.evaluate((i) => window.IrobinGame.pick(i), key);
+        await wait(page, 100);
+        const r = await page.evaluate(() => { const t = document.querySelector('.locktip'); return t ? { text: t.textContent, anim: getComputedStyle(t).animationName } : null; });
+        check(`(f) 動きを減らす設定でも吹き出しが出て（${r && r.text}）、動きは付かない（animation-name ${r && r.anim}）`, !!r && r.text.includes('かさねると あくよ') && r.anim === 'none', r);
+        await ctx.close();
       }
     },
   },

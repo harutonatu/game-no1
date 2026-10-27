@@ -1223,6 +1223,29 @@
   }
 
 
+  // 錠の表示用（v47）：color の鍵の瓶を開けるために、いま何個そろっているか（0〜4）。
+  // 「その瓶にあと 4−N 足せば開く」が成り立つ瓶だけ数える：中身が全部見えていて全部その色の瓶（数は段の数）。封をした瓶は 4。
+  // 鍵の瓶・布の瓶・ちいさい びん（cap 3）・別の色や隠れた段がある瓶は数えない。いちばん多い数を返す。壊れた入力は 0
+  function lockProgress(state, color) {
+    try {
+      if (!state || !Array.isArray(state.bottles) || !isInt(color) || color < 0) return 0;
+      let best = 0;
+      for (const b of state.bottles) {
+        if (!b || !Array.isArray(b.cells) || b.lock !== null && b.lock !== undefined) continue;
+        if (b.cover !== null && b.cover !== undefined) continue;   // 布の瓶は注げないので、そろえる先にならない
+        if (b.cap === SMALL_CAP) continue;                         // ちいさい びんは 3 段までで、4 つそろわない
+        if (b.sealed === true) { if (b.cells[0] === color) best = CAP; continue; }
+        if (b.cells.length === 0) continue;
+        let ok = true;
+        for (let i = 0; i < b.cells.length; i++) if (b.cells[i] !== color || (b.hidden && b.hidden[i] === true)) { ok = false; break; }
+        if (ok && b.cells.length > best) best = b.cells.length;
+      }
+      return Math.min(best, CAP);
+    } catch (e) {
+      return 0;
+    }
+  }
+
   const api = Object.freeze({
     NAME, CAP, ORDER_SLOTS, MAX_COLORS, MAX_MOVES_SAVED, SOLVE_NODE_LIMIT, GEN_NODE_BUDGET, GEN_TRIES,
     SAVE_KEY_BEST, SAVE_KEY_SAVE, SAVE_KEY_HELP, SAVE_KEY_CLOTH, SAVE_KEY_SMALL, SAVE_KEY_ONLY, SAVE_KEY_LOCK, SAVE_KEY_BOOK, COLORS, LEVELS,
@@ -1234,7 +1257,7 @@
     replay, hud, validateBest, validateSave, makeSave, recordBest, validateFlag,
     MILESTONE_EVERY, milestoneFor,
     BOOK_V, BOOK_STEPS, emptyBook, bookStep, nextStepAt, readBook, addClear, bookStars, makeBook,
-    animalFor, colorName,
+    animalFor, colorName, lockProgress,
     normalizeState
   });
   root.IrobinLogic = api;

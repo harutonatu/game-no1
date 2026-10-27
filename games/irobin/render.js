@@ -80,6 +80,9 @@
     wave: '<path d="M2.5 13.5c2.4-4.6 4.8-4.6 6.4 0s4.4 4.6 6.4 0 4.4-4.6 6.2 0" fill="none" stroke-width="3.4" stroke-linecap="round"/>',
     moon: '<path d="M15.6 3.2A9 9 0 1 0 20.9 16.4 7.2 7.2 0 0 1 15.6 3.2z"/>'
   };
+  // 記号の呼び名（文と読み上げ用。色の名前だけでは あお と みずいろ のように近い色が分かりにくいので、いつも添える。v47）
+  const MARK_WORD = Object.freeze({ circle: "まる", triangle: "さんかく", square: "しかく", diamond: "ひしがた", star: "ほし", cross: "ばつ", heart: "ハート", ring: "わっか", wave: "なみ", moon: "つき" });
+  function markWord(colorId) { return MARK_WORD[colorInfo(colorId).mark] || "まる"; }
   const Q_PATH = '<path d="M8.6 9.2a3.5 3.5 0 1 1 5 3.1c-1.1.5-1.6 1.2-1.6 2.5" fill="none" stroke="#ffffff" stroke-width="2.7" stroke-linecap="round"/><circle cx="12" cy="18.7" r="1.7" fill="#ffffff"/>';
   function markSvg(colorId, cls) {
     const c = colorInfo(colorId);
@@ -94,7 +97,7 @@
   const SHACKLE_SVG = '<svg class="shackle" viewBox="0 -1 24 15" aria-hidden="true" focusable="false"><path d="M5.5 14V8.5a6.5 6.5 0 0 1 13 0V14" fill="none" stroke="#eef1f8" stroke-width="4.5" stroke-linecap="round"/></svg>';
   function lockHtml(colorId) {
     const c = colorInfo(colorId);
-    return `<span class="lockbox" style="--c:${c.hex}">${SHACKLE_SVG}<span class="lockbody">${markSvg(colorId, "lockmark")}</span></span>`;
+    return `<span class="lockbox" style="--c:${c.hex}">${SHACKLE_SVG}<span class="lockbody">${markSvg(colorId, "lockmark")}</span><span class="lockn" aria-hidden="true"></span></span>`;
   }
   function capHtml() { return '<span class="capbox"><b>3</b></span>'; }
   function onlyHtml(colorId) {
@@ -657,11 +660,78 @@
     // 番号は置き場所の番号（瓶の id + 1。§17.7）で、届けても変わらない
     const coverOf = (b) => (b && Number.isSafeInteger(b.cover) ? b.cover : null);
     const coverLeft = (b) => { const c = coverOf(b); return c === null ? 0 : Math.max(0, c - servedView); };
+    // 錠の数（v47）：いま画面にある瓶で、鍵の色が上から何個つながっているか（0〜4）
+    function lockNow(color) {
+      const Lg = logic();
+      if (!Lg || typeof Lg.lockProgress !== "function") return 0;
+      const n = safe(() => Lg.lockProgress({ bottles: buttons.map((x) => x && x._b) }, color));
+      return Number.isSafeInteger(n) ? n : 0;
+    }
+    // 錠のそばの「N/4」と読み上げを今の盤に合わせる（瓶をいくつか描き直したあとに呼ぶ）
+    function syncLocks() {
+      for (const btn of buttons) {
+        const b = btn && btn._b;
+        if (!b || !isColor(b.lock)) continue;
+        const n = lockNow(b.lock), t = `${n}/${cap()}`;
+        const ln = btn.querySelector(".lockn");
+        if (ln && ln.textContent !== t) { ln.textContent = t; ln.dataset.n = String(n); }
+        btn.setAttribute("aria-label", bottleLabel(btn._id + 1, b));
+      }
+    }
+    // 錠の瓶を押したときの吹き出し（v47）：その瓶の上（入らなければ下）に 2 秒。もう一度押す・ほかを押す・面が変わると消える
+    let tipEl = null, tipTimer = 0, tipId = null;
+    function hideTip() {
+      if (tipTimer) { clearTimeout(tipTimer); tipTimer = 0; }
+      if (tipEl && tipEl.parentNode) tipEl.parentNode.removeChild(tipEl);
+      tipEl = null; tipId = null;
+    }
+    function overlaps(a, r) { return Math.min(a.right, r.right) - Math.max(a.left, r.left) > 0.5 && Math.min(a.bottom, r.bottom) - Math.max(a.top, r.top) > 0.5; }
+    // 返す値：出したら true、同じ瓶を押して消したら false
+    function lockTip(index) {
+      const btn = buttons[index];
+      const b = btn && btn._b;
+      if (!btn || !b || !isColor(b.lock)) { hideTip(); return null; }
+      if (tipEl && tipId === btn._id) { hideTip(); return false; }
+      hideTip();
+      const n = lockNow(b.lock);
+      const el = doc.createElement("div");
+      el.className = "locktip" + (calm ? "" : " fade");
+      el.setAttribute("aria-hidden", "true");
+      el.innerHTML = `<span class="tipchip" style="--c:${colorInfo(b.lock).hex}">${markSvg(b.lock, "tipmark")}</span><span>を ${cap()}つ かさねると あくよ（いま ${n}つ）</span>`;
+      doc.body.appendChild(el);
+      tipEl = el; tipId = btn._id;
+      const vw = doc.documentElement.clientWidth || 320, vh = doc.documentElement.clientHeight || 480;
+      const w = el.offsetWidth, h = el.offsetHeight;
+      const br = btn.getBoundingClientRect();
+      const lb = btn.querySelector(".lockbox");
+      const lr = lb ? lb.getBoundingClientRect() : br;
+      const x = Math.max(4, Math.min(vw - w - 4, br.left + br.width / 2 - w / 2));
+      // 候補：錠の上 → 瓶の下。ほかの瓶・お客さんの棚・上の見出し・ヒントにかからず、画面の中に入る最初の場所
+      // 瓶の箱の上のほうは錠のための空きなので、ガラス（.glass）の枠で比べる
+      const others = [].concat(buttons.filter((x2) => x2 !== btn).map((x2) => { const g = x2.querySelector(".glass"); return (g || x2).getBoundingClientRect(); }),
+        ["#shop", ".head", "#hint"].map((q) => { const e = doc.querySelector(q); return e ? e.getBoundingClientRect() : null; }).filter(Boolean));
+      const cands = [lr.top - h - 2, br.bottom + 1];
+      let y = cands[1];
+      for (const cy of cands) {
+        const r = { left: x, right: x + w, top: cy, bottom: cy + h };
+        if (cy >= 2 && cy + h <= vh - 2 && !others.some((o2) => overlaps(r, o2))) { y = cy; break; }
+      }
+      y = Math.max(2, Math.min(vh - h - 2, y));
+      el.style.left = Math.round(x) + "px";
+      el.style.top = Math.round(y) + "px";
+      // しっぽ：錠の瓶を指す（上に出したときは下向き、下に出したときは上向き）
+      const up = y < lr.top;
+      el.dataset.side = up ? "above" : "below";
+      const cx = Math.max(10, Math.min(w - 10, br.left + br.width / 2 - x));
+      el.style.setProperty("--tx", Math.round(cx) + "px");
+      tipTimer = setTimeout(hideTip, 4000);
+      return true;
+    }
     function bottleLabel(num, b) {
       if (coverOf(b) !== null) return coverLeft(b) > 0 ? `${num}ばん。ぬのを かぶった びん。あと ${coverLeft(b)} にん とどけると あく` : `${num}ばん。ぬのを かぶった びん。もうすぐ あく`;
       // v37 の仕掛け（§19.4）：番号のすぐ後に瓶の種類を言う
       const kind = capOf(b) === 3 ? "ちいさい びん（3つ まで）。"
-        : b && isColor(b.lock) ? `かぎの びん（${colorInfo(b.lock).name}を 1ぽん そろえると あく）。`
+        : b && isColor(b.lock) ? `かぎの びん（${colorInfo(b.lock).name}（${markWord(b.lock)}）を ${cap()}つ かさねると あく。いま ${lockNow(b.lock)}つ）。`
         : b && isColor(b.only) ? `いろ きまりの びん（${colorInfo(b.only).name}だけ）。` : "";
       const n = `${num}ばん：` + kind;
       if (!b || !b.cells || !b.cells.length) return n + "から";
@@ -778,6 +848,7 @@
       // 作り直しても、キーボードのフォーカスは同じ瓶（id）に残す
       const act = doc.activeElement;
       const focusId = act && act._id !== undefined && board.contains(act) ? act._id : null;
+      hideTip();
       board.innerHTML = "";
       buttons = [];
       const n = state && Array.isArray(state.bottles) ? state.bottles.length : 0;
@@ -1013,6 +1084,7 @@
       servedView = Number(state.served) || 0;
       const slots = Array.isArray(state.slots) ? state.slots : [];
       state.bottles.forEach((b, i) => syncBottle(i, b, isWaiting(b, slots)));
+      syncLocks();
       for (let i = 0; i < custs.length; i++) {
         const want = slots[i] === undefined ? null : slots[i];
         const c = custs[i];
@@ -1208,6 +1280,7 @@
       const prevSlots = Array.isArray(prev.slots) ? prev.slots.slice() : [null, null];
       const deliveredSet = new Set((o.deliveries || []).map((d) => d.id));
       mid.forEach((b, i) => syncBottle(i, b, b && b.sealed && !deliveredSet.has(buttons[i]._id) && isWaiting(b, st.slots)));
+      syncLocks();
       applySelection();
       // 見えるようになった段：「？」がふわっと消える
       const rev = Array.isArray(o.revealed) ? o.revealed : [];
@@ -1313,6 +1386,7 @@
         const b = { id: u.id, cells: Array.isArray(u.cells) ? u.cells : (src.cells || []), hidden: Array.isArray(u.hidden) ? u.hidden : (src.hidden || []), sealed: false, cover: null };
         btn._sig = "";
         syncBottle(i, b, false);
+        syncLocks();
         if (calm) {   // 一瞬で取る。静かな縁取りだけ 0.3 秒（待たない）
           btn.classList.add("calm-glow");
           tween(300, () => {}, ease.linear).then(() => btn.classList.remove("calm-glow"));
@@ -1603,6 +1677,7 @@
 
     function pause() {
       if (paused) return;
+      hideTip();
       paused = true;
       if (raf) { caf_(raf); raf = 0; }
       lastT = 0;
@@ -1626,7 +1701,7 @@
     setCalm(calm);
 
     return {
-      build, layout, update, pour, deny, celebrate, finishAll, pause, resume, setCalm,
+      build, layout, update, pour, deny, lockTip, hideTip, celebrate, finishAll, pause, resume, setCalm,
       // なかよしの段（v45・IB-34）：{ 動物: 0〜3 }。お客さんを描き直す
       setDress(map) {
         dress = map && typeof map === "object" ? Object.assign({}, map) : {};
@@ -1640,7 +1715,7 @@
     };
   }
 
-  const api = Object.freeze({ ANIMALS, ANIMAL_NAMES, FUR, DRESS_ITEMS, DRESS_MAX, drawAnimal, markSvg, create });
+  const api = Object.freeze({ ANIMALS, ANIMAL_NAMES, FUR, DRESS_ITEMS, DRESS_MAX, drawAnimal, markSvg, markWord, create });
   root.IrobinRender = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);
