@@ -700,10 +700,13 @@
       const li = document.createElement("li");
       li.dataset.kind = k;
       li.dataset.step = String(step);
+      if (R.FUR && R.FUR[k]) li.style.setProperty("--fur", R.FUR[k]);   // 札の色（動物の毛の色。うすく敷く）
+      if (step >= 3) li.classList.add("done");   // 3 つそろった札（金の縁と王冠）
       const cv = document.createElement("canvas");
-      cv.width = Math.round(56 * dpr); cv.height = Math.round(60 * dpr);
+      cv.width = Math.round(80 * dpr); cv.height = Math.round(80 * dpr);   // 大きい画面は 80px、SE は CSS で 縦 50px・横 46px に縮める
       cv.setAttribute("aria-hidden", "true");
-      try { const ctx = cv.getContext("2d"); if (ctx) R.drawAnimal(ctx, k, { w: cv.width, h: cv.height, mood: "happy", dress: step }); } catch (e) { /* 絵が描けなくても続ける */ }
+      // 0.92 倍で上に寄せる：首元・胸のおしゃれが丸の中にまるごと入る
+      try { const ctx = cv.getContext("2d"); if (ctx) { ctx.save(); ctx.translate(cv.width * 0.04, cv.width * 0.01); R.drawAnimal(ctx, k, { w: cv.width * 0.92, h: cv.height * 0.92, mood: "happy", dress: step }); ctx.restore(); } } catch (e) { /* 絵が描けなくても続ける */ }
       const who = document.createElement("div");
       who.className = "who";
       const nm = document.createElement("b"); nm.className = "name"; nm.textContent = R.ANIMAL_NAMES[k] || "おきゃくさん";
@@ -711,7 +714,12 @@
       const left = document.createElement("span"); left.className = "left";
       if (at && items[step]) fillParts(left, [{ t: `あと ${at - n}にんで ` }, { t: items[step][0], nb: true }]);
       else { left.textContent = "ぜんぶ そろったよ"; left.classList.add("done"); }
-      who.append(nm, cnt, left);
+      const dr = document.createElement("span"); dr.className = "dress";   // 段のしるし（もらった分だけ ★、まだは ☆）
+      dr.setAttribute("aria-label", `おしゃれ ${step}こ／3こ`);
+      dr.setAttribute("role", "img");
+      const dl = document.createElement("span"); dl.className = "dl"; dl.setAttribute("aria-hidden", "true"); dl.textContent = "おしゃれ"; dr.appendChild(dl);
+      for (let i = 0; i < 3; i++) { const sp = document.createElement("i"); sp.setAttribute("aria-hidden", "true"); sp.textContent = i < step ? "★" : "☆"; if (i < step) sp.className = "on"; dr.appendChild(sp); }
+      who.append(nm, cnt, dr, left);
       li.append(cv, who);
       ul.appendChild(li);
     }

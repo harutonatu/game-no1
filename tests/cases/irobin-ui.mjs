@@ -2550,6 +2550,77 @@ export const tests = [
         check(`(h) DRESS_ITEMS が 6 匹 × 3 つ（${J(r.shape)}）で、名前 ${r.names} 個がみな違う（${r.uniq}）`, r.shape.length === 6 && r.shape.every((n) => n === 3) && r.names === 18 && r.uniq === 18, r);
         await g.ctx.close();
       }
+
+    },
+  },
+  {
+    id: 'BW38', tier: 'full', title: 'いろびん v46（なかよしちょうのドレスアップ）：段のしるし（おしゃれ ★☆☆・aria-label）、段 3 の札だけ done、SE のホーム画面は 4 つの帳面でスクロールなし・下に 4px 以上の余白、Safari は「もどる」が押せる、絵 50px（SE 縦）・46px（SE 横）・80px（大きい画面）、動きを減らすと札の動きが止まる',
+    async run({ browser, check }) {
+      const KINDS = ['kuma', 'usagi', 'neko', 'penguin', 'risu', 'hitsuji'];
+      const bookOf = (n, extra = {}) => J({ v: 1, a: Object.fromEntries(KINDS.map((k) => [k, n])), s: {}, last: 0, ...extra });
+      const stars3 = { 1: [3, 20] };
+      const STANDALONE46 = () => { Object.defineProperty(Navigator.prototype, 'standalone', { configurable: true, get: () => true }); };
+      const toBook = async (v, raw, label, opts = {}) => {
+        const g = await openG(browser, `BW38 ${label}`, { v, ...opts });
+        await solveToClear(g.page); await wait(g.page, 700);
+        await g.page.evaluate((r) => localStorage.setItem('irobin.book', r), raw);
+        await clickCmd(g.page, 'book'); await wait(g.page, 600);
+        return g;
+      };
+      // 帳面を差し替えて開き直す（クリアは 1 回だけ）。「もどる」→ クリアのカード → なかよしちょう
+      const reopen = async (g, raw) => {
+        await g.page.evaluate((r) => localStorage.setItem('irobin.book', r), raw);
+        await clickCmd(g.page, 'bookClose'); await wait(g.page, 500);
+        await clickCmd(g.page, 'book'); await wait(g.page, 600);
+      };
+      const rowsOf = (p) => p.evaluate(() => [...document.querySelectorAll('#card ul.book li')].map((li) => {
+        const d = li.querySelector('.dress'), cv = li.querySelector('canvas');
+        return { kind: li.dataset.kind, step: li.dataset.step, done: li.classList.contains('done'), n: Number((li.querySelector('.cnt')?.textContent || '').replace(/\D/g, '')),
+          marks: d ? [...d.querySelectorAll('i')].map((i) => i.textContent) : [], label: d ? (d.querySelector('.dl')?.textContent || '') : '', aria: d ? d.getAttribute('aria-label') : null, cw: cv ? cv.getBoundingClientRect().width : 0,
+          fs: Math.min(...[...li.querySelectorAll('.name,.cnt,.dress,.left')].map((e) => parseFloat(getComputedStyle(e).fontSize))), anim: getComputedStyle(li).animationName,
+          crown: getComputedStyle(li, '::after').content };
+      }));
+      // (i)(j) 段のしるしと done の札
+      {
+        const g = await toBook(STD_V(), J({ v: 1, a: { kuma: 0, usagi: 10, neko: 50, penguin: 200, risu: 3, hitsuji: 1000 }, s: {}, last: 0 }), 'i');
+        const rows = await rowsOf(g.page);
+        const steps = await g.page.evaluate((ns) => ns.map((n) => window.IrobinLogic.bookStep(n)), rows.map((r) => r.n));
+        const okI = rows.length === 6 && rows.every((r, ix) => r.step === String(steps[ix]) && r.marks.length === 3 && r.marks.filter((m) => m === '★').length === Number(r.step) && r.marks.filter((m) => m === '☆').length === 3 - Number(r.step) && r.aria === `おしゃれ ${r.step}こ／3こ` && r.label === 'おしゃれ');
+        check(`(i) 6 匹とも「おしゃれ」の文字と段のしるしが 3 つで ★ の数が data-step と同じ・aria-label が「おしゃれ N こ／3こ」（${J(rows.map((r) => [r.kind, r.step, r.label + r.marks.join(''), r.aria]))}）`, okI && new Set(rows.map((r) => r.step)).size >= 3, rows);
+        const okJ = rows.every((r) => r.done === (r.step === '3')) && rows.some((r) => r.done) && rows.some((r) => !r.done);
+        check(`(j) done の印は段 3 の札だけ（${J(rows.map((r) => [r.kind, r.step, r.done]))}）・王冠は読み上げに出ない（${J(rows.filter((r) => r.done).map((r) => r.crown))}）`, okJ && rows.filter((r) => r.done).every((r) => /\/\s*""/.test(r.crown) || r.crown === '"♛"'), rows);
+        await g.ctx.close();
+      }
+      // (k) 画面：4 つの帳面（空・途中・全部 1000・ペンギン 1000001）
+      const BOOKS = [
+        ['空', J({ v: 1, a: {}, s: {}, last: 0 })],
+        ['途中', J({ v: 1, a: { kuma: 20, usagi: 3, neko: 120, penguin: 150, risu: 60, hitsuji: 30 }, s: stars3, last: 1 })],
+        ['全部 1000', bookOf(1000, { s: stars3, last: 1 })],
+        ['ペンギン 1000001', J({ v: 1, a: { kuma: 1000, usagi: 250, neko: 200, penguin: 1000001, risu: 300, hitsuji: 200 }, s: stars3, last: 1 })],
+      ];
+      for (const [v, minCv] of [[view('SE', 'p', 'app'), 48], [view('SE', 'l', 'app'), 44], [view('SE', 'p', 'safari'), 48], [view('SE', 'l', 'safari'), 44], [view('i13', 'p', 'app'), 76], [view('iPad', 'p', 'app'), 76]]) {
+        const app = v.label.includes('ホーム画面');
+        const [, , sb] = v.safe || [0, 0, 0, 0];
+        const g = await toBook(v, BOOKS[0][1], `k ${v.label}`, { opts: app ? { initScript: STANDALONE46 } : {} });
+        for (let bi = 0; bi < BOOKS.length; bi++) {
+          const [bn, bk] = BOOKS[bi];
+          if (bi > 0) await reopen(g, bk);
+          const rows = await rowsOf(g.page);
+          const m = await g.page.evaluate(() => { const ov = document.querySelector('#overlay'), c = document.querySelector('#card').getBoundingClientRect(), b = document.querySelector('#card [data-cmd="bookClose"]').getBoundingClientRect(); return { sh: ov.scrollHeight, ch: ov.clientHeight, top: c.top, bottom: c.bottom, btnBottom: b.bottom, btnTop: b.top, ih: innerHeight }; });
+          const cvOk = rows.length === 6 && rows.every((r) => r.cw >= minCv) && rows.every((r) => r.fs >= 12);
+          const fit = app ? (m.sh <= m.ch + 1 && m.ch - m.bottom - sb >= 4) : (m.btnTop >= 0 && m.btnBottom <= m.ih - sb + 0.5);
+          check(`(k) ${v.label}・${bn}：${app ? 'スクロールなしで全部見えて下に 4px 以上の余白' : '「もどる」がスクロールなしで押せる'}（sh ${m.sh}/ch ${m.ch}・カードの下 ${Math.round(m.bottom)}・もどる ${Math.round(m.btnTop)}〜${Math.round(m.btnBottom)}/${m.ih}）・絵 ${minCv}px 以上（${J(rows.map((r) => Math.round(r.cw)))}）・字 12px 以上（${J(rows.map((r) => r.fs))}）`, cvOk && fit, { m, rows });
+        }
+        await g.ctx.close();
+      }
+      // (l) 動きを減らす：札の動きは止まる（通常は動く）
+      {
+        const g = await toBook(STD_V(), bookOf(50, { s: stars3, last: 1 }), 'l 通常');
+        const a = await rowsOf(g.page); await g.ctx.close();
+        const r = await toBook(STD_V(), bookOf(50, { s: stars3, last: 1 }), 'l 減らす', { opts: { reducedMotion: 'reduce' } });
+        const b = await rowsOf(r.page); await r.ctx.close();
+        check(`(l) 通常は札に動きがあり（${J(a.map((x) => x.anim))}）、reducedMotion: reduce では animation-name が none（${J(b.map((x) => x.anim))}）`, a.length === 6 && a.every((x) => x.anim !== 'none') && b.length === 6 && b.every((x) => x.anim === 'none'), { a, b });
+      }
     },
   },
 ];

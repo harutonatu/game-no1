@@ -637,8 +637,30 @@
   .card .book-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; column-gap: 12px; row-gap: 0; }
   .card p.book-stars { color: #ffd84d; font-weight: 700; }
   .card ul.book { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; text-align: left; }
-  .card ul.book li { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .card ul.book canvas { flex: 0 0 auto; width: 56px; height: 60px; }
+  /* v46：札（動物の毛の色をうすく敷く）。高さは v45 のまま：上下の余白 2px ぶん、絵を 2px ずつ外へ出す（負の余白） */
+  .card ul.book li { position: relative; isolation: isolate; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2px 8px; border-radius: 12px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); animation: bookIn 200ms ease-out both; }
+  .card ul.book li::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--fur, #888); opacity: 0.15; }
+  .card ul.book li:nth-child(2) { animation-delay: 40ms; }
+  .card ul.book li:nth-child(3) { animation-delay: 80ms; }
+  .card ul.book li:nth-child(4) { animation-delay: 120ms; }
+  .card ul.book li:nth-child(5) { animation-delay: 160ms; }
+  .card ul.book li:nth-child(6) { animation-delay: 200ms; }
+  @keyframes bookIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .card ul.book li.done { box-shadow: inset 0 0 0 2px #ffd84d; }
+  .card ul.book li.done::after { content: "♛"; content: "♛" / ""; position: absolute; top: 2px; right: 6px; font-size: 13px; line-height: 1; color: #ffd84d; }
+  .card ul.book canvas { flex: 0 0 auto; box-sizing: border-box; width: 80px; height: 80px; margin: -2px 0; object-fit: contain; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.55); background: rgba(255, 255, 255, 0.22); }
+  .card ul.book .dress { display: inline-flex; gap: 1px; font-style: normal; font-size: 13px; line-height: 1.3; color: #ffd84d; white-space: nowrap; }
+  .card ul.book .dress i { font-style: normal; }
+  .card ul.book .dress .dl { color: var(--ink); font-size: 12px; margin-right: 3px; font-weight: 400; }
+  .card ul.book li.done .who { padding-right: 14px; }
+  /* 台紙：ノートの罫線と金の二重線。見出しの両わきの飾りと、旗の飾り（背の低い画面では出さない） */
+  #card[data-kind="book"] { position: relative; background: repeating-linear-gradient(to bottom, transparent 0, transparent 21px, rgba(255, 255, 255, 0.05) 21px, rgba(255, 255, 255, 0.05) 22px), linear-gradient(160deg, rgba(255, 214, 140, 0.09), rgba(255, 150, 170, 0.06)), var(--panel); box-shadow: inset 0 0 0 2px rgba(255, 216, 77, 0.5), inset 0 0 0 4px var(--panel), inset 0 0 0 5px rgba(255, 216, 77, 0.25), 0 0 0 1px var(--line), 0 20px 50px rgba(0, 0, 0, 0.5); }
+  #card[data-kind="book"] h2::before, #card[data-kind="book"] h2::after { color: #ffd84d; font-size: 16px; }
+  #card[data-kind="book"] h2::before { content: "✿"; content: "✿" / ""; margin-right: 6px; }
+  #card[data-kind="book"] h2::after { content: "❀"; content: "❀" / ""; margin-left: 6px; }
+  #card[data-kind="book"]::before { content: ""; position: absolute; top: 5px; left: 24px; right: 24px; height: 8px; pointer-events: none; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='8'%3E%3Cpath d='M0 0h8L4 8z' fill='%23ff8fa3'/%3E%3Cpath d='M8 0h8l-4 8z' fill='%237fd6a2'/%3E%3Cpath d='M16 0h8l-4 8z' fill='%23ffd84d'/%3E%3C/svg%3E") repeat-x 0 0 / 24px 8px; opacity: 0; }
+  #card[data-kind="book"] .btns { background: repeating-linear-gradient(to bottom, transparent 0, transparent 21px, rgba(255, 255, 255, 0.05) 21px, rgba(255, 255, 255, 0.05) 22px), linear-gradient(160deg, rgba(255, 214, 140, 0.09), rgba(255, 150, 170, 0.06)), var(--panel); }
+  @media (min-height: 601px) { #card[data-kind="book"]::before { opacity: 0.9; } }
   .card ul.book .who { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; font: 14px/1.4 var(--font-text); color: var(--ink); }
   .card ul.book .name { font-size: 16px; }
   .card ul.book .cnt { font-weight: 700; white-space: nowrap; }
@@ -649,10 +671,14 @@
      クリアのカードは、なかよしの一言（.friend）が 2 行になっても節目＋★3 のカードが収まるよう、すき間を詰める */
   @media (orientation: portrait) and (max-height: 600px) {
     #card[data-kind="book"], #card[data-kind="clear"] { gap: 8px; padding: 14px; }
+    #card[data-kind="book"] { gap: 6px; padding: 10px 14px; }
     .card p.friend { font-size: 14px; line-height: 1.4; }
-    .card ul.book { gap: 4px; }
-    .card ul.book canvas { width: 40px; height: 43px; }
-    .card ul.book .who { font-size: 13px; line-height: 1.3; }
+    .card ul.book { gap: 3px; }
+    .card ul.book canvas { width: 50px; height: 50px; }
+    .card ul.book .who { font-size: 13px; line-height: 1.15; }
+    .card ul.book .dress { flex: 1 1 100%; }
+    .card ul.book .left { font-size: 12px; white-space: nowrap; }
+    .card ul.book li { padding-left: 4px; padding-right: 4px; gap: 7px; }
     .card ul.book .name { font-size: 15px; }
   }
   /* 共有の知らせは場所を取らない吹き出し（.btns の上にかぶせる）。出ても「つぎの めんへ」は動かない */
@@ -701,8 +727,11 @@
     .card .btns button { min-height: 44px; }
     /* なかよしちょう：見出しと ★ を 1 行に、6 匹を 2 列 × 3 段に */
     .card ul.book { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; }
-    .card ul.book canvas { width: 40px; height: 43px; }
-    .card ul.book .who { font-size: 13px; line-height: 1.3; }
+    .card ul.book canvas { width: 46px; height: 46px; }
+    .card ul.book .who { font-size: 13px; line-height: 1.15; }
+    .card ul.book .dress { flex: 1 1 100%; }
+    .card ul.book .left { font-size: 12px; white-space: nowrap; }
+    .card ul.book li { padding-left: 4px; padding-right: 4px; gap: 7px; }
     .card ul.book .name { font-size: 15px; }
   }
   /* 横でとくに背が低い（SE 横の 320px など）ときだけ 13px・すき間 1px に詰めて、仕掛けの行が入っても収める */
