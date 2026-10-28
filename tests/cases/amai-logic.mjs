@@ -42,7 +42,7 @@ const at = (s, x, y) => y * s.W + x;
 
 // ---- 仮の絵（本物の絵がそろっていないとき、生成を確かめるために使う。テストの中だけ） ----
 // 楕円を色の数の種でボロノイに分けた自動の絵。段の決まり（大きさ・色の数・角砂糖の数・各色 3 個以上・閉じた空きなし）を守るまで種を変える
-const FAKE_DIM = { S: [10, 10, 3], M: [14, 13, 4], L: [20, 16, 5], XL: [24, 20, 6], XXL: [30, 24, 8] };
+const FAKE_DIM = { S: [15, 14, 4], M: [19, 18, 5], L: [24, 21, 7], XL: [28, 23, 8], XXL: [32, 24, 10] };   // §2.1 の大きさの範囲の中・色は段の多い方（重い方で確かめる）
 function rngOf(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 function fakePicture(L, id, tier, k) {
   const [W, H, nc] = FAKE_DIM[tier];
@@ -139,7 +139,7 @@ export const tests = [
     id: 'AL1', tier: 'smoke', node: true, title: 'あまいものあつめ：定数・COLORS（10 色。文字・hex・印・名前・5×5 の点がすべてちがう）・NAME・paramsFor が §2.1 の表どおり（境界・壊れた値）',
     run({ check, root }) {
       const L = load(root);
-      const K = { NAME: 'あまいものあつめ', SLOTS: 5, COLS: 4, TICK_MS: 500, FAST_MS: 250, MAX_W: 32, MAX_H: 24, MAX_SUGAR: 600, MAX_COUNT: 99, MAX_PRESSES: 400, MAX_T: 5000,
+      const K = { NAME: 'あまいものあつめ', SLOTS: 5, COLS: 4, TICK_MS: 500, FAST_MS: 250, MAX_W: 32, MAX_H: 24, MAX_SUGAR: 700, MAX_COUNT: 99, MAX_PRESSES: 400, MAX_T: 5000,
         GEN_TRIES: 20, GEN_WORK: 300000, BASE_PICTURES: 48, REPEAT_FROM: 9,
         SAVE_KEY_SAVE: 'amai.save', SAVE_KEY_BEST: 'amai.best', SAVE_KEY_BOOK: 'amai.book', SAVE_KEY_HELP: 'amai.help', SAVE_KEY_FAST: 'amai.fast' };
       const kBad = Object.entries(K).filter(([k, v]) => L[k] !== v).map(([k, v]) => ({ k, want: v, got: L[k] }));
@@ -210,7 +210,7 @@ export const tests = [
         '右の列が空き': { ...ok, map: ['RR.', 'RR.', 'RR.'] },
         '横 33': { ...ok, map: ['R'.repeat(33), 'R'.repeat(33), 'R'.repeat(33)] },
         '縦 25': { ...ok, map: Array(25).fill('RRR') },
-        '角砂糖 601 個以上': { ...ok, map: Array(24).fill('R'.repeat(26)) },
+        '角砂糖 701 個以上': { ...ok, map: Array(24).fill('R'.repeat(30)) },
         'id が英小文字でない': { ...ok, id: 'Ringo1' },
         'name が空': { ...ok, name: '' },
         'name に漢字': { ...ok, name: '林檎' },

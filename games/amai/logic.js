@@ -27,7 +27,7 @@
   const FAST_MS = 250;
   const MAX_W = 32;
   const MAX_H = 24;
-  const MAX_SUGAR = 600;
+  const MAX_SUGAR = 700;
   const MAX_COUNT = 99;
   const MAX_PRESSES = 400;
   const MAX_T = 5000;
@@ -64,11 +64,11 @@
   // ---------------------------------------------------------------- 段と面の表（§2.1。仮）
   // 段の値（49 面からは lids・ices にこの「多い方」を使う。くり返しは +1）
   const TIERS = Object.freeze({
-    S: Object.freeze({ tier: "S", colors: Object.freeze([2, 3]), sugar: Object.freeze([50, 100]), kmin: 15, kmax: 25, pull: 0, lids: 0, ices: 0 }),
-    M: Object.freeze({ tier: "M", colors: Object.freeze([3, 4]), sugar: Object.freeze([110, 180]), kmin: 10, kmax: 25, pull: 2, lids: 1, ices: 0 }),
-    L: Object.freeze({ tier: "L", colors: Object.freeze([4, 5]), sugar: Object.freeze([200, 300]), kmin: 10, kmax: 30, pull: 4, lids: 2, ices: 1 }),
-    XL: Object.freeze({ tier: "XL", colors: Object.freeze([5, 6]), sugar: Object.freeze([300, 450]), kmin: 10, kmax: 30, pull: 8, lids: 3, ices: 2 }),
-    XXL: Object.freeze({ tier: "XXL", colors: Object.freeze([6, 8]), sugar: Object.freeze([450, 600]), kmin: 10, kmax: 30, pull: 12, lids: 4, ices: 3 }),
+    S: Object.freeze({ tier: "S", colors: Object.freeze([3, 4]), sugar: Object.freeze([110, 180]), kmin: 15, kmax: 25, pull: 0, lids: 0, ices: 0 }),
+    M: Object.freeze({ tier: "M", colors: Object.freeze([4, 5]), sugar: Object.freeze([200, 300]), kmin: 10, kmax: 25, pull: 2, lids: 1, ices: 0 }),
+    L: Object.freeze({ tier: "L", colors: Object.freeze([5, 7]), sugar: Object.freeze([300, 420]), kmin: 10, kmax: 30, pull: 4, lids: 2, ices: 1 }),
+    XL: Object.freeze({ tier: "XL", colors: Object.freeze([6, 8]), sugar: Object.freeze([420, 560]), kmin: 10, kmax: 30, pull: 8, lids: 3, ices: 2 }),
+    XXL: Object.freeze({ tier: "XXL", colors: Object.freeze([8, 10]), sugar: Object.freeze([520, 700]), kmin: 10, kmax: 30, pull: 12, lids: 4, ices: 3 }),
   });
   // 1〜48 面の仕掛けの数（面の番号で決める）
   const LEVELS = Object.freeze([
@@ -193,7 +193,7 @@
     } catch (e) { return null; }
   }
 
-  // 文字の地図 → { id, name, season, W, H, cells }。決まり（§2.6 の 1・2・4・5・6、角砂糖 600 以下）を守らない絵は null。
+  // 文字の地図 → { id, name, season, W, H, cells }。決まり（§2.6 の 1・2・4・5・6、角砂糖 700 以下）を守らない絵は null。
   // 段の範囲（決まり 3 の色の数と角砂糖の数）は絵だけでは決まらないので、ここでは見ない（テスト AL2 が PICTURE_ORDER の段で見る）
   function parsePicture(def, mirror) {
     try {
