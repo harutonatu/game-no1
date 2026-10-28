@@ -686,7 +686,7 @@ AmaiLogic = {
 ```
 - `amaiBest()`：`amai.best` が安全な整数で 1 以上なら `"N めん クリア"`。`amai.book` の絵が 1 枚以上なら「・ずかん M」を足す。壊れた値なら出さない（壊れた book は 0 枚）。
 - `ART.amai(ctx, w, h)`：角砂糖の小さな山と、それを運ぶありんこの列（既存の `ART` の手描き感に合わせる。他社の絵に似せない）。
-- 版：そのときの次の版（今は v48）。`common/version.js` の `version`・`date` と `sw.js` の `CACHE_VERSION` を一緒に（L10）。
+- 版：そのときの次の版（今は v49。v48 は いろびんの はなかんむりの直しで先に公開した）。`common/version.js` の `version`・`date` と `sw.js` の `CACHE_VERSION` を一緒に（L10）。
 - `APP_FILES` に `./games/amai/`・`index.html`・`pictures-a.js`・`pictures-b.js`・`logic.js`・`render.js`・`input.js`・`main.js` を足す。
 
 ### 6.4 作る順番と並列の組
