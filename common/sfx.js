@@ -14,7 +14,8 @@
  *   const sfx = YubiSfx.create("michibiki"); // ミチビキ空港（warn/pick/lock/land(n)/near/crash/bounce/open(color)/over）
  *   const sfx = YubiSfx.create("seizai");   // もくもくこうば（chop/saw/sell/buy/hire/tool/cheer/deny/order/deliver(kind)/stage(n)/away）
  *   const sfx = YubiSfx.create("asteroid"); // ちきゅうを守れ！ほしくだき（shot(w)/crack(n)/break(mat)/chunk(n)/absorb/up/evolve/unlock/swap/clear/bounce/boss/deny）
- *   const sfx = YubiSfx.create("menu");     // メニュー（共通の音だけ）
+ *   const sfx = YubiSfx.create("amai");     // あまいものあつめ（place/nest/empty/clear/open/thaw/deny/undo/stuck）
+ *   const sfx = YubiSfx.create("menu");    // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
  *
  * 音声ファイルは使わず Web Audio で合成する（オフラインでも鳴る）。
@@ -34,6 +35,8 @@
   const STAGGER_MAX = 0.24;
   const GAP = { move: 0.03, rotate: 0.03, hold: 0.05, merge: 0.03, tap: 0.04, undo: 0.06, launch: 0.07, miss: 0.08, tick: 0.045, unwind: 0.045, limit: 0.25, step: 0.08, grow: 0.05, walk: 0.08, pour: 0.05, pick: 0.03, arrive: 0.08, select: 0.03, pop: 0.03 };
   // ミチビキ空港だけの間引き（lock・land は ブロック・ハシわたりにも同じ名前の音があるので、全体の GAP に入れずにこのゲームだけに効かせる）
+  // あまいものあつめだけの間引き（箱が 5 つ働くと 1 秒に 10〜20 匹巣に入るので nest を間引く。約束 §5.1）
+  const GAP_AMAI = { nest: 0.09, place: 0.05, empty: 0.06, deny: 0.2 };
   const GAP_MICHIBIKI = { warn: 0.2, near: 0.5, bounce: 0.15, land: 0.05, lock: 0.1 };
   // もくもくこうばだけの間引き。作業音（chop・saw）は「合わせて」0.4 秒に 1 回まで（同じ組 work で最後に鳴った時刻を共有する）、売れた音は 1 秒に 2 回まで
   const GAP_SEIZAI = { chop: 0.4, saw: 0.4, sell: 0.5, buy: 0.06, deny: 0.2, cheer: 0.15, tool: 0.3 };
@@ -716,9 +719,37 @@
       deny: () => { const t = N(); mallet(E5, t, { vol: 0.07, decay: 0.1, bright: 0.2 }); mallet(C5, t + 0.08, { vol: 0.065, decay: 0.16, bright: 0.2 }); }
     };
 
+    // あまいものあつめ：一番よく鳴る nest は小さく短く。empty はそれより明るく、clear は 1.2 秒以内。deny・stuck は責めない
+    const AMAI = {
+      // 箱がわくに入る「ことっ」：木の軽い音
+      place: () => { const t = N(); wood(420, t, { vol: 0.08, dur: 0.06, jit: 25 }); wood(630, t + 0.025, { vol: 0.035, dur: 0.04, jit: 25 }); },
+      // ありんこが巣に入る「ポッ」：小さく短く
+      nest: () => partial(E6, N(), 0.07, { vol: 0.03, from: 900, fromT: 0.02, a: 0.002 }),
+      // 箱が空になって消える「ポン」：nest より大きく明るい
+      empty: () => { const t = N(); mallet(G5, t, { vol: 0.1, decay: 0.2, bright: 0.5 }); bell(C6, t + 0.04, { vol: 0.04, decay: 0.28 }); },
+      // 絵が完成：短いファンファーレ（約 1 秒）
+      clear: () => {
+        const t = N();
+        [C5, E5, G5].forEach((f, i) => mallet(f, t + i * 0.1, { vol: 0.1, decay: 0.18 }));
+        mallet(C6, t + 0.32, { vol: 0.12, decay: 0.5 });
+        [C5, G5].forEach((f) => partial(f, t + 0.32, 0.55, { vol: 0.03, a: 0.01 }));
+        bell(G6, t + 0.42, { vol: 0.04, decay: 0.45 });
+      },
+      // ふたが開く「ぱかっ」
+      open: () => { const t = N(); wood(300, t, { vol: 0.07, dur: 0.05, jit: 20 }); noise(t + 0.02, 0.07, { freq: 2400, to: 3600, q: 1.2, vol: 0.025, a: 0.005 }); },
+      // こおりがとける「しゃりん」
+      thaw: () => { const t = N(); noise(t, 0.12, { type: "highpass", freq: 4200, vol: 0.02, a: 0.005 }); bell(E6, t + 0.03, { vol: 0.035, decay: 0.3 }); bell(A5 * 2, t + 0.1, { vol: 0.025, decay: 0.35 }); },
+      // 押せない：小さく低い「こつ」
+      deny: () => wood(240, N(), { vol: 0.05, dur: 0.05, jit: 20 }),
+      // 1手もどす：逆回し風に上から下へ短く
+      undo: () => { const t = N(); mallet(G5, t, { vol: 0.07, decay: 0.1, bright: 0.2 }); mallet(E5, t + 0.06, { vol: 0.06, decay: 0.12, bright: 0.2 }); },
+      // うごかせない：やさしく下がる 2 音
+      stuck: () => { const t = N(); mallet(E5, t, { vol: 0.08, decay: 0.2, bright: 0.2 }); mallet(C5, t + 0.16, { vol: 0.075, decay: 0.32, bright: 0.2 }); }
+    };
+
     const table = Object.assign({}, COMMON,
-      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : game === "hashi" ? HASHI : game === "irobin" ? IROBIN : game === "matomete" ? MATOMETE : game === "michibiki" ? MICHIBIKI : game === "seizai" ? SEIZAI : game === "asteroid" ? ASTEROID : {});
-    const gap = game === "michibiki" ? Object.assign({}, GAP, GAP_MICHIBIKI) : game === "seizai" ? Object.assign({}, GAP, GAP_SEIZAI) : game === "asteroid" ? Object.assign({}, GAP, GAP_ASTEROID) : GAP;
+      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : game === "hashi" ? HASHI : game === "irobin" ? IROBIN : game === "matomete" ? MATOMETE : game === "michibiki" ? MICHIBIKI : game === "seizai" ? SEIZAI : game === "asteroid" ? ASTEROID : game === "amai" ? AMAI : {});
+    const gap = game === "amai" ? Object.assign({}, GAP, GAP_AMAI) : game === "michibiki" ? Object.assign({}, GAP, GAP_MICHIBIKI) : game === "seizai" ? Object.assign({}, GAP, GAP_SEIZAI) : game === "asteroid" ? Object.assign({}, GAP, GAP_ASTEROID) : GAP;
     const group = game === "seizai" ? GROUP_SEIZAI : {};
 
     return {
