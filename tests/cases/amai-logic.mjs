@@ -511,6 +511,16 @@ export const tests = [
         const col6 = [0, 1, 2, 3].find((cc) => s.cols[cc].length > 0);
         const r6 = L.replay(lv, pk, [...mv, [0, col6]], 0);
         check('押せない手（わくがいっぱい）で ok:false・applied 5', mv.length === 5 && col6 !== undefined && r6.ok === false && r6.applied === 5, { n: mv.length, ok: r6.ok, applied: r6.applied });
+        // t が逆順の手（既に進んだ時刻より前の手）は ok:false（MA9：押した手の t を見ない）
+        {
+          let q = L.createLevel(lv, pk).state;
+          q = L.press(q, 0).state;
+          const st1 = L.step(q);
+          const colB = [1, 2, 3].find((cc) => L.canPress(st1.state, cc) === null);
+          const colC = [0, 1, 2, 3].find((cc) => cc !== colB && L.canPress(st1.state, cc) === null);
+          const rev = st1.moved && colB !== undefined && colC !== undefined ? L.replay(lv, pk, [[0, 0], [st1.state.t, colB], [0, colC]], st1.state.t) : null;
+          check('replay：t が逆順の手（進んだ時刻より前）で ok:false', rev !== null && rev.ok === false, rev && { ok: rev.ok, applied: rev.applied });
+        }
         check('replay：t が最後の手より小さいと ok:false', L.replay(lv, pk, [[3, 0]], 1).ok === false || L.replay(lv, pk, [[0, 0]], -1).ok === false, null);
       });
     },
