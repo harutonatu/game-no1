@@ -24,18 +24,21 @@
   const KEY_BOOK = L.SAVE_KEY_BOOK || "amai.book";
   const KEY_HELP = L.SAVE_KEY_HELP || "amai.help";
   const KEY_FAST = L.SAVE_KEY_FAST || "amai.fast";
+  const KEY_CLEAN = L.SAVE_KEY_CLEAN || "amai.clean";   // 1手もどし なしで クリアした絵（logic.js の validateClean・addClean・hasClean）
   const TICK_MS = Number(L.TICK_MS) > 0 ? Number(L.TICK_MS) : 500;
   const FAST_MS = Number(L.FAST_MS) > 0 ? Number(L.FAST_MS) : 250;
   const CARD_LOCK_MS = 400;     // クリア・うごかせないのカードを出してから押せない時間
   const BOARD_BLOCK_MS = 300;   // カードを閉じた直後、箱の押下を受けない時間
   const SAVE_EVERY = 10;        // 動いている間は 10 はこびごとに保存
   const SETTLE_MAX = 2000;      // settle() で進める上限
-  const HINT_FADE_MS = 3500;    // 案内は絵の上に重ねるので、少したったら薄くする（文字は残す）
+  const HINT_FADE_MS = 3500;    // 案内は少したったら薄くする（文字は残す）
   const POLL_MS = 100;          // ありんこが全部巣に入るのを待つ間の見回り
 
-  const HINT_FIRST = "てまえの はこを おすと、ありんこが おさとうを はこぶよ";
+  // 案内は絵と わくの間に 1 行で出す（SE 縦の幅 288px に 12px で入る長さ。入らなければ 11px に縮める）
+  const HINT_FIRST = "はこを おすと、ありんこが はこぶよ";
   const HINT_IDLE = "てまえの はこを おしてね";
-  const HINT_STUCK = "わくが いっぱいで、はこべる おさとうが ないよ。「1手もどす」を おしてね";
+  const HINT_STUCK = "うごかせないよ。「1手もどす」を おしてね";
+  const HINT_CARRY = "ありんこが はこんでるよ";   // 待っているだけのとき（押せる箱が無い・わくが いっぱい）に うすく出す
   const HINT_OPEN = "ふたが あいたよ";
   const HINT_THAW = "こおりが とけたよ";
   const MARK_WORD = { circle: "まる", triangle: "さんかく", star: "ほし", diamond: "ひしがた", plus: "じゅうじ", cross: "ばつ", heart: "ハート", bars: "よこせん", ring: "わ", stripes: "たてせん" };
@@ -152,6 +155,7 @@
   let bookFrom = "play";        // ずかんを開いた所（play | clear）
   let confirmFrom = "play";     // やりなおしの確認を開いた所（play | stuck）
   let hintFadeId = 0;
+  let noUndo = null;            // この面で 1手もどすを使っていない：true／使った：false／分からない（途中から再開・テストの局面）：null。保存しない
 
   // 1 はこびを回すのは、表に出ていて・古いページでなく・カードが無く・落ち着いていないときだけ（変異 MA14 の置換元。1 行の式のまま）
   const running = () => !hiddenNow && !stale && overlay === null && !stable;
@@ -166,22 +170,41 @@
   const shownPhase = () => (hiddenNow ? "paused" : phase);
   function syncPhase() { el.playView.dataset.phase = shownPhase(); }
   function setPhase(p) { phase = p; syncPhase(); renderTools(); }
-  // 案内は 2 行分の高さに固定。長い文言は字を 12px まで小さくして収める。少したったら薄くする（文字は残す）
+  // 案内は絵と わくの間に 1 行（高さ固定）。長い文言は字を 12・11px に縮めて収める。少したったら薄くする（文字は残す）
+  function fitHint() {
+    el.hint.style.fontSize = "";
+    if (!el.hint.textContent) return;
+    for (const px of [12, 11]) {
+      if (el.hint.scrollWidth <= el.hint.clientWidth + 1) break;
+      el.hint.style.fontSize = px + "px";
+    }
+  }
   function setHint(text, keep) {
     const t = text || "";
     if (hintFadeId) { clearTimeout(hintFadeId); timers.delete(hintFadeId); hintFadeId = 0; }
     el.hint.dataset.fade = "0";
-    if (el.hint.textContent !== t) {
-      el.hint.textContent = t;
-      el.hint.style.fontSize = "";
-      if (t) {
-        for (const px of [12]) {
-          if (el.hint.scrollHeight <= el.hint.clientHeight + 1) break;
-          el.hint.style.fontSize = px + "px";
-        }
-      }
-    }
+    el.hint.dataset.soft = "0";
+    if (el.hint.textContent !== t) { el.hint.textContent = t; fitHint(); }
     if (t && !keep) hintFadeId = later(() => { hintFadeId = 0; el.hint.dataset.fade = "1"; }, HINT_FADE_MS);
+  }
+  // 待っているだけのとき（運んでいる間で、押せる箱が無い・わくが いっぱい）は「ありんこが はこんでるよ」を うすく出す。
+  // ほかの案内が出ている（薄くなる前）ときは上書きしない
+  function waitingOnly() {
+    if (!state || state.won || stable || phase !== "play") return false;
+    const cols = Array.isArray(state.cols) ? state.cols : [];
+    const slots = Array.isArray(state.slots) ? state.slots : [];
+    const noBox = !cols.some((c) => Array.isArray(c) && c.length > 0);
+    const full = slots.length > 0 && slots.every((b) => b);
+    return noBox || full;
+  }
+  function softHint() {
+    const soft = el.hint.dataset.soft === "1";
+    if (waitingOnly()) {
+      if (soft) return;
+      if (el.hint.textContent && el.hint.dataset.fade !== "1") return;
+      setHint(HINT_CARRY, true);
+      el.hint.dataset.soft = "1";
+    } else if (soft) setHint("", true);
   }
   const colorName = (c) => safeCall(() => L.colorName(c), "") || "";
   const colorMark = (c) => {
@@ -228,7 +251,7 @@
     const boxes = slots.filter((b) => b);
     if (!boxes.length) return presses.length === 0 && level <= 2 && !custom ? HINT_FIRST : HINT_IDLE;
     const waiting = boxes.find((b) => !(safeCall(() => L.edgeCells(state, b.color), []) || []).length);
-    return waiting ? `${colorMark(waiting.color)}の おさとうが ふちに でるまで まってるよ` : "";
+    return waiting ? `${colorMark(waiting.color)}が ふちに でるのを まってるよ` : "";
   }
 
   // ===== 演出の続き（ありんこを待つ・Promise から、または flush から同期で） =====
@@ -241,11 +264,21 @@
     return p;
   }
   function cancelPending() { pending = null; pendSeq += 1; }
-  // ありんこが全部巣に入るのを待ってから fn（待つ間は POLL_MS ごとに見回る。flush なら今すぐ）
+  // ありんこが全部巣に入るのを待ってから fn（待つ間は POLL_MS ごとに見回る。flush なら今すぐ）。
+  // 裏にいる間は見回らない（表に戻ったとき・pageshow で resumePending が始め直す）
   function waitAnts(fn) {
     const p = setPending(fn);
-    const poll = () => { if (p.done || pending !== p) return; if (render.busy) { later(poll, POLL_MS); return; } p.run(); };
-    poll();
+    p.poll = () => { if (p.done || pending !== p || hiddenNow) return; if (render.busy) { later(p.poll, POLL_MS); return; } p.run(); };
+    p.poll();
+  }
+  // pagehide の clearLater・裏にいる間で止まった見回りを始め直す（クリア・うごかせないのカードが出ないままにしない）。
+  // 絵の演出（celebrate の Promise）を待つ続きは、Promise が来なくても演出が終われば出す
+  function resumePending() {
+    const p = pending;
+    if (!p || p.done || hiddenNow || stale || overlay !== null) return;
+    if (typeof p.poll === "function") { p.poll(); return; }
+    const chk = () => { if (p.done || pending !== p || hiddenNow) return; if (render.busy) { later(chk, POLL_MS); return; } p.run(); };
+    later(chk, POLL_MS);
   }
   // 演出を終わらせ、続きの処理も今すぐ済ませる
   function flush() {
@@ -284,15 +317,17 @@
     if (++sinceSave >= SAVE_EVERY) { sinceSave = 0; save(); }
     // 次の 1 はこびで何も運べないなら、ここで落ち着いたとする（待つ案内・うごかせないを 1 はこび早く出す）
     if (safeCall(() => L.isStable(state), false)) { stable = true; afterStable(); }
+    else softHint();
     return true;
   }
   function afterStable() {
     if (!state || state.won) return;
     save();
     renderTools();
-    if (isStuckNow()) { waitAnts(enterStuck); return; }
+    if (isStuckNow()) { if (el.hint.dataset.soft === "1") setHint("", true); waitAnts(enterStuck); return; }
     const h = stableHint();
     if (h) setHint(h);
+    else if (el.hint.dataset.soft === "1") setHint("", true);
   }
   function enterStuck() {
     if (!state || state.won || !stable || !isStuckNow() || overlay !== null) return;
@@ -333,6 +368,7 @@
     picture = safeCall(() => L.pictureById(pick.id, pick.mirror), null) || safeCall(() => L.pictureById(st.picture, st.mirror), null);
     state = st;
     presses = prs;
+    noUndo = prs.length === 0 ? true : null;   // 途中から再開した面は、もどしたか分からないので出さない
     custom = null;
     customHist = [];
     stable = false;
@@ -346,6 +382,7 @@
     save();
     setHint(presses.length === 0 && level <= 2 ? HINT_FIRST : "");
     if (safeCall(() => L.isStable(state), false)) { stable = true; afterStable(); }
+    else softHint();
     kick();
     return true;
   }
@@ -358,7 +395,7 @@
     if (o.reason === "frozen") {
       const b = state && state.cols && state.cols[o.col] ? state.cols[o.col][0] : null;
       const k = b ? Math.max(1, (Number(b.ice) || 0) - (Number(state.presses) || 0)) : 1;
-      return `こおって いるよ。ほかの はこを あと ${k} かい おすと とけるよ`;
+      return `こおって いるよ。ほかを あと ${k} かい おしてね`;
     }
     return "";
   }
@@ -390,6 +427,7 @@
     if (opened) sfx.play("open");
     if (thawed) sfx.play("thaw");
     setHint(opened ? HINT_OPEN : thawed ? HINT_THAW : "");
+    softHint();
     if (via === "key" && input) input.focusCol(col);
     kick();
     return "press";
@@ -399,9 +437,9 @@
   function undo() {
     if (overlay !== null || !state || state.won || phase === "clear") return false;
     if (!presses.length) return false;
+    cancelPending();   // 先に うごかせないの待ちを取りやめる（flush がその続きでカードを出さないように）
     flush();
-    cancelPending();
-    if (state.won) return false;
+    if (state.won || overlay !== null) return false;
     const last = presses[presses.length - 1];
     let st = null;
     if (custom) st = customHist[customHist.length - 1] || null;
@@ -413,6 +451,7 @@
     if (!st) { console.error("あまいものあつめ: 1手もどせませんでした"); return false; }
     presses.pop();
     if (custom) customHist.pop();
+    if (noUndo === true) noUndo = false;
     state = st;
     stable = false;
     safeCall(() => render.update(state));
@@ -422,6 +461,7 @@
     setPhase("play");
     setHint("");
     if (safeCall(() => L.isStable(state), false)) { stable = true; afterStable(); }
+    else softHint();
     kick();
     return true;
   }
@@ -429,8 +469,10 @@
     if (!state || phase === "clear") return;
     if (overlay !== null && overlay !== "stuck") return;
     if (!presses.length) return;
-    confirmFrom = from === "stuck" ? "stuck" : "play";
+    const before = overlay;
     flush();
+    if (overlay !== before) return;   // 待っていた続きがクリア・うごかせないのカードを出した：その上に重ねない
+    confirmFrom = from === "stuck" ? "stuck" : "play";
     safeCall(() => render.pause());
     showCard(`
       <h2 id="cardTitle">さいしょから やりなおす？</h2>
@@ -471,14 +513,20 @@
     stable = true;
     cancelPending();
     setPhase("clear");
-    const r = safeCall(() => L.recordBest(best, level), null) || { best, improved: false };
-    const improved = !!r.improved;
-    best = r.best;
-    writeKey(KEY_BEST, String(best));
     const id = state.picture || pick.id;
-    let count = 1, got = 0, nextPick = null;
+    let count = 1, got = 0, nextPick = null, improved = false;
     const next = level < Number.MAX_SAFE_INTEGER ? level + 1 : level;
+    const clean = !custom && !restored && noUndo === true;
     if (!custom) {
+      // テストの局面（setState）では amai.best・amai.book・amai.clean を書かない
+      const r = safeCall(() => L.recordBest(best, level), null) || { best, improved: false };
+      improved = !!r.improved;
+      best = r.best;
+      writeKey(KEY_BEST, String(best));
+      if (clean && typeof L.addClean === "function") {
+        const rc = safeCall(() => L.addClean(readKey(KEY_CLEAN), id), null);
+        if (typeof rc === "string") writeKey(KEY_CLEAN, rc);
+      }
       const raw = safeCall(() => L.addToBook(readKey(KEY_BOOK), id), null);
       if (typeof raw === "string") writeKey(KEY_BOOK, raw);
       const book = safeCall(() => L.validateBook(raw), null) || readBook();
@@ -489,7 +537,7 @@
     } else {
       got = bookCountNow();
     }
-    lastClear = { level, id, name: picture && picture.name ? picture.name : "", mirror: !!pick.mirror, repeat: !!pick.repeat, count, got, improved, next, nextPick, restored: !!restored };
+    lastClear = { level, id, name: picture && picture.name ? picture.name : "", mirror: !!pick.mirror, repeat: !!pick.repeat, count, got, improved, next, nextPick, restored: !!restored, clean };
     renderTools();
     setHint(`${level} めん クリア！`, true);
     sfx.play("clear");
@@ -507,14 +555,14 @@
     showCard(`
       <h2 id="cardTitle" data-f="h"></h2>
       <div class="clearpic"></div>
-      <p class="picname" data-f="n"></p>
+      <p class="picname" data-f="n"></p>${c.clean ? '\n      <p class="clean" data-f="k"></p>' : ""}
       <p data-f="c"></p>
       <p class="count" data-f="g"></p>
       <div class="btns">
         <button class="cta primary" type="button" data-cmd="next">つぎの めんへ</button>
         <button class="cta half" type="button" data-cmd="book">ずかん</button>
         <button class="cta half" type="button" data-cmd="menu">メニューへ</button>
-      </div>`, { h: `${c.level} めん クリア！`, n: c.name, c: countText, g: total ? `ずかん ${c.got} / ${total}` : "" }, "clear");
+      </div>`, { h: `${c.level} めん クリア！`, n: c.name, k: "1手もどし なし！", c: countText, g: total ? `ずかん ${c.got} / ${total}` : "" }, "clear");
     const box = el.card.querySelector(".clearpic");
     if (box && picture) box.appendChild(pictureCanvas(picture, 120, { mono: false, marks: false }));
     if (again) {
@@ -576,14 +624,15 @@
   function showHelp() {
     if (overlay !== null) return;   // ほかのカードの上には重ねない
     flush();
+    if (overlay !== null) return;   // 待っていた続きがクリア・うごかせないのカードを出した：その上に重ねない
     safeCall(() => render.pause());
     showCard(`
       <h2 id="cardTitle">あそびかた</h2>
       <div class="sample"></div>
       <ol class="rules">
-        <li>てまえの はこを おすと、ありんこが でてくるよ。</li>
-        <li>ありんこは <b>おなじ いろ</b>の おさとうを、<b>ふち</b>から じゅんに すへ はこぶよ。</li>
-        <li>わくは 5つ。いっぱいで はこべないと うごけなくなるよ。そのときは<span style="white-space:nowrap">『1手もどす』</span>。</li>
+        <li>てまえの はこを おすと、ありんこが でてくるよ。はこの すうじは はこぶ おさとうの かず。</li>
+        <li>ありんこは <b>おなじ いろ</b>の おさとうを、<b>ふち</b>（えの まわり）から ありの おうちへ はこぶよ。</li>
+        <li><b>わく</b>（したの 5つの しかく）が いっぱいで うごけなくなったら<span style="white-space:nowrap">『1手もどす』</span>。</li>
         <li>えを ぜんぶ はこぶと クリア。えが <b>ずかん</b>に はいるよ。</li>
       </ol>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");
@@ -600,16 +649,22 @@
   function showBook(from) {
     if (overlay !== null && overlay !== "clear") return;
     bookFrom = from === "clear" ? "clear" : "play";
-    if (overlay === null) { flush(); safeCall(() => render.pause()); }
+    if (overlay === null) {
+      flush();
+      if (overlay !== null) return;   // 待っていた続きがクリア・うごかせないのカードを出した：その上に重ねない
+      safeCall(() => render.pause());
+    }
     const book = readBook();   // いつも保存から読む（メモリの値を出さない）
     const got = bookCountNow();
+    const rawClean = readKey(KEY_CLEAN);
+    const isClean = (id) => typeof L.hasClean === "function" && !!safeCall(() => L.hasClean(rawClean, id), false);
     showCard(`
       <div class="bookhead">
         <h2 id="cardTitle">ずかん</h2>
-        <p class="got" data-f="g"></p>
+        <p class="got"><span data-f="g"></span><span class="rest" data-f="r"></span></p>
         <button class="primary" type="button" data-cmd="close">とじる</button>
       </div>
-      <ul class="book"></ul>`, { g: `${got} / ${ORDER.length}` }, "book");
+      <ul class="book"></ul>`, { g: `${got} / ${ORDER.length}`, r: got < ORDER.length ? `あと ${ORDER.length - got} まい` : "ぜんぶ そろったよ" }, "book");
     const ul = el.card.querySelector("ul.book");
     if (!ul) return;
     for (const item of ORDER) {
@@ -621,6 +676,11 @@
       li.dataset.got = n > 0 ? "1" : "0";
       if (p) li.appendChild(pictureCanvas(p, 64, { mono: n === 0, marks: false }));
       const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = n > 0 && p ? p.name : "？？？";
+      if (n > 0 && p && isClean(id)) {   // 1 回でも 1手もどし なしで クリアした絵
+        const star = document.createElement("span"); star.className = "star"; star.textContent = "★"; star.setAttribute("aria-hidden", "true");
+        const sr = document.createElement("span"); sr.className = "sr"; sr.textContent = "（1手もどし なし）";
+        nm.appendChild(star); nm.appendChild(sr);
+      }
       li.appendChild(nm);
       if (n > 0) { const cnt = document.createElement("span"); cnt.className = "cnt"; cnt.textContent = `${n} かい`; li.appendChild(cnt); }
       const season = p && SEASON_WORD[p.season];
@@ -634,6 +694,8 @@
   function showCard(html, fields, kind) {
     const keepFocus = overlay !== null ? focusBack : null;   // カードからカードへ移るときは、最初の戻り先を残す
     focusBack = keepFocus || document.activeElement;
+    // カードの間は、うしろのプレイ画面を Tab・読み上げ・押す対象から外す（a#back・？・♪ はカードからも使えるので外さない。はし HS-07 と同じ）
+    el.playView.setAttribute("inert", "");
     el.card.innerHTML = html;
     el.card.dataset.kind = kind;
     el.card.scrollTop = 0;
@@ -650,6 +712,7 @@
     el.card.innerHTML = "";
     el.card.dataset.kind = "";
     overlay = null;
+    el.playView.removeAttribute("inert");
     blockUntil = now() + BOARD_BLOCK_MS;
     const fb = focusBack; focusBack = null;
     if (fb && fb.isConnected && fb !== document.body) { try { fb.focus({ preventScroll: true }); } catch (e) { /* 無視 */ } }
@@ -721,6 +784,7 @@
       hiddenNow = false;
       if (overlay === null) safeCall(() => render.resume());
       syncPhase();
+      resumePending();   // 裏にいる間に止まった見回り（ありんこを待ってカードを出す）を始め直す
       kick();
     }
   });
@@ -734,8 +798,9 @@
       const left = CARD_LOCK_MS - (now() - cardShownAt);
       if (left > 0) later(unlockCard, left); else unlockCard();
     } else if (overlay === null && state) {
-      if (state.won && phase === "clear" && !pending) waitAnts(() => { const p = setPending(() => showClearCard()); Promise.resolve(safeCall(() => render.celebrate(picture), null)).then(() => p.run(), () => p.run()); });
-      else if (stable && !pending) afterStable();
+      if (pending) resumePending();   // pagehide の clearLater で消えた見回りを始め直す（演出中に離れて bfcache から戻った）
+      else if (state.won && phase === "clear") waitAnts(() => { const p = setPending(() => showClearCard()); Promise.resolve(safeCall(() => render.celebrate(picture), null)).then(() => p.run(), () => p.run()); });
+      else if (stable) afterStable();
       kick();
     }
   });
@@ -822,6 +887,7 @@
       custom = st;
       customHist = [];
       presses = [];
+      noUndo = null;
       info = null;
       level = Number.isSafeInteger(st.level) && st.level >= 1 ? st.level : level;
       pick = { id: typeof st.picture === "string" ? st.picture : "", mirror: !!st.mirror, repeat: !!st.repeat };

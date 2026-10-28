@@ -734,6 +734,25 @@ export const tests = [
       });
     },
   },
+  {
+    id: 'AL14', tier: 'smoke', node: true, title: 'あまいものあつめ：「1手もどし なし！」の印 validateClean・addClean・hasClean（壊れた値・形ちがい・重複・知らない id を捨てる・足す・ある／ない・例外を出さない）',
+    async run({ check, root }) {
+      const L = load(root);
+      const PO = L.PICTURE_ORDER, a = PO[0].id, b = PO[1].id;
+      check('保存のキーは amai.clean', L.SAVE_KEY_CLEAN === 'amai.clean', L.SAVE_KEY_CLEAN);
+      const bad = [null, undefined, '', '{', 5, [], 'x', J([]), J({ v: 2, ids: [a] }), J({ v: 1 }), J({ v: 1, ids: 'x' }), J({ v: 1, ids: { 0: a } })];
+      check('壊れた値・形ちがいは空', bad.every((r) => J(L.validateClean(r)) === J({ ids: [] })), null);
+      const v = L.validateClean(J({ v: 1, ids: [a, a, 'nanika', 5, null, b, a] }));
+      check('重複・知らない id・文字でない値を捨てて使える分だけ（順は最初に出た順）', J(v) === J({ ids: [a, b] }), v);
+      const s1 = L.addClean(null, a);
+      check('足す：正しい形の文字列', s1 === J({ v: 1, ids: [a] }), s1);
+      const s2 = L.addClean(s1, b);
+      check('もう1つ足す', s2 === J({ v: 1, ids: [a, b] }), s2);
+      check('同じ id をまた足しても増えない', L.addClean(s2, a) === s2, null);
+      check('知らない id は足さず、元のまま正しい形で返す', L.addClean(s2, 'nanika') === s2 && L.addClean('{', 'nanika') === J({ v: 1, ids: [] }) && L.addClean(s2, 5) === s2, null);
+      check('hasClean：ある／ない', L.hasClean(s2, a) === true && L.hasClean(s2, b) === true && L.hasClean(s1, b) === false && L.hasClean(null, a) === false && L.hasClean('{', a) === false, null);
+    },
+  },
 ];
 
 // ---- 単体で流す：node tests/cases/amai-logic.mjs [ID...] ----

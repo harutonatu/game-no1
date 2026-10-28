@@ -650,6 +650,7 @@
       fx.width = Math.max(1, Math.round(w * d));
       fx.height = Math.max(1, Math.round(h * d));
     }
+    sizeFx();
     function clearFx() {
       if (!fctx || !fxDirty) return;
       fctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -657,7 +658,7 @@
       fxDirty = false;
     }
     function antScale() { return Math.max(4.2, Math.min(7, cell * 0.55)); }
-    function drawAnt(c, x, y, ang, s, step, carry, alpha) {
+    function drawAnt(c, x, y, ang, s, step, carry, alpha, carryD, carryL) {
       c.save();
       c.globalAlpha = alpha;
       c.translate(x, y);
@@ -685,11 +686,11 @@
         const q = Math.max(3, Math.min(6, s * 0.9));
         c.rotate(-ang);   // 角砂糖は傾けない
         const hx = Math.cos(ang) * s * 0.95, hy = Math.sin(ang) * s * 0.95;
-        c.fillStyle = mix(carry, "#000000", 0.35);
+        c.fillStyle = carryD || mix(carry, "#000000", 0.35);
         c.fillRect(hx - q / 2 - 0.5, hy - q / 2 - 0.5, q + 1, q + 1);
         c.fillStyle = carry;
         c.fillRect(hx - q / 2, hy - q / 2, q, q);
-        c.fillStyle = mix(carry, "#ffffff", 0.45);
+        c.fillStyle = carryL || mix(carry, "#ffffff", 0.45);
         c.fillRect(hx - q / 2, hy - q / 2, q, q * 0.3);
       }
       c.restore();
@@ -723,7 +724,7 @@
     }
     function drawFx(dt) {
       if (!fctx) { ants.length = 0; parts.length = 0; rings.length = 0; celeb = null; return; }
-      sizeFx();
+      // 大きさと位置（fxL・fxT）は layout()（resize・向きが変わったとき）と最初に sizeFx() で覚えた値を使う。毎コマ測らない（性能）
       fctx.setTransform(1, 0, 0, 1, 0, 0);
       fctx.clearRect(0, 0, fx.width, fx.height);
       fctx.setTransform(fxDpr, 0, 0, fxDpr, -fxL * fxDpr, -fxT * fxDpr);
@@ -740,7 +741,7 @@
           snd("nest");
           continue;
         }
-        drawAnt(fctx, at.x, at.y, at.ang, a.s, Math.floor(at.d / 3.2) % 2, at.carry ? a.hex : null, at.alpha);
+        drawAnt(fctx, at.x, at.y, at.ang, a.s, Math.floor(at.d / 3.2) % 2, at.carry ? a.hex : null, at.alpha, a.hexD, a.hexL);
       }
       // 光の輪
       for (let i = rings.length - 1; i >= 0; i--) {
@@ -861,9 +862,10 @@
           const la = seg[0] + seg[1];
           const walkMs = WALK_MAX_MS - EXIT_MS - LIFT_MS;
           const v = Math.max(WALK_V, L / (walkMs / 1000));
+          const hex = colorInfo(c.color).hex;
           ants.push({
             t0: clock, k, p: pts, seg, L, la, v, liftIdx: 2, liftAng: Math.atan2(p2.y - p1.y, p2.x - p1.x),
-            sx: sr.left + sr.width / 2, sy: sr.top + sr.height * 0.4, cell: c.cell, hex: colorInfo(c.color).hex, s: antScale(), lifted: false
+            sx: sr.left + sr.width / 2, sy: sr.top + sr.height * 0.4, cell: c.cell, hex, hexD: mix(hex, "#000000", 0.35), hexL: mix(hex, "#ffffff", 0.45), s: antScale(), lifted: false
           });
         }
         kick();

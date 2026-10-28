@@ -45,6 +45,7 @@
   const SAVE_KEY_BOOK = "amai.book";
   const SAVE_KEY_HELP = "amai.help";
   const SAVE_KEY_FAST = "amai.fast";
+  const SAVE_KEY_CLEAN = "amai.clean";
 
   // ---------------------------------------------------------------- 色と印（§5.2）
   const COLORS = Object.freeze([
@@ -900,6 +901,34 @@
     return bookString(b);
   }
 
+  // 「1手もどし なし！」で クリアした絵の印：{"v":1,"ids":[…]}。壊れた・知らない id・重複は捨てる
+  function validateClean(raw) {
+    const out = { ids: [] };
+    try {
+      let o = raw;
+      if (typeof raw === "string") { try { o = JSON.parse(raw); } catch (e) { return out; } }
+      if (!o || typeof o !== "object" || Array.isArray(o) || o.v !== BOOK_V || !Array.isArray(o.ids)) return out;
+      const seen = new Set();
+      for (const id of o.ids) {
+        if (typeof id !== "string" || seen.has(id) || !PICTURE_ORDER.some((p) => p.id === id)) continue;
+        seen.add(id);
+        out.ids.push(id);
+      }
+    } catch (e) { /* 空のまま */ }
+    return out;
+  }
+  const cleanString = (c) => JSON.stringify({ v: BOOK_V, ids: c.ids });
+
+  function addClean(raw, id) {
+    const c = validateClean(raw);
+    if (typeof id === "string" && PICTURE_ORDER.some((p) => p.id === id) && c.ids.indexOf(id) < 0) c.ids.push(id);
+    return cleanString(c);
+  }
+
+  function hasClean(raw, id) {
+    return validateClean(raw).ids.indexOf(id) >= 0;
+  }
+
   function bookCount(raw) {
     try {
       const b = bookOf(raw);
@@ -918,7 +947,7 @@
     MAX_W, MAX_H, MAX_SUGAR, MAX_COUNT, MAX_PRESSES, MAX_T,
     GEN_TRIES, GEN_WORK, BASE_PICTURES, REPEAT_FROM,
     PICTURE_ORDER,
-    SAVE_KEY_SAVE, SAVE_KEY_BEST, SAVE_KEY_BOOK, SAVE_KEY_HELP, SAVE_KEY_FAST,
+    SAVE_KEY_SAVE, SAVE_KEY_BEST, SAVE_KEY_BOOK, SAVE_KEY_HELP, SAVE_KEY_FAST, SAVE_KEY_CLEAN,
     COLORS, LEVELS, TIERS,
     makeRng, seedFor, paramsFor,
     parsePicture, pickPicture, pictureById,
@@ -926,7 +955,7 @@
     isStable, isStuck, canPress, edgeCells, hud,
     replay, validateState,
     validateSave, makeSave,
-    validateBest, recordBest, validateBook, addToBook, bookCount,
+    validateBest, recordBest, validateBook, addToBook, bookCount, validateClean, addClean, hasClean,
     validateFlag, colorName,
   });
   root.AmaiLogic = api;

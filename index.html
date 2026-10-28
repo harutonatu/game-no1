@@ -9,12 +9,12 @@
 <meta name="theme-color" content="#1b1f2e">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<meta name="description" content="指で あそぶ 12こ の ゲーム。広告なし・登録なし。いろみずの パズル・はやおし・はしわたし など、1かい すこしで あそべます。">
+<meta name="description" content="指で あそぶ 13こ の ゲーム。広告なし・登録なし。いろみずの パズル・はやおし・はしわたし など、1かい すこしで あそべます。">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ゆびあそび">
 <meta property="og:locale" content="ja_JP">
-<meta property="og:title" content="ゆびあそび｜指で あそぶ 12こ の ゲーム">
-<meta property="og:description" content="指で あそぶ 12こ の ゲーム。広告なし・登録なし。いろみずの パズル・はやおし・はしわたし など、1かい すこしで あそべます。">
+<meta property="og:title" content="ゆびあそび｜指で あそぶ 13こ の ゲーム">
+<meta property="og:description" content="指で あそぶ 13こ の ゲーム。広告なし・登録なし。いろみずの パズル・はやおし・はしわたし など、1かい すこしで あそべます。">
 <meta property="og:url" content="https://harutonatu.github.io/game-no1/">
 <meta property="og:image" content="https://harutonatu.github.io/game-no1/icons/og-menu.png">
 <meta property="og:image:width" content="1200">
@@ -130,6 +130,8 @@
   .best b.none { font-family: var(--font-text); font-size: 12px; font-weight: 500; color: var(--muted); }
   /* 長いベスト表示（bestWrap）：「…」で切らず、空白の所でだけ折り返す（iPhone SE 幅で「ほし 30 まで クリア」が欠けないように） */
   .best b.wrap { white-space: normal; word-break: keep-all; overflow-wrap: normal; overflow: visible; text-overflow: clip; line-height: 1.3; }
+  /* 長い 2 部構成のベスト表示（あまいものあつめ「N めん クリア・ずかん M」）は少し小さくして 2 行に収める */
+  .best b.wrap.small { font-size: 13px; }
   /* 長い名前の切れ目（nameParts）。かたまりの中では折り返さず、かたまりの間でだけ折る */
   .name .np { display: inline-block; }
   .go { color: var(--muted); font-size: 22px; line-height: 1; padding-right: 2px; }
@@ -203,7 +205,7 @@
     { name: "もくもくこうば", desc: "もりの きを きって、いたに して うろう。もくもく はたらく みんなを そだてよう", url: "games/seizai/", bestText: () => seizaiBest(), art: "seizai" },
     // 名前が長いので、折り返すときは nameParts の切れ目（「ちきゅうを守れ！」と「ほしくだき」の間）だけで折る（約束 §1.4・§10）
     { name: "ちきゅうを守れ！ほしくだき", nameParts: ["ちきゅうを守れ！", "ほしくだき"], desc: "ちきゅうに せまる ほしを、ほうだいが こわすよ。かけらで ぶきを つよく しよう", url: "games/asteroid/", bestText: () => asteroidBest(), art: "asteroid", bestWrap: true },
-    { name: "あまいものあつめ", desc: "ありんこが おなじ いろの おさとうを はこぶよ", url: "games/amai/", bestText: () => amaiBest(), art: "amai", bestWrap: true }
+    { name: "あまいものあつめ", desc: "ありんこが おなじ いろの おさとうを はこぶよ", url: "games/amai/", bestText: () => amaiBest(), art: "amai", bestWrap: true, bestSmall: true }
   ];
 
   // ===== 小さな絵（Canvas で描く。画像ファイルは使わない） =====
@@ -953,7 +955,8 @@
           }
         }
       } catch (e) { m = 0; }
-      return m > 0 ? n + " めん クリア・ずかん " + m : n + " めん クリア";
+      const t = Math.min(n, 999).toLocaleString() + " めん クリア"; // 999 で頭打ち（いろびんの「999 めん クリア」と同じ幅。16 桁でも SE 縦で 2 行に収める。V13）
+      return m > 0 ? t + " ・ずかん\u00a0" + m : t;
     } catch (e) { return ""; }
   }
 
@@ -992,6 +995,7 @@
     label.textContent = "Best";
     const val = document.createElement("b");
     if (game.bestWrap) val.classList.add("wrap");
+    if (game.bestSmall) val.classList.add("small");
     best.append(label, val);
     info.append(name, desc, best);
     const go = document.createElement("span");

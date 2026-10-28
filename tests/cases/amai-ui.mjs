@@ -136,6 +136,17 @@ async function toClear(p, maxSteps = 80) {
   }
   return gs(p);
 }
+// クリアの演出中（won で、カードはまだ）まで進める。つかまえられなければ null
+async function toCelebrating(p) {
+  await playSolution(p);
+  for (let i = 0; i < 400; i++) {
+    const s = await gs(p);
+    if (s.won && s.overlay === null) return s;
+    if (s.overlay === 'clear') return null;
+    await wait(p, 50);
+  }
+  return null;
+}
 async function solveToClear(p) {
   const sol = await playSolution(p);
   return { sol, s: await toClear(p) };
@@ -445,7 +456,7 @@ export const tests = [
     id: 'AW5', tier: 'full', title: 'あまいもの 画面内：SE 縦・SE 縦 Safari（320×454）・SE 横・568×270・667×375・13 横・iPad 縦横で、1 面と 48 面（32×24 の絵）でも手前の箱・わく・ボタンが 44×44 以上で safe-area の中、.head・#picBox・#slots・#grid・#tools が重ならずはみ出さない、16 桁の面番号、遊び方の「わかった」がスクロールなしで押せる',
     async run({ browser, check }) {
       const VS = [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), custom(568, 270, null, 'SE Safari 横 568×270'), custom(667, 375, [0, 0, 0, 0], 'SE相当 横 667×375'), view('i13', 'l', 'app'), view('iPad', 'p', 'app'), view('iPad', 'l', 'app')];
-      const SEL = 'a#back, #helpBtn, #soundBtn, .box.front, .slot, #undoBtn, #restartBtn, #fastBtn, #bookBtn, .head, #picBox, #slots, #grid, #tools';
+      const SEL = 'a#back, #helpBtn, #soundBtn, .box.front, .slot, #undoBtn, #restartBtn, #fastBtn, #bookBtn, .head, #picBox, #hint, #slots, #grid, #tools';
       const MIN = 'a#back, #helpBtn, #soundBtn, .box.front, .slot, #undoBtn, #restartBtn, #fastBtn, #bookBtn';
       for (const v of VS) {
         for (const lv of [1, 48]) {
@@ -453,8 +464,8 @@ export const tests = [
           if (lv !== 1) await setLevel(page, lv);
           await wait(page, 150);
           const s = await gs(page);
-          const r = await layoutProbe(page, SEL, v.safe, { overlapSel: '.head, #picBox, #slots, #grid, #tools', minSel: MIN });
-          check(`${v.label} ${v.w}×${v.h}｜${lv} 面（箱 ${s.cols.reduce((a, c) => a + c.length, 0)} 個）：${r.n} 要素が画面内・重なりなし・ボタン／手前の箱／わくが 44px 以上・横スクロールなし`, s.level === lv && r.n > 0 && r.outside.length === 0 && r.overlaps.length === 0 && r.small.length === 0 && !r.hscroll, { level: s.level, ...r });
+          const r = await layoutProbe(page, SEL, v.safe, { overlapSel: '.head, #picBox, #hint, #slots, #grid, #tools', minSel: MIN });
+          check(`${v.label} ${v.w}×${v.h}｜${lv} 面（箱 ${s.cols.reduce((a, c) => a + c.length, 0)} 個）：${r.n} 要素が画面内・重なりなし（案内 #hint は絵に重ねない）・ボタン／手前の箱／わくが 44px 以上・横スクロールなし`, s.level === lv && r.n > 0 && r.outside.length === 0 && r.overlaps.length === 0 && r.small.length === 0 && !r.hscroll, { level: s.level, ...r });
           await ctx.close();
         }
       }
@@ -483,11 +494,17 @@ export const tests = [
         check(`${v.label}：遊び方の「わかった」(close) がスクロールなしで画面内にあり 44px 以上（${J(noScroll)}）`, o.shown && noScroll && noScroll.inside && noScroll.h >= 43.5 && noScroll.w >= 43.5, { o, noScroll });
         const hp = await overlayProbe(page, v.safe);
         check(`${v.label}：遊び方のカード：見出しが切れず、全ボタンに届き 44px 以上`, overlayOk(hp), hp);
+        // 遊び方の文（契約 §3.5）：巣は「ありの おうち」、ふち・わく・はこの すうじ の意味を 1 言ずつ
+        const ht = o.text;
+        check(`${v.label}：遊び方の文に「ありの おうちへ」「ふち」（えの まわり）「わく」（したの 5つの しかく）「はこの すうじ」（おさとうの かず）があり、「すへ」が無い`,
+          ['ありの おうちへ', 'えの まわり', 'したの 5つの しかく', 'はこの すうじ', 'おさとうの かず'].every((w) => ht.includes(w)) && !ht.includes('すへ'), ht);
         await clickCmd(page, 'close'); await wait(page, 100);
         const st = await makeStuckState(page);
         for (let i = 0; i < 30 && (await gs(page)).overlay !== 'stuck'; i++) { await skipG(page); await wait(page, 100); }
         const sp = await overlayProbe(page, v.safe);
         check(`${v.label}：うごかせないのカード：見出しが切れず、全ボタンに届き 44px 以上（setState ${st.ok}）`, st.ok && overlayOk(sp), { st, sp });
+        const hf = await page.evaluate(() => { const h = document.querySelector('#hint'); const q = h.getBoundingClientRect(), b = document.querySelector('#picBox').getBoundingClientRect(); return { t: h.textContent, fit: h.scrollWidth <= h.clientWidth + 1, oneLine: q.height <= 30, onPic: q.left < b.right - 0.5 && b.left < q.right - 0.5 && q.top < b.bottom - 0.5 && b.top < q.bottom - 0.5 }; });
+        check(`${v.label}：うごかせないときの案内（${hf.t}）が 1 行で はみ出さず、絵に重ならない`, hf.t.length > 0 && hf.fit && hf.oneLine && !hf.onPic, hf);
         await gotoG(page, { 'amai.save': null });
         await solveToClear(page);
         const cp = await overlayProbe(page, v.safe);
@@ -1091,6 +1108,125 @@ export const tests = [
       const k0 = await pressCol(page, 0); await skipG(page);
       const fin = await gs(page);
       check(`とけたあとは押せて、わくに入る（${k0}・わくの箱 ${fin.slots.filter(Boolean).length} 個）`, k0 === 'press' && fin.slots.filter(Boolean).length >= 4, fin.slots);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'AW21', tier: 'full', title: 'あまいもの クリアの演出中：？・ずかん・やりなおし（R）を押しても、そのカードを重ねずクリアのカードが残り、つぎの めんへ が押せる',
+    async run({ browser, check }) {
+      const { ctx, page } = await openG(browser, 'AW21', { opts: { touch: false } });
+      for (const how of ['help', 'book', 'restart']) {
+        await gotoG(page, { 'amai.save': null });
+        const s0 = await toCelebrating(page);
+        check(`${how}：クリアの演出中（won・カードまだ）を つかまえた`, !!s0, s0);
+        if (!s0) continue;
+        if (how === 'help') await page.click('#helpBtn');
+        else if (how === 'book') await page.click('#bookBtn');
+        else await page.keyboard.press('r');
+        // 押したものは開かない。カードは演出が終わってから出る（3 秒まで待つ。その間に別のカードが出たら不合格）
+        let other = null;
+        for (let i = 0; i < 60; i++) { const ov = (await gs(page)).overlay; if (ov !== null) { if (ov !== 'clear') other = ov; break; } await wait(page, 50); }
+        check(`${how}：押したもののカード（help・book・confirm）を出さない（${other}）`, other === null, other);
+        const s1 = await gs(page), o1 = await overlayInfo(page);
+        check(`${how}：押したあと overlay "clear"（${s1.overlay}）で、クリアのカード（${o1.cmds.join(',')}）が出ている`, s1.overlay === 'clear' && s1.phase === 'clear' && o1.shown && o1.cmds.includes('next'), { s1: s1.overlay, o1 });
+        await wait(page, 600);
+        await clickCmd(page, 'next'); await wait(page, 200);
+        const s2 = await gs(page);
+        check(`${how}：つぎの めんへ で 2 面が始まる（面 ${s2.level}・overlay ${s2.overlay}・phase ${s2.phase}）`, s2.level === 2 && s2.overlay === null && s2.phase === 'play', s2);
+      }
+      await ctx.close();
+    },
+  },
+  {
+    id: 'AW22', tier: 'full', title: 'あまいもの 演出中に離れて戻る：クリアの演出中に pagehide → pageshow（bfcache）でも、裏（hidden）→ 表でも、戻ったあとクリアのカードが出る',
+    async run({ browser, check }) {
+      const { ctx, page } = await openG(browser, 'AW22');
+      await gotoG(page, { 'amai.save': null });
+      const s0 = await toCelebrating(page);
+      check('クリアの演出中（won・カードまだ）を つかまえた', !!s0, s0);
+      await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
+      await wait(page, 2000);
+      const mid = (await gs(page)).overlay;
+      await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+      await wait(page, 3000);
+      const s1 = await gs(page), o1 = await overlayInfo(page);
+      check(`pagehide → pageshow（persisted）のあと、クリアのカードが出る（離れている間 ${mid}・戻ったあと ${s1.overlay}・${o1.cmds.join(',')}）`, s1.overlay === 'clear' && o1.cmds.includes('next') && !s1.stale, { mid, s1 });
+      await gotoG(page, { 'amai.save': null });
+      const s2 = await toCelebrating(page);
+      check('（裏）クリアの演出中を つかまえた', !!s2, s2);
+      await setHidden(page, true); await wait(page, 3000);
+      const h = await gs(page);
+      await setHidden(page, false); await wait(page, 3000);
+      const s3 = await gs(page);
+      check(`裏 → 表に戻ったあと、クリアのカードが出る（裏の間 ${h.overlay}・戻ったあと ${s3.overlay}）`, s3.overlay === 'clear' && !s3.paused, { h: h.overlay, s3 });
+      await ctx.close();
+    },
+  },
+  {
+    id: 'AW23', tier: 'full', title: 'あまいもの 1手もどし なし：1手もどすを使わずにクリアするとカードに「1手もどし なし！」・amai.clean に入り・ずかんの名前の横に ★。もどした面・途中から再開した面では出さない。壊れた amai.clean でも落ちない',
+    async run({ browser, check }) {
+      const { ctx, page } = await openG(browser, 'AW23');
+      const WORD = '1手もどし なし！';
+      const hasClean = (raw, id) => page.evaluate(([raw, id]) => { const L = window.AmaiLogic; return typeof L.hasClean === 'function' ? L.hasClean(raw, id) : 'no hasClean'; }, [raw, id]);
+      const starOf = (id) => page.evaluate((id) => { const li = document.querySelector(`#card ul.book li[data-id="${id}"]`); return li ? { star: !!li.querySelector('.star'), text: li.textContent } : null; }, id);
+      // (a) もどさずにクリア
+      await gotoG(page, { 'amai.save': null });
+      const { s } = await solveToClear(page);
+      const o = await overlayInfo(page), raw = await stored(page, 'amai.clean');
+      check(`もどさずにクリア：カードに「${WORD}」（${o.text.slice(0, 60)}）`, s.overlay === 'clear' && o.text.includes(WORD), o.text);
+      check(`amai.clean に ${s.picture} が入る（${raw}・hasClean ${await hasClean(raw, s.picture)}）`, typeof raw === 'string' && (await hasClean(raw, s.picture)) === true, raw);
+      await wait(page, 600);
+      await clickCmd(page, 'book'); await wait(page, 150);
+      const st = await starOf(s.picture);
+      check(`ずかんで ${s.picture} の名前の横に ★（${J(st)}）`, !!st && st.star, st);
+      // (b) 1手もどしてからクリア
+      await gotoG(page, { 'amai.save': null });
+      const sol = await solutionOf(page);
+      await pressCol(page, sol[0]); await skipG(page);
+      await page.click('#undoBtn'); await wait(page, 100);
+      const sb = await gs(page);
+      check(`1手もどして押した数 0・t 0（${sb.presses}・${sb.t}）`, sb.presses === 0 && sb.t === 0, sb);
+      const { s: s4 } = await solveToClear(page);
+      const o4 = await overlayInfo(page), raw4 = await stored(page, 'amai.clean');
+      check(`もどしてからクリア：カードに「もどし」の文が出ない・責める言葉も無い（${o4.text.slice(0, 60)}）、amai.clean は書かない（${raw4}）`, s4.overlay === 'clear' && !o4.text.includes('もどし') && raw4 === null, { t: o4.text, raw4 });
+      // (c) 途中から再開した面
+      await gotoG(page, { 'amai.save': null });
+      const sol5 = await solutionOf(page);
+      await settleG(page); await pressCol(page, sol5[0]); await skipG(page); await wait(page, 200);
+      await page.reload(); await wait(page, 300);
+      for (const c of sol5.slice(1)) { await settleG(page); const k = await pressCol(page, c); if (k !== 'press') break; await skipG(page); }
+      const s5 = await toClear(page), o5 = await overlayInfo(page);
+      check(`途中から再開してクリア：「もどし」の文を出さない（${s5.overlay}・${o5.text.slice(0, 60)}）`, s5.overlay === 'clear' && !o5.text.includes('もどし'), o5.text);
+      // (d) 壊れた amai.clean
+      for (const bad of ['{bad', '{"ids":5}', '[1,2]', '{"ids":[null,{},"ringo","ringo"]}']) {
+        await gotoG(page, { 'amai.save': null, 'amai.clean': bad });
+        const { s: s6 } = await solveToClear(page);
+        const o6 = await overlayInfo(page), raw6 = await stored(page, 'amai.clean');
+        await wait(page, 600);
+        await clickCmd(page, 'book'); await wait(page, 150);
+        const st6 = await starOf(s6.picture);
+        check(`壊れた amai.clean（${bad}）でも落ちず、カードに「${WORD}」・ずかんに ★（保存 ${raw6}）`, s6.overlay === 'clear' && o6.text.includes(WORD) && !!st6 && st6.star && (await hasClean(raw6, s6.picture)) === true, { raw6, st6 });
+      }
+      await ctx.close();
+    },
+  },
+  {
+    id: 'AW24', tier: 'full', title: 'あまいもの カードとフォーカス：カードを開いている間は #playView が inert で、Tab は a#back・？・♪・カードの中だけを回り、遊びの箱・わく・下のボタンに行かない。閉じたら inert が外れ、Tab で遊びの部品に戻る',
+    async run({ browser, check }) {
+      const { ctx, page } = await openG(browser, 'AW24', { help: false, opts: { touch: false } });
+      const where = () => page.evaluate(() => { const a = document.activeElement; if (!a || a === document.body) return 'body'; if (a.closest('#playView')) return 'play:' + (a.id || a.className); if (a.closest('#card')) return 'card'; if (a.closest('.head')) return 'head:' + (a.id || a.textContent.trim()); return 'other:' + a.tagName; });
+      const tabs = async (n) => { const r = []; for (let i = 0; i < n; i++) { await page.keyboard.press('Tab'); r.push(await where()); } return r; };
+      for (const kind of ['help', 'book']) {
+        if (kind === 'book') { await page.click('#bookBtn'); await wait(page, 150); }
+        const inert = await page.evaluate(() => document.querySelector('#playView').hasAttribute('inert'));
+        const r = await tabs(12);
+        const bad = r.filter((x) => x.startsWith('play:') || x.startsWith('other:'));
+        check(`${kind} のカード：#playView が inert（${inert}）、Tab 12 回で遊びの部品に行かず（${r.join(' ')}）、a#back とカードの中を通る`, inert && bad.length === 0 && r.includes('card') && r.includes('head:back'), r);
+        await page.keyboard.press('Escape'); await wait(page, 150);
+        const after = await page.evaluate(() => ({ inert: document.querySelector('#playView').hasAttribute('inert'), ov: window.AmaiGame.getState().overlay }));
+        const r2 = await tabs(12);
+        check(`${kind} を閉じると inert が外れ（${after.inert}）、Tab で遊びの部品に行ける（${r2.join(' ')}）`, after.ov === null && !after.inert && r2.some((x) => x.startsWith('play:')), { after, r2 });
+      }
       await ctx.close();
     },
   },

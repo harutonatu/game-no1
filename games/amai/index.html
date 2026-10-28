@@ -7,12 +7,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ゆびあそび">
 <meta name="theme-color" content="#1b1f2e">
-<meta name="description" content="広告なし・登録なし。てまえの はこを おすと、ありんこが おなじ いろの おさとうを すへ はこぶよ。えを ぜんぶ はこぶと ずかんに はいるよ。">
+<meta name="description" content="広告なし・登録なし。てまえの はこを おすと、ありんこが おなじ いろの おさとうを ありの おうちへ はこぶよ。えを ぜんぶ はこぶと ずかんに はいるよ。">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ゆびあそび">
 <meta property="og:locale" content="ja_JP">
 <meta property="og:title" content="あまいものあつめ｜ゆびあそび">
-<meta property="og:description" content="広告なし・登録なし。てまえの はこを おすと、ありんこが おなじ いろの おさとうを すへ はこぶよ。えを ぜんぶ はこぶと ずかんに はいるよ。">
+<meta property="og:description" content="広告なし・登録なし。てまえの はこを おすと、ありんこが おなじ いろの おさとうを ありの おうちへ はこぶよ。えを ぜんぶ はこぶと ずかんに はいるよ。">
 <meta property="og:url" content="https://harutonatu.github.io/game-no1/games/amai/">
 <meta property="og:image" content="https://harutonatu.github.io/game-no1/icons/og-menu.png">
 <meta property="og:image:width" content="1200">
@@ -27,8 +27,8 @@
 <script src="../../common/debug.js"></script>
 <style>
   /* 配置（契約 docs/ari-contract.md §3.1・§3.2）
-     縦：上から「← メニュー / 名前 / ？ ♪」・絵（上の数・巣）・わく 5・箱の格子 4 列・下のボタン 4 つ。
-     横（高さ 500px 以下）：上の帯は横いっぱい。その下の左に絵、右に わく・格子・ボタン。
+     縦：上から「← メニュー / 名前 / ？ ♪」・絵（上の数・巣）・案内 1 行・わく 5・箱の格子 4 列・下のボタン 4 つ。
+     横（高さ 500px 以下）：上の帯は横いっぱい。その下の左に絵、右に 案内 1 行（あまった高さの下の端）・わく・格子・ボタン。
      箱・わく・ボタンの大きさは、ここの CSS 変数で決める（render.js は読むだけ）。
      奥の箱を何段見せるかは #grid の --backs（2 か 1）。 */
   :root {
@@ -61,6 +61,7 @@
     --tool-gap: 8px;
     --stack-w: 420px;          /* わく・格子・ボタンの列の幅の上限（大きい画面で間延びしない） */
     --row-gap: 6px;            /* わく・格子・ボタンの間 */
+    --hint-h: 20px;            /* 案内 1 行（絵と わくの間。絵に重ねない） */
     color-scheme: dark;
   }
   [hidden] { display: none !important; }
@@ -157,8 +158,8 @@
     min-width: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) var(--slot-h) var(--row-gap) var(--grid-h) var(--row-gap) var(--tool-h);
-    grid-template-areas: "pic" "slots" "." "grid" "." "tools";
+    grid-template-rows: minmax(0, 1fr) var(--hint-h) var(--slot-h) var(--row-gap) var(--grid-h) var(--row-gap) var(--tool-h);
+    grid-template-areas: "pic" "hint" "slots" "." "grid" "." "tools";
     row-gap: 0;
   }
 
@@ -285,32 +286,29 @@
   .box.back { flex: 0 0 auto; height: var(--back-h); opacity: 0.7; }
   .col .rest { flex: 0 0 auto; margin-top: calc(-1 * var(--back-gap)); height: var(--rest-h); font: 700 12px/12px var(--font-text); color: var(--muted); text-align: center; }
 
-  /* 案内：絵の箱の上の方に重ねる（2 行分の高さに固定。配置は動かない。押す邪魔をしない） */
+  /* 案内：絵と わくの間に 1 行（高さ固定。絵に重ねない。配置は動かない。押す邪魔をしない）。
+     長い文言は main.js が字を 12・11px に縮める。少したつと薄くなる（文字は残す）。待っているだけの案内（data-soft）は はじめから うすい */
   .hint {
-    grid-area: pic;
-    align-self: start;
+    grid-area: hint;
+    align-self: center;
     justify-self: center;
     position: relative;
-    z-index: 4;
     box-sizing: border-box;
-    width: calc(100% - 16px);
-    margin: 20px 0 0;
-    height: 2.8em;
-    padding: 0 8px;
+    width: min(100%, var(--stack-w));
+    height: var(--hint-h);
+    margin: 0;
+    padding: 0 4px;
     overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    white-space: nowrap;
     text-align: center;
-    border-radius: 10px;
-    background: rgba(27, 31, 46, 0.86);
     color: var(--hint);
-    font: 13px/1.4 var(--font-text);
-    overflow-wrap: anywhere;
+    font: 13px/var(--hint-h) var(--font-text);
     pointer-events: none;
     transition: opacity 0.3s;
   }
-  .hint:empty, .hint[data-fade="1"] { opacity: 0; }
+  .hint:empty { opacity: 0; }
+  .hint[data-fade="1"] { opacity: 0.6; }
+  .hint[data-soft="1"] { color: var(--muted); opacity: 0.85; }
 
   canvas.fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 15; }
 
@@ -376,13 +374,14 @@
     .app { max-width: none; }
     .play {
       grid-template-columns: minmax(0, 1fr) 264px;
-      grid-template-rows: var(--slot-h) var(--row-gap) var(--grid-h) var(--row-gap) var(--tool-h) minmax(0, 1fr);
-      grid-template-areas: "pic slots" "pic ." "pic grid" "pic ." "pic tools" "pic .";
+      /* 案内は右の列の上のあまり（568×270 で 16px）の下の端に 1 行 */
+      grid-template-rows: minmax(0, 1fr) var(--slot-h) var(--row-gap) var(--grid-h) var(--row-gap) var(--tool-h);
+      grid-template-areas: "pic hint" "pic slots" "pic ." "pic grid" "pic ." "pic tools";
       column-gap: 12px;
     }
     .tools { align-self: start; }
     .tools .cta { font-size: 12px; }
-    .hint { font-size: 12px; }
+    .hint { --hint-h: 16px; align-self: end; font-size: 12px; }
   }
 
   /* iPad：同じ並びで大きく（箱は最大 120×88） */
@@ -394,13 +393,14 @@
       --tool-h: 56px; --tool-gap: 12px;
       --stack-w: 648px;
       --row-gap: 8px;
+      --hint-h: 28px;
     }
     .grid, .tools { width: min(100%, 516px); }   /* 格子の箱は 120 幅まで（4×120＋3×12） */
     .tools .cta { font-size: 17px; }
     .col .rest { font-size: 14px; line-height: 16px; }
     .hud { font-size: 16px; height: 18px; }
     .hud b { font-size: 16px; }
-    .hint { font-size: 16px; width: min(560px, calc(100% - 16px)); }
+    .hint { font-size: 16px; }
     h1.title { font-size: 18px; }
   }
 
@@ -444,10 +444,16 @@
   .card p.note { color: var(--muted); font-size: 14px; }
   .card p.picname { font: 700 30px/1.25 var(--font-display); color: #ffd84d; letter-spacing: 0.04em; word-break: keep-all; overflow-wrap: anywhere; }
   .card p.count { color: var(--muted); font-size: 13px; line-height: 1.4; }
+  .card p.clean { margin-top: -4px; color: #ffd84d; font: 700 14px/1.3 var(--font-text); }   /* 1手もどし なし！（ほめる言葉。小さく） */
   .card ol.rules { margin: 0; padding-left: 1.4em; text-align: left; font: 15px/1.55 var(--font-text); display: flex; flex-direction: column; gap: 4px; }
   .card ol.rules b { color: var(--accent); }
   .card .sample { display: flex; justify-content: center; }
   .card .sample canvas { display: block; width: 72px; height: 72px; image-rendering: pixelated; }
+  /* 遊び方：背の低い画面では見本の絵を見出し（縦）・文（横）の となりに並べ、「わかった」をスクロールなしで押せるようにする */
+  #card[data-kind="help"] > h2 { grid-area: title; }
+  #card[data-kind="help"] > .sample { grid-area: sample; }
+  #card[data-kind="help"] > ol.rules { grid-area: rules; }
+  #card[data-kind="help"] > .btns { grid-area: btns; }
   .card .clearpic { display: flex; justify-content: center; }
   .card .clearpic canvas { display: block; max-width: 160px; max-height: 120px; image-rendering: pixelated; }
   .card .btns { display: flex; flex-direction: row; flex-wrap: wrap; gap: 10px; }
@@ -497,6 +503,7 @@
   }
   .card .bookhead h2 { flex: 1 1 auto; font-size: 20px; text-align: left; }
   .card .bookhead .got { flex: 0 0 auto; margin: 0; font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .card .bookhead .got .rest { margin-left: 6px; font-size: 12px; }
   .card .bookhead button {
     flex: 0 0 auto;
     min-width: 76px;
@@ -513,6 +520,7 @@
   .card ul.book li canvas { display: block; width: 100%; max-width: 64px; aspect-ratio: 4 / 3; height: auto; object-fit: contain; image-rendering: pixelated; }
   .card ul.book .nm { font: 12px/1.25 var(--font-text); color: var(--ink); word-break: keep-all; overflow-wrap: anywhere; text-align: center; }
   .card ul.book li[data-got="0"] .nm { color: var(--muted); }
+  .card ul.book .star { margin-left: 2px; color: #ffd84d; font-size: 11px; }
   .card ul.book .cnt { font: 700 12px/1.2 var(--font-text); color: #ffd84d; }
   .card ul.book .season { position: absolute; top: 2px; left: 2px; padding: 0 3px; border-radius: 5px; font: 700 12px/1.3 var(--font-text); color: #1b1f2e; background: #f4ead2; }
   .card ul.book .season[data-season="haru"] { background: #ffc6dc; }
@@ -527,6 +535,7 @@
     .card { padding: 14px; gap: 8px; }
     .card ol.rules { font-size: 14px; line-height: 1.5; }
     .card .sample canvas { width: 56px; height: 56px; }
+    #card[data-kind="help"] { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "sample title" "rules rules" "btns btns"; align-items: center; column-gap: 8px; }
   }
   /* 横向きで背が低い：遊び方がスクロールなしで収まるよう、幅を広げ、字とすき間を詰める */
   @media (orientation: landscape) and (max-height: 500px) {
@@ -541,6 +550,7 @@
     .card .btns { gap: 8px; }
     .card .btns button { flex: 1 1 0; min-height: 44px; }
     #card[data-kind="help"] .btns button { flex: 1 1 100%; }
+    #card[data-kind="help"] { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "title title" "sample rules" "btns btns"; align-items: center; column-gap: 12px; }
     #card[data-kind="book"] { width: 100%; }
     .card .bookhead { padding: 4px 12px; }
   }
