@@ -549,8 +549,6 @@ export const tests = [
       const s = await gs(page), ov = await overlayInfo(page);
       check(`phase "stuck"（data-phase ${await phaseAttr(page)}）・stuck true・カード（undo・restart。${ov.cmds.join(',')}）、負けの言葉が無い`,
         s.phase === 'stuck' && s.stuck === true && (await phaseAttr(page)) === 'stuck' && s.overlay === 'stuck' && ov.cmds.includes('undo') && ov.cmds.includes('restart') && /うごかせないよ/.test(ov.text) && !/しっぱい|まけ/.test(ov.text), { s: s.phase, ov });
-      const att = await page.evaluate(() => ['#undoBtn', '#restartBtn'].map((q) => document.querySelector(q)?.getAttribute('data-attention') ?? null));
-      check(`押して意味のある方に data-attention="1"（undo ${att[0]}・restart ${att[1]}）`, att.includes('1'), att);
       const saveAfter = await stored(page, 'amai.save');
       check('うごかせないでも保存は消えない（amai.save が残っている）', saveBefore !== null && saveAfter !== null, { saveBefore, saveAfter });
       // 自然に詰ませる
@@ -563,13 +561,18 @@ export const tests = [
         const s2 = await gs(p2);
         check(`その押し方で画面も stuck（phase ${s2.phase}・overlay ${s2.overlay}）`, s2.phase === 'stuck' && s2.overlay === 'stuck', s2);
         if (s2.phase === 'stuck') {
+          // data-attention は押した数のある局面で確かめる（setState の局面は押した数 0 で、どちらも disabled。PM の決定）
+          const att = await p2.evaluate(() => ['#undoBtn', '#restartBtn'].map((q) => document.querySelector(q)?.getAttribute('data-attention') ?? null));
+          check(`押して意味のある方に data-attention="1"（undo ${att[0]}・restart ${att[1]}）`, att.includes('1'), att);
           const before = s2.presses;
+          await wait(p2, 450);   // うごかせないのカードも出した直後 400ms は押せない（誤タップ防止）
           await clickCmd(p2, 'undo'); await skipG(p2); await wait(p2, 100);
           const s3 = await gs(p2);
           check(`1手もどす(undo) で戻れる（presses ${before} → ${s3.presses}）。カードが閉じて phase play・stuck false`, s3.presses === before - 1 && s3.overlay === null && s3.phase === 'play' && s3.stuck === false, s3);
           // もう一度詰ませて、やりなおし → 確認カード
           await replayOps(p2, found);
           for (let i = 0; i < 40 && (await gs(p2)).overlay !== 'stuck'; i++) { await settleG(p2); await skipG(p2); await wait(p2, 100); }
+          await wait(p2, 450);
           await clickCmd(p2, 'restart'); await wait(p2, 100);
           const cf = await overlayInfo(p2);
           check(`うごかせないのカードの「やりなおし」(restart) は確認カードへ（${cf.cmds.join(',')}）`, cf.shown && cf.cmds.includes('restartYes') && cf.cmds.includes('close'), cf);
@@ -787,8 +790,8 @@ export const tests = [
         const real = L.cols.flat().find((b) => String(b.id) === lid.id);
         const names = colors.map((c) => c.name), marks = colors.map((c) => c.mark);
         const leak = [...names, ...marks].filter((w) => lid.html.includes(w));
-        check(`ふたの箱（id ${lid.id}）：data-color・data-mark・data-count が空、aria-label に「ふた」、文字に数字が無い、HTML に色の名前・印の名前が無い（漏れ：${leak.join(',') || 'なし'}）`,
-          lid.color === '' && lid.mark === '' && lid.count === '' && /ふた/.test(lid.label) && !/\d/.test(lid.text) && leak.length === 0 && !!real && real.lid === true, lid);
+        check(`ふたの箱（id ${lid.id}）：data-color・data-mark・data-count が空、aria-label は手前なら「ふた」・奥（aria-hidden）なら無し、文字に数字が無い、HTML に色の名前・印の名前が無い（漏れ：${leak.join(',') || 'なし'}）`,
+          lid.color === '' && lid.mark === '' && lid.count === '' && (lid.front ? /ふた/.test(lid.label) : lid.label === '') && !/\d/.test(lid.text) && leak.length === 0 && !!real && real.lid === true, lid);
       }
       await ctx.close();
     },
@@ -951,9 +954,13 @@ export const tests = [
           const reach = () => { const b = card.querySelector('[data-cmd="close"]'); if (!b) return false; const r = b.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return r.width >= 43.5 && r.height >= 43.5 && r.top >= 0 && r.bottom <= innerHeight + 0.5 && !!t && (t === b || b.contains(t)); };
           const r0 = reach(); let r1 = r0;
           if (sc) { sc.scrollTop = sc.scrollHeight; r1 = reach(); sc.scrollTop = 0; }
-          return { scrolls: !!sc, imgs, top: r0, bottom: r1 };
+          // 大きな画面（iPad 縦）で全部が収まるならスクロールは要らない：最後の小さな絵が画面内に見えていればよい
+          const all = card.querySelectorAll('canvas, img, svg'), last = all[all.length - 1];
+          const lr = last ? last.getBoundingClientRect() : null;
+          const fits = !sc && !!lr && lr.top >= 0 && lr.bottom <= innerHeight + 0.5;
+          return { scrolls: !!sc, fits, imgs, top: r0, bottom: r1 };
         });
-        check(`${v.label}：${total} 枚はカードの中をスクロールできて（${sc.scrolls}）、「とじる」が上でも一番下までスクロールしても画面内で押せる（${sc.top}・${sc.bottom}）、小さな絵が ${sc.imgs} 個`, sc.scrolls && sc.top && sc.bottom && sc.imgs >= 2, sc);
+        check(`${v.label}：${total} 枚はカードの中をスクロールできるか全部が画面に収まり（${sc.scrolls}・${sc.fits}）、「とじる」が上でも一番下までスクロールしても画面内で押せる（${sc.top}・${sc.bottom}）、小さな絵が ${sc.imgs} 個`, (sc.scrolls || sc.fits) && sc.top && sc.bottom && sc.imgs >= total, sc);
         await ctx.close();
       }
       // 開いている間は t が進まない

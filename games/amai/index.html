@@ -269,7 +269,7 @@
     border: 0;
     border-radius: 8px;
     background: var(--c, #6b5a44);
-    color: #fff;
+    color: var(--ink, #fff);   /* 明るい色の箱は濃い字（render の inkFor）。白い箱で数が見えなくなるのを防ぐ */
     font-family: var(--font-display);
   }
   .box.front {
