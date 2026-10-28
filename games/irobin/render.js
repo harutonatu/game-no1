@@ -229,13 +229,35 @@
     poly(ctx, [[chestX - r * 0.17, chestY - r * 0.2], [chestX + r * 0.17, chestY - r * 0.2], [chestX, chestY + r * 0.32]], "#ff8a3d");
     oval(ctx, chestX - r * 0.08, chestY - r * 0.3, r * 0.06, r * 0.13, "#3fae5a", -0.4);
     oval(ctx, chestX + r * 0.08, chestY - r * 0.3, r * 0.06, r * 0.13, "#3fae5a", 0.4);
-    if (d >= 2) {   // 2 はなかんむり：頭のてっぺんに 5 つの花（ピンク・きいろ を交互に、まん中は白）
-      for (let i = 0; i < 5; i++) {
-        const a = Math.PI * (1.18 + i * 0.16);
-        const x = cx + Math.cos(a) * r * 0.86, y = cy + Math.sin(a) * r * 0.86;
-        disc(ctx, x, y, r * 0.16, i % 2 ? "#ffd34d" : "#ff7fae");
-        disc(ctx, x, y, r * 0.06, "#ffffff");
+    if (d >= 2) {   // 2 はなかんむり：頭の上に乗せた 花の わ（少し傾ける。耳の付け根の前。目より上）
+      // わ＝中心 (cx, cy−0.82r)・横 0.86r・たて 0.27r のだ円。奥の半分は つると葉、手前の半分に 花びら 5 枚の花を 7 つ
+      const ry0 = cy - r * 0.82, ax = r * 0.86, ay = r * 0.27;
+      ctx.save();
+      ctx.translate(cx, ry0); ctx.rotate(-0.1);
+      const at = (th, k) => [Math.cos(th) * (ax + (k || 0)), Math.sin(th) * (ay + (k || 0) * 0.7)];
+      const leaf = (th, s, k) => { const [x, y] = at(th, k); oval(ctx, x, y, r * 0.2 * s, r * 0.08 * s, "#3fae5a", Math.atan2(Math.cos(th) * ay, -Math.sin(th) * ax) + 0.5); };
+      const flower = (x, y, s, pc, cc, turn) => {   // 花びら 5 枚（丸 5 つ）＋まん中
+        for (let k = 0; k < 5; k++) {
+          const a = -Math.PI / 2 + k * Math.PI * 0.4 + turn;
+          ctx.beginPath(); ctx.arc(x + Math.cos(a) * s * 0.55, y + Math.sin(a) * s * 0.55, s * 0.46, 0, Math.PI * 2);
+          ctx.fillStyle = pc; ctx.fill();
+          if (pc === "#ffffff") { ctx.strokeStyle = "#f2a0b8"; ctx.lineWidth = Math.max(0.8, r * 0.025); ctx.stroke(); }
+        }
+        disc(ctx, x, y, s * 0.36, cc);
+      };
+      ctx.beginPath(); ctx.ellipse(0, 0, ax, ay, 0, Math.PI, Math.PI * 2);   // 奥の つる（耳の付け根の前を通る）
+      ctx.strokeStyle = "#2f8f4a"; ctx.lineWidth = Math.max(1, r * 0.07); ctx.stroke();
+      for (const i of [1, 2, 4, 5]) leaf(Math.PI * (1 + i / 6), 0.7, 0);
+      [[1.25, "#7fd0ff"], [1.5, "#ff7fae"], [1.75, "#ffd34d"]].forEach(([t, c], i) => { const [x, y] = at(Math.PI * t); flower(x, y, r * 0.13, c, i === 2 ? "#ff8a3d" : "#ffffff", i); });   // 奥の 小さい花
+      ctx.beginPath(); ctx.ellipse(0, 0, ax, ay, 0, 0, Math.PI);             // 手前の つる
+      ctx.strokeStyle = "#3fae5a"; ctx.lineWidth = Math.max(1, r * 0.08); ctx.stroke();
+      for (let i = 0; i < 6; i++) leaf(Math.PI * (i + 0.5) / 6, 1, r * 0.1);  // 花の あいだから 外へ のぞく 葉
+      const COLS = [["#ff7fae", "#ffd34d"], ["#ffd34d", "#ff8a3d"], ["#7fd0ff", "#ffd34d"], ["#ff5a8a", "#ffe9a8"], ["#ffffff", "#ff7fae"], ["#ffd34d", "#ff8a3d"], ["#ff7fae", "#ffd34d"]];
+      for (let i = 0; i < 7; i++) {   // 手前の 大きい花 7 つ（横の花は少し小さく＝奥行き）
+        const th = Math.PI * i / 6, [x, y] = at(th);
+        flower(x, y, r * 0.26 * (0.82 + 0.18 * Math.sin(th)), COLS[i][0], COLS[i][1], i * 0.3);
       }
+      ctx.restore();
     }
     if (d >= 3) {   // 3 ほしの ステッキ：体の右に持つ
       strokeLine(ctx, [[cx + r * 1.0, h - r * 0.05], [cx + r * 1.12, cy + r * 0.25]], "#8a5cd6", r * 0.1);
