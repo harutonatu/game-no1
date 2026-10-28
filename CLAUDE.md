@@ -5,7 +5,7 @@
 次に作るゲームの経緯と候補は [docs/game-plan.md](docs/game-plan.md)、テストの詳細は [tests/README.md](tests/README.md) と [tests/design.md](tests/design.md) にあります。重複は書かず、そちらを見てください。
 事業化（ビジネスモデル・収益化）の検討と決定は [docs/business-plan.md](docs/business-plan.md) にあります。
 見つかった不具合・改善案、作業の進め方の改善策（ワークフローやテストの時間など）は [docs/issues.md](docs/issues.md)（課題管理表）に書き、直したら状態を更新し、docs/issues-done.md へ移します。
-最新の引き継ぎは [docs/handoff.md](docs/handoff.md)（2026-10-22、v28 公開後・自宅 PC へ切り替え）。新しい会話は、まずこれを読んでください。
+最新の引き継ぎは [docs/handoff.md](docs/handoff.md)（2026-10-28、v47 公開後・あまいものあつめの約束と絵を増やす計画まで）。新しい会話は、まずこれを読んでください。
 
 ## 1. プロジェクト概要
 
