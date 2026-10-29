@@ -23,6 +23,10 @@
   const NAME = "あまいものあつめ";
   const SLOTS = 3;
   const EASY_BOXES = 5;   // 1〜2 面の箱の数の上限（段 0 のあいだは 5 のまま。わくは 3 なので §2.1 の「必ず入る」保証は弱まる）
+  // 1 はこびで 1 箱が運ぶ角砂糖の数（段 0b の測定用。1 なら今までと同じ動き）。
+  // CARRY_FROM 以上の面だけ CARRY_N 個運ぶ。持ち玉の合計＝角砂糖の数は変えない（アリの数は同じ。1 回で CARRY_N 匹が運ぶイメージ）。
+  const CARRY_N = 1;
+  const CARRY_FROM = 1;
   const COLS = 4;
   const TICK_MS = 500;
   const FAST_MS = 250;
@@ -489,13 +493,17 @@
     for (let k = 0; k < SLOTS; k++) {
       const bx = slots[k];
       if (!bx) continue;
-      const i = findTarget(b, bx.color);
-      if (i < 0) continue;   // その色のふちが無い：待つ
-      takeCell(b, i);
-      left--;
-      const count = bx.count - 1;
-      const x = i % s.W;
-      carries.push(Object.freeze({ slot: k, id: bx.id, color: bx.color, cell: i, x, y: (i - x) / s.W, emptied: count === 0 }));
+      const cap = s.level >= CARRY_FROM ? CARRY_N : 1;
+      let count = bx.count, took = 0;
+      for (let m = 0; m < cap && count > 0; m++) {
+        const i = findTarget(b, bx.color);
+        if (i < 0) break;      // その色のふちが無い：ここまで
+        takeCell(b, i);
+        left--; count--; took++;
+        const x = i % s.W;
+        carries.push(Object.freeze({ slot: k, id: bx.id, color: bx.color, cell: i, x, y: (i - x) / s.W, emptied: count === 0 }));
+      }
+      if (took === 0) continue;   // その色のふちが無い：待つ
       slots[k] = count === 0 ? null : { id: bx.id, color: bx.color, count };
     }
     if (carries.length === 0) return { state: s, moved: false, carries: Object.freeze([]), won: false, stuck: stuckImpl(s, b) };
@@ -944,7 +952,7 @@
   }
 
   const api = Object.freeze({
-    NAME, SLOTS, COLS, TICK_MS, FAST_MS,
+    NAME, SLOTS, COLS, TICK_MS, FAST_MS, CARRY_N, CARRY_FROM,
     MAX_W, MAX_H, MAX_SUGAR, MAX_COUNT, MAX_PRESSES, MAX_T,
     GEN_TRIES, GEN_WORK, BASE_PICTURES, REPEAT_FROM,
     PICTURE_ORDER,
