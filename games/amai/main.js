@@ -37,7 +37,6 @@
   // 案内は絵と わくの間に 1 行で出す（SE 縦の幅 288px に 12px で入る長さ。入らなければ 11px に縮める）
   const HINT_FIRST = "はこを おすと、ありんこが はこぶよ";
   const HINT_IDLE = "てまえの はこを おしてね";
-  const HINT_NO_UNDO = "もどせるのは 3かいまで。『やりなおし』を おしてね";
   const HINT_STUCK = "うごかせないよ。「1手もどす」を おしてね";
   const HINT_CARRY = "ありんこが はこんでるよ";   // 待っているだけのとき（押せる箱が無い・わくが いっぱい）に うすく出す
   const HINT_OPEN = "ふたが あいたよ";
@@ -142,8 +141,6 @@
   let info = null;              // createLevel の info（solution）
   let state = null;             // AmaiLogic の state（イミュータブル）
   let presses = [];             // 押した手 [[押したときの t, 列], …]
-  const UNDO_MAX = 3;           // 1手もどしは 1 面につき 3 回まで（R-2）
-  let undosLeft = UNDO_MAX;     // この面で残っている 1手もどしの回数
   let custom = null;            // setState で入れた最初の局面（テスト用。保存しない）
   let customHist = [];          // setState の局面での 1手もどす用（押す前の state の列）
   let phase = "play";           // play | stuck | clear
@@ -235,7 +232,7 @@
   }
   function renderTools() {
     const n = presses.length;
-    el.undoBtn.disabled = !(n > 0) || undosLeft <= 0 || phase === "clear";
+    el.undoBtn.disabled = !(n > 0) || phase === "clear";
     el.restartBtn.disabled = !(n > 0) || phase === "clear";   // 押した数 0 なら押しても何も起きない（いろびん IB-13）
     // うごかせないとき：押して意味のある方を目立たせる
     const need = phase === "stuck";
@@ -372,7 +369,6 @@
     state = st;
     presses = prs;
     noUndo = prs.length === 0 ? true : null;   // 途中から再開した面は、もどしたか分からないので出さない
-    undosLeft = UNDO_MAX;
     custom = null;
     customHist = [];
     stable = false;
@@ -441,7 +437,6 @@
   function undo() {
     if (overlay !== null || !state || state.won || phase === "clear") return false;
     if (!presses.length) return false;
-    if (undosLeft <= 0) { setHint(HINT_NO_UNDO); return false; }
     cancelPending();   // 先に うごかせないの待ちを取りやめる（flush がその続きでカードを出さないように）
     flush();
     if (state.won || overlay !== null) return false;
@@ -455,7 +450,6 @@
     }
     if (!st) { console.error("あまいものあつめ: 1手もどせませんでした"); return false; }
     presses.pop();
-    undosLeft -= 1;
     if (custom) customHist.pop();
     if (noUndo === true) noUndo = false;
     state = st;
@@ -493,7 +487,7 @@
     if (custom) {
       const base = custom;
       clearLater(); runId += 1; cancelPending(); safeCall(() => render.finishAll());
-      state = base; presses = []; customHist = []; stable = false; undosLeft = UNDO_MAX;
+      state = base; presses = []; customHist = []; stable = false;
       safeCall(() => render.build(state, picture));
       hud(); setPhase("play"); setHint("");
       if (safeCall(() => L.isStable(state), false)) { stable = true; afterStable(); }
@@ -748,7 +742,7 @@
     else if (cmd === "close") closeCard();
     else if (cmd === "restartYes") doRestart();
     else if (cmd === "book") showBook("clear");
-    else if (cmd === "undo") { if (overlay === "stuck" && presses.length && undosLeft > 0) { hideOverlay(); undo(); } }
+    else if (cmd === "undo") { if (overlay === "stuck" && presses.length) { hideOverlay(); undo(); } }
     else if (cmd === "restart") { if (overlay === "stuck") askRestart("stuck"); }
   });
   el.helpBtn.addEventListener("click", () => { sfx.unlock(); showHelp(); });
@@ -857,7 +851,7 @@
         slots: state ? clone(state.slots) : [], cols: state ? clone(state.cols) : [],
         overlay, busy: !!render.busy, paused: hiddenNow, stale, fast, calm,
         timers: timers.size, runId, ants: st && Number.isFinite(st.ants) ? st.ants : 0,
-        canUndo: presses.length > 0 && undosLeft > 0, undosLeft, book: bookCountNow(),
+        canUndo: presses.length > 0, book: bookCountNow(),
         picture: pick.id, mirror: !!pick.mirror, repeat: !!pick.repeat, custom: !!custom,
         pressList: clone(presses), hint: el.hint.textContent,
         stats: st ? clone(st) : null   // render.stats()（{ ants, frameMs, redraws }。テスト AW19 用）
@@ -893,7 +887,6 @@
       custom = st;
       customHist = [];
       presses = [];
-      undosLeft = UNDO_MAX;
       noUndo = null;
       info = null;
       level = Number.isSafeInteger(st.level) && st.level >= 1 ? st.level : level;
