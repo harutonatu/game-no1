@@ -482,7 +482,7 @@
   function startOverlay(D) {
     var host, root, btn, panel, countEl, bodyEl, statusEl, timer = 0, open = false, placed = null;
     var mo = null;                        // カードの出入りを見張る（T-33）
-    var MO_PRESS = "button, a[href], input, select, textarea, [role=button], [data-cmd], [data-action]";
+    var MO_PRESS = "button, a[href], input, select, textarea, [role=button], [data-cmd], [data-action], label";
     var CSS =
       ":host{all:initial}" +
       "*{box-sizing:border-box;font-family:-apple-system,system-ui,'Hiragino Sans',sans-serif;-webkit-tap-highlight-color:transparent}" +

@@ -125,6 +125,8 @@
 | T-34 | 低 | WW10（もくもくこうば 性能。CPU 4 倍遅く）が 34ms を超えるコマ 15.9%（基準 10%）。単独の流し直しも、v47 のままのコードでも落ちた。絵の担当が裏で動いて機械が重かった（load 2.3）ためと推測 | 未着手 | 機械が空いているときに単独で流し直して確かめる |
 | T-35 | 中 | BW31・BW32（いろびん v40。WebKit smoke）が単独でも落ちる：BW31 はクリアのカードが出た直後にボタンが押せない（aria-disabled）になっていない・「コピーできなかったよ」の文、BW32 は 60 秒で終わらない。公開版 v48（3c55aa3）でも同じに落ちた（2026-10-28。あまいものあつめとは関係なし）。Chromium では合格 | 直した（公開待ち） | 2026-10-29 原因3つを突き止めて直した（作業ツリー。公開は未）。(c)：Playwright の時計は実時間でも進むので、重い WebKit ではカードが出てから `card()` を読むまでに 400ms を越えていた → BW2 と同じく `frozen` で囲んだ（T-26・T-31 と同じ形）。(h)：WebKit では継承した unprefixed の `user-select` の計算値が `auto`（prefixed は `text`）で、テストの `userSelect || webkitUserSelect` が `auto` で短絡していた → `.share-note .url` に `user-select` を直接書いた（実装側）。(3)：60 秒超えは止まっていたのではなく遅いだけ（BW31 75 秒・BW32 99 秒） → `timeout: 180000`（FW19 と同じやり方）。WebKit smoke（画面あり）・Chromium smoke はどちらも全部合格 |
 
+| T-36 | 低 | `common/debug.js` の `onMutate` が MutationObserver のコールバックの中で同期に `place()` を呼ぶため、強制レイアウトがその場で起きる。今の 12 本では害なし（v51 の技術レビューで実測：もくもくこうば 5 秒で置き直し 31 回・コマ 16.7ms 中央値、WW10 と同じ重い条件では 0 回）。「押せる札を毎フレーム作り直す」ゲームを今後作ると 1 フレーム 2〜5ms 乗る | 未着手 | v51 技術レビュー（将来の保険）。直し方：`if (hit) { if (!raf) raf = requestAnimationFrame(function(){ raf = 0; re(); }); return; }` と `teardown()` で `cancelAnimationFrame` |
+
 ## 進め方の改善（ワークフロー・サブエージェント）
 
 作業の進め方で気づいた改善策。次の作業から取り入れる。
