@@ -481,6 +481,8 @@
   // ================================================================
   function startOverlay(D) {
     var host, root, btn, panel, countEl, bodyEl, statusEl, timer = 0, open = false, placed = null;
+    var mo = null;                        // カードの出入りを見張る（T-33）
+    var MO_PRESS = "button, a[href], input, select, textarea, [role=button], [data-cmd], [data-action]";
     var CSS =
       ":host{all:initial}" +
       "*{box-sizing:border-box;font-family:-apple-system,system-ui,'Hiragino Sans',sans-serif;-webkit-tap-highlight-color:transparent}" +
@@ -544,6 +546,14 @@
       // 置き場所の見直し：画面の大きさが変わったとき・1秒ごと（今の場所がボタンと重なったときだけ動かす）
       ["resize", "orientationchange", "load"].forEach(function (t) { window.addEventListener(t, re); });
       timer = setInterval(function () { if (!open) place(); }, 1000);
+      // カード（遊び方・2択・クリア・エンディング）が出た・消えた直後にも置き場所を見直す。
+      // 1秒ごとの見直しだけでは、出てから約1秒のあいだ 🐞 がカードのボタンに重なって押せない（T-33）
+      if (window.MutationObserver) {
+        try {
+          mo = new MutationObserver(onMutate);
+          mo.observe(document.body || document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "inert", "aria-hidden"] });
+        } catch (e) { mo = null; }
+      }
     }
 
     D.subscribe(function (ev) {
@@ -552,8 +562,27 @@
     });
 
     function re() { placed = null; place(); }
+    // 押せる要素が出入りした変化だけに反応する（文字や色の書きかえ・毎フレームの表示更新では動かない）
+    function hasPress(n) {
+      if (!n || n.nodeType !== 1 || (host && host.contains(n))) return false;
+      if (n.matches && n.matches(MO_PRESS)) return true;
+      return !!(n.querySelector && n.querySelector(MO_PRESS));
+    }
+    function onMutate(list) {
+      if (open || !btn) return;
+      for (var i = 0; i < list.length; i++) {
+        var m = list[i], hit = false;
+        if (m.type === "attributes") hit = hasPress(m.target);
+        else {
+          for (var j = 0; j < m.addedNodes.length && !hit; j++) hit = hasPress(m.addedNodes[j]);
+          for (var k = 0; k < m.removedNodes.length && !hit; k++) hit = hasPress(m.removedNodes[k]);
+        }
+        if (hit) { re(); return; }
+      }
+    }
     function teardown() {
       clearInterval(timer);
+      if (mo) { mo.disconnect(); mo = null; }
       ["resize", "orientationchange", "load"].forEach(function (t) { window.removeEventListener(t, re); });
       if (host && host.parentNode) host.parentNode.removeChild(host);
       host = null; btn = null; open = false;
