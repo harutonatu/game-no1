@@ -1789,7 +1789,7 @@ export const tests = [
   },
   // ================= v40 =================
   {
-    id: 'BW31', tier: 'smoke', title: 'いろびん v40（IB-33・IB-31）：1 面（「1ぽんに 4つ」が折れない）と 5 面（はじめての布）・6 面（短い布の文）の最初のヒント、クリアのカードの動物の列（.served）・ボタンの順と間隔（12px 以上）・共有ボタンは ★3 と節目だけ（枠だけ・押せるまで 400ms）、share は click の中で呼ばれ AbortError・InvalidStateError は黙り他の失敗は URL を見せる、share が無ければコピー（「コピーしました」→ 3 秒で戻る）、コピーもだめなら URL を選べる、知らせ（吹き出し）が出ても「つぎの めんへ」が動かず・ボタンに重ならず・押すと閉じ（成功は 3 秒で消える）、返事のない share のあとも次のカードで共有が効く、SE 縦の節目＋★3 が収まり SE 横は 2 行（上：つぎの めんへ・メニューへ、下：共有）で予告が隠れない',
+    id: 'BW31', tier: 'smoke', timeout: 180000, title: 'いろびん v40（IB-33・IB-31）：1 面（「1ぽんに 4つ」が折れない）と 5 面（はじめての布）・6 面（短い布の文）の最初のヒント、クリアのカードの動物の列（.served）・ボタンの順と間隔（12px 以上）・共有ボタンは ★3 と節目だけ（枠だけ・押せるまで 400ms）、share は click の中で呼ばれ AbortError・InvalidStateError は黙り他の失敗は URL を見せる、share が無ければコピー（「コピーしました」→ 3 秒で戻る）、コピーもだめなら URL を選べる、知らせ（吹き出し）が出ても「つぎの めんへ」が動かず・ボタンに重ならず・押すと閉じ（成功は 3 秒で消える）、返事のない share のあとも次のカードで共有が効く、SE 縦の節目＋★3 が収まり SE 横は 2 行（上：つぎの めんへ・メニューへ、下：共有）で予告が隠れない',
     async run({ browser, check }) {
       const URL_ = 'https://harutonatu.github.io/game-no1/games/irobin/';
       const HINT1 = 'うえの どうぶつさんが ほしい いろを、1ぽんに 4つ あつめよう';
@@ -1834,7 +1834,15 @@ export const tests = [
         };
       });
       const names = (p, lv, total) => p.evaluate(([lv, total]) => { const N = window.IrobinRender.ANIMAL_NAMES; return Array.from({ length: total }, (_, i) => N[window.IrobinLogic.animalFor(lv, i)]).join('、'); }, [lv, total]);
-      const open1 = async (label, o = {}) => { const g = await openG(browser, label, o); const s = await gs(g.page); const { s: s1 } = await solveToClear(g.page); return { ...g, total: s.total, s1 }; };
+      // early: クリアのカードが出てから「出た直後」の読み取りまでを frozen に入れる（BW2 と同じ形。T-35）。
+      //   時計を止めないと、カードが出たあとの evaluate の実時間の分だけページの時計も進み、重い WebKit では 400ms を越えて aria-disabled が外れてしまう
+      const open1 = async (label, o = {}, early = false) => {
+        const g = await openG(browser, label, o); const s = await gs(g.page);
+        let s1 = null, k0 = null;
+        if (early) await frozen(g.page, async () => { s1 = (await solveToClear(g.page)).s; k0 = await card(g.page); });
+        else s1 = (await solveToClear(g.page)).s;
+        return { ...g, total: s.total, s1, k0 };
+      };
 
       // (a) 1 面の最初のヒント
       const a = await openG(browser, 'BW31 a');
@@ -1856,9 +1864,8 @@ export const tests = [
         check(`(b2) best 5・cloth 無しの ${s2.level} 面：布のヒントは「おきゃくさんに とどけると ぬのが とれるよ」だけ（${hb2}）`, s2.level === 6 && hb2 === 'おきゃくさんに とどけると ぬのが とれるよ', { hb2, level: s2.level });
         await b2.ctx.close(); }
       // (c)(d)(e)(f) 1 面を ★3 でクリア → 動物の列・ボタン・share
-      const c = await open1('BW31 c', { opts: { initScript: SHARE_SPY } });
-      await wait(c.page, 100);
-      const k0 = await card(c.page);
+      const c = await open1('BW31 c', { opts: { initScript: SHARE_SPY } }, true);
+      const k0 = c.k0;
       check(`(c) 出た直後：ボタンは押せない（aria-disabled）（${k0.btns.map((b) => b.dis)}）`, k0.btns.length === 4 && k0.btns.every((b) => b.dis), k0.btns);
       await wait(c.page, 500);
       const k = await card(c.page);
@@ -1982,7 +1989,7 @@ export const tests = [
     },
   },
   {
-    id: 'BW32', tier: 'smoke', title: 'いろびん v40（IB-24）：節目（5 面ごと）だけ「あたらしい きろく！」と音 best と次の予告。節目でない面で記録が伸びたら音なしの「ここまで ○めん」。予告は 5 面「いろが ふえるよ」・10 面「12めんで かくれた いろが でるよ」・15 面は動物の名前・105 面は「つぎは 106めん」だけ。クリアのテンポ（850ms ではカードなし、出た直後は押せない）は変えない',
+    id: 'BW32', tier: 'smoke', timeout: 180000, title: 'いろびん v40（IB-24）：節目（5 面ごと）だけ「あたらしい きろく！」と音 best と次の予告。節目でない面で記録が伸びたら音なしの「ここまで ○めん」。予告は 5 面「いろが ふえるよ」・10 面「12めんで かくれた いろが でるよ」・15 面は動物の名前・105 面は「つぎは 106めん」だけ。クリアのテンポ（850ms ではカードなし、出た直後は押せない）は変えない',
     async run({ browser, check }) {
       const run = async (lv, best, label, bookRaw) => {
         const g = await openG(browser, `BW32 ${label}`, { opts: { initScript: SFX_SPY }, extra: { 'irobin.best': String(best), 'irobin.save': J({ v: 3, level: lv, moves: [] }), ...(bookRaw ? { 'irobin.book': bookRaw } : {}) } });
