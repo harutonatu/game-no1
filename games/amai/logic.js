@@ -21,7 +21,8 @@
   "use strict";
 
   const NAME = "あまいものあつめ";
-  const SLOTS = 5;
+  const SLOTS = 3;
+  const EASY_BOXES = 5;   // 1〜2 面の箱の数の上限（段 0 のあいだは 5 のまま。わくは 3 なので §2.1 の「必ず入る」保証は弱まる）
   const COLS = 4;
   const TICK_MS = 500;
   const FAST_MS = 250;
@@ -703,7 +704,7 @@
     const scols = cols.map((a) => a.map((k) => ({ id: nid++, color: P[k].color, count: P[k].count, lid: lid[k], ice: ice[k] })));
     const state = freezeState({
       level: lv, W: pic.W, H: pic.H, picture: pic.id, mirror: pk.mirror, repeat: pk.repeat,
-      cells: Array.from(pic.cells), total: 0, left: 0, cols: scols, slots: [null, null, null, null, null], t: 0, presses: 0, won: false,
+      cells: Array.from(pic.cells), total: 0, left: 0, cols: scols, slots: new Array(SLOTS).fill(null), t: 0, presses: 0, won: false,
       ...(() => { let n = 0; for (const v of pic.cells) if (v >= 0) n++; return { total: n, left: n }; })(),
     });
     return { state, solution: colOf };
@@ -727,7 +728,7 @@
       s = r.state;
     }
     settle();
-    if (lv <= 2 && solution.length > SLOTS) return false;
+    if (lv <= 2 && solution.length > EASY_BOXES) return false;
     return s.won === true;
   }
 

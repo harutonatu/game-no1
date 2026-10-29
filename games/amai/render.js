@@ -22,7 +22,7 @@
   const MAX_ANTS = 48;
   const MAX_PARTS = 60;
   const CELL_MAX = 24;
-  const SLOTS = 5, COLS = 4;
+  const SLOTS = 3, COLS = 4;
   const BACK_ROWS = 2;
   const WALK_MAX_MS = 1500;   // 1 匹の道のりの上限（はやくなら半分）
   const EXIT_MS = 150;        // わくの箱から出る
