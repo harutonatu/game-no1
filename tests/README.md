@@ -96,7 +96,6 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 | ミチビキ空港（games/michibiki/）の変更 | smoke ＋ `ONLY=FW6,FW7,FW8,FW9,FW10,FW11,FW12,FW13,FW14,FW15,FW16,FW17,FW18,FW19,FW22,FW23,FW24 node tests/run.mjs full`（ロジックだけなら `ONLY=FL1,FL2,FL3,FL4,FL5,FL6,FL7,FL8,FL9,FL10,FL11,FL12,FL13 node tests/run.mjs full`、約 20 秒。ルール・保存・出現を変えたら `ONLY=FL1,…,FL13,FW1,…,FW24 M=MF1,…,MF32 node tests/mutants/mutate.mjs both`） |
 | もくもくこうば（games/seizai/）の変更 | smoke ＋ `ONLY=WW7,WW8,WW9,WW10,WW11,WW12,WW13,WW14,WW15,WW16,WW17,WW18,WW19,WW20,WW21,WW22,WW23,WW24,WW25,WW26,WW27,WW28,WW29 node tests/run.mjs full`（ロジックだけなら `ONLY=WL1,WL2,WL3,WL4,WL5,WL6,WL7,WL8,WL9,WL10,WL11,WL12,WL13,WL14 node tests/run.mjs full`。経済・保存・閉じた間・船・注文を変えたら `ONLY=WL1,…,WL11,WW1,…,WW19 M=MW1,…,MW50 PORT=9640 WORKERS=2 node tests/mutants/mutate.mjs both`。10 個ずつ M を区切って流す。さいしょから（契約 §21）を変えたら `ONLY=WW25 M=MW61,MW62,MW63,MW64 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`。古いページから書き戻さない（X-20）を変えたら `ONLY=WW26 M=MW65,MW66,MW67 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`。かんな の速さ・もう強くできない つまり（契約 §23・SZ-08）を変えたら `ONLY=WL14,WW27,X1 M=MW68,MW69 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`） |
 | ちきゅうを守れ！ほしくだき（games/asteroid/）の変更 | smoke ＋ `ONLY=KW8,KW9,KW10,KW11,KW12,KW13,KW14,KW15,KW16,KW17,KW20,KW21,KW23,KW25,KW26 node tests/run.mjs full`（ロジックだけなら `ONLY=KL1,…,KL23 node tests/run.mjs full`。ルール・保存・中断・画面の流れを変えたら `WORKERS=3 PORT=9650 ONLY=KL1,…,KL23,KW1,…,KW26,X1 M=MK1,…,MK83 node tests/mutants/mutate.mjs full`（全部で 1 時間あまり。直した所の MK だけに絞ってよい）。KW3（はね返し）を変えたら 20 回続けて流して 0 回落ちることを確かめる（T-19）。ロジックの数値を変えたら main.js の gostar の表 `ARMS` も測り直す（design.md §10.68）） |
-| あまいものあつめ（games/amai/）の変更 | smoke ＋ `ONLY=AL1,AL2,AL3,AL4,AL5,AL6,AL7,AL8,AL9,AL10,AL11,AL12,AL13,AL14,AW5,AW6,AW7,AW8,AW9,AW10,AW11,AW12,AW13,AW14,AW15,AW16,AW17,AW18,AW19,AW20,AW21,AW22,AW23,AW24,L12,L13,V13,X1 node tests/run.mjs full`（ロジックだけなら `ONLY=AL1,…,AL14`。変異は中身の仕組みを変えたときだけ `M=MA1,…,MA31 node tests/mutants/mutate.mjs both`） |
 | 遠隔テストの中継（tests/relay/・common/debug-relay.js・common/debug.js の relay の部分） | smoke ＋ `ONLY=RL1,RL2,RL3,RL4,RL5,RL6,RL7,RL8,RL9,RL10,RL11,RL12 node tests/run.mjs full` を Chromium と WebKit（`BROWSER=webkit WORKERS=1`）の両方で。ONLY は番号を並べる形（`ONLY=RL` では絞れない）。約 30〜50 秒 |
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
 | テストを変えたとき・中身の仕組み（点数計算・保存・日付・ルール）を変えたとき | `node tests/mutants/mutate.mjs both`（そのゲームの分だけ。テストがわざと入れた不具合を見つけられるか） |
@@ -133,8 +132,6 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 | WW | もくもくこうば 画面 | DOM と `window.SeizaiGame`（getState・logic・advance・away・tapZone・buy・setState など）、`?debug=1` の命令（gostage・neworder・ships）で：遊べる・#money／#goalText／シートの値段が logic の関数と同じ・deny（WW1）、節目と #stageCard の 400ms・bgRedraws（WW2）、起動のるすの あいだ 90 秒・30 秒・3 時間・時計が戻る・壊れた savedAt（WW3）、0時またぎを日本とロサンゼルス・hidden→visible・二重に足さない・時計を戻す（WW4）、保存・10 秒ごと・bak・保存不可・ほかのキー（WW5）、どこからでも戻れる（WW6）、注文（WW7）、大きな船と最大の桁（WW8）、画面内 7 画面・遊び方（WW9）、性能（WW10、CDP）、中断と pagehide（WW11）、キーボード（WW12）、動きを減らす（WW13）、効果音（WW14）、メニュー・NAME・DG1・touch-action（WW15）、オフライン（WW16）、タッチ（WW17、CDP）、レビュー後の直し：遊び方の間だけ止まる・rAF だけが止まった間・押した部署が見える・advance＝step（WW18）、レビュー後の直し B：注文カードは最初の1回だけ自動で開く（2回目からは札と #hint）・シートを開いている間は閉じてから・おかえり が注文より先・おかえり／エンディングの文が見出しと重ならない・注文の札の文・最初の一手の「おして！」・森が止まったときの案内・買える印・広げるボタンの2段・節目カードの絵・マネージャーの1行・みなとで景色へスクロール（WW19）、待つ理由：なえぎのシートと読み上げに「きりかぶが まだ ないよ。きこりを ふやすと」・はこぶ・かわむき にも「きこりを ふやそう」・つまりの きこり には出ない・切り株まで歩いて植える（WW20）、新しい工程：かんそう・かんな の場所とシートの値段・つまりの札・節目カードの「ふえたもの」・みなと の めあて・v25 の形の保存（WW21）、道具：Lv4→5 の「のこぎりに なった！」・音 tool・lastTool・「つぎ：…（Lv15）」・全部署の名前が TOOLS と同じ・Lv 1・5・15・30 で絵が変わる（WW22）、画面を広く：SE 縦の上の帯 104px 以下・#scene 6 割以上・開いた場所の上 44px が見える・#scrollCue・横向きのシート（WW23）、はこぶ人の往復と「まち」：録画の局面（こうば）で 30 秒の間に門まで 3 回以上（`getState().carryTrips`）・はこぶ・かわむき・かくざい の「まち」（`getState().waits`）が出続けない・はこぶ のシートに待つ文なし・動きを減らす設定でも往復・本当に前の品が来ないときは「まち」・きこりが つまって切り株が ときどきしか できないときは なえぎ（猶予 3 秒）に「まち」（WW24）、さいしょから（契約 §21・SZ-07）：SE 縦・横で #helpOk・#helpReset・#resetNo・#resetYes が画面内・44px 以上・「やめる」が先で primary・やめる／Esc で保存が変わらない・実行で save と bak を消して開き直し best・help・save.v<n> は残る・開き直す前の pagehide で古い保存を書き戻さない・消せないときは #hint「けせなかった」（WW25）、もう強くできない つまり（契約 §23・SZ-08）：みなと で全部さいだい・はやい の局面で つまりが かんな でなく かんな のシートが「1ぷんに 849まい」・つまりの札（`getState().jamTag`）が「ぜんぶ さいだい！」・場所の data-maxed=1 と読み上げとシートに「おそい」が無い・ほかの場所に「〇〇を ふやそう」が無い・「もうかる」にすると「ここが おそい」に戻る・こうじょう で全部さいだい・はやい の つまり（みせ）は シート「つぎの だんで もっと ふやせるよ」で「これいじょう」と言わない（レビュー S1）（WW27）。もうかる／はやい の ✓ は見た目だけで読み上げの名前（ariaSnapshot）に入らず、状態は aria-pressed（X-25）（WW28）。smoke は WW1〜WW6（seizai-ui.mjs）。WW29（SZ-06）は はこぶ が速くて置き場がいつも 0 でも、はこぶ が働いている間は札が「すぐ はこぶ」、丸太が本当に来ないときは「0」、はこぶ の人がいなくて丸太がたまれば数字（札は丸太の山の上で、山と重ならない。SE 縦横で画面内） |
 | KL | ちきゅうを守れ！ほしくだき 計算ロジック（Node） | `games/asteroid/logic.js` を直接呼ぶ（担当A・数値の調整担当が持つ）：式・星の形・当たり・はなれたかたまり・近づく・クリア・2択・保存・決定的・自動プレイの目安・不変条件・重さ（KL19 の greedy は壁の時計でなく CPU 時間で測る。T-20）・v40：いなずまの伝わり（KL20）・たまの伸びと通りぬけ（KL21）・どかんの中心（KL22）・Lv99 のたまの強さ（KL23・full） |
 | KW | ちきゅうを守れ！ほしくだき 画面 | DOM と `window.AsteroidGame`（getState・logic・advance・upgrade・unlock・choose・reserveSwap・setState・save）、`?debug=1` の命令（win・lose・gostar・bench）で：遊べる・表示の一致（formatKakera・upCostOf・dpsOf・progressOf）（KW1）、2択（400ms・止まる・再読み込みで同じ候補）（KW2）、はね返し（lose は一番下を BARRIER_Y ちょうど・hold にするので 1 step で必ず bounce・「あと N%」・残る・自動で次。T-19）（KW3）、場を押しても何も起きない（fly・bounce・clear）（KW4）、クリアとエンディング（KW5）、保存 v:2・壊れた保存（v:3・欄だけ壊れた ひかえ・予約）・bak（KW6）、戻る（入れ替えのカードからも）（KW7）、区切り（KW18）、クリアの帯とベスト（KW19）、砲台と斜め撃ち（turretsOf の位置・等間隔・ang・斜めの弾・x が動かない・ひかえは撃たない・枠を開けると並び直す）（KW22）、古い保存 v:1（かけらだけ・bak・best は下げない・遊び方の先頭に知らせ 1 行 #helpMig、#hint には出さない・閉じたら消える。UX レビュー 4）（KW24）／full：画面内（最大の桁・3 台・4 台＋ひかえ・6 種類・場の高さ 4 台は 42%・30%・予約の札「つぎの ほしから」（入らない行だけ「つぎから」）・「とおい／ちかい」が場の中で砲台に重ならない）（KW8）、長い名前の折り返し（T-13 と同じ切り詰め）・遊び方（KW9）、性能（§21.5：星 30・4 台 Lv30・CPU 4 倍で遅いコマ 5% 以下・drawMs 8ms・stepMs 4ms）（KW10）、中断（KW11）、キーボード（4 台のあと U で ひかえへ）（KW12）、動きを減らす（KW13）、効果音（KW14）、メニュー・NAME の一致・説明「ほうだいが」（KW15）、オフライン（KW16）、タッチ（CDP）（KW17）、◎ と 2択の案内・gostar（KW20）、さいしょから（KW21）、ひかえと入れ替え（ひかえが空・4 台後は ひかえへ・残り 1 つは 1 枚・6 種類でボタンが消える・一度持った武器だけ・ひかえは強くできない・#swapCard の 400ms と止まる・予約の札・取り消し・星の途中は替わらない・再読み込みで残る・はね返しとクリアで替わる・Lv は武器ごと・音 swap・キーボード・SE 縦横）（KW23）、古いページから書き戻さない（X-20。x20Run・ヒントを出さない・見えている間は後勝ち・さいしょからの直後）（KW25）、v40：いなずまの絵 0.35 秒と てつ以外の枝・たまの しんか の言葉（Lv20 と Lv40・99）・いなずまの説明（KW26） |
-| AL | あまいものあつめ 計算ロジック（Node） | `games/amai/logic.js` を直接呼ぶ：定数・10 色・paramsFor・絵 48 枚の決まり・ふち（ななめを数えない）・運ぶ・押す（reason の順・ふた・こおり）・生成（決定的・解を再生すると勝つ）・うごかせない・再生と 1手もどす・保存／ベスト／ずかん／「もどしなし」の検証・イミュータブル・性能（AL11, full）・自動プレイの表（AL12, full）・絵の選び方（AL13） |
-| AW | あまいものあつめ 画面 | DOM と `window.AmaiGame`：押す・運ぶ・クリア・保存・メニューへ戻る（smoke AW1〜AW4）、画面内・1手もどす・うごかせない・はやく・中断・キーボード・音・色覚・動きを減らす・オフライン・拡大・メニュー・ずかん・X-20・性能・ふたとこおり・演出中にカードを開く（AW21）・演出中に離れて戻る（AW22）・1手もどし なし（AW23）・カードの間の inert（AW24）（full） |
 | DG | デバッグ表示（common/debug.js） | 無効なら DOM・console に触れない（全ページ）、?debug=1 でボタン・エラーの件数・パネル・コピー用の文字、メニュー→ゲームでも有効、?debug=0 と「デバッグを終わる」で消える、命令（help・info・layout・state・storage・tap・logs）の形と安全なエラー、ボタンが全ページ（SE 縦横・最初の画面とプレイ中）で押せる要素に重ならない、パネルの文字 12px・ボタン 44px・touch-action、オフライン（DG1〜DG6、debug.mjs）。わざと起こすエラーには印 DGTEST を付け、X1 の集計から外す |
 | RL | iPhone の遠隔テスト（中継） | `tests/relay/relay.mjs` を子のプロセスとして `--key` 固定・`--port 0`（空いているポート）・`--host 127.0.0.1` で起動し、Playwright のページを iPhone の代わりにつなぐ。PC 向けの窓口は fetch、`ask.mjs` は子のプロセスで呼ぶ。終わったら（失敗しても）中継を止める：起動 → `/status`・`/wait`・`/run`（info・layout・state・logs・時間切れ）・`/logs`（RL1）、合言葉ちがいは 4001・rejected・つなぎ直さない・形の悪い key は覚えない（RL2）、`open` でメニュー→ゲーム・`/wait?after=` で新しい接続を待つ・悪い path は断る・`reload`・移る先の URL に `debug=1&relay=1&key=` が付く・sessionStorage も残る（RL3）、中継を止めて起動し直すと自動でつなぎ直す（RL4）、relay を付けないときは debug-relay.js を読まない・`?relay=0` と「デバッグを終わる」・APP_FILES に入れない（RL5）、ask.mjs の `--yes`・終了コード 2・`名前=値`（RL6）、静的配信の安全（root の外・.git・301・405・Content-Type・no-store）とループバック以外 403（RL7）、2 台目で 1 台目が 4002（RL8）、Node だけの偽の端末で枠の読み方・ログの切り詰め・hello 前の上限・`--exit-on-stdin-close`（RL9）、なりすまし対策（別の Origin・名前の Host は 403、合言葉 5 回間違いで締め切り、既定の合言葉 8 文字、hello 前 8 本まで）（RL10）、open・reload で sessionStorage が消えていても移った先でデバッグが有効になりつなぎ直す・URL に `debug=1&relay=1&key=` が付き path の `?` と `#` は残る（RL11、T-11）、Node だけ：iPhone で開く URL の並び（ふつうの LAN が先、仮想（アダプタ名・192.168.56.x・172.16〜31.x・169.254.x.x・MAC の先頭）は後ろで印、先頭に「おすすめ」）（RL12、T-12）。smoke は RL1・RL5（relay.mjs）。中継を止めている間の「WebSocket につながらない」console だけは X1 に数えない |
 | X1 | 共通 | 全ページでコンソールエラー 0（最後に 1 回） |
@@ -418,8 +415,6 @@ OGP の絵（`icons/og-irobin.png`・`icons/og-menu.png`）を作り直すとき
 ゼンマイさんぽの変異（MZ1〜MZ4）は下の表の最後（番号は M17〜M23 と重ならないので振り直しなし）。master 取り込み後（v14）に M17〜M23・MZ1〜MZ4 を full で流し、11/11 を検出。
 
 2026-10 の結果（Chromium）：smoke 12/16・full 16/16 を検出（M14〜M16 は hotfix/k2 で追加。遅い回線・版の食い違いは full だけで確かめる）。M17〜M19（キリトリ道場、feature/kiritori で追加）は smoke 2/3（M19 は爆弾が出るまで遊ぶ必要があり full のみ）・full 3/3 を検出。M20〜M23 はいろコード用に追加（feature/irocode では M17〜M20 だったが、master のキリトリ道場と番号が重なったため結合時に振り直した。I グループ＋L5 に絞って流し、full で 4/4 を検出。M22・M23 は full の I15・I13 で検出する設計）。
-
-あまいものあつめの変異 MA1〜MA31：smoke 21/31・full 31/31 検出（2026-10-28、Chromium・PORT=9670）。最初は MA9（replay が手の t の逆順を見ない）が見逃したので、AL8 に「t が逆順の手で ok:false」を足して検出（smoke・full とも）。smoke で見逃す 10 本は full の項目（AW5〜AW24）で見つける設計。
 
 | 変異（わざと入れた不具合） | smoke | full |
 |---|---|---|
@@ -710,37 +705,6 @@ OGP の絵（`icons/og-irobin.png`・`icons/og-menu.png`）を作り直すとき
 | MK81 ほしくだき：たまが こわしたマスだけ通りぬける（硬いマスで止まる。ユーザーの答え「こわさなくても進む」の逆。v40） | smoke は v40 で流していない | 検出（KL21, KL23。v40 の関門 2026-10-25） |
 | MK82 ほしくだき：通りぬけて星の上へ出た たまを消さない（v40 レビュー） | smoke は v40 で流していない | 検出（KL21。v40 の関門 2026-10-25） |
 | MK83 ほしくだき：たまの しんか で「つきぬける ように なった」を出さない（v40 レビュー。render.js） | smoke は v40 で流していない | 検出（KW26。v40 の関門 2026-10-25） |
-| MA1 あまいものあつめ：ふちでない角砂糖も運ぶ（見つける：AL3・AL4） | 検出（AL3, AL4, AL7, AW4） | 検出（AL3, AL4, AL7, AW4, AW5, AW7） |
-| MA2 あまいものあつめ：ななめもふちに数える（見つける：AL3） | 検出（AL3, AW4） | 検出（AL3, AW4, AW5, AW7） |
-| MA3 あまいものあつめ：ちがう色の角砂糖も運ぶ（見つける：AL4） | 検出（AL3, AL4, AL6, AL7, AL10, AW1, AW2, AW3, AW4, X1） | 検出（AL3, AL4, AL6, AL7, AL10, AL12, AL11, AW1, AW2, AW3, AW4, AW5, AW6, AW7, AW11, AW12, AW13, AW14, AW17, AW21, AW22, AW23, X1） |
-| MA4 あまいものあつめ：数が 0 になっても箱がわくに残る（見つける：AL4・AW1） | 検出（AL4, AL6, AL8, AL13, AW3） | 検出（AL4, AL6, AL8, AL12, AL13, AL11, AW3, AW7, AW11, AW12, AW19, AW20） |
-| MA5 あまいものあつめ：押した箱が列に残る（見つける：AL5・AW1） | 検出（AL5, AL6, AL8, AL10, AL13, AW1, AW2, AW3, AW4, X1） | 検出（AL5, AL6, AL8, AL10, AL12, AL13, AL11, AW1, AW2, AW3, AW4, AW5, AW6, AW7, AW8, AW9, AW10, AW11, AW12, AW13, AW14, AW17, AW19, AW20, AW21, AW22, AW23, X1） |
-| MA6 あまいものあつめ：わくがいっぱいでも押せる（見つける：AL5・AL7） | 検出（AL5, AL7, AL8, AW4） | 検出（AL5, AL7, AL8, AW4, AW5, AW7） |
-| MA7 あまいものあつめ：isStuck が「押せる列」を見ない（見つける：AL7・AW7） | 検出（AL7, AW1, AW2, AW3, AW4） | 検出（AL7, AL12, AW1, AW2, AW3, AW4, AW5, AW6, AW7, AW8, AW9, AW10, AW11, AW13, AW14, AW15, AW17, AW19, AW20, AW21, AW22, AW23, AW24） |
-| MA8 あまいものあつめ：1手もどすで 2 手戻る（見つける：AL8・AW6） | 見逃し（full の項目で見つける設計） | 検出（AW6, AW7, X1） |
-| MA9 あまいものあつめ：replay が押した手の t を見ない（見つける：AL8・AW3） | 検出（AL8） | 検出（AL8） |
-| MA10 あまいものあつめ：validateSave が手の形を確かめない（見つける：AL9・AW3） | 検出（AL9） | 検出（AL9） |
-| MA11 あまいものあつめ：ふたの箱が手前で開かない（見つける：AL5・AW20） | 検出（AL5） | 検出（AL5, AW20） |
-| MA12 あまいものあつめ：こおりがとけない（見つける：AL5・AW20） | 検出（AL5） | 検出（AL5, AW20） |
-| MA13 あまいものあつめ：hidden で 1 はこびを止めない（見つける：AW9） | 見逃し（full の項目で見つける設計） | 検出（AW9） |
-| MA14 あまいものあつめ：古いページが書く（見つける：AW18） | 見逃し（full の項目で見つける設計） | 検出（AW18） |
-| MA15 あまいものあつめ：ずかんに足すとき、ほかの絵を消す（見つける：AL9・AW17） | 検出（AL9） | 検出（AL9, AW17） |
-| MA16 あまいものあつめ：ずかんの回数が増えない（見つける：AW17） | 検出（AL9, AW2） | 検出（AL9, AW2, AW17, AW23） |
-| MA17 あまいものあつめ：運ぶ順が巣に近い順でない（見つける：AL4） | 検出（AL4） | 検出（AL4） |
-| MA18 あまいものあつめ：押せない理由の順が違う（見つける：AL5） | 検出（AL5） | 検出（AL5） |
-| MA19 あまいものあつめ：こおりの箱も押せる（見つける：AL5・AW20） | 検出（AL5, AL7） | 検出（AL5, AL7, AW20） |
-| MA20 あまいものあつめ：保存の押した手の t が逆順でも通る・最後の t を超えても通る（見つける：AL9） | 検出（AL9） | 検出（AL9） |
-| MA21 あまいものあつめ：面の生成の乱数が面ごとに同じ（見つける：AL6・AW3） | 検出（AL6） | 検出（AL6, AW22） |
-| MA22 あまいものあつめ：くり返しで左右反転しない（見つける：AL13） | 検出（AL1, AL13, AW3） | 検出（AL1, AL13, AW3） |
-| MA23 あまいものあつめ：足した絵より先にくり返しを選ぶ（見つける：AL13） | 検出（AL13） | 検出（AL13） |
-| MA24 あまいものあつめ：recordBest が低い面でもベストを上書きする（見つける：AL9） | 検出（AL9） | 検出（AL9） |
-| MA25 あまいものあつめ：演出中にずかんを開くとクリアのカードが消える（見つける：AW21） | 見逃し（full の項目で見つける設計） | 検出（AW21） |
-| MA26 あまいものあつめ：演出中に遊び方を開くとクリアのカードが消える（見つける：AW21） | 見逃し（full の項目で見つける設計） | 検出（AW21） |
-| MA27 あまいものあつめ：1手もどしを使ったのに「もどしなし」を書く（見つける：AW23） | 見逃し（full の項目で見つける設計） | 検出（AW23） |
-| MA28 あまいものあつめ：クリアしても amai.clean に書かない（見つける：AW23） | 見逃し（full の項目で見つける設計） | 検出（AW23） |
-| MA29 あまいものあつめ：カードの間もプレイ画面を inert にしない（見つける：AW24） | 見逃し（full の項目で見つける設計） | 検出（AW24） |
-| MA30 あまいものあつめ：validateClean が重複・知らない id を捨てない（見つける：AL14） | 検出（AL14） | 検出（AL14） |
-| MA31 あまいものあつめ：logic.js を事前キャッシュから外す（見つける：AW14） | 見逃し（full の項目で見つける設計） | 検出（AW14） |
 | MR1 メニュー：最近遊んだゲームを先頭でなく後ろに足す（X-21） | 見逃し（smoke では見逃す設計） | 検出（E7, E8） |
 | MR2 メニュー：最近遊んだ順に並べ替えない（X-21） | 見逃し（smoke では見逃す設計） | 検出（E7, E8） |
 | MR3 メニュー：壊れた yubi.recent で落ちる（X-21） | 見逃し（smoke では見逃す設計） | 検出（E8, X1） |

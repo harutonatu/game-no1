@@ -9,12 +9,12 @@
 <meta name="theme-color" content="#1b1f2e">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<meta name="description" content="指で あそぶ 13こ の ゲーム。広告なし・登録なし。いろみずの パズル・はやおし・はしわたし など、1かい すこしで あそべます。">
+<meta name="description" content="指で あそぶ 12こ の ゲーム。広告なし・登録なし。いろみずの パズル・はやおし・はしわたし など、1かい すこしで あそべます。">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ゆびあそび">
 <meta property="og:locale" content="ja_JP">
-<meta property="og:title" content="ゆびあそび｜指で あそぶ 13こ の ゲーム">
-<meta property="og:description" content="指で あそぶ 13こ の ゲーム。広告なし・登録なし。いろみずの パズル・はやおし・はしわたし など、1かい すこしで あそべます。">
+<meta property="og:title" content="ゆびあそび｜指で あそぶ 12こ の ゲーム">
+<meta property="og:description" content="指で あそぶ 12こ の ゲーム。広告なし・登録なし。いろみずの パズル・はやおし・はしわたし など、1かい すこしで あそべます。">
 <meta property="og:url" content="https://harutonatu.github.io/game-no1/">
 <meta property="og:image" content="https://harutonatu.github.io/game-no1/icons/og-menu.png">
 <meta property="og:image:width" content="1200">
@@ -130,8 +130,6 @@
   .best b.none { font-family: var(--font-text); font-size: 12px; font-weight: 500; color: var(--muted); }
   /* 長いベスト表示（bestWrap）：「…」で切らず、空白の所でだけ折り返す（iPhone SE 幅で「ほし 30 まで クリア」が欠けないように） */
   .best b.wrap { white-space: normal; word-break: keep-all; overflow-wrap: normal; overflow: visible; text-overflow: clip; line-height: 1.3; }
-  /* 長い 2 部構成のベスト表示（あまいものあつめ「N めん クリア・ずかん M」）は少し小さくして 2 行に収める */
-  .best b.wrap.small { font-size: 13px; }
   /* 長い名前の切れ目（nameParts）。かたまりの中では折り返さず、かたまりの間でだけ折る */
   .name .np { display: inline-block; }
   .go { color: var(--muted); font-size: 22px; line-height: 1; padding-right: 2px; }
@@ -204,8 +202,7 @@
     { name: "ミチビキ空港", desc: "ゆびで みちを かいて、おなじ いろの かっそうろへ", url: "games/michibiki/", bestText: () => michibikiBest(), art: "michibiki" },
     { name: "もくもくこうば", desc: "もりの きを きって、いたに して うろう。もくもく はたらく みんなを そだてよう", url: "games/seizai/", bestText: () => seizaiBest(), art: "seizai" },
     // 名前が長いので、折り返すときは nameParts の切れ目（「ちきゅうを守れ！」と「ほしくだき」の間）だけで折る（約束 §1.4・§10）
-    { name: "ちきゅうを守れ！ほしくだき", nameParts: ["ちきゅうを守れ！", "ほしくだき"], desc: "ちきゅうに せまる ほしを、ほうだいが こわすよ。かけらで ぶきを つよく しよう", url: "games/asteroid/", bestText: () => asteroidBest(), art: "asteroid", bestWrap: true },
-    { name: "あまいものあつめ", desc: "ありんこが おなじ いろの おさとうを はこぶよ", url: "games/amai/", bestText: () => amaiBest(), art: "amai", bestWrap: true, bestSmall: true }
+    { name: "ちきゅうを守れ！ほしくだき", nameParts: ["ちきゅうを守れ！", "ほしくだき"], desc: "ちきゅうに せまる ほしを、ほうだいが こわすよ。かけらで ぶきを つよく しよう", url: "games/asteroid/", bestText: () => asteroidBest(), art: "asteroid", bestWrap: true }
   ];
 
   // ===== 小さな絵（Canvas で描く。画像ファイルは使わない） =====
@@ -661,53 +658,6 @@
       ctx.fillStyle = "rgba(255,255,255,0.22)";
       [[0.8, 0.3, 0.05], [0.86, 0.22, 0.065], [0.78, 0.15, 0.045]].forEach(([x, y, r]) => { ctx.beginPath(); ctx.arc(...P(x, y), u * r, 0, Math.PI * 2); ctx.fill(); });
     },
-    // 横から見た角砂糖の小さな山（左。あか○・みずいろ＋・きいろ★の印つき）と、1つ運ぶありんこの列（右へ向かう）
-    amai(ctx, w, h) {
-      const u = Math.min(w, h), ox = (w - u) / 2, oy = (h - u) / 2;
-      const P = (x, y) => [ox + x * u, oy + y * u];
-      const GY = 0.78;
-      // 地面
-      ctx.fillStyle = "#6b4a2f";
-      ctx.fillRect(...P(0.04, GY), u * 0.92, u * 0.12);
-      ctx.fillStyle = "#8a6a45";
-      ctx.fillRect(...P(0.04, GY), u * 0.92, u * 0.025);
-      // 角砂糖（白い四角に色つきの印。印があるので色だけに頼らない）
-      const cube = (x, y, s, col, mark) => {
-        const [cx, cy] = P(x, y), a = u * s;
-        ctx.fillStyle = "#f5f2ea"; roundRect(ctx, cx, cy, a, a, a * 0.18); ctx.fill();
-        ctx.strokeStyle = "#cfc7b4"; ctx.lineWidth = Math.max(1, u * 0.012);
-        roundRect(ctx, cx, cy, a, a, a * 0.18); ctx.stroke();
-        const mx = cx + a / 2, my = cy + a / 2, r = a * 0.26;
-        ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.5, a * 0.14); ctx.lineCap = "round";
-        ctx.beginPath();
-        if (mark === "o") ctx.arc(mx, my, r, 0, Math.PI * 2);
-        else if (mark === "+") { ctx.moveTo(mx - r, my); ctx.lineTo(mx + r, my); ctx.moveTo(mx, my - r); ctx.lineTo(mx, my + r); }
-        else { ctx.moveTo(mx, my - r * 1.1); ctx.lineTo(mx + r, my + r * 0.8); ctx.lineTo(mx - r, my + r * 0.8); ctx.closePath(); }
-        if (mark === "+") ctx.stroke(); else ctx.fill();
-      };
-      cube(0.08, GY - 0.17, 0.17, "#E23B3B", "o");
-      cube(0.26, GY - 0.17, 0.17, "#78C6EE", "+");
-      cube(0.17, GY - 0.33, 0.17, "#F29BC2", "o");
-      cube(0.35, GY - 0.33, 0.17, "#F28C28", "t");
-      // ありんこ（丸3つ＋足。右向き）
-      const ant = (x, carry) => {
-        const [ax, ay] = P(x, GY - 0.07), r = u * 0.05;
-        ctx.strokeStyle = "#2B2B33"; ctx.lineWidth = Math.max(1, u * 0.012); ctx.lineCap = "round";
-        [-1, 0, 1].forEach((k) => {
-          ctx.beginPath(); ctx.moveTo(ax + k * r * 0.9, ay); ctx.lineTo(ax + k * r * 1.3 - r * 0.3, ay + r * 1.5); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(ax + k * r * 0.9, ay); ctx.lineTo(ax + k * r * 1.3 + r * 0.5, ay + r * 1.5); ctx.stroke();
-        });
-        ctx.fillStyle = "#2B2B33";
-        ctx.beginPath(); ctx.arc(ax - r * 1.6, ay, r, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(ax, ay, r * 0.8, r * 0.7, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(ax + r * 1.6, ay - r * 0.1, r * 0.8, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(ax + r * 2.1, ay - r * 0.6); ctx.lineTo(ax + r * 2.8, ay - r * 1.5); ctx.stroke();
-        if (carry) cube(x - 0.05, GY - 0.07 - 0.185, 0.1, carry, "o");
-      };
-      ant(0.58, null);
-      ant(0.76, "#F2D13A");
-      ant(0.94, null);
-    },
     // 上から降りてくる、マス目の小惑星（いわ・てつ・こおり・きん。何マスか欠けて、かけらが飛ぶ）と、地球の弧に並んで撃つ小さな砲台3つ
     asteroid(ctx, w, h) {
       const u = Math.min(w, h), ox = (w - u) / 2, oy = (h - u) / 2;
@@ -936,30 +886,6 @@
     return n >= 1 ? n.toLocaleString() + " き" : "";
   }
 
-  // あまいものあつめ：amai.best（クリアした一番大きい面）が安全な整数で 1 以上のときだけ「N めん クリア」。
-  // amai.book（{"v":1,"got":{絵の id:回数}}）の回数が 1〜9999 の整数の絵が 1 枚以上あれば「・ずかん M」を足す。壊れた book は 0 枚。
-  // （メニューは絵の一覧を持たないので、PICTURE_ORDER にない id も数える。ずれは最大でも「あとから絵を消したとき」だけ）
-  function amaiBest() {
-    try {
-      const raw = localStorage.getItem("amai.best");
-      if (raw === null) return "";
-      const n = Number(raw);
-      if (!(Number.isSafeInteger(n) && n >= 1)) return "";
-      let m = 0;
-      try {
-        const b = JSON.parse(localStorage.getItem("amai.book"));
-        if (b && typeof b === "object" && !Array.isArray(b) && b.got && typeof b.got === "object" && !Array.isArray(b.got)) {
-          for (const k of Object.keys(b.got).slice(0, 5000)) {
-            const c = b.got[k];
-            if (Number.isSafeInteger(c) && c >= 1 && c <= 9999) m += 1;
-          }
-        }
-      } catch (e) { m = 0; }
-      const t = Math.min(n, 999).toLocaleString() + " めん クリア"; // 999 で頭打ち（いろびんの「999 めん クリア」と同じ幅。16 桁でも SE 縦で 2 行に収める。V13）
-      return m > 0 ? t + " ・ずかん\u00a0" + m : t;
-    } catch (e) { return ""; }
-  }
-
   // ===== 効果音（common/sfx.js、案A「木のおもちゃ箱」。設定はゲームと共通、メニューに切り替えボタンはない） =====
   let sfx = YubiSfx.create("menu");
   function soundOff() {
@@ -995,7 +921,6 @@
     label.textContent = "Best";
     const val = document.createElement("b");
     if (game.bestWrap) val.classList.add("wrap");
-    if (game.bestSmall) val.classList.add("small");
     best.append(label, val);
     info.append(name, desc, best);
     const go = document.createElement("span");

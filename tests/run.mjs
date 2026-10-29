@@ -45,8 +45,6 @@ export const GROUPS = [
   { key: 'WW', title: 'WW もくもくこうば 画面（育てる・買う・節目・注文・るすの あいだ・時計・保存・戻る・画面内・横向き・性能・キーボード・音・オフライン・メニュー）', file: 'seizai-ui.mjs', weight: { smoke: 8, full: 45 } },
   { key: 'KL', title: 'KL ほしくだき 計算ロジック(Node)', file: 'asteroid-logic.mjs', weight: { smoke: 0, full: 0 } },
   { key: 'KW', title: 'KW ほしくだき 画面（壊れる・強くする・2択・はね返し・クリア・保存・戻る・中断・画面内・横向き・性能・キーボード・音・オフライン・メニュー）', file: 'asteroid-ui.mjs', weight: { smoke: 8, full: 84 } },
-  { key: 'AL', title: 'AL あまいものあつめ 計算ロジック(Node)', file: 'amai-logic.mjs', weight: { smoke: 0, full: 0 } },
-  { key: 'AW', title: 'AW あまいものあつめ 画面（押す・運ぶ・もどす・うごかせない・保存・戻る・画面内・横向き・中断・はやく・ずかん・キーボード・音・色覚・オフライン・メニュー）', file: 'amai-ui.mjs', weight: { smoke: 8, full: 45 } },
 ];
 
 const args = process.argv.slice(2);
