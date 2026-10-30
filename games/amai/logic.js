@@ -27,6 +27,8 @@
   // CARRY_FROM 以上の面だけ CARRY_N 個運ぶ。持ち玉の合計＝角砂糖の数は変えない（アリの数は同じ。1 回で CARRY_N 匹が運ぶイメージ）。
   const CARRY_N = 1;
   const CARRY_FROM = 1;
+  // 1 はこびで 2 個運ぶ段（段 0f の測定用。空なら今までと同じ動き）。くり返しの面には使わない
+  const CARRY_TIERS = { XL: 2, XXL: 2, repeat: 2 };
   const COLS = 4;
   const TICK_MS = 500;
   const FAST_MS = 250;
@@ -43,8 +45,13 @@
   //   capRemain … 箱の数の上限を「今ふちから届く数 R」ではなく「その色の残り全部」にする（①）
   //   shuffleCols … 列の中の順を P の順でなく無作為にする（②。押したい箱が奥に埋まる）
   // どちらかが true のときは「S の順に押せば解ける」保証が崩れるので、解ける押し順を探して確かめる（solveSearch）。
-  const GEN_OPT = { capRemain: false, shuffleCols: false };
-  const SOLVE_NODES = 60;   // 解ける押し順の探索で開く局面の上限（1 回の tryBuild ごと）
+  // over … 箱の持ち玉の上限を「ふちから届く数 R」の何倍まで許すか（段ごと。1 なら今までと同じ＝必ず単独で運び切れる）。
+  //   1 より大きいと「置いた時点では運び切れない箱」ができ、道を開ける仕事が生まれる（①）。Infinity ならその色の残り全部。
+  const OVER = { S: 1.1, M: 1.02, L: 1.02, XL: 2, XXL: 1.1, repeat: 1.3 };
+  const PULL_ADD = { S: 0, M: 0, L: 0, XL: 0, XXL: 0, repeat: 0 };
+  const KSET = { L: [6, 20] };   // 段ごとの箱の数の幅の上書き。空なら TIERS の値
+  const GEN_OPT = { shuffleCols: false, solveNodes: 15, genTries: 12 };
+  const SOLVE_NODES = 15;   // 解ける押し順の探索で開く局面の上限は「箱の数＋この余り」（1 回の tryBuild ごと・600 まで）
   const BASE_PICTURES = 48;
   const REPEAT_FROM = 9;
   const SAVE_V = 1;
@@ -93,7 +100,7 @@
     { from: 31, to: 36, tier: "XL", lids: 3, ices: 2 },
     { from: 37, to: 48, tier: "XXL", lids: 4, ices: 3 },
   ].map((r) => Object.freeze(r)));
-  const REPEAT_K = Object.freeze({ kmin: 8, kmax: 25 });
+  const REPEAT_K = { kmin: 3, kmax: 10 };
 
   // 絵の並び（§2.6 の表の順）。絵を足すときは最後に足す（並べかえない・途中に入れない）。
   // id はローマ字（かなを 1 字ずつ書く形。のばす音は母音を重ねる）・英小文字だけ。
@@ -337,6 +344,12 @@
     }
     return -1;
   }
+  // その色の、運ぶ順で一番先の角砂糖（ふちでなくてもよい。生成で「まだ届かない分」を数えるときだけ使う）
+  function findAny(b, color) {
+    const ord = b.ord, cells = b.cells;
+    for (let k = 0; k < ord.length; k++) if (cells[ord[k]] === color) return ord[k];
+    return -1;
+  }
   // マス i を運ぶ（空きにして、外を広げる）
   function takeCell(b, i) {
     if (!b.own) { b.cells = Array.from(b.cells); b.out = Uint8Array.from(b.out); b.own = true; }
@@ -360,7 +373,7 @@
   }
   const mkState = (s, ch) => freezeState({
     level: s.level, W: s.W, H: s.H, picture: s.picture, mirror: s.mirror, repeat: s.repeat,
-    cells: s.cells, total: s.total, left: s.left, cols: s.cols, slots: s.slots, t: s.t, presses: s.presses, won: s.won, ...ch,
+    cells: s.cells, total: s.total, left: s.left, cols: s.cols, slots: s.slots, t: s.t, presses: s.presses, won: s.won, carry: s.carry, ...ch,
   });
 
   // setState 用。形を確かめて、凍結した新しい局面を返す（だめなら null）
@@ -499,7 +512,7 @@
     for (let k = 0; k < SLOTS; k++) {
       const bx = slots[k];
       if (!bx) continue;
-      const cap = s.level >= CARRY_FROM ? CARRY_N : 1;
+      const cap = Math.max(1, s.carry || (s.level >= CARRY_FROM ? CARRY_N : 1));
       let count = bx.count, took = 0;
       for (let m = 0; m < cap && count > 0; m++) {
         const i = findTarget(b, bx.color);
@@ -619,7 +632,12 @@
     else { lids = T.lids; ices = T.ices; }
     let kmin = T.kmin, kmax = T.kmax, pull = T.pull;
     if (p.repeat) { kmin = REPEAT_K.kmin; kmax = REPEAT_K.kmax; pull += 2; lids = T.lids + 1; ices = T.ices + 1; }
-    return Object.freeze({ tier: T.tier, picture: p.id, mirror: p.mirror, repeat: p.repeat, kmin, kmax, pull, lids, ices });
+    else if (KSET[T.tier]) { kmin = KSET[T.tier][0]; kmax = KSET[T.tier][1]; }
+    const over = p.repeat ? OVER.repeat : (OVER[T.tier] || 1);
+    pull += (p.repeat ? PULL_ADD.repeat : (PULL_ADD[T.tier] || 0));
+    const cw = p.repeat ? CARRY_TIERS.repeat : CARRY_TIERS[T.tier];
+    const carry = cw > 1 ? cw : 1;
+    return Object.freeze({ tier: T.tier, picture: p.id, mirror: p.mirror, repeat: p.repeat, kmin, kmax, pull, lids, ices, over, carry });
   }
 
   // ---------------------------------------------------------------- 面を作る（§2.2・§2.3・§2.4）
@@ -654,23 +672,25 @@
   }
 
   // 運び切る順 S（1 箱だけで運び切れる箱の列）。chooser(cands, R, rem) → { color, n }
-  function buildS(pic, chooser, work, noSim) {
+  function buildS(pic, chooser, work, anyColor) {
     const b = picBoard(pic);
     const rem = new Array(COLORS.length).fill(0);
     let left = 0;
     for (const v of b.cells) if (v >= 0) { rem[v]++; left++; }
     const S = [];
     while (left > 0) {
-      // noSim（①）では「今ふちから届く数」を見ない。上限はその色の残り全部（R に残りを渡す）
-      const R = noSim ? rem.slice() : reachByColor(b, work);
+      const R = reachByColor(b, work);
       const cands = [];
-      for (let c = 0; c < COLORS.length; c++) if (R[c] > 0) cands.push(c);
+      // over>1（①）では、いまふちに出ていない色も選べる（内側だけにある色の箱が最初から作られる）
+      for (let c = 0; c < COLORS.length; c++) if (anyColor ? rem[c] > 0 : R[c] > 0) cands.push(c);
       if (!cands.length) return null;
       const { color, n } = chooser(cands, R, rem);
       if (n <= 0 || n > rem[color]) return null;
-      if (noSim) work.n += n;
-      else for (let k = 0; k < n; k++) {
-        const i = findTarget(b, color);
+      // R を超える分（①）は、まだふちに出ていないマスも先に消して数える。
+      // 盤から消す数は必ず n なので、持ち玉の合計＝角砂糖の数は保たれる
+      for (let k = 0; k < n; k++) {
+        let i = findTarget(b, color);
+        if (i < 0) i = findAny(b, color);
         if (i < 0) return null;
         takeCell(b, i);
         work.n++;
@@ -682,7 +702,7 @@
   }
 
   // P（押す順）→ 列に配る → 仕掛け → 最初の局面と解。rng が null なら round-robin・仕掛けなし
-  function layout(lv, pic, pk, P, rng, lids, ices, shuffleCols) {
+  function layout(lv, pic, pk, P, rng, lids, ices, shuffleCols, carryN) {
     const cols = [[], [], [], []];
     const colOf = [], posOf = [];
     for (let k = 0; k < P.length; k++) {
@@ -728,7 +748,7 @@
     const scols = cols.map((a) => a.map((k) => ({ id: nid++, color: P[k].color, count: P[k].count, lid: lid[k], ice: ice[k] })));
     const state = freezeState({
       level: lv, W: pic.W, H: pic.H, picture: pic.id, mirror: pk.mirror, repeat: pk.repeat,
-      cells: Array.from(pic.cells), total: 0, left: 0, cols: scols, slots: new Array(SLOTS).fill(null), t: 0, presses: 0, won: false,
+      cells: Array.from(pic.cells), total: 0, left: 0, cols: scols, slots: new Array(SLOTS).fill(null), t: 0, presses: 0, won: false, carry: carryN,
       ...(() => { let n = 0; for (const v of pic.cells) if (v >= 0) n++; return { total: n, left: n }; })(),
     });
     return { state, solution: colOf };
@@ -775,18 +795,19 @@
       if (s.won) return true;
       budget.n++;
       const b = boardOf(s);
+      // いま 1 箱だけで運び切れる数（色ごと）。わくを空けられる箱を先に押すための手がかり
+      const R = reachByColor(b, { n: 0 });
       const cands = [];
       for (let c = 0; c < COLS; c++) {
         if (reasonFor(s, c) !== null) continue;
         const f = s.cols[c][0];
-        cands.push({ c, wait: findTarget(b, f.color) < 0 ? 1 : 0, count: f.count });
+        cands.push({ c, wait: R[f.color] > 0 ? 0 : 1, stay: f.count > R[f.color] ? 1 : 0, count: f.count });
       }
       if (!cands.length) return false;
-      cands.sort((a, z) => (a.wait - z.wait) || (a.count - z.count) || (a.c - z.c));
-      // 枝を刈る：運べる箱があるなら待つ箱は押さない。試す枝は 2 つまで（深く潜って戻るのを防ぐ）
-      let use = cands;
-      if (cands[0].wait === 0) use = cands.filter((a) => a.wait === 0);
-      if (use.length > 2) use = use.slice(0, 2);
+      cands.sort((a, z) => (a.wait - z.wait) || (a.stay - z.stay) || (a.count - z.count) || (a.c - z.c));
+      // 枝を刈る：良い順に 2 つ試し、全部だめなら「待つ箱」も最後に 1 つだけ試す
+      let use = cands.slice(0, 2);
+      if (use.every((a) => a.wait === 0)) { const w = cands.find((a) => a.wait === 1); if (w) use = use.concat([w]); }
       for (const cd of use) {
         const r = pressImpl(s, cd.c);
         if (r.outcome.kind !== "press") continue;
@@ -799,21 +820,29 @@
     return dfs(state0) ? path.slice() : null;
   }
 
-  function tryBuild(lv, pic, pk, prm, rng, work, pull, lids, ices, opt) {
+  function tryBuild(lv, pic, pk, prm, rng, work, pull, lids, ices, opt, noOver, soften) {
     // 1・2 面は「どう押してもクリアできる」保証を守るため、①・②を使わない（§2.1）
-    const o = lv <= 2 ? { capRemain: false, shuffleCols: false } : (opt || GEN_OPT);
+    const easy = lv <= 2;
+    // soften：配り直すたびに①の強さを半分に寄せる（解ける面が見つからない絵で、予備に落ちる前にやさしくする）
+    const over = (easy || noOver) ? 1 : 1 + ((prm.over || 1) - 1) * Math.pow(0.5, soften || 0);
+    // 内側だけにある色の箱を最初から作るか（①の本体）。配り直しが 4 回を超えたらやめる
+    const anyColor = !easy && !noOver && (prm.over || 1) > 1 && (soften || 0) < 2;
+    const shuffleCols = easy ? false : !!(opt || GEN_OPT).shuffleCols;
     const chooser = (cands, R, rem) => {
       const color = cands[randInt(rng, cands.length)];
+      // 上限 cap：R の over 倍まで（over=1 なら今までと同じ R）。その色の残りは超えない
+      // 上限 cap：ふちから届く数 R の over 倍まで。R が 0（内側だけにある色）なら残り全部まで許す
+      const cap = over >= 1e9 ? rem[color] : Math.min(rem[color], Math.max(1, Math.ceil(R[color] * over)));
       let n = prm.kmin + randInt(rng, prm.kmax - prm.kmin + 1);
       if (n >= 5) n = Math.round(n / 5) * 5;
-      if (lv <= 2) n = R[color];
+      if (easy) n = cap;
       else {
-        n = Math.min(n, R[color]);
-        if (rem[color] - n < prm.kmin && R[color] >= rem[color]) n = rem[color];
+        n = Math.min(n, cap);
+        if (rem[color] - n < prm.kmin && cap >= rem[color]) n = rem[color];
       }
-      return { color, n: Math.max(1, Math.min(n, MAX_COUNT, R[color])) };
+      return { color, n: Math.max(1, Math.min(n, MAX_COUNT, cap)) };
     };
-    const S = buildS(pic, chooser, work, !!o.capRemain);
+    const S = buildS(pic, chooser, work, anyColor);
     if (!S) return null;
     const P = S.slice();
     for (let k = 0; k < pull && P.length >= 2; k++) {
@@ -824,13 +853,15 @@
       const [bx] = P.splice(i, 1);
       P.splice(j, 0, bx);
     }
-    const built = layout(lv, pic, pk, P, rng, lids, ices, !!o.shuffleCols);
+    const built = layout(lv, pic, pk, P, rng, lids, ices, shuffleCols, (noOver ? 1 : (prm.carry || 1)));
     let solution = built.solution;
-    if (o.capRemain || o.shuffleCols) {
-      solution = solveSearch(built.state, work, SOLVE_NODES);
+    if (anyColor || over > 1 || shuffleCols) {
+      // solveSearch は画面と同じ press・step で最後まで進めて won を見ているので、これ自体が §2.3 の確かめになる。
+      // 同じ再生をもう一度する（verify）のは手間の無駄なので、箱の数の決まりだけ見る
+      solution = solveSearch(built.state, work, Math.min(600, P.length + (GEN_OPT.solveNodes || SOLVE_NODES)));
       if (!solution) return null;
-    }
-    if (!verify(built.state, solution, lv, work)) return null;
+      if (lv <= 2 && solution.length > EASY_BOXES) return null;
+    } else if (!verify(built.state, solution, lv, work)) return null;
     return { state: built.state, solution };
   }
 
@@ -840,7 +871,7 @@
     const S = buildS(pic, chooser, work);
     if (!S) throw new Error("amai: 予備 2 の面が作れない");
     const pk = { id: pic.id, mirror: false, repeat: false };
-    const { state, solution } = layout(lv, pic, pk, S, null, 0, 0);
+    const { state, solution } = layout(lv, pic, pk, S, null, 0, 0, false, 1);
     if (!verify(state, solution, lv, work)) throw new Error("amai: 予備 2 の面が確かめを通らない");
     return { state, solution };
   }
@@ -859,13 +890,13 @@
       info: Object.freeze({ level: lv, seed, params, tries, work: work.n, fallback, solution: Object.freeze(r.solution.slice()) }),
     });
     if (pic) {
-      while (tries < GEN_TRIES && work.n < GEN_WORK - FALLBACK_RESERVE) {
+      while (tries < (GEN_OPT.genTries || GEN_TRIES) && work.n < GEN_WORK - FALLBACK_RESERVE) {
         tries++;
-        const r = tryBuild(lv, pic, pk, params, rng, work, params.pull, params.lids, params.ices, GEN_OPT);
+        const r = tryBuild(lv, pic, pk, params, rng, work, params.pull, params.lids, params.ices, GEN_OPT, false, Math.floor((tries - 1) / 2));
         if (r) return done(r, 0);
       }
       // 予備 1 は今までの作り（R で上限・P＝S・列は P の順）に戻す。これだけは必ず通る
-      const r1 = tryBuild(lv, pic, pk, params, makeRng(seed ^ 0x5bd1e995), work, 0, 0, 0, { capRemain: false, shuffleCols: false });
+      const r1 = tryBuild(lv, pic, pk, params, makeRng(seed ^ 0x5bd1e995), work, 0, 0, 0, { shuffleCols: false }, true);
       if (r1) return done(r1, 1);
     }
     return done(fallback2(lv, work), 2);
@@ -1021,7 +1052,7 @@
   const api = Object.freeze({
     NAME, SLOTS, COLS, TICK_MS, FAST_MS, CARRY_N, CARRY_FROM,
     MAX_W, MAX_H, MAX_SUGAR, MAX_COUNT, MAX_PRESSES, MAX_T,
-    GEN_TRIES, GEN_WORK, BASE_PICTURES, REPEAT_FROM, GEN_OPT,
+    GEN_TRIES, GEN_WORK, BASE_PICTURES, REPEAT_FROM, GEN_OPT, OVER, CARRY_TIERS, PULL_ADD, REPEAT_K, KSET,
     PICTURE_ORDER,
     SAVE_KEY_SAVE, SAVE_KEY_BEST, SAVE_KEY_BOOK, SAVE_KEY_HELP, SAVE_KEY_FAST, SAVE_KEY_CLEAN,
     COLORS, LEVELS, TIERS,
