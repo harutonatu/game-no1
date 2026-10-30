@@ -305,7 +305,17 @@ export const tests = [
       });
       check(`tick(3) で ${n} はこび進み、#left が減る（${sA.left} → ${sB.left}）。#left ${dB.left}・#level ${dB.level} は state と同じ（表示の 1 ずれなし）`,
         n >= 1 && sB.left < sA.left && dB.left === sB.left && dB.level === sB.level && sB.left === sB.total - (sB.total - sB.left), { n, sA: sA.left, sB: sB.left, dB });
-      const diffB = await frozen(page, async () => boardDiff(sB, await domBoard(page)));
+      // state と画面は「同じ瞬間」に読む（別々に読むと、WebKit では読み取りの間に 1 はこび進んでずれる。v55）
+      const pair = await page.evaluate(() => {
+        const st = window.AmaiGame.getState();
+        const box = (e) => ({ id: e.dataset.id, color: e.dataset.color, mark: e.dataset.mark, count: e.dataset.count, lid: e.dataset.lid, ice: e.dataset.ice, label: e.getAttribute('aria-label') || '', text: e.textContent.replace(/\s+/g, '') });
+        const dom = {
+          slots: [...document.querySelectorAll('#slots .slot')].map((e) => ({ i: Number(e.dataset.slot), color: e.dataset.color, count: e.dataset.count, wait: e.dataset.wait, sr: e.querySelector('.sr') ? e.querySelector('.sr').textContent.trim() : '' })),
+          cols: [...document.querySelectorAll('#grid .col')].map((c) => ({ col: Number(c.dataset.col), rest: c.dataset.rest, front: [...c.querySelectorAll('.box.front')].filter((e) => !e.closest('[hidden]')).map(box), back: [...c.querySelectorAll('.box.back')].filter((e) => !e.closest('[hidden]')).map(box) })),
+        };
+        return { st, dom };
+      });
+      const diffB = boardDiff(pair.st, pair.dom);
       check(`運んだ後も、わくの数が state と一致（食い違い ${diffB.length} 件）`, diffB.length === 0, diffB.slice(0, 4));
       await ctx.close();
     },
