@@ -27,7 +27,8 @@
   const WALK_MAX_MS = 1500;   // 1 匹の道のりの上限（はやくなら半分）
   const EXIT_MS = 150;        // わくの箱から出る
   const LIFT_MS = 80;         // 角砂糖を持ち上げる間
-  const WALK_V = 230;         // 歩く速さの下限（px/秒）。道のりが長ければ上限に収まるよう速くする
+  const WALK_V = 230;         // 歩く速さの下限（px/秒）。道のりが短ければこの速さ
+  const WALK_V_MAX = 600;     // 歩く速さの上限（px/秒）。長い道は WALK_MAX_MS を超えてもよい（ワープして見えるのを防ぐ）
   const CALM_VANISH_MS = 100; // 動きを減らす設定で角砂糖が消えるまで
   const ANT_INK = "#3a2618";
 
@@ -1059,7 +1060,7 @@
           for (let i = 0; i < liftIdx; i++) la += seg[i];
           const prev = pts[liftIdx - 1] || p1;
           const walkMs = WALK_MAX_MS - EXIT_MS - LIFT_MS;
-          const v = Math.max(WALK_V, L / (walkMs / 1000));
+          const v = Math.min(WALK_V_MAX, Math.max(WALK_V, L / (walkMs / 1000)));
           const hex = colorInfo(c.color).hex;
           ants.push({
             t0: clock, k, p: pts, seg, L, la, v, liftIdx, liftAng: Math.atan2(cc.y - prev.y, cc.x - prev.x),
