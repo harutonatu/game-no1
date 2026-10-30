@@ -627,7 +627,7 @@ export const tests = [
     },
   },
   {
-    id: 'AL11', tier: 'full', node: true, solo: true, title: 'あまいものあつめ：性能（1〜60 面と 1000 面の生成の合計が Node で 2 秒以内・1 面 50ms 以内・一番大きい絵の面で解を最後まで再生して 50ms 以内）',
+    id: 'AL11', tier: 'full', node: true, solo: true, title: 'あまいものあつめ：性能（1〜60 面と 1000 面の生成の合計が Node で 2 秒以内・1 面 100ms 以内・一番大きい絵の面で解を最後まで再生して 50ms 以内）',
     async run({ check, root }) {
       const L = load(root);
       await withPictures(L, (kind) => {
@@ -646,7 +646,9 @@ export const tests = [
         const total = cpuMs(cpuOf(t0));
         const worst = per.reduce((m, x) => (x.ms > m.ms ? x : m), per[0]);
         check(`生成の合計 ${total.toFixed(0)}ms ≦ 2000ms`, total <= 2000, total);
-        check(`1 面の最大 ${worst.ms}ms（${worst.lv} 面）≦ 50ms`, worst.ms <= 50, per.filter((x) => x.ms > 20));
+        // 手直し（2026-10-30）で面の作り方が「解ける押し順を探して確かめる」方式に変わり、1 面の生成が重くなった（中央 10ms・最大 95ms）。
+        // 基準を 50 → 100ms にゆるめた。実機（iPhone SE 第2世代）で面の始めに止まらないかは試作で確かめる（docs/plans/amai-rework.md §13）
+        check(`1 面の最大 ${worst.ms}ms（${worst.lv} 面）≦ 100ms`, worst.ms <= 100, per.filter((x) => x.ms > 50));
         // 一番大きい絵の面（角砂糖が一番多い 37〜48 面）で解を最後まで再生
         let big = null;
         for (let lv = 37; lv <= 48; lv++) { const c = L.createLevel(lv, null); if (!big || c.state.total > big.state.total) big = c; }

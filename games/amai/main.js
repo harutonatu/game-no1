@@ -640,7 +640,7 @@
       <ol class="rules">
         <li>てまえの はこを おすと、ありんこが でてくるよ。はこの すうじは はこぶ おさとうの かず。</li>
         <li>ありんこは <b>おなじ いろ</b>の おさとうを、<b>ふち</b>（えの まわり）から ありの おうちへ はこぶよ。</li>
-        <li><b>わく</b>（したの 5つの しかく）が いっぱいで うごけなくなったら<span style="white-space:nowrap">『1手もどす』</span>。</li>
+        <li><b>わく</b>（したの 3つの しかく）が いっぱいで うごけなくなったら<span style="white-space:nowrap">『1手もどす』</span>。</li>
         <li>えを ぜんぶ はこぶと クリア。えが <b>ずかん</b>に はいるよ。</li>
       </ol>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");
