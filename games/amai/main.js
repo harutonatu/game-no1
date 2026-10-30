@@ -581,8 +581,12 @@
     const c = lastClear;
     hideOverlay();
     const next = c ? c.next : level + 1;
-    startLevel(next, c && c.nextPick ? c.nextPick : null, [], 0);
-    sfx.play("start");
+    // 絵が大きい面は作るのに時間がかかる（実機で最大 1 秒ほど）。先に一言を出し、1 フレーム後に作る（v53 の技術レビュー T-5）
+    setHint("つぎの えを つくっているよ");
+    requestAnimationFrame(() => {
+      startLevel(next, c && c.nextPick ? c.nextPick : null, [], 0);
+      sfx.play("start");
+    });
   }
   function goMenu() {
     clearLater();

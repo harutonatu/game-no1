@@ -39,7 +39,7 @@
   const MAX_PRESSES = 400;
   const MAX_T = 5000;
   const GEN_TRIES = 20;
-  const GEN_WORK = 300000;
+  const GEN_WORK = 400000;   // 絵を 2×2 に割ってマスが 4 倍になり、47 面は 258179 まで使う。余裕を増やした（v53 の技術レビュー T-8）
   const FALLBACK_RESERVE = 60000;   // 予備 1 の手間のために残す分（work が GEN_WORK を超えないように、配り直しをここで止める）
   // 段 0e の測定用の取っ手（既定は false＝今までと同じ面ができる）。
   //   capRemain … 箱の数の上限を「今ふちから届く数 R」ではなく「その色の残り全部」にする（①）

@@ -21,7 +21,7 @@
 
   const MAX_ANTS = 48;
   const MAX_PARTS = 60;
-  const CELL_MAX = 12;
+  const CELL_MAX = 24;   // 1 マスの上限。12 に下げると大きい絵には効かず（上限に当たらない）、割っていない 1・2 面と iPad の絵だけが半分になるので 24 のまま（v53 の技術レビュー T-4）
   const SLOTS = 3, COLS = 4;
   const BACK_ROWS = 2;
   const WALK_MAX_MS = 1500;   // 1 匹の道のりの上限（はやくなら半分）

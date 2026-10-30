@@ -140,7 +140,7 @@ export const tests = [
     run({ check, root }) {
       const L = load(root);
       const K = { NAME: 'あまいものあつめ', SLOTS: 3, COLS: 4, TICK_MS: 120, FAST_MS: 60, MAX_W: 64, MAX_H: 48, MAX_SUGAR: 2800, MAX_COUNT: 99, MAX_PRESSES: 400, MAX_T: 5000,
-        GEN_TRIES: 20, GEN_WORK: 300000, BASE_PICTURES: 48, REPEAT_FROM: 9,
+        GEN_TRIES: 20, GEN_WORK: 400000, BASE_PICTURES: 48, REPEAT_FROM: 9,
         SAVE_KEY_SAVE: 'amai.save', SAVE_KEY_BEST: 'amai.best', SAVE_KEY_BOOK: 'amai.book', SAVE_KEY_HELP: 'amai.help', SAVE_KEY_FAST: 'amai.fast' };
       const kBad = Object.entries(K).filter(([k, v]) => L[k] !== v).map(([k, v]) => ({ k, want: v, got: L[k] }));
       check('定数が契約 §6.2 のとおり', kBad.length === 0, kBad);

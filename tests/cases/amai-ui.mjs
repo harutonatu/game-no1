@@ -295,13 +295,17 @@ export const tests = [
         check(`2 つめを押すと、いちばん左の空きわくに入る（${k2}。空き ${empties.join(',') || 'なし'}）`, k2 === 'press' && s2.slots.filter(Boolean).length >= 1 && s2.presses === 2, s2.slots);
       }
       // 運ぶと #left が減る（画面の数は hud の値そのまま）
-      const sA = await gs(page);
-      const n = await page.evaluate(() => window.AmaiGame.tick(3));
-      await skipG(page); await wait(page, 50);
-      const sB = await gs(page), dB = await domNums(page);
+      // はこびの間隔が 120ms になったので、読み取りの間に 1 はこび入らないよう時計を止めて測る（v53）
+      let sA = null, n = 0, sB = null, dB = null;
+      await frozen(page, async () => {
+        sA = await gs(page);
+        n = await page.evaluate(() => window.AmaiGame.tick(3));
+        await skipG(page);
+        sB = await gs(page); dB = await domNums(page);
+      });
       check(`tick(3) で ${n} はこび進み、#left が減る（${sA.left} → ${sB.left}）。#left ${dB.left}・#level ${dB.level} は state と同じ（表示の 1 ずれなし）`,
         n >= 1 && sB.left < sA.left && dB.left === sB.left && dB.level === sB.level && sB.left === sB.total - (sB.total - sB.left), { n, sA: sA.left, sB: sB.left, dB });
-      const diffB = boardDiff(sB, await domBoard(page));
+      const diffB = await frozen(page, async () => boardDiff(sB, await domBoard(page)));
       check(`運んだ後も、わくの数が state と一致（食い違い ${diffB.length} 件）`, diffB.length === 0, diffB.slice(0, 4));
       await ctx.close();
     },

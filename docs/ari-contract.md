@@ -375,7 +375,7 @@ S 34 秒・M 54 秒・L 72 秒・XL 98 秒・XXL 111 秒・くり返し 64 秒�
 - 右の列：わく 48×52（48×5＋6×4＝264）、格子の列 60 幅（60×4＋8×3＝264）で手前 60×52・奥 1 段 60×24・「＋N」12、ボタン 60×44 を 4 つ。高さの合計 約 200（52＋6＋92＋6＋44）。320 でも 270 でも入る。`#hint` は右の列の上のあまりの下の端に 1 行（高さ 16px、文字 12px。`.hint { --hint-h: 16px; align-self: end }`。568×270 でも収まる）。
 - 左の絵：幅 約 264・高さ 約 220〜268 → 64×48 の絵で 1 マス約 4px（手直し後。計算）。
 - `.head`・`#picBox`・`#slots`・`#grid`・`#tools` の矩形は、SE 縦横・568×270・320×454・iPad 縦横で、**重ならず、画面からはみ出さない**（AW5）。
-- iPad：同じ並びで大きく（1 マス最大 12px、箱は最大 120×88。`#hint` は高さ 28px・文字 16px）。
+- iPad：同じ並びで大きく（1 マス最大 24px、箱は最大 120×88。`#hint` は高さ 28px・文字 16px）。
 
 ### 3.3 箱・わく・角砂糖の見た目
 - **手前の箱**（`<button>`）：その色の紙の箱。まん中に**印**（§5.2）、下に**数**（20px、2 桁まで）。ふたの箱は茶色に「？」。こおりの箱は氷の膜＋雪の印＋残りの数。押せない（こおり・わくがいっぱい）ときも押せる形のままにし、押したら理由を `#hint` に出す（disabled にしない。押して理由が分かるように）。
@@ -657,7 +657,7 @@ const AMAI = {
 AmaiLogic = {
   NAME: "あまいものあつめ", SLOTS: 3, COLS: 4, TICK_MS: 120, FAST_MS: 60,
   MAX_W: 64, MAX_H: 48, MAX_SUGAR: 2800, MAX_COUNT: 99, MAX_PRESSES: 400, MAX_T: 5000,
-  GEN_TRIES: 20, GEN_WORK: 300000, BASE_PICTURES: 48, REPEAT_FROM: 9,
+  GEN_TRIES: 20, GEN_WORK: 400000, BASE_PICTURES: 48, REPEAT_FROM: 9,
   EASY_BOXES: 5,                                                   // 1〜2 面の箱の数の上限（内部の定数。外へ出ているかはコードが正）
   GEN_OPT: { shuffleCols: false, solveNodes: 15, genTries: 5, softenEvery: 1 },
   OVER: { S: 1.1, M: 1.02, L: 1.02, XL: 1.25, XXL: 1.025, repeat: 1.3 },    // 箱の持ち玉の上限 ceil(R × over)
