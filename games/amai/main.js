@@ -600,10 +600,10 @@
       if (!b || names.includes(colorName(b.color))) continue;
       if (!(safeCall(() => L.edgeCells(state, b.color), []) || []).length) names.push(colorName(b.color));
     }
-    const why = names.length ? `${names.join("と ")}は ふちを まってるよ。` : "わくが いっぱいだよ。";
+    const why = names.length ? `${names.join("と ")}は まだ ふちに ないよ。そとの いろを さきに はこぶと みちが あくよ。` : "わくが いっぱいだよ。";
     showCard(`
       <h2 id="cardTitle">うごかせないよ</h2>
-      <p>${why}<br>1手もどして、ほかを さきに ね。</p>
+      <p>${why}1手もどして ためしてね。</p>
       <div class="btns">
         <button class="cta primary half" type="button" data-cmd="undo">1手もどす</button>
         <button class="cta half" type="button" data-cmd="restart">やりなおし</button>
@@ -638,10 +638,10 @@
       <h2 id="cardTitle">あそびかた</h2>
       <div class="sample"></div>
       <ol class="rules">
-        <li>てまえの はこを おすと、ありんこが でてくるよ。はこの すうじは はこぶ おさとうの かず。</li>
-        <li>ありんこは <b>おなじ いろ</b>の おさとうを、<b>ふち</b>（えの まわり）から ありの おうちへ はこぶよ。</li>
-        <li><b>わく</b>（したの 3つの しかく）が いっぱいで うごけなくなったら<span style="white-space:nowrap">『1手もどす』</span>。</li>
-        <li>えを ぜんぶ はこぶと クリア。えが <b>ずかん</b>に はいるよ。</li>
+        <li>てまえの はこを おすと、<b>わく</b>（したの 3つの しかく）に はいって ありんこが でてくるよ。</li>
+        <li>はこべるのは <b>おなじ いろ</b>で、<b>ふち</b>（えの そとがわ）に ある おさとうだけ。</li>
+        <li><b>なかの いろ</b>は、そとの いろを さきに はこんで <b>みちを あけて</b> ね。</li>
+        <li>うごけなくなったら<span style="white-space:nowrap">『1手もどす』</span>。なんども やりなおして いいよ。えを ぜんぶ はこぶと <b>ずかん</b>に はいるよ。</li>
       </ol>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");
     const box = el.card.querySelector(".sample");

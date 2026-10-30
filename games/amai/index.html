@@ -426,10 +426,12 @@
   }
   /* うごかせない：盤面（絵・わく）が見えるよう、暗くせず、下に小さなカードを出す */
   .overlay[data-kind="stuck"] { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; align-items: flex-end; }
-  .overlay[data-kind="stuck"] .card { margin: 0 auto; padding: 12px; gap: 8px; box-shadow: 0 0 0 2px var(--accent), 0 -8px 30px rgba(0, 0, 0, 0.55); }
-  .overlay[data-kind="stuck"] .card h2 { font-size: 17px; }
-  .overlay[data-kind="stuck"] .card p { font-size: 14px; line-height: 1.4; }
-  .overlay[data-kind="stuck"] .card .btns button { min-height: 48px; }
+  /* 手詰まりのカードは「待っている色の箱」と盤面を見比べながら読めるように、低く小さくする（v53 のレビュー指摘） */
+  .overlay[data-kind="stuck"] .card { margin: 0 auto; padding: 8px 10px; gap: 4px; box-shadow: 0 0 0 2px var(--accent), 0 -8px 30px rgba(0, 0, 0, 0.55); }
+  .overlay[data-kind="stuck"] .card h2 { font-size: 15px; margin: 0; }
+  .overlay[data-kind="stuck"] .card p { font-size: 13px; line-height: 1.35; margin: 0; }
+  .overlay[data-kind="stuck"] .card .btns { margin-top: 2px; }
+  .overlay[data-kind="stuck"] .card .btns button { min-height: 44px; }
   .card {
     position: relative;
     width: min(420px, 100%);
