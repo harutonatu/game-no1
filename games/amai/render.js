@@ -495,6 +495,7 @@
       if (!Number.isSafeInteger(i) || i < 0 || i >= shownCells.length || !isColor(shownCells[i])) return;
       shownCells[i] = -1;
       redraws++;
+      bumpGrid();
       if (!pctx || !bgCanvas) return;
       const x = i % W, y = Math.floor(i / W);
       const x0 = dx(x), y0 = dy(y), w = dx(x + 1) - x0 + 1, h = dy(y + 1) - y0 + 1;
@@ -504,6 +505,86 @@
       // となりの角砂糖が 1px 重なっていたら描き直す（右・下のとなり）
       if (x + 1 < W) drawCellAt(i + 1);
       if (y + 1 < H) drawCellAt(i + W);
+    }
+    // ---------- ありんこの道さがし（空いているマスだけを歩く。R-3 の直し 2026-10-30） ----------
+    // 角砂糖のあるマスには絶対に乗らない。絵のまわりに 1 マスぶんの「外」の枠をつけた格子で、
+    // 巣の下から目当ての角砂糖のとなりまで、幅優先で道を探す。
+    let gridVer = 0;              // 絵が変わるたびに +1（道のキャッシュを捨てる目印）
+    let walkGrid = null, walkVer = -1;
+    const routeCache = new Map(); // cell → 仮想の格子の番号の並び
+    function bumpGrid() { gridVer++; routeCache.clear(); }
+    function buildWalk() {
+      const vw = W + 2, vh = H + 2;
+      const a = new Uint8Array(vw * vh);
+      for (let vy = 0; vy < vh; vy++) {
+        for (let vx = 0; vx < vw; vx++) {
+          const border = vx === 0 || vy === 0 || vx === vw - 1 || vy === vh - 1;
+          a[vy * vw + vx] = border || !isColor(shownCells[(vy - 1) * W + (vx - 1)]) ? 1 : 0;
+        }
+      }
+      return a;
+    }
+    function walkNow() {
+      if (walkVer !== gridVer || !walkGrid) { walkGrid = buildWalk(); walkVer = gridVer; }
+      return walkGrid;
+    }
+    // 目当ての角砂糖（cell）のとなりの、歩けるマスまでの道。見つからなければ null
+    function findRoute(cell) {
+      if (!W || !H) return null;
+      const hit = routeCache.get(cell);
+      if (hit !== undefined) return hit;
+      const vw = W + 2, vh = H + 2, a = walkNow();
+      const tx = (cell % W) + 1, ty = Math.floor(cell / W) + 1;
+      const goal = new Uint8Array(vw * vh);
+      let goals = 0;
+      const mark = (vx, vy) => {
+        if (vx < 0 || vy < 0 || vx >= vw || vy >= vh) return;
+        const k = vy * vw + vx;
+        if (a[k]) { goal[k] = 1; goals++; }
+      };
+      mark(tx - 1, ty); mark(tx + 1, ty); mark(tx, ty - 1); mark(tx, ty + 1);
+      if (!goals) { routeCache.set(cell, null); return null; }
+      const sx = Math.min(vw - 1, Math.max(0, Math.round((W - 1) / 2) + 1)), sy = vh - 1;   // 巣の下（外の枠）
+      const start = sy * vw + sx;
+      const prev = new Int32Array(vw * vh).fill(-1);
+      const seen = new Uint8Array(vw * vh);
+      const q = new Int32Array(vw * vh);
+      let head = 0, tail = 0, found = -1;
+      q[tail++] = start; seen[start] = 1;
+      while (head < tail) {
+        const k = q[head++];
+        if (goal[k]) { found = k; break; }
+        const vx = k % vw, vy = (k - vx) / vw;
+        if (vx > 0 && !seen[k - 1] && a[k - 1]) { seen[k - 1] = 1; prev[k - 1] = k; q[tail++] = k - 1; }
+        if (vx < vw - 1 && !seen[k + 1] && a[k + 1]) { seen[k + 1] = 1; prev[k + 1] = k; q[tail++] = k + 1; }
+        if (vy > 0 && !seen[k - vw] && a[k - vw]) { seen[k - vw] = 1; prev[k - vw] = k; q[tail++] = k - vw; }
+        if (vy < vh - 1 && !seen[k + vw] && a[k + vw]) { seen[k + vw] = 1; prev[k + vw] = k; q[tail++] = k + vw; }
+      }
+      if (found < 0) { routeCache.set(cell, null); return null; }
+      const out = [];
+      for (let k = found; k >= 0; k = prev[k]) out.push(k);
+      out.reverse();
+      routeCache.set(cell, out);
+      return out;
+    }
+    // 仮想の格子（外の枠つき）の番号 → 画面の座標
+    function vPoint(k, rect) {
+      const vw = W + 2;
+      const vx = k % vw, vy = (k - vx) / vw;
+      const r = rect || pic.getBoundingClientRect();
+      const kk = cssW ? r.width / cssW : 1;
+      return { x: r.left + (padX + (vx - 1 + 0.5) * cell) * kk, y: r.top + (padY + (vy - 1 + 0.5) * cell) * kk };
+    }
+    // まっすぐ続く所をまとめる（線の数を減らす）
+    function simplify(pts) {
+      if (pts.length < 3) return pts;
+      const out = [pts[0]];
+      for (let i = 1; i < pts.length - 1; i++) {
+        const a0 = out[out.length - 1], b = pts[i], c = pts[i + 1];
+        if ((b.x - a0.x) * (c.y - b.y) !== (b.y - a0.y) * (c.x - b.x)) out.push(b);
+      }
+      out.push(pts[pts.length - 1]);
+      return out;
     }
     // 絵の 1 マスの中心（画面の座標）
     function cellCenter(i, rect) {
@@ -903,6 +984,7 @@
       cur = st;
       W = st && st.W | 0; H = st && st.H | 0;
       shownCells = st && Array.isArray(st.cells) ? st.cells.slice() : [];
+      bumpGrid();
     }
     function build(st, pict) {
       if (!st) return;
@@ -941,29 +1023,46 @@
             continue;
           }
           const sr = rectOf(slotEl);
-          const cc = cellCenter(c.cell, prect);
           const jitter = (((c.id | 0) * 37 + c.cell * 13) % 9 - 4) * 1.2;
-          // 道のり（R-3）：わく → 巣の前 → 絵の下の「行列の道」を横に → 角砂糖の真下から上へ → 道をもどって巣へ。
-          // ななめに絵の上を突っ切らないので、砂糖のきれ目（列）の上を歩いているように見える。
-          const lane = Math.min(np.top - 2, prect.bottom + 3);       // 絵のすぐ下の、巣へ向かう行列の道
+          // 道のり（R-3 の直し 2026-10-30）：わく → 巣の口 → **空いているマスだけをたどって** 目当ての角砂糖のとなりまで
+          // → そこから手を伸ばして持ち上げる → 同じ道をもどって巣へ。角砂糖のあるマスの上は絶対に通らない。
+          const route = findRoute(c.cell);
           const p0 = { x: sr.left + sr.width / 2 + jitter, y: sr.top - 2 };
           const p1 = { x: np.x + jitter, y: np.top };                // 巣の口
-          const pT = { x: np.x + jitter, y: lane };                  // 巣から道までの まっすぐな幹の道
-          const pA = { x: cc.x + jitter * 0.4, y: lane };            // 行く道（すこし左右にずらす）
-          const p2 = { x: cc.x + jitter * 0.4, y: cc.y };
-          const pB = { x: cc.x - jitter * 0.4, y: lane };            // 帰り道（行きと平行）
-          const pT2 = { x: np.x - jitter * 0.4, y: lane };
-          const p3 = { x: np.x, y: np.y };
-          const pts = [p0, p1, pT, pA, p2, pB, pT2, p3];
+          const p3 = { x: np.x, y: np.y };                           // 巣の中
+          const cc = cellCenter(c.cell, prect);
+          let go = [], back = [], reach = null, stand = null;
+          if (route && route.length) {
+            const jx = jitter * 0.18, jy = jitter * 0.12;            // 行きと帰りですこしずらす（道の幅に収まる大きさ）
+            const base = route.map((k) => vPoint(k, prect));
+            go = simplify(base).map((q) => ({ x: q.x + jx, y: q.y + jy }));
+            back = simplify(base.slice().reverse()).map((q) => ({ x: q.x - jx, y: q.y - jy }));
+            stand = base[base.length - 1];
+            // 手を伸ばす（となりのマスから角砂糖の方へ 3 割だけ。砂糖の上には乗らない）
+            reach = { x: stand.x + (cc.x - stand.x) * 0.22 + jx, y: stand.y + (cc.y - stand.y) * 0.22 + jy };
+          } else {
+            // 道が見つからないとき：絵の外のいちばん近い所から手を伸ばす（砂糖の上には乗らない）
+            const kk = cssW ? prect.width / cssW : 1;
+            const ex = Math.abs(cc.x - prect.left) < Math.abs(prect.right - cc.x) ? prect.left - cell * kk * 0.5 : prect.right + cell * kk * 0.5;
+            const outP = { x: ex, y: cc.y };
+            go = [{ x: np.x + jitter, y: prect.bottom + 3 }, { x: ex, y: prect.bottom + 3 }, outP];
+            back = [outP, { x: ex, y: prect.bottom + 3 }, { x: np.x - jitter, y: prect.bottom + 3 }];
+            stand = outP;
+            reach = { x: outP.x + (cc.x - outP.x) * 0.2, y: outP.y };
+          }
+          const pts = [p0, p1].concat(go, [reach], back, [p3]);
+          const liftIdx = 2 + go.length;                              // reach の番号
           const seg = [];
           let L = 0;
-          for (let i = 0; i < pts.length - 1; i++) { const s = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y); seg.push(s); L += s; }
-          const la = seg[0] + seg[1] + seg[2] + seg[3];
+          for (let i = 0; i < pts.length - 1; i++) { const sl = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y); seg.push(sl); L += sl; }
+          let la = 0;
+          for (let i = 0; i < liftIdx; i++) la += seg[i];
+          const prev = pts[liftIdx - 1] || p1;
           const walkMs = WALK_MAX_MS - EXIT_MS - LIFT_MS;
           const v = Math.max(WALK_V, L / (walkMs / 1000));
           const hex = colorInfo(c.color).hex;
           ants.push({
-            t0: clock, k, p: pts, seg, L, la, v, liftIdx: 4, liftAng: Math.atan2(p2.y - pA.y, p2.x - pA.x),
+            t0: clock, k, p: pts, seg, L, la, v, liftIdx, liftAng: Math.atan2(cc.y - prev.y, cc.x - prev.x),
             sx: sr.left + sr.width / 2, sy: sr.top + sr.height * 0.4, cell: c.cell, hex, hexD: mix(hex, "#000000", 0.35), hexL: mix(hex, "#ffffff", 0.45), s: antScale(), lifted: false
           });
         }
