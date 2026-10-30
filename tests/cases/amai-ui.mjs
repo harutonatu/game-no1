@@ -910,44 +910,33 @@ export const tests = [
     },
   },
   {
-    id: 'AW16', tier: 'full', title: 'あまいもの メニュー：カードの名前が AmaiLogic.NAME と一致し、amai.best 3 で「3 めん クリア」、ずかん 2 枚で「ずかん 2」、壊れた値で出ない',
+    // v52（試作）：あまいものあつめはメニューに出していない（URL だけで開ける）。カードを戻すときは、
+    // この項目を git の履歴（v49 の AW16：名前・記録・ずかん・壊れた値・16 桁・押すと開く）から戻すこと。
+    id: 'AW16', tier: 'full', title: 'あまいもの メニュー：試作のあいだはメニューにカードを出さない（URL だけで開ける・メニューは 12 本のまま・記録があってもカードは出ない）',
     async run({ browser, check, root }) {
       const LG = loadLogic(root);
-      const ids = LG.PICTURE_ORDER.slice(0, 2).map((p) => p.id);
       const { ctx, page } = await newPage(browser, STD_V(), 'AW16', { clock: true });
-      const card = () => page.evaluate(() => {
-        const a = document.querySelector('a.game[href="games/amai/"]');
-        if (!a) return null;
-        const b = a.querySelector('.best b');
-        const q = a.getBoundingClientRect(), cv = a.querySelector('canvas.art');
-        return { name: a.querySelector('.name')?.textContent.trim(), best: b?.textContent.trim(), bestAll: a.querySelector('.best')?.textContent.replace(/\s+/g, ' ').trim(), none: b?.classList.contains('none'), aria: a.getAttribute('aria-label'), w: q.width, h: q.height, right: q.right, iw: innerWidth, hs: document.documentElement.scrollWidth > innerWidth, art: !!cv && cv.width > 0 };
-      });
-      await seed(page, {});
-      await page.goto(BASE); await wait(page, 200);
-      const c0 = await card();
-      check(`メニューにあまいものあつめのカードがあり、名前（${c0 && c0.name}）が AmaiLogic.NAME（${LG.NAME}）と一致し、44px 以上で絵がある`, !!c0 && c0.name === LG.NAME && c0.h >= 44 && c0.art, c0);
-      check(`記録が無いときは「めん クリア」「ずかん」が出ない（${c0 && c0.bestAll}）`, c0 && !/めん クリア|ずかん/.test(c0.bestAll || ''), c0);
-      await seed(page, { 'amai.best': '3' });
-      await page.goto(BASE); await wait(page, 200);
-      const c3 = await card();
-      check(`amai.best が 3 なら「3 めん クリア」（${c3 && c3.bestAll}）、aria-label にも出る`, c3 && /3 めん クリア/.test(c3.bestAll) && /3 めん クリア/.test(c3.aria), c3);
-      await seed(page, { 'amai.best': '3', 'amai.book': J({ v: 1, got: { [ids[0]]: 1, [ids[1]]: 4 } }) });
-      await page.goto(BASE); await wait(page, 200);
-      const cb = await card();
-      check(`ずかんに 2 枚なら「3 めん クリア」に「ずかん 2」が付く（${cb && cb.bestAll}）`, cb && /3 めん クリア/.test(cb.bestAll) && /ずかん\s*2/.test(cb.bestAll), cb);
-      const bad = [];
-      for (const [best, book] of [['abc', '{not json'], ['-1', 'null'], ['1.5', '[]'], ['', '{"v":1,"got":5}'], ['0', '{"v":1,"got":{"x":"y"}}'], ['NaN', ''], ['Infinity', '{}'], ['1e400', '{"v":1,"got":[]}'], ['{}', '{"v":9}'], ['9007199254740992', '{"v":1,"got":{"zzz":1}}']]) {
-        await seed(page, { 'amai.best': best, 'amai.book': book });
-        await page.goto(BASE); await wait(page, 150);
-        const c = await card();
-        if (!c || /めん クリア|ずかん\s*[1-9]/.test(c.bestAll || '')) bad.push(`${best} / ${book}: ${c && c.bestAll}`);
-      }
-      check('壊れた値・0（abc・負・小数・空・NaN・Infinity・1e400・{}・2^53 と壊れたずかん）では記録を出さず、メニューが落ちない', bad.length === 0, bad);
-      await seed(page, { 'amai.best': MAX16 });
-      await page.goto(BASE); await wait(page, 150);
-      const cm = await card();
-      check(`16 桁の記録（${cm && cm.bestAll}）でもカードが画面からはみ出さない`, cm && cm.right <= cm.iw + 0.5 && !cm.hs, cm);
-      check('メニューのあまいものあつめのカードを押すとゲームが開く', await (async () => { await page.click('a.game[href="games/amai/"]'); await page.waitForURL('**/games/amai/', { timeout: 5000 }).catch(() => {}); return page.url() === AM; })(), page.url());
+      await page.goto(BASE + 'index.html', { waitUntil: 'load' });
+      const m0 = await page.evaluate(() => ({
+        amai: !!document.querySelector('a.game[href="games/amai/"]'),
+        n: document.querySelectorAll('a.game').length,
+        text: document.body.textContent,
+      }));
+      check(`メニューにあまいものあつめのカードが無い（${m0.amai}）・ゲームは 12 本（${m0.n}）`, m0.amai === false && m0.n === 12, m0);
+      check(`メニューに「${LG.NAME}」の名前が出ていない`, !m0.text.includes(LG.NAME), null);
+      // 記録とずかんがあってもカードは出ない（配信を止めている人の保存が残っていても出さない）
+      await seed(page, BASE, { 'amai.best': '3', 'amai.book': JSON.stringify({ got: { ringo: 2 } }) });
+      await page.goto(BASE + 'index.html', { waitUntil: 'load' });
+      const m1 = await page.evaluate(() => ({
+        amai: !!document.querySelector('a.game[href="games/amai/"]'),
+        n: document.querySelectorAll('a.game').length,
+        err: window.__yubiErr || 0,
+      }));
+      check(`記録（amai.best 3・ずかん 1 枚）があってもカードは出ず、メニューが落ちない（${m1.amai}・${m1.n}）`, m1.amai === false && m1.n === 12, m1);
+      // URL では開ける（試作の遊び方）
+      await page.goto(AM, { waitUntil: 'load' });
+      const ok = await page.evaluate(() => !!(window.AmaiGame && window.AmaiGame.getState && window.AmaiGame.getState()));
+      check('URL（games/amai/）を直に開くと遊べる', ok === true, null);
       await ctx.close();
     },
   },
