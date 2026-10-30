@@ -22,9 +22,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 公開版 | `master`＝**v51・2026-10-29**（7442491）。ゲームは 12 本 |
-| 実機の確認 | v48・v50 は OK（2026-10-29 ユーザー報告）。**v51 はまだ**（ホーム画面のアプリを 2 回開き直し、版が「v51・2026-10-29」になるか。`?debug=1` を付けてカードを出し、🐞 がボタンに重ならないかも見られる） |
-| 作業ブランチ | `claude/dreamy-hawking-geoimf`。master と同じ所（v51 を公開したブランチ） |
+| 公開版 | `master`＝**v53・2026-10-30**。ゲームはメニューに 12 本＋**あまいものあつめの試作**（メニューには出さず `games/amai/` の URL だけで開ける） |
+| 実機の確認 | v48・v50・v51 は OK。**v52 であまいものあつめの試作を触って指摘 3 件**（空中を歩いてる・砂糖がデカい・ありんこが 1 匹ずつ）→ v53 で全部直した。**v53 はまだ**（版の表示と、`games/amai/` の試作の手ざわり） |
+| 作業ブランチ | `claude/dreamy-hawking-geoimf`（v51・v52・v53 を公開）。あまいものあつめの手直しの経緯は [docs/plans/amai-rework.md](plans/amai-rework.md)、約束は [docs/ari-contract.md](ari-contract.md) |
 | 残しているブランチ | `feature/amai`（あまいものあつめのコードと絵 48 枚。v49 の公開版そのもの） |
 | worktree | `/home/user/wt-amai`（feature/amai）・`/home/user/wt-crown`（v48 の確かめに使った）・`/home/user/wt-stop`（fix/amai-stop、master に入り済み）。どれも消してよい。作業環境が入れ替わると無くなる |
 | 動いている担当 | なし |
