@@ -50,7 +50,7 @@
   const OVER = { S: 1.1, M: 1.02, L: 1.02, XL: 2, XXL: 1.1, repeat: 1.3 };
   const PULL_ADD = { S: 0, M: 0, L: 0, XL: 0, XXL: 0, repeat: 0 };
   const KSET = { L: [6, 20] };   // 段ごとの箱の数の幅の上書き。空なら TIERS の値
-  const GEN_OPT = { shuffleCols: false, solveNodes: 15, genTries: 12 };
+  const GEN_OPT = { shuffleCols: false, solveNodes: 15, genTries: 5, softenEvery: 1 };
   const SOLVE_NODES = 15;   // 解ける押し順の探索で開く局面の上限は「箱の数＋この余り」（1 回の tryBuild ごと・600 まで）
   const BASE_PICTURES = 48;
   const REPEAT_FROM = 9;
@@ -824,14 +824,15 @@
     // 1・2 面は「どう押してもクリアできる」保証を守るため、①・②を使わない（§2.1）
     const easy = lv <= 2;
     // soften：配り直すたびに①の強さを半分に寄せる（解ける面が見つからない絵で、予備に落ちる前にやさしくする）
-    const over = (easy || noOver) ? 1 : 1 + ((prm.over || 1) - 1) * Math.pow(0.5, soften || 0);
-    // 内側だけにある色の箱を最初から作るか（①の本体）。配り直しが 4 回を超えたらやめる
-    const anyColor = !easy && !noOver && (prm.over || 1) > 1 && (soften || 0) < 2;
+    // soften が 3 以上になったら①を完全にやめる（今までの作り＝必ず解ける面。予備に落ちる前の最後の手）
+    const hard = (soften || 0) < 3;
+    const over = (easy || noOver || !hard) ? 1 : 1 + ((prm.over || 1) - 1) * Math.pow(0.5, soften || 0);
+    // 内側だけにある色の箱を最初から作るか（①の本体）。配り直しが 2 回を超えたらやめる
+    const anyColor = !easy && !noOver && hard && (prm.over || 1) > 1 && (soften || 0) < 2;
     const shuffleCols = easy ? false : !!(opt || GEN_OPT).shuffleCols;
     const chooser = (cands, R, rem) => {
       const color = cands[randInt(rng, cands.length)];
-      // 上限 cap：R の over 倍まで（over=1 なら今までと同じ R）。その色の残りは超えない
-      // 上限 cap：ふちから届く数 R の over 倍まで。R が 0（内側だけにある色）なら残り全部まで許す
+      // 上限 cap：ふちから届く数 R の over 倍まで（over=1 なら今までと同じ R）。その色の残りは超えない
       const cap = over >= 1e9 ? rem[color] : Math.min(rem[color], Math.max(1, Math.ceil(R[color] * over)));
       let n = prm.kmin + randInt(rng, prm.kmax - prm.kmin + 1);
       if (n >= 5) n = Math.round(n / 5) * 5;
@@ -892,7 +893,7 @@
     if (pic) {
       while (tries < (GEN_OPT.genTries || GEN_TRIES) && work.n < GEN_WORK - FALLBACK_RESERVE) {
         tries++;
-        const r = tryBuild(lv, pic, pk, params, rng, work, params.pull, params.lids, params.ices, GEN_OPT, false, Math.floor((tries - 1) / 2));
+        const r = tryBuild(lv, pic, pk, params, rng, work, params.pull, params.lids, params.ices, GEN_OPT, false, Math.floor((tries - 1) / GEN_OPT.softenEvery));
         if (r) return done(r, 0);
       }
       // 予備 1 は今までの作り（R で上限・P＝S・列は P の順）に戻す。これだけは必ず通る
