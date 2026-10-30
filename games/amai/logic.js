@@ -39,6 +39,12 @@
   const GEN_TRIES = 20;
   const GEN_WORK = 300000;
   const FALLBACK_RESERVE = 60000;   // 予備 1 の手間のために残す分（work が GEN_WORK を超えないように、配り直しをここで止める）
+  // 段 0e の測定用の取っ手（既定は false＝今までと同じ面ができる）。
+  //   capRemain … 箱の数の上限を「今ふちから届く数 R」ではなく「その色の残り全部」にする（①）
+  //   shuffleCols … 列の中の順を P の順でなく無作為にする（②。押したい箱が奥に埋まる）
+  // どちらかが true のときは「S の順に押せば解ける」保証が崩れるので、解ける押し順を探して確かめる（solveSearch）。
+  const GEN_OPT = { capRemain: false, shuffleCols: false };
+  const SOLVE_NODES = 60;   // 解ける押し順の探索で開く局面の上限（1 回の tryBuild ごと）
   const BASE_PICTURES = 48;
   const REPEAT_FROM = 9;
   const SAVE_V = 1;
@@ -648,19 +654,22 @@
   }
 
   // 運び切る順 S（1 箱だけで運び切れる箱の列）。chooser(cands, R, rem) → { color, n }
-  function buildS(pic, chooser, work) {
+  function buildS(pic, chooser, work, noSim) {
     const b = picBoard(pic);
     const rem = new Array(COLORS.length).fill(0);
     let left = 0;
     for (const v of b.cells) if (v >= 0) { rem[v]++; left++; }
     const S = [];
     while (left > 0) {
-      const R = reachByColor(b, work);
+      // noSim（①）では「今ふちから届く数」を見ない。上限はその色の残り全部（R に残りを渡す）
+      const R = noSim ? rem.slice() : reachByColor(b, work);
       const cands = [];
       for (let c = 0; c < COLORS.length; c++) if (R[c] > 0) cands.push(c);
       if (!cands.length) return null;
       const { color, n } = chooser(cands, R, rem);
-      for (let k = 0; k < n; k++) {
+      if (n <= 0 || n > rem[color]) return null;
+      if (noSim) work.n += n;
+      else for (let k = 0; k < n; k++) {
         const i = findTarget(b, color);
         if (i < 0) return null;
         takeCell(b, i);
@@ -673,7 +682,7 @@
   }
 
   // P（押す順）→ 列に配る → 仕掛け → 最初の局面と解。rng が null なら round-robin・仕掛けなし
-  function layout(lv, pic, pk, P, rng, lids, ices) {
+  function layout(lv, pic, pk, P, rng, lids, ices, shuffleCols) {
     const cols = [[], [], [], []];
     const colOf = [], posOf = [];
     for (let k = 0; k < P.length; k++) {
@@ -687,6 +696,13 @@
       } else c = k % COLS;
       colOf.push(c); posOf.push(cols[c].length);
       cols[c].push(k);
+    }
+    // ②：列の中の順を無作為にする（P の順に押しても手前にあるとは限らなくなる）
+    if (rng && shuffleCols) {
+      for (let j = 0; j < COLS; j++) {
+        shuffle(rng, cols[j]);
+        for (let q = 0; q < cols[j].length; q++) { colOf[cols[j][q]] = j; posOf[cols[j][q]] = q; }
+      }
     }
     // 手前に来るときの押した数 f
     const front = P.map((_, i) => (posOf[i] === 0 ? 0 : cols[colOf[i]][posOf[i] - 1] + 1));
@@ -740,7 +756,52 @@
     return s.won === true;
   }
 
-  function tryBuild(lv, pic, pk, prm, rng, work, pull, lids, ices) {
+  // 解ける押し順を探す（①・②で「S の順」の保証が崩れたとき用）。画面と同じ pressImpl・stepImpl だけを使う。
+  // 深さ優先＋ならべ方の手がかり：いま運べる箱（ふちに自分の色がある）を先に、同じなら持ち玉の少ない箱を先に。
+  function solveSearch(state0, work, cap) {
+    const path = [];
+    const budget = { n: 0 };
+    const settle = (s) => {
+      for (;;) {
+        const r = stepImpl(s);
+        if (!r.moved) return s;
+        work.n += r.carries.length;
+        s = r.state;
+      }
+    };
+    function dfs(s) {
+      if (budget.n > cap || work.n > GEN_WORK) return false;
+      s = settle(s);
+      if (s.won) return true;
+      budget.n++;
+      const b = boardOf(s);
+      const cands = [];
+      for (let c = 0; c < COLS; c++) {
+        if (reasonFor(s, c) !== null) continue;
+        const f = s.cols[c][0];
+        cands.push({ c, wait: findTarget(b, f.color) < 0 ? 1 : 0, count: f.count });
+      }
+      if (!cands.length) return false;
+      cands.sort((a, z) => (a.wait - z.wait) || (a.count - z.count) || (a.c - z.c));
+      // 枝を刈る：運べる箱があるなら待つ箱は押さない。試す枝は 2 つまで（深く潜って戻るのを防ぐ）
+      let use = cands;
+      if (cands[0].wait === 0) use = cands.filter((a) => a.wait === 0);
+      if (use.length > 2) use = use.slice(0, 2);
+      for (const cd of use) {
+        const r = pressImpl(s, cd.c);
+        if (r.outcome.kind !== "press") continue;
+        path.push(cd.c);
+        if (dfs(r.state)) return true;
+        path.pop();
+      }
+      return false;
+    }
+    return dfs(state0) ? path.slice() : null;
+  }
+
+  function tryBuild(lv, pic, pk, prm, rng, work, pull, lids, ices, opt) {
+    // 1・2 面は「どう押してもクリアできる」保証を守るため、①・②を使わない（§2.1）
+    const o = lv <= 2 ? { capRemain: false, shuffleCols: false } : (opt || GEN_OPT);
     const chooser = (cands, R, rem) => {
       const color = cands[randInt(rng, cands.length)];
       let n = prm.kmin + randInt(rng, prm.kmax - prm.kmin + 1);
@@ -752,7 +813,7 @@
       }
       return { color, n: Math.max(1, Math.min(n, MAX_COUNT, R[color])) };
     };
-    const S = buildS(pic, chooser, work);
+    const S = buildS(pic, chooser, work, !!o.capRemain);
     if (!S) return null;
     const P = S.slice();
     for (let k = 0; k < pull && P.length >= 2; k++) {
@@ -763,9 +824,14 @@
       const [bx] = P.splice(i, 1);
       P.splice(j, 0, bx);
     }
-    const { state, solution } = layout(lv, pic, pk, P, rng, lids, ices);
-    if (!verify(state, solution, lv, work)) return null;
-    return { state, solution };
+    const built = layout(lv, pic, pk, P, rng, lids, ices, !!o.shuffleCols);
+    let solution = built.solution;
+    if (o.capRemain || o.shuffleCols) {
+      solution = solveSearch(built.state, work, SOLVE_NODES);
+      if (!solution) return null;
+    }
+    if (!verify(built.state, solution, lv, work)) return null;
+    return { state: built.state, solution };
   }
 
   function fallback2(lv, work) {
@@ -795,10 +861,11 @@
     if (pic) {
       while (tries < GEN_TRIES && work.n < GEN_WORK - FALLBACK_RESERVE) {
         tries++;
-        const r = tryBuild(lv, pic, pk, params, rng, work, params.pull, params.lids, params.ices);
+        const r = tryBuild(lv, pic, pk, params, rng, work, params.pull, params.lids, params.ices, GEN_OPT);
         if (r) return done(r, 0);
       }
-      const r1 = tryBuild(lv, pic, pk, params, makeRng(seed ^ 0x5bd1e995), work, 0, 0, 0);
+      // 予備 1 は今までの作り（R で上限・P＝S・列は P の順）に戻す。これだけは必ず通る
+      const r1 = tryBuild(lv, pic, pk, params, makeRng(seed ^ 0x5bd1e995), work, 0, 0, 0, { capRemain: false, shuffleCols: false });
       if (r1) return done(r1, 1);
     }
     return done(fallback2(lv, work), 2);
@@ -954,7 +1021,7 @@
   const api = Object.freeze({
     NAME, SLOTS, COLS, TICK_MS, FAST_MS, CARRY_N, CARRY_FROM,
     MAX_W, MAX_H, MAX_SUGAR, MAX_COUNT, MAX_PRESSES, MAX_T,
-    GEN_TRIES, GEN_WORK, BASE_PICTURES, REPEAT_FROM,
+    GEN_TRIES, GEN_WORK, BASE_PICTURES, REPEAT_FROM, GEN_OPT,
     PICTURE_ORDER,
     SAVE_KEY_SAVE, SAVE_KEY_BEST, SAVE_KEY_BOOK, SAVE_KEY_HELP, SAVE_KEY_FAST, SAVE_KEY_CLEAN,
     COLORS, LEVELS, TIERS,
