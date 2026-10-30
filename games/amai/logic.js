@@ -22,7 +22,7 @@
 
   const NAME = "あまいものあつめ";
   const SLOTS = 3;
-  const EASY_BOXES = 12;  // 1〜2 面の箱の数の上限（絵を 2 倍に割って角砂糖が 4 倍になったので 5→12。持ち玉は 99 までなので 5 箱では足りない）
+  const EASY_BOXES = 5;   // 1〜2 面の箱の数の上限（1・2 面の絵は割っていない＝元の大きさなので 5 のまま。わくは 3 なので §2.1 の「必ず入る」保証は弱まる）
   // 1 はこびで 1 箱が運ぶ角砂糖の数（段 0b の測定用。1 なら今までと同じ動き）。
   // CARRY_FROM 以上の面だけ CARRY_N 個運ぶ。持ち玉の合計＝角砂糖の数は変えない（アリの数は同じ。1 回で CARRY_N 匹が運ぶイメージ）。
   const CARRY_N = 1;
@@ -86,7 +86,7 @@
   // ---------------------------------------------------------------- 段と面の表（§2.1。仮）
   // 段の値（49 面からは lids・ices にこの「多い方」を使う。くり返しは +1）
   const TIERS = Object.freeze({
-    S: Object.freeze({ tier: "S", colors: Object.freeze([3, 4]), sugar: Object.freeze([440, 720]), kmin: 60, kmax: 99, pull: 0, lids: 0, ices: 0 }),
+    S: Object.freeze({ tier: "S", colors: Object.freeze([3, 4]), sugar: Object.freeze([110, 720]), kmin: 60, kmax: 99, pull: 0, lids: 0, ices: 0 }),
     M: Object.freeze({ tier: "M", colors: Object.freeze([4, 5]), sugar: Object.freeze([800, 1200]), kmin: 40, kmax: 99, pull: 2, lids: 1, ices: 0 }),
     L: Object.freeze({ tier: "L", colors: Object.freeze([5, 7]), sugar: Object.freeze([1200, 1680]), kmin: 40, kmax: 99, pull: 4, lids: 2, ices: 1 }),
     XL: Object.freeze({ tier: "XL", colors: Object.freeze([6, 8]), sugar: Object.freeze([1680, 2240]), kmin: 40, kmax: 99, pull: 8, lids: 3, ices: 2 }),
