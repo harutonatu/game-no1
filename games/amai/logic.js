@@ -376,6 +376,14 @@
     cells: s.cells, total: s.total, left: s.left, cols: s.cols, slots: s.slots, t: s.t, presses: s.presses, won: s.won, carry: s.carry, ...ch,
   });
 
+  // 1 はこびで 1 箱が運ぶ数。面の番号と絵から導く（paramsFor と同じ値。保存からは読まない）
+  function carryFor(level, picture, mirror, repeat) {
+    try {
+      const n = paramsFor(level, { id: picture, mirror: !!mirror, repeat: !!repeat }).carry;
+      return n > 1 ? n : 1;
+    } catch (e) { return 1; }
+  }
+
   // setState 用。形を確かめて、凍結した新しい局面を返す（だめなら null）
   function validateState(s) {
     try {
@@ -423,7 +431,8 @@
         if (!bx || typeof bx !== "object" || !okId(bx.id) || !okColor(bx.color) || !okCount(bx.count)) return null;
         nslots.push({ id: bx.id, color: bx.color, count: bx.count });
       }
-      return freezeState({ level, W, H, picture, mirror, repeat, cells: nc, total, left, cols: ncols, slots: nslots, t, presses, won });
+      // carry（1 はこびで運ぶ数）は保存しない。面の番号と絵から毎回導く（契約 §4 の保存の形は変えない）
+      return freezeState({ level, W, H, picture, mirror, repeat, cells: nc, total, left, cols: ncols, slots: nslots, t, presses, won, carry: carryFor(level, picture, mirror, repeat) });
     } catch (e) { return null; }
   }
   const asState = (s) => (s && typeof s === "object" && trusted.has(s) ? s : validateState(s));
