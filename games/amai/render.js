@@ -134,7 +134,8 @@
   // ctx の今の座標で (x, y) から一辺 s。opts: { marks, mono, gap }
   function drawCube(ctx, x, y, s, colorId, opts) {
     const o = opts || {};
-    const g = o.gap != null ? o.gap : (s >= 6 ? Math.max(0.6, s * 0.08) : 0);
+    // 砂糖どうしの細い隙間（§3.3・R-4）。小さいマスでも 1 本は空ける
+    const g = o.gap != null ? o.gap : (s >= 4 ? Math.max(0.8, Math.min(2, s * 0.12)) : 0);
     const w = s - g;
     if (w <= 0) return;
     if (o.mono) {
@@ -143,19 +144,42 @@
       return;
     }
     const c = colorInfo(colorId);
-    ctx.fillStyle = c.hex;
+    const hex = c.hex;
+    // 下地（側面のいちばん暗い色。とても小さいマスでは色そのまま）
+    ctx.fillStyle = w >= 2.5 ? mix(hex, "#000000", 0.34) : hex;
     ctx.fillRect(x, y, w, w);
-    if (w >= 3) {
-      const t = Math.max(0.6, w * 0.2), l = Math.max(0.5, w * 0.12), b = Math.max(0.6, w * 0.17);
-      ctx.fillStyle = mix(c.hex, "#ffffff", 0.42);
+    if (w >= 2.5) {
+      const t = Math.max(0.8, w * 0.26);                  // 上面の厚み
+      const b = Math.max(0.8, w * 0.2);                   // 右下の影の厚み
+      // 正面
+      ctx.fillStyle = hex;
+      ctx.fillRect(x, y + t * 0.5, w - b * 0.6, w - t * 0.5 - b);
+      // 上面（いちばん明るい）
+      ctx.fillStyle = mix(hex, "#ffffff", 0.5);
       ctx.fillRect(x, y, w, t);
-      ctx.fillStyle = mix(c.hex, "#ffffff", 0.2);
-      ctx.fillRect(x, y + t, l, w - t);
-      ctx.fillStyle = mix(c.hex, "#000000", 0.28);
+      // 上面と正面の境（砂糖のつぶつぶ感）
+      ctx.fillStyle = mix(hex, "#ffffff", 0.26);
+      ctx.fillRect(x, y + t, w - b * 0.6, Math.max(0.5, w * 0.08));
+      // 右の面（暗い）
+      ctx.fillStyle = mix(hex, "#000000", 0.26);
+      ctx.fillRect(x + w - b * 0.6, y + t * 0.5, b * 0.6, w - t * 0.5);
+      // 下の面（いちばん暗い）
+      ctx.fillStyle = mix(hex, "#000000", 0.4);
       ctx.fillRect(x, y + w - b, w, b);
-      ctx.fillRect(x + w - b * 0.8, y + t, b * 0.8, w - t - b);
+      // 左上の光の点
+      if (w >= 5) {
+        ctx.fillStyle = mix(hex, "#ffffff", 0.85);
+        ctx.fillRect(x + Math.max(0.5, w * 0.1), y + Math.max(0.5, w * 0.07), Math.max(0.8, w * 0.22), Math.max(0.6, w * 0.1));
+      }
+      // ふちどり（絵全体がくっきりする）
+      if (w >= 3) {
+        ctx.strokeStyle = mix(hex, "#000000", 0.52);
+        ctx.lineWidth = Math.max(0.5, w * 0.07);
+        ctx.strokeRect(x + ctx.lineWidth / 2, y + ctx.lineWidth / 2, w - ctx.lineWidth, w - ctx.lineWidth);
+      }
     }
-    // 印（5×5 の点を、マスの 6 割の大きさで薄く）。1 マスが 5px 未満なら描かない（§3.3）
+    // 印（§3.3）。あまいものあつめは色覚への配慮が不要と決まったので（docs/plans/amai-rework.md §9）、
+    // 盤面の角砂糖には描かない（makeSprites が marks: false を渡す）。ずかん等が頼んだときだけ描く。
     if (o.marks && s >= 5) {
       const d = dotsOf(c);
       const a = w * 0.6, q = a / 5;
@@ -363,6 +387,9 @@
       cssW = W * cell + padX * 2; cssH = H * cell + padY * 2;
       pic.style.width = cssW + "px";
       pic.style.height = cssH + "px";
+      // 絵の板を机から浮かせる（静かな影。描画のたびに ぼかす のではなく CSS に 1 回だけ）
+      pic.style.borderRadius = "10px";
+      pic.style.boxShadow = "0 3px 9px rgba(0,0,0,.45), 0 1px 0 rgba(255,236,206,.35) inset";
       const pw = Math.max(1, Math.round(cssW * dpr)), ph = Math.max(1, Math.round(cssH * dpr));
       if (pic.width !== pw) pic.width = pw;
       if (pic.height !== ph) pic.height = ph;
@@ -394,6 +421,37 @@
         c.moveTo(0, y);
         for (let x = 0; x <= pw; x += 24 * dpr) c.lineTo(x, y + Math.sin(x / (37 * dpr) + i * 1.7) * 2.2 * dpr);
         c.stroke();
+        // 木目の細い線（1 本の下にうすくもう 1 本）
+        c.strokeStyle = "rgba(255,245,225,.18)";
+        c.beginPath();
+        c.moveTo(0, y + 2.2 * dpr);
+        for (let x = 0; x <= pw; x += 24 * dpr) c.lineTo(x, y + 2.2 * dpr + Math.sin(x / (37 * dpr) + i * 1.7) * 2.2 * dpr);
+        c.stroke();
+        c.strokeStyle = "rgba(150,98,48,.22)";
+      }
+      // 節（決まった場所に 2 つ）
+      c.strokeStyle = "rgba(140,88,42,.3)";
+      for (let k = 0; k < 2; k++) {
+        const nx = pw * (k ? 0.74 : 0.21), ny = ph * (k ? 0.63 : 0.27);
+        for (let r = 2; r <= 5; r++) {
+          c.beginPath();
+          c.ellipse(nx, ny, r * 2.4 * dpr, r * 1.5 * dpr, 0, 0, Math.PI * 2);
+          c.stroke();
+        }
+      }
+      // 絵全体の外まわりの影（板の内側がすこし暗い＝机にくぼんで見える）
+      const vg = Math.max(6 * dpr, Math.min(pw, ph) * 0.07);
+      const sh = [
+        [0, 0, pw, vg, 0, 0, 0, vg, "rgba(90,55,20,.30)", "rgba(90,55,20,0)"],
+        [0, ph - vg, pw, vg, 0, ph, 0, ph - vg, "rgba(90,55,20,.22)", "rgba(90,55,20,0)"],
+        [0, 0, vg, ph, 0, 0, vg, 0, "rgba(90,55,20,.26)", "rgba(90,55,20,0)"],
+        [pw - vg, 0, vg, ph, pw, 0, pw - vg, 0, "rgba(90,55,20,.26)", "rgba(90,55,20,0)"]
+      ];
+      for (const q of sh) {
+        const gr = c.createLinearGradient(q[4], q[5], q[6], q[7]);
+        gr.addColorStop(0, q[8]); gr.addColorStop(1, q[9]);
+        c.fillStyle = gr;
+        c.fillRect(q[0], q[1], q[2], q[3]);
       }
       c.restore();
       c.strokeStyle = "#b88a55";
@@ -405,7 +463,7 @@
     }
     function makeSprites() {
       const px = Math.max(1, Math.round(cell * dpr));
-      const key = px + ":" + (cell >= 5 ? 1 : 0);
+      const key = px + ":0";
       if (key === spriteKey && sprites.size) return;
       spriteKey = key;
       sprites.clear();
@@ -413,7 +471,7 @@
       for (let id = 0; id < n; id++) {
         const s = mkCanvas(px, px);
         const c = s.getContext("2d");
-        if (c) drawCube(c, 0, 0, px, id, { marks: cell >= 5, gap: cell >= 6 ? Math.max(1, Math.round(px * 0.08)) : 0 });
+        if (c) drawCube(c, 0, 0, px, id, { marks: false, gap: Math.max(1, Math.min(2 * dpr, Math.round(px * 0.12))) });
         sprites.set(id, s);
       }
     }
@@ -729,7 +787,8 @@
       fctx.clearRect(0, 0, fx.width, fx.height);
       fctx.setTransform(fxDpr, 0, 0, fxDpr, -fxL * fxDpr, -fxT * fxDpr);
       fxDirty = true;
-      // ありんこ
+      // ありんこ（1 回目：進める＋どこにいるか覚える。2 回目：道・影・体の順に描く）
+      const shown = [];
       for (let i = ants.length - 1; i >= 0; i--) {
         const a = ants[i];
         const at = antAt(a, clock);
@@ -741,7 +800,40 @@
           snd("nest");
           continue;
         }
-        drawAnt(fctx, at.x, at.y, at.ang, a.s, Math.floor(at.d / 3.2) % 2, at.carry ? a.hex : null, at.alpha, a.hexD, a.hexL);
+        shown.push({ a, at });
+      }
+      if (shown.length) {
+        // 行列の道（砂の細い線）。ありんこが通る所だけ、うすく 1 本の線にまとめて描く（strokeは 1 回）
+        fctx.save();
+        fctx.globalAlpha = 0.34;
+        fctx.strokeStyle = "rgba(118,76,36,.55)";
+        fctx.lineWidth = Math.max(1, antScale() * 0.26);
+        fctx.lineCap = "round";
+        fctx.lineJoin = "round";
+        fctx.beginPath();
+        for (const it of shown) {
+          const q = it.a.p;
+          fctx.moveTo(q[1].x, q[1].y);
+          for (let j = 2; j < q.length; j++) fctx.lineTo(q[j].x, q[j].y);
+        }
+        fctx.stroke();
+        fctx.restore();
+        // 足元の小さな影（これがいちばん「空中を歩いてる」を直す）
+        fctx.save();
+        fctx.fillStyle = "rgba(60,34,10,.3)";
+        for (const it of shown) {
+          const s = it.a.s;
+          fctx.globalAlpha = 0.3 * it.at.alpha;
+          fctx.beginPath();
+          fctx.ellipse(it.at.x + s * 0.12, it.at.y + s * 0.42, s * 0.78, s * 0.3, 0, 0, Math.PI * 2);
+          fctx.fill();
+        }
+        fctx.restore();
+        fctx.globalAlpha = 1;
+        for (const it of shown) {
+          const a = it.a, at = it.at;
+          drawAnt(fctx, at.x, at.y, at.ang, a.s, Math.floor(at.d / 3.2) % 2, at.carry ? a.hex : null, at.alpha, a.hexD, a.hexL);
+        }
       }
       // 光の輪
       for (let i = rings.length - 1; i >= 0; i--) {
@@ -851,20 +943,27 @@
           const sr = rectOf(slotEl);
           const cc = cellCenter(c.cell, prect);
           const jitter = (((c.id | 0) * 37 + c.cell * 13) % 9 - 4) * 1.2;
+          // 道のり（R-3）：わく → 巣の前 → 絵の下の「行列の道」を横に → 角砂糖の真下から上へ → 道をもどって巣へ。
+          // ななめに絵の上を突っ切らないので、砂糖のきれ目（列）の上を歩いているように見える。
+          const lane = Math.min(np.top - 2, prect.bottom + 3);       // 絵のすぐ下の、巣へ向かう行列の道
           const p0 = { x: sr.left + sr.width / 2 + jitter, y: sr.top - 2 };
-          const p1 = { x: np.x + jitter, y: np.top };
-          const p2 = { x: cc.x, y: cc.y };
+          const p1 = { x: np.x + jitter, y: np.top };                // 巣の口
+          const pT = { x: np.x + jitter, y: lane };                  // 巣から道までの まっすぐな幹の道
+          const pA = { x: cc.x + jitter * 0.4, y: lane };            // 行く道（すこし左右にずらす）
+          const p2 = { x: cc.x + jitter * 0.4, y: cc.y };
+          const pB = { x: cc.x - jitter * 0.4, y: lane };            // 帰り道（行きと平行）
+          const pT2 = { x: np.x - jitter * 0.4, y: lane };
           const p3 = { x: np.x, y: np.y };
-          const pts = [p0, p1, p2, p3];
+          const pts = [p0, p1, pT, pA, p2, pB, pT2, p3];
           const seg = [];
           let L = 0;
-          for (let i = 0; i < 3; i++) { const s = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y); seg.push(s); L += s; }
-          const la = seg[0] + seg[1];
+          for (let i = 0; i < pts.length - 1; i++) { const s = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y); seg.push(s); L += s; }
+          const la = seg[0] + seg[1] + seg[2] + seg[3];
           const walkMs = WALK_MAX_MS - EXIT_MS - LIFT_MS;
           const v = Math.max(WALK_V, L / (walkMs / 1000));
           const hex = colorInfo(c.color).hex;
           ants.push({
-            t0: clock, k, p: pts, seg, L, la, v, liftIdx: 2, liftAng: Math.atan2(p2.y - p1.y, p2.x - p1.x),
+            t0: clock, k, p: pts, seg, L, la, v, liftIdx: 4, liftAng: Math.atan2(p2.y - pA.y, p2.x - pA.x),
             sx: sr.left + sr.width / 2, sy: sr.top + sr.height * 0.4, cell: c.cell, hex, hexD: mix(hex, "#000000", 0.35), hexL: mix(hex, "#ffffff", 0.45), s: antScale(), lifted: false
           });
         }
