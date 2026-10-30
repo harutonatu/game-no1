@@ -593,12 +593,20 @@
   // ===== うごかせない =====
   function showStuckCard() {
     safeCall(() => render.pause());
+    // 手詰まりの理由：わくの箱が待っている色（ふちにまだ出ていない色）を名前で言う。盤面は隠さない（下に出す小さなカード）
+    const names = [];
+    const slots = state && Array.isArray(state.slots) ? state.slots : [];
+    for (const b of slots) {
+      if (!b || names.includes(colorName(b.color))) continue;
+      if (!(safeCall(() => L.edgeCells(state, b.color), []) || []).length) names.push(colorName(b.color));
+    }
+    const why = names.length ? `${names.join("と ")}は ふちを まってるよ。` : "わくが いっぱいだよ。";
     showCard(`
       <h2 id="cardTitle">うごかせないよ</h2>
-      <p>わくが いっぱいで、はこべる おさとうが ないよ。</p>
+      <p>${why}<br>1手もどして、ほかを さきに ね。</p>
       <div class="btns">
-        <button class="cta primary" type="button" data-cmd="undo">1手もどす</button>
-        <button class="cta" type="button" data-cmd="restart">やりなおし</button>
+        <button class="cta primary half" type="button" data-cmd="undo">1手もどす</button>
+        <button class="cta half" type="button" data-cmd="restart">やりなおし</button>
       </div>`, {}, "stuck");
     cardShownAt = now();
     el.card.querySelectorAll(".btns button").forEach((btn) => btn.setAttribute("aria-disabled", "true"));
@@ -698,6 +706,7 @@
     el.playView.setAttribute("inert", "");
     el.card.innerHTML = html;
     el.card.dataset.kind = kind;
+    el.overlay.dataset.kind = kind;
     el.card.scrollTop = 0;
     el.card.querySelectorAll("[data-f]").forEach((n) => { n.textContent = fields[n.dataset.f] ?? ""; });
     el.overlay.hidden = false;
@@ -711,6 +720,7 @@
     el.overlay.hidden = true;
     el.card.innerHTML = "";
     el.card.dataset.kind = "";
+    el.overlay.dataset.kind = "";
     overlay = null;
     el.playView.removeAttribute("inert");
     blockUntil = now() + BOARD_BLOCK_MS;
