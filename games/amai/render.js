@@ -514,13 +514,20 @@
     let walkGrid = null, walkVer = -1;
     const routeCache = new Map(); // cell → 仮想の格子の番号の並び
     function bumpGrid() { gridVer++; routeCache.clear(); }
+    // 歩ける格子（外の枠つき）。空いているマス＝歩ける。
+    // 「logic ではもう運ばれたのに、前のありんこがまだ持ち上げていないマス」も歩けるとする（v55 の直し）。
+    // そうしないと、細い通路の先にある角砂糖へ向かう 2 匹目以降が道を見つけられず、予備の道
+    //（絵の外から手を伸ばす）に落ちて、絵の中ほどの角砂糖の上に立って見えた。
+    // ユーザー報告 2026-10-30「左から白いブロックを撮りにいっているアリンコがいる」。3 面で 21.5% がこの予備の道だった。
     function buildWalk() {
       const vw = W + 2, vh = H + 2;
       const a = new Uint8Array(vw * vh);
+      const now = cur && Array.isArray(cur.cells) && cur.cells.length === W * H ? cur.cells : null;
       for (let vy = 0; vy < vh; vy++) {
         for (let vx = 0; vx < vw; vx++) {
           const border = vx === 0 || vy === 0 || vx === vw - 1 || vy === vh - 1;
-          a[vy * vw + vx] = border || !isColor(shownCells[(vy - 1) * W + (vx - 1)]) ? 1 : 0;
+          const i = (vy - 1) * W + (vx - 1);
+          a[vy * vw + vx] = border || !isColor(shownCells[i]) || (now && !isColor(now[i])) ? 1 : 0;
         }
       }
       return a;
@@ -536,6 +543,9 @@
       if (hit !== undefined) return hit;
       const vw = W + 2, vh = H + 2, a = walkNow();
       const tx = (cell % W) + 1, ty = Math.floor(cell / W) + 1;
+      // 目当てのマスそのものは通らない（logic で運ばれたことになっていて歩けるとしていても、
+      // そのありんこにとってはまだ角砂糖なので、となりで止まって手を伸ばす）
+      const tk = ty * vw + tx, tOpen = a[tk]; if (tOpen) a[tk] = 0;
       const goal = new Uint8Array(vw * vh);
       let goals = 0;
       const mark = (vx, vy) => {
@@ -544,7 +554,8 @@
         if (a[k]) { goal[k] = 1; goals++; }
       };
       mark(tx - 1, ty); mark(tx + 1, ty); mark(tx, ty - 1); mark(tx, ty + 1);
-      if (!goals) { routeCache.set(cell, null); return null; }
+      const fin = (r) => { if (tOpen) a[tk] = tOpen; routeCache.set(cell, r); return r; };
+      if (!goals) return fin(null);
       const sx = Math.min(vw - 1, Math.max(0, Math.round((W - 1) / 2) + 1)), sy = vh - 1;   // 巣の下（外の枠）
       const start = sy * vw + sx;
       const prev = new Int32Array(vw * vh).fill(-1);
@@ -561,12 +572,11 @@
         if (vy > 0 && !seen[k - vw] && a[k - vw]) { seen[k - vw] = 1; prev[k - vw] = k; q[tail++] = k - vw; }
         if (vy < vh - 1 && !seen[k + vw] && a[k + vw]) { seen[k + vw] = 1; prev[k + vw] = k; q[tail++] = k + vw; }
       }
-      if (found < 0) { routeCache.set(cell, null); return null; }
+      if (found < 0) return fin(null);
       const out = [];
       for (let k = found; k >= 0; k = prev[k]) out.push(k);
       out.reverse();
-      routeCache.set(cell, out);
-      return out;
+      return fin(out);
     }
     // 仮想の格子（外の枠つき）の番号 → 画面の座標
     function vPoint(k, rect) {
@@ -887,7 +897,7 @@
       if (shown.length) {
         // 行列の道（砂の細い線）。ありんこが通る所だけ、うすく 1 本の線にまとめて描く（strokeは 1 回）
         fctx.save();
-        fctx.globalAlpha = 0.34;
+        fctx.globalAlpha = 0.5;   // v55：絵の中の細い通路を歩いていることが分かるよう、道の線を少しはっきりさせた
         fctx.strokeStyle = "rgba(118,76,36,.55)";
         fctx.lineWidth = Math.max(1, antScale() * 0.26);
         fctx.lineCap = "round";
@@ -1009,7 +1019,7 @@
       setPicLabel();
     }
     function carry(out, st) {
-      if (st) cur = st;
+      if (st) { cur = st; bumpGrid(); }   // 道さがしは cur.cells（logic の今）も見るので、ここで道のキャッシュを捨てる
       const list = out && Array.isArray(out.carries) ? out.carries : [];
       if (list.length) {
         const prect = rectOf(pic);
@@ -1049,7 +1059,10 @@
             go = [{ x: np.x + jitter, y: prect.bottom + 3 }, { x: ex, y: prect.bottom + 3 }, outP];
             back = [outP, { x: ex, y: prect.bottom + 3 }, { x: np.x - jitter, y: prect.bottom + 3 }];
             stand = outP;
-            reach = { x: outP.x + (cc.x - outP.x) * 0.2, y: outP.y };
+            // 手を伸ばすのは半マスまで（前は 2 割＝絵の中ほどまで入ってしまい、角砂糖の上に立って見えた。v55 の直し）
+            const dx = cc.x - outP.x, dy = cc.y - outP.y, dl = Math.hypot(dx, dy) || 1;
+            const rr = Math.min(cell * kk * 0.5, dl * 0.2);
+            reach = { x: outP.x + dx / dl * rr, y: outP.y + dy / dl * rr };
           }
           const pts = [p0, p1].concat(go, [reach], back, [p3]);
           const liftIdx = 2 + go.length;                              // reach の番号
