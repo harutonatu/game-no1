@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ゆびあそび">
+<meta name="theme-color" content="#1b1f2e">
+<meta name="description" content="広告なし・登録なし。てまえの はこを おすと、ありんこが おなじ いろの おさとうを ありの おうちへ はこぶよ。えを ぜんぶ はこぶと ずかんに はいるよ。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ゆびあそび">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:title" content="あまいものあつめ｜ゆびあそび">
+<meta property="og:description" content="広告なし・登録なし。てまえの はこを おすと、ありんこが おなじ いろの おさとうを ありの おうちへ はこぶよ。えを ぜんぶ はこぶと ずかんに はいるよ。">
+<meta property="og:url" content="https://harutonatu.github.io/game-no1/games/amai/">
+<meta property="og:image" content="https://harutonatu.github.io/game-no1/icons/og-menu.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="ゆびあそびの ゲームの絵">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<!-- 表示名は main.js が AmaiLogic.NAME で上書きする（ここに書く文字は控え） -->
+<title>あまいものあつめ</title>
+<!-- デバッグ表示（?debug=1 のときだけ動く。読めなくてもゲームは動く） -->
+<script src="../../common/debug.js"></script>
+<style>
+  /* 配置（契約 docs/ari-contract.md §3.1・§3.2）
+     縦：上から「← メニュー / 名前 / ？ ♪」・絵（上の数・巣）・案内 1 行・わく 5・箱の格子 4 列・下のボタン 4 つ。
+     横（高さ 500px 以下）：上の帯は横いっぱい。その下の左に絵、右に 案内 1 行（あまった高さの下の端）・わく・格子・ボタン。
+     箱・わく・ボタンの大きさは、ここの CSS 変数で決める（render.js は読むだけ）。
+     奥の箱を何段見せるかは #grid の --backs（2 か 1）。 */
+  :root {
+    --bg: #1b1f2e;
+    --panel: #252c41;
+    --well: #0d111d;
+    --line: #2f3750;
+    --ink: #ece6d6;
+    --muted: #9aa1b8;
+    --hint: #c9cee0;
+    --accent: #f0a43a;
+    --accent-ink: #231705;
+    --wood: #d9b27c;
+    --wood-dark: #b98b55;
+    --font-display: "Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif;
+    --font-text: "Hiragino Sans", system-ui, sans-serif;
+    --head-h: 44px;
+    --side: 16px;
+    /* 縦（SE 縦 320×568 の寸法） */
+    --slot-h: 56px;
+    --slot-gap: 7px;
+    --col-gap: 8px;
+    --front-h: 56px;
+    --back-h: 26px;
+    --back-gap: 4px;
+    --rest-h: 12px;
+    --backs: 2;
+    --grid-h: calc(var(--front-h) + var(--backs) * (var(--back-gap) + var(--back-h)) + var(--rest-h));
+    --tool-h: 48px;
+    --tool-gap: 8px;
+    --stack-w: 420px;          /* わく・格子・ボタンの列の幅の上限（大きい画面で間延びしない） */
+    --row-gap: 6px;            /* わく・格子・ボタンの間 */
+    --hint-h: 20px;            /* 案内 1 行（絵と わくの間。絵に重ねない） */
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  .sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+  html, body { height: 100%; }
+  /* ダブルタップ拡大・ピンチ拡大を止める（iOS Safari は user-scalable=no を無視するため CSS と JS の両方で防ぐ） */
+  html { overscroll-behavior: none; touch-action: manipulation; }
+  body {
+    margin: 0;
+    font-size: 16px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-display);
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+  .app {
+    box-sizing: border-box;
+    height: 100%;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: max(8px, calc(8px + env(safe-area-inset-bottom, 0px)));
+    padding-left: max(var(--side), env(safe-area-inset-left, 0px));
+    padding-right: max(var(--side), env(safe-area-inset-right, 0px));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: var(--head-h) minmax(0, 1fr);
+    row-gap: 4px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  /* ===== 上の帯 ===== */
+  .head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 6px;
+    min-width: 0;
+    height: var(--head-h);
+  }
+  a#back {   /* .box.back（奥の箱）と名前が重なるので、id で書く */
+    position: relative;
+    z-index: 30;              /* カード（オーバーレイ）より手前。どの画面からもメニューへ戻れる */
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 10px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    font: 700 15px var(--font-text);
+    text-decoration: none;
+    white-space: nowrap;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+  }
+  a#back:active { filter: brightness(1.3); }
+  /* 名前：16px。入らなければ main.js が 14・13・12px に縮める（2 行にしない） */
+  h1.title { margin: 0; min-width: 0; text-align: center; font-size: 16px; line-height: 1.2; letter-spacing: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: clip; }
+  .head-tools { display: flex; gap: 4px; }
+  .tool {
+    box-sizing: border-box;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink);
+    font: 700 18px var(--font-display);
+    padding: 0;
+    touch-action: manipulation;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tool:active { filter: brightness(1.3); background: var(--panel); }
+  #soundBtn[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ===== プレイ画面 ===== */
+  .play {
+    position: relative;
+    min-height: 0;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) var(--hint-h) var(--slot-h) var(--row-gap) var(--grid-h) var(--row-gap) var(--tool-h);
+    grid-template-areas: "pic" "hint" "slots" "." "grid" "." "tools";
+    row-gap: 0;
+  }
+
+  /* 絵の箱：明るい木の机の板。上の 1 行（面・のこり）、まん中に絵、下のまん中に巣の穴 */
+  .picbox {
+    grid-area: pic;
+    position: relative;
+    box-sizing: border-box;
+    min-height: 0;
+    min-width: 0;
+    display: grid;
+    grid-template-rows: 18px minmax(0, 1fr) 18px;
+    grid-template-columns: minmax(0, 1fr);
+    border-radius: 14px;
+    background:
+      repeating-linear-gradient(90deg, rgba(120, 78, 34, 0.07) 0 2px, transparent 2px 23px),
+      linear-gradient(180deg, #e4c18e, var(--wood) 60%, var(--wood-dark));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 0 0 1px var(--line);
+    overflow: hidden;
+    touch-action: manipulation;
+  }
+  .hud {
+    margin: 0;
+    padding: 0 8px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    font: 700 13px/18px var(--font-text);
+    color: #3a2a17;
+    white-space: nowrap;
+  }
+  .hud .level { display: flex; align-items: baseline; gap: 2px; min-width: 0; }
+  .hud b { font-variant-numeric: tabular-nums; font-size: 13px; }
+  .hud .level[data-size="m"] b { font-size: 12px; }
+  .hud .level[data-size="l"] b, .hud .level[data-size="l"] .unit { font-size: 12px; letter-spacing: -0.02em; }
+  .hud .leftbox { flex: 0 0 auto; }
+  canvas.pic {
+    grid-row: 2;
+    align-self: center;
+    justify-self: center;
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+  }
+  .nest {
+    grid-row: 3;
+    justify-self: center;
+    align-self: end;
+    width: 40px;
+    height: 18px;
+    border-radius: 20px 20px 4px 4px / 18px 18px 4px 4px;
+    background: radial-gradient(ellipse at 50% 85%, #1a0f06 0 45%, #4a2e14 46% 62%, #8a6136 63%);
+    box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.25);
+  }
+
+  /* わく 5 つ */
+  .slots {
+    grid-area: slots;
+    justify-self: center;
+    width: min(100%, var(--stack-w));
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: var(--slot-gap);
+    touch-action: manipulation;
+  }
+  .slot {
+    position: relative;
+    box-sizing: border-box;
+    min-width: 44px;
+    height: var(--slot-h);
+    border-radius: 10px;
+    border: 2px dashed rgba(236, 230, 214, 0.28);
+    background: rgba(13, 17, 29, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: visible;
+  }
+  .slot:not([data-color=""]) { border-style: solid; border-color: rgba(236, 230, 214, 0.5); }
+
+  /* 箱の格子 4 列：手前（押せる）・奥 2 段（見るだけ）・＋N */
+  .grid {
+    grid-area: grid;
+    justify-self: center;
+    align-self: start;
+    width: min(100%, var(--stack-w));
+    height: var(--grid-h);
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    column-gap: var(--col-gap);
+    touch-action: manipulation;
+  }
+  .col {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--back-gap);
+  }
+  .box {
+    position: relative;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: var(--c, #6b5a44);
+    color: var(--ink, #fff);   /* 明るい色の箱は濃い字（render の inkFor）。白い箱で数が見えなくなるのを防ぐ */
+    font-family: var(--font-display);
+  }
+  .box.front {
+    flex: 0 0 auto;
+    height: var(--front-h);
+    min-width: 44px;
+    min-height: 44px;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .box.front:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .box.back { flex: 0 0 auto; height: var(--back-h); opacity: 0.7; }
+  .col .rest { flex: 0 0 auto; margin-top: calc(-1 * var(--back-gap)); height: var(--rest-h); font: 700 12px/12px var(--font-text); color: var(--muted); text-align: center; }
+
+  /* 案内：絵と わくの間に 1 行（高さ固定。絵に重ねない。配置は動かない。押す邪魔をしない）。
+     長い文言は main.js が字を 12・11px に縮める。少したつと薄くなる（文字は残す）。待っているだけの案内（data-soft）は はじめから うすい */
+  .hint {
+    grid-area: hint;
+    align-self: center;
+    justify-self: center;
+    position: relative;
+    box-sizing: border-box;
+    width: min(100%, var(--stack-w));
+    height: var(--hint-h);
+    margin: 0;
+    padding: 0 4px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-align: center;
+    color: var(--hint);
+    font: 13px/var(--hint-h) var(--font-text);
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  .hint:empty { opacity: 0; }
+  .hint[data-fade="1"] { opacity: 0.6; }
+  .hint[data-soft="1"] { color: var(--muted); opacity: 0.85; }
+
+  canvas.fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 15; }
+
+  /* 下のボタン 4 つ */
+  .tools {
+    grid-area: tools;
+    justify-self: center;
+    align-self: end;
+    width: min(100%, var(--stack-w));
+    height: var(--tool-h);
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    column-gap: var(--tool-gap);
+    touch-action: manipulation;
+  }
+  .tools .cta {
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    height: var(--tool-h);
+    padding: 0 2px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    font: 700 12px/1.2 var(--font-text);
+    letter-spacing: 0;
+    white-space: nowrap;
+    touch-action: manipulation;
+  }
+  .tools .cta:active:not(:disabled) { filter: brightness(1.3); }
+  .tools .cta:disabled { opacity: 0.4; }
+  #fastBtn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  /* うごかせないとき：押して意味のある方を目立たせる（色だけでなく、枠の太さと小さな揺れでも） */
+  .tools .cta[data-attention="1"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; box-shadow: 0 0 0 3px rgba(240, 164, 58, 0.35); animation: nudge 1.6s ease-in-out infinite; }
+  @keyframes nudge { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+
+  /* 幅 360px 以下（SE 縦）：名前が入るよう、戻るボタンとすき間を詰める（名前は 12px まで縮む） */
+  @media (max-width: 360px) {
+    .head { column-gap: 3px; }
+    a#back { padding: 0 6px; font-size: 14px; }
+    .head-tools { gap: 2px; }
+  }
+  /* 少し広い画面：字を大きく */
+  @media (min-width: 370px) {
+    .tools .cta { font-size: 14px; }
+  }
+
+  /* 背の低い縦画面（SE の Safari 320×454 など）：奥の箱を 1 段に、わく 52・ボタン 44 */
+  @media (orientation: portrait) and (max-height: 520px) {
+    :root { --slot-h: 52px; --backs: 1; --tool-h: 44px; }
+  }
+
+  /* 横向きで背が低い（SE 横 568×320・Safari 568×270 など）：左に絵、右に わく・格子・ボタン（幅 264） */
+  @media (orientation: landscape) and (max-height: 500px) {
+    :root {
+      --side: 12px;
+      --slot-h: 52px; --slot-gap: 6px;
+      --col-gap: 8px; --front-h: 52px; --back-h: 24px; --back-gap: 2px; --rest-h: 12px; --backs: 1;
+      --tool-h: 44px; --tool-gap: 8px;
+      --stack-w: 264px;
+    }
+    .app { max-width: none; }
+    .play {
+      grid-template-columns: minmax(0, 1fr) 264px;
+      /* 案内は右の列の上のあまり（568×270 で 16px）の下の端に 1 行 */
+      grid-template-rows: minmax(0, 1fr) var(--slot-h) var(--row-gap) var(--grid-h) var(--row-gap) var(--tool-h);
+      grid-template-areas: "pic hint" "pic slots" "pic ." "pic grid" "pic ." "pic tools";
+      column-gap: 12px;
+    }
+    .tools { align-self: start; }
+    .tools .cta { font-size: 12px; }
+    .hint { --hint-h: 16px; align-self: end; font-size: 12px; }
+  }
+
+  /* iPad：同じ並びで大きく（箱は最大 120×88） */
+  @media (min-width: 700px) and (min-height: 700px) {
+    :root {
+      --head-h: 52px;
+      --slot-h: 88px; --slot-gap: 12px;
+      --col-gap: 12px; --front-h: 88px; --back-h: 40px; --back-gap: 6px; --rest-h: 16px; --backs: 2;
+      --tool-h: 56px; --tool-gap: 12px;
+      --stack-w: 648px;
+      --row-gap: 8px;
+      --hint-h: 28px;
+    }
+    .grid, .tools { width: min(100%, 516px); }   /* 格子の箱は 120 幅まで（4×120＋3×12） */
+    .tools .cta { font-size: 17px; }
+    .col .rest { font-size: 14px; line-height: 16px; }
+    .hud { font-size: 16px; height: 18px; }
+    .hud b { font-size: 16px; }
+    .hint { font-size: 16px; }
+    h1.title { font-size: 18px; }
+  }
+
+  /* ===== オーバーレイ（遊び方・ずかん・クリア・うごかせない・やりなおしの確認） ===== */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    box-sizing: border-box;
+    display: flex;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    padding-top: calc(env(safe-area-inset-top, 0px) + var(--head-h) + 8px);
+    --ov-pb: max(12px, env(safe-area-inset-bottom, 0px));
+    padding-bottom: var(--ov-pb);
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+    background: rgba(13, 17, 29, 0.78);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+  /* うごかせない：盤面（絵・わく）が見えるよう、暗くせず、下に小さなカードを出す */
+  .overlay[data-kind="stuck"] { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; align-items: flex-end; }
+  .overlay[data-kind="stuck"] .card { margin: 0 auto; padding: 12px; gap: 8px; box-shadow: 0 0 0 2px var(--accent), 0 -8px 30px rgba(0, 0, 0, 0.55); }
+  .overlay[data-kind="stuck"] .card h2 { font-size: 17px; }
+  .overlay[data-kind="stuck"] .card p { font-size: 14px; line-height: 1.4; }
+  .overlay[data-kind="stuck"] .card .btns button { min-height: 48px; }
+  .card {
+    position: relative;
+    width: min(420px, 100%);
+    box-sizing: border-box;
+    margin: auto;
+    flex: 0 0 auto;
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+    box-shadow: 0 0 0 1px var(--line), 0 20px 50px rgba(0, 0, 0, 0.5);
+  }
+  .card h2 { margin: 0; font-size: 22px; line-height: 1.3; letter-spacing: 0.04em; overflow-wrap: anywhere; word-break: keep-all; text-wrap: balance; }
+  .card p { margin: 0; color: var(--ink); font: 16px/1.6 var(--font-text); overflow-wrap: anywhere; }
+  .card p.note { color: var(--muted); font-size: 14px; }
+  .card p.picname { font: 700 30px/1.25 var(--font-display); color: #ffd84d; letter-spacing: 0.04em; word-break: keep-all; overflow-wrap: anywhere; }
+  .card p.count { color: var(--muted); font-size: 13px; line-height: 1.4; }
+  .card p.clean { margin-top: -4px; color: #ffd84d; font: 700 14px/1.3 var(--font-text); }   /* 1手もどし なし！（ほめる言葉。小さく） */
+  .card ol.rules { margin: 0; padding-left: 1.4em; text-align: left; font: 15px/1.55 var(--font-text); display: flex; flex-direction: column; gap: 4px; }
+  .card ol.rules b { color: var(--accent); }
+  .card .sample { display: flex; justify-content: center; }
+  .card .sample canvas { display: block; width: 72px; height: 72px; image-rendering: pixelated; }
+  /* 遊び方：背の低い画面では見本の絵を見出し（縦）・文（横）の となりに並べ、「わかった」をスクロールなしで押せるようにする */
+  #card[data-kind="help"] > h2 { grid-area: title; }
+  #card[data-kind="help"] > .sample { grid-area: sample; }
+  #card[data-kind="help"] > ol.rules { grid-area: rules; }
+  #card[data-kind="help"] > .btns { grid-area: btns; }
+  .card .clearpic { display: flex; justify-content: center; }
+  .card .clearpic canvas { display: block; max-width: 160px; max-height: 120px; image-rendering: pixelated; }
+  .card .btns { display: flex; flex-direction: row; flex-wrap: wrap; gap: 10px; }
+  .card .btns button { flex: 1 1 100%; }
+  .card .btns button.half { flex: 1 1 0; }
+  .card .btns button {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 44px;
+    min-height: 50px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--ink);
+    font: 700 16px/1.3 var(--font-text);
+    white-space: nowrap;
+    touch-action: manipulation;
+  }
+  .card .btns button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .card .btns button:active { filter: brightness(1.2); }
+  .card button[aria-disabled="true"] { opacity: 0.5; }
+
+  /* ずかん：カードの中を縦にスクロール。「とじる」はカードの上に固定 */
+  #card[data-kind="book"] {
+    width: min(720px, 100%);
+    max-height: 100%;
+    margin: 0 auto;
+    padding: 0 12px 12px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    gap: 8px;
+  }
+  .card .bookhead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 -12px;
+    padding: 8px 12px;
+    background: var(--panel);
+    box-shadow: 0 1px 0 var(--line);
+  }
+  .card .bookhead h2 { flex: 1 1 auto; font-size: 20px; text-align: left; }
+  .card .bookhead .got { flex: 0 0 auto; margin: 0; font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .card .bookhead .got .rest { margin-left: 6px; font-size: 12px; }
+  .card .bookhead button {
+    flex: 0 0 auto;
+    min-width: 76px;
+    min-height: 44px;
+    border-radius: 12px;
+    border: 0;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font: 700 16px var(--font-text);
+    touch-action: manipulation;
+  }
+  .card ul.book { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .card ul.book li { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; padding: 4px 2px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); }
+  .card ul.book li canvas { display: block; width: 100%; max-width: 64px; aspect-ratio: 4 / 3; height: auto; object-fit: contain; image-rendering: pixelated; }
+  .card ul.book .nm { font: 12px/1.25 var(--font-text); color: var(--ink); word-break: keep-all; overflow-wrap: anywhere; text-align: center; }
+  .card ul.book li[data-got="0"] .nm { color: var(--muted); }
+  .card ul.book .star { margin-left: 2px; color: #ffd84d; font-size: 11px; }
+  .card ul.book .cnt { font: 700 12px/1.2 var(--font-text); color: #ffd84d; }
+  .card ul.book .season { position: absolute; top: 2px; left: 2px; padding: 0 3px; border-radius: 5px; font: 700 12px/1.3 var(--font-text); color: #1b1f2e; background: #f4ead2; }
+  .card ul.book .season[data-season="haru"] { background: #ffc6dc; }
+  .card ul.book .season[data-season="natsu"] { background: #9fe0ff; }
+  .card ul.book .season[data-season="aki"] { background: #ffc58a; }
+  .card ul.book .season[data-season="fuyu"] { background: #e8eefc; }
+  @media (min-width: 500px) { .card ul.book { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+  @media (min-width: 700px) { .card ul.book { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
+
+  /* 背の低い縦（SE など） */
+  @media (orientation: portrait) and (max-height: 600px) {
+    .card { padding: 14px; gap: 8px; }
+    .card ol.rules { font-size: 14px; line-height: 1.5; }
+    .card .sample canvas { width: 56px; height: 56px; }
+    #card[data-kind="help"] { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "sample title" "rules rules" "btns btns"; align-items: center; column-gap: 8px; }
+  }
+  /* 横向きで背が低い：遊び方がスクロールなしで収まるよう、幅を広げ、字とすき間を詰める */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .overlay { padding-top: calc(env(safe-area-inset-top, 0px) + var(--head-h) + 4px); --ov-pb: max(6px, env(safe-area-inset-bottom, 0px)); }
+    .card { width: min(640px, 100%); padding: 8px 16px; gap: 4px; }
+    .card h2 { font-size: 17px; line-height: 1.2; }
+    .card p { font-size: 14px; line-height: 1.45; }
+    .card p.picname { font-size: 22px; }
+    .card ol.rules { font-size: 13px; line-height: 1.4; gap: 1px; }
+    .card .sample canvas { width: 40px; height: 40px; }
+    .card .clearpic canvas { max-height: 64px; }
+    .card .btns { gap: 8px; }
+    .card .btns button { flex: 1 1 0; min-height: 44px; }
+    #card[data-kind="help"] .btns button { flex: 1 1 100%; }
+    #card[data-kind="help"] { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "title title" "sample rules" "btns btns"; align-items: center; column-gap: 12px; }
+    #card[data-kind="book"] { width: 100%; }
+    .card .bookhead { padding: 4px 12px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="head">
+    <a id="back" class="back" href="../../">← メニュー</a>
+    <h1 class="title" id="gameTitle">あまいものあつめ</h1>
+    <div class="head-tools">
+      <button class="tool" id="helpBtn" type="button" aria-label="あそびかた">？</button>
+      <button class="tool" id="soundBtn" type="button" aria-label="効果音" aria-pressed="true">♪</button>
+    </div>
+  </header>
+
+  <section class="play" id="playView" aria-label="プレイ" data-phase="play">
+    <div class="picbox" id="picBox">
+      <p class="hud"><span class="level" id="levelBox"><b id="level">1</b><span class="unit">めん</span></span>
+        <span class="leftbox">のこり <b id="left">0</b> こ</span></p>
+      <canvas class="pic" id="pic" role="img" aria-label="え"></canvas>
+      <div class="nest" id="nest" aria-hidden="true"></div>
+    </div>
+    <div class="slots" id="slots" role="group" aria-label="わく">
+      <div class="slot" data-slot="0" data-color="" data-count="" data-wait="0"><span class="sr"></span></div>
+      <div class="slot" data-slot="1" data-color="" data-count="" data-wait="0"><span class="sr"></span></div>
+      <div class="slot" data-slot="2" data-color="" data-count="" data-wait="0"><span class="sr"></span></div>
+    </div>
+    <div class="grid" id="grid" role="group" aria-label="はこ">
+      <div class="col" data-col="0" data-rest="0"></div>
+      <div class="col" data-col="1" data-rest="0"></div>
+      <div class="col" data-col="2" data-rest="0"></div>
+      <div class="col" data-col="3" data-rest="0"></div>
+    </div>
+    <canvas class="fx" id="fx" aria-hidden="true"></canvas>
+    <p class="hint" id="hint" role="status" aria-live="polite"></p>
+    <div class="tools" id="tools">
+      <button class="cta" id="undoBtn" type="button" data-cmd="undo" disabled>1手もどす</button>
+      <button class="cta" id="restartBtn" type="button" data-cmd="restart" disabled>やりなおし</button>
+      <button class="cta" id="fastBtn" type="button" data-cmd="fast" aria-pressed="false">はやく</button>
+      <button class="cta" id="bookBtn" type="button" data-cmd="book">ずかん</button>
+    </div>
+  </section>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="card" id="card" role="dialog" aria-modal="true" aria-labelledby="cardTitle"></div>
+</div>
+
+<script src="../../common/notice.js"></script>
+<script src="../../common/sfx.js"></script>
+<script src="pictures-a.js"></script>
+<script src="pictures-b.js"></script>
+<script src="logic.js"></script>
+<script src="render.js"></script>
+<script src="input.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
