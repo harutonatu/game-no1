@@ -59,11 +59,13 @@ const domBoard = (p) => p.evaluate(() => {
     cols: [...document.querySelectorAll('#grid .col')].map((c) => ({ col: Number(c.dataset.col), rest: c.dataset.rest, front: [...c.querySelectorAll('.box.front')].filter((e) => !e.closest('[hidden]')).map(box), back: [...c.querySelectorAll('.box.back')].filter((e) => !e.closest('[hidden]')).map(box) })),
   };
 });
+// わくの数（契約：3。段 0 で 5→3。logic.js の SLOTS と同じでなければ AW1 などが不合格にする）
+const SLOTS_N = 3;
 // getState()（slots・cols は logic の state の写し）と画面の食い違いを文にして返す（空なら一致）
 function boardDiff(st, dom) {
   const bad = [];
-  if (dom.slots.length !== 5) bad.push(`.slot が ${dom.slots.length} 個`);
-  for (let i = 0; i < 5; i++) {
+  if (dom.slots.length !== SLOTS_N) bad.push(`.slot が ${dom.slots.length} 個（わくは ${SLOTS_N} 個）`);
+  for (let i = 0; i < SLOTS_N; i++) {
     const a = st.slots[i], d = dom.slots[i];
     if (!d) continue;
     const wantC = a ? String(a.color) : '', wantN = a ? String(a.count) : '';
@@ -156,7 +158,7 @@ async function playOut(p, maxMs = 60000) {
   for (let t = 0; t < maxMs; t += 250) { const s = await gs(p); if (s.stable && !s.busy) return s; await wait(p, 250); }
   return gs(p);
 }
-// 「うごかせない」の局面（絵はそのままで、内側のマスだけ色 1 にして、わく 5 つを色 1 の箱で埋める。色 1 は内側にしか無く、ふちに出ない）
+// 「うごかせない」の局面（絵はそのままで、内側のマスだけ色 1 にして、わく全部（SLOTS 個）を色 1 の箱で埋める。色 1 は内側にしか無く、ふちに出ない）
 const makeStuckState = (p) => p.evaluate(() => {
   const G = window.AmaiGame, s = G.logic();
   const { W, H } = s, cells = s.cells.slice();
@@ -167,11 +169,12 @@ const makeStuckState = (p) => p.evaluate(() => {
     all.push(y * W + x);
     if (at(x - 1, y) >= 0 && at(x + 1, y) >= 0 && at(x, y - 1) >= 0 && at(x, y + 1) >= 0) inner.push(y * W + x);
   }
-  if (inner.length < 5) return { ok: false, why: `内側のマスが ${inner.length} 個しかない` };
+  const N = s.slots.length;   // わくの数
+  if (inner.length < N) return { ok: false, why: `内側のマスが ${inner.length} 個しかない` };
   for (const i of all) cells[i] = 0;
   for (const i of inner) cells[i] = 1;
-  const base = Math.floor(inner.length / 5), extra = inner.length % 5;
-  const slots = [0, 1, 2, 3, 4].map((i) => ({ id: 1 + i, color: 1, count: base + (i < extra ? 1 : 0) }));
+  const base = Math.floor(inner.length / N), extra = inner.length % N;
+  const slots = Array.from({ length: N }, (_, i) => i).map((i) => ({ id: 1 + i, color: 1, count: base + (i < extra ? 1 : 0) }));
   const outer = all.length - inner.length;
   const front = []; let left = outer, id = 100;
   while (left > 0) { const n = Math.min(left, 50); front.push({ id: id++, color: 0, count: n, lid: false, ice: 0 }); left -= n; }
@@ -262,9 +265,11 @@ export const tests = [
       check(`#playView[data-phase] が getState().phase と同じ（${await phaseAttr(page)}）`, (await phaseAttr(page)) === s0.phase);
       const title = await page.evaluate(() => ({ t: document.title, h: document.getElementById('gameTitle')?.textContent.trim(), n: window.AmaiLogic.NAME }));
       check(`タイトルと見出しが AmaiLogic.NAME（${title.n}）と同じ`, title.t.includes(title.n) && title.h === title.n, title);
+      const slotsLogic = await page.evaluate(() => window.AmaiLogic.SLOTS);
+      check(`わくの数：AmaiLogic.SLOTS（${slotsLogic}）・state のわく（${s0.slots.length}）・画面の .slot が すべて ${SLOTS_N}`, slotsLogic === SLOTS_N && s0.slots.length === SLOTS_N && (await domBoard(page)).slots.length === SLOTS_N, { slotsLogic, st: s0.slots.length });
       const dom0 = await domBoard(page);
       const diff0 = boardDiff(s0, dom0);
-      check(`押す前：わく 5 つ・列 4 つの data-* が getState() と一致（食い違い ${diff0.length} 件）`, diff0.length === 0 && s0.slots.every((x) => x === null), diff0.slice(0, 4));
+      check(`押す前：わく ${SLOTS_N} つ・列 4 つの data-* が getState() と一致（食い違い ${diff0.length} 件）`, diff0.length === 0 && s0.slots.every((x) => x === null), diff0.slice(0, 4));
       const sol = await solutionOf(page);
       check('solution() が列の番号の並びを返す（1 面は解ける）', Array.isArray(sol) && sol.length > 0 && sol.every((c) => Number.isInteger(c) && c >= 0 && c <= 3), sol);
       // 1 箱押す
@@ -496,8 +501,8 @@ export const tests = [
         check(`${v.label}：遊び方のカード：見出しが切れず、全ボタンに届き 44px 以上`, overlayOk(hp), hp);
         // 遊び方の文（契約 §3.5）：巣は「ありの おうち」、ふち・わく・はこの すうじ の意味を 1 言ずつ
         const ht = o.text;
-        check(`${v.label}：遊び方の文に「ありの おうちへ」「ふち」（えの まわり）「わく」（したの 5つの しかく）「はこの すうじ」（おさとうの かず）があり、「すへ」が無い`,
-          ['ありの おうちへ', 'えの まわり', 'したの 5つの しかく', 'はこの すうじ', 'おさとうの かず'].every((w) => ht.includes(w)) && !ht.includes('すへ'), ht);
+        check(`${v.label}：遊び方の文に「ありの おうちへ」「ふち」（えの まわり）「わく」（したの ${SLOTS_N}つの しかく）「はこの すうじ」（おさとうの かず）があり、「すへ」が無い`,
+          ['ありの おうちへ', 'えの まわり', `したの ${SLOTS_N}つの しかく`, 'はこの すうじ', 'おさとうの かず'].every((w) => ht.includes(w)) && !ht.includes('すへ'), ht);
         await clickCmd(page, 'close'); await wait(page, 100);
         const st = await makeStuckState(page);
         for (let i = 0; i < 30 && (await gs(page)).overlay !== 'stuck'; i++) { await skipG(page); await wait(page, 100); }
@@ -555,7 +560,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW7', tier: 'full', title: 'あまいもの うごかせない：setState で「わく 5 つ埋まり・運べない」局面を作ると stuck・カード（undo・restart）・data-attention="1"、保存は消えない。自然に詰ませた局面では undo で戻れる',
+    id: 'AW7', tier: 'full', title: 'あまいもの うごかせない：setState で「わく全部が埋まり・運べない」局面を作ると stuck・カード（undo・restart）・data-attention="1"、保存は消えない。自然に詰ませた局面では undo で戻れる',
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'AW7');
       await playSolution(page, 1);
@@ -1105,9 +1110,11 @@ export const tests = [
         const thawed = (await plays(page)).some((p) => p.n === 'thaw');
         check(`ほかの列 ${c} を押す（${k}）：こおりの残りが ${left}（data-ice ${ice}）${left === 0 ? '、音 thaw が鳴る（' + thawed + '）' : ''}`, k === 'press' && ice === String(left) && (left === 0 ? thawed : !thawed), { k, ice, thawed });
       }
+      // わくは 3 つ：3 回押すと埋まるので、アリが運んでわくが空くまで待ってから押す
+      for (let i = 0; i < 60 && (await gs(page)).slots.every((x) => x !== null); i++) { await skipG(page); await wait(page, 100); }
       const k0 = await pressCol(page, 0); await skipG(page);
       const fin = await gs(page);
-      check(`とけたあとは押せて、わくに入る（${k0}・わくの箱 ${fin.slots.filter(Boolean).length} 個）`, k0 === 'press' && fin.slots.filter(Boolean).length >= 4, fin.slots);
+      check(`とけたあとは押せて、わくに入る（${k0}・わくの箱 ${fin.slots.filter(Boolean).length} 個）`, k0 === 'press' && fin.slots.filter(Boolean).length >= 1, fin.slots);
       await ctx.close();
     },
   },

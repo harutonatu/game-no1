@@ -28,13 +28,13 @@ const LET = { R: 0, O: 1, Y: 2, G: 3, S: 4, B: 5, P: 6, C: 7, W: 8, K: 9 };
 let NID = 1000;
 const BX = (o) => ({ id: o.id ?? NID++, color: o.c, count: o.n ?? 1, lid: !!o.lid, ice: o.ice ?? 0 });
 const SB = (o) => (o ? { id: o.id ?? NID++, color: o.c, count: o.n ?? 1 } : null);
-function mk(L, map, { cols = [[], [], [], []], slots = [null, null, null, null, null], presses = 0, t = 0, total } = {}) {
+function mk(L, map, { cols = [[], [], [], []], slots = [], presses = 0, t = 0, total } = {}) {
   const H = map.length, W = map[0].length;
   const cells = [];
   for (const row of map) for (const ch of row) cells.push(ch === '.' ? -1 : LET[ch]);
   const left = cells.filter((v) => v >= 0).length;
   const s = L.validateState({ level: 7, W, H, picture: 'test', mirror: false, repeat: false, cells, total: total ?? left, left,
-    cols: cols.map((c) => c.map(BX)), slots: slots.map(SB), t, presses, won: left === 0 });
+    cols: cols.map((c) => c.map(BX)), slots: Array.from({ length: L.SLOTS }, (_, i) => SB(slots[i])), t, presses, won: left === 0 });
   if (!s) throw new Error('mk: validateState が null（テストの局面の組み方の誤り）');
   return s;
 }
@@ -139,7 +139,7 @@ export const tests = [
     id: 'AL1', tier: 'smoke', node: true, title: 'あまいものあつめ：定数・COLORS（10 色。文字・hex・印・名前・5×5 の点がすべてちがう）・NAME・paramsFor が §2.1 の表どおり（境界・壊れた値）',
     run({ check, root }) {
       const L = load(root);
-      const K = { NAME: 'あまいものあつめ', SLOTS: 5, COLS: 4, TICK_MS: 500, FAST_MS: 250, MAX_W: 32, MAX_H: 24, MAX_SUGAR: 700, MAX_COUNT: 99, MAX_PRESSES: 400, MAX_T: 5000,
+      const K = { NAME: 'あまいものあつめ', SLOTS: 3, COLS: 4, TICK_MS: 500, FAST_MS: 250, MAX_W: 32, MAX_H: 24, MAX_SUGAR: 700, MAX_COUNT: 99, MAX_PRESSES: 400, MAX_T: 5000,
         GEN_TRIES: 20, GEN_WORK: 300000, BASE_PICTURES: 48, REPEAT_FROM: 9,
         SAVE_KEY_SAVE: 'amai.save', SAVE_KEY_BEST: 'amai.best', SAVE_KEY_BOOK: 'amai.book', SAVE_KEY_HELP: 'amai.help', SAVE_KEY_FAST: 'amai.fast' };
       const kBad = Object.entries(K).filter(([k, v]) => L[k] !== v).map(([k, v]) => ({ k, want: v, got: L[k] }));
@@ -155,7 +155,9 @@ export const tests = [
       check('5×5 の点は 5 行 × 5 文字（# と . だけ）', C.every((c) => c.dots.length === 5 && c.dots.every((r) => /^[#.]{5}$/.test(r))), C.map((c) => c.dots));
       check('colorName', L.colorName(0) === 'あか' && L.colorName(9) === 'くろ' && L.colorName(10) === '' && L.colorName('x') === '', null);
       // §2.1 の表（1〜48 面は PICTURE_ORDER の絵で）
-      const T = (lv, tier, kmin, kmax, pull, lids, ices) => ({ lv, tier, kmin, kmax, pull, lids, ices });
+      // 箱の数の幅は TIERS の値。ただし段ごとの上書き KSET・くり返しの REPEAT_K があればそれ（logic.js が公開する表を読む。表の持ち主は logic.js）
+      const KR = (tier) => (L.KSET && L.KSET[tier]) || [L.TIERS[tier].kmin, L.TIERS[tier].kmax];
+      const T = (lv, tier, kmin, kmax, pull, lids, ices) => ({ lv, tier, kmin: KR(tier)[0], kmax: KR(tier)[1], pull, lids, ices });
       const table = [
         T(1, 'S', 15, 25, 0, 0, 0), T(2, 'S', 15, 25, 0, 0, 0), T(4, 'S', 15, 25, 0, 0, 0),
         T(5, 'M', 10, 25, 2, 0, 0), T(8, 'M', 10, 25, 2, 0, 0), T(9, 'M', 10, 25, 2, 1, 0), T(12, 'M', 10, 25, 2, 1, 0),
@@ -173,11 +175,11 @@ export const tests = [
       check('1〜48 面の境界（1・2・4・5・8・9・12・13・18・19・24・25・30・31・36・37・48）が表どおり', bad.length === 0, bad);
       // 49 面から：くり返し（ずかんが空なら 9 枚目＝M の段）。段の値 +（k 8–25・pull +2・多い方 +1）
       const p49 = L.paramsFor(49, L.pickPicture(49, null));
-      check('49 面（くり返し・9 枚目 M）：k 8–25・pull 4・lids 2・ices 1・反転', p49.repeat === true && p49.mirror === true && p49.tier === 'M' && p49.kmin === 8 && p49.kmax === 25 && p49.pull === 4 && p49.lids === 2 && p49.ices === 1 && p49.picture === L.PICTURE_ORDER[8].id, p49);
+      check('49 面（くり返し・9 枚目 M）：k は REPEAT_K の幅・pull 4・lids 2・ices 1・反転', p49.repeat === true && p49.mirror === true && p49.tier === 'M' && p49.kmin === L.REPEAT_K.kmin && p49.kmax === L.REPEAT_K.kmax && p49.pull === 4 && p49.lids === 2 && p49.ices === 1 && p49.picture === L.PICTURE_ORDER[8].id, p49);
       const pX = L.paramsFor(1000, { id: L.PICTURE_ORDER[47].id, mirror: true, repeat: true });
-      check('1000 面（くり返し・XXL の絵）：pull 14・lids 5・ices 4', pX.tier === 'XXL' && pX.pull === 14 && pX.lids === 5 && pX.ices === 4 && pX.kmin === 8 && pX.kmax === 25, pX);
+      check('1000 面（くり返し・XXL の絵）：pull 14・lids 5・ices 4', pX.tier === 'XXL' && pX.pull === 14 && pX.lids === 5 && pX.ices === 4 && pX.kmin === L.REPEAT_K.kmin && pX.kmax === L.REPEAT_K.kmax, pX);
       const pA = L.paramsFor(60, { id: L.PICTURE_ORDER[30].id, mirror: false, repeat: false });
-      check('49 面から（足した絵の扱い・くり返しでない）：その絵の段の行・lids・ices は段の多い方', pA.tier === 'XL' && pA.kmin === 10 && pA.kmax === 30 && pA.pull === 8 && pA.lids === 3 && pA.ices === 2 && pA.repeat === false, pA);
+      check('49 面から（足した絵の扱い・くり返しでない）：その絵の段の行・lids・ices は段の多い方', pA.tier === 'XL' && pA.kmin === KR('XL')[0] && pA.kmax === KR('XL')[1] && pA.pull === 8 && pA.lids === 3 && pA.ices === 2 && pA.repeat === false, pA);
       // 壊れた値は 1 面
       const one = J(L.paramsFor(1, null));
       const broken = [0, -3, NaN, Infinity, 'abc', null, undefined, {}, 1.7].map((v) => ({ v: String(v), same: J(L.paramsFor(v, null)) === one }));
@@ -321,8 +323,8 @@ export const tests = [
       const r3b = L.step(r3.state);
       check('次の 1 はこびで G が運ぶ', r3b.carries.length === 1 && r3b.carries[0].cell === 4, r3b.carries);
       // 同じ色の 2 箱
-      const r4 = L.step(mk(L, ['RRRR'], { slots: [null, { c: LET.R, n: 2 }, null, { c: LET.R, n: 2 }, null] }));
-      check('同じ色の 2 箱は 2 つとも運ぶ（左のわくが先に選ぶ）', r4.carries.length === 2 && r4.carries[0].slot === 1 && r4.carries[1].slot === 3 && r4.carries[0].cell !== r4.carries[1].cell, r4.carries);
+      const r4 = L.step(mk(L, ['RRRR'], { slots: [null, { c: LET.R, n: 2 }, { c: LET.R, n: 2 }] }));
+      check('同じ色の 2 箱は 2 つとも運ぶ（左のわくが先に選ぶ）', r4.carries.length === 2 && r4.carries[0].slot === 1 && r4.carries[1].slot === 2 && r4.carries[0].cell !== r4.carries[1].cell, r4.carries);
       // 1 はこびで 1 箱 1 個
       const r5 = L.step(mk(L, ['RRRRRRRR'], { slots: [{ c: LET.R, n: 5 }, null, null, null, null] }));
       check('1 はこびで 1 箱あたり 1 個だけ', r5.carries.length === 1 && r5.state.left === 7, r5.carries);
@@ -346,11 +348,11 @@ export const tests = [
     run({ check, root }) {
       const L = load(root);
       const map = ['RRRR', 'GGGG'];
-      const full = [{ c: 0 }, { c: 0 }, { c: 0 }, { c: 0 }, { c: 0 }];
+      const full = Array.from({ length: L.SLOTS }, () => ({ c: 0 }));
       // reason の順
-      const sw = L.validateState({ level: 1, W: 2, H: 1, picture: 'test', mirror: false, repeat: false, cells: [-1, -1], total: 2, left: 0, cols: [[], [], [], []], slots: [null, null, null, null, null], t: 2, presses: 1, won: true });
+      const sw = L.validateState({ level: 1, W: 2, H: 1, picture: 'test', mirror: false, repeat: false, cells: [-1, -1], total: 2, left: 0, cols: [[], [], [], []], slots: Array(L.SLOTS).fill(null), t: 2, presses: 1, won: true });
       check('won：クリアの後（列の番号がおかしくても won が先）', L.press(sw, 9).outcome.reason === 'won' && L.press(sw, 0).outcome.reason === 'won', L.press(sw, 9).outcome);
-      const s = mk(L, map, { cols: [[{ c: 0, n: 4 }], [], [{ c: 3, n: 4, ice: 2 }], [{ c: 3, n: 4 }]], slots: full.map((x) => ({ ...x })) .map((x, i) => (i < 4 ? x : null)), total: 8 });
+      const s = mk(L, map, { cols: [[{ c: 0, n: 4 }], [], [{ c: 3, n: 4, ice: 2 }], [{ c: 3, n: 4 }]], slots: full.map((x) => ({ ...x })) .map((x, i) => (i < L.SLOTS - 1 ? x : null)), total: 8 });
       const rs = [4, -1, '0', 1.5, null, undefined].map((c) => L.press(s, c).outcome.reason);
       check('range：列の番号が 0〜3 の整数でない（4・-1・"0"・1.5・null・undefined）', rs.every((r) => r === 'range'), rs);
       check('empty：その列に箱がない', L.press(s, 1).outcome.reason === 'empty', L.press(s, 1).outcome);
@@ -361,7 +363,7 @@ export const tests = [
       check('invalid のとき state はそのまま', L.press(sf, 0).state === sf, null);
       // 一番左の空きわく・列が詰まる
       const s2 = mk(L, map, { cols: [[{ id: 1, c: 0, n: 2 }, { id: 2, c: 0, n: 2 }], [{ id: 3, c: 3, n: 4 }], [], []], slots: [{ c: 3, n: 0 + 1 }, null, null, null, null].map((x, i) => (i === 0 ? null : x)), total: 8 });
-      const s2b = L.validateState({ ...JSON.parse(J(s2)), slots: [{ id: 50, color: 3, count: 0 + 1 }, null, { id: 51, color: 0, count: 1 }, null, null] });
+      const s2b = L.validateState({ ...JSON.parse(J(s2)), slots: [{ id: 50, color: 3, count: 0 + 1 }, null, { id: 51, color: 0, count: 1 }] });
       const r2 = L.press(s2b, 0);
       check('押した箱は空いているわくのうち一番左（1 番）へ', r2.outcome.kind === 'press' && r2.outcome.slot === 1 && r2.state.slots[1].id === 1 && r2.outcome.id === 1 && r2.outcome.count === 2 && r2.outcome.col === 0, r2.outcome);
       check('押した列は詰まり、うしろの箱が新しい手前', r2.state.cols[0].length === 1 && r2.state.cols[0][0].id === 2 && r2.state.presses === 1, r2.state.cols[0]);
@@ -441,24 +443,24 @@ export const tests = [
     },
   },
   {
-    id: 'AL7', tier: 'smoke', node: true, title: 'あまいものあつめ：うごかせない（わく 5 つ埋まって運べない → true・1 箱でも運べる → false・わくが空いて押せる列 → false・手前が全部こおりで運べない → true・列が空でわくに残りの箱 → false）',
+    id: 'AL7', tier: 'smoke', node: true, title: 'あまいものあつめ：うごかせない（わく全部埋まって運べない → true・1 箱でも運べる → false・わくが空いて押せる列 → false・手前が全部こおりで運べない → true・列が空でわくに残りの箱 → false）',
     run({ check, root }) {
       const L = load(root);
       const map = ['RRR', 'RGR', 'RRR'];
-      const G5 = [0, 1, 2, 3, 4].map(() => ({ c: LET.G, n: 1 }));
+      const G5 = Array.from({ length: L.SLOTS }, () => ({ c: LET.G, n: 1 }));   // わく全部（SLOTS 個）
       const sA = mk(L, map, { slots: G5, cols: [[{ c: LET.R, n: 8 }], [], [], []], total: 9 });
-      check('わく 5 つが埋まり、どの箱も運べない → true', L.isStuck(sA) === true, null);
+      check('わく全部が埋まり、どの箱も運べない → true', L.isStuck(sA) === true, null);
       const r = L.step(sA);
       check('step の stuck も true（moved:false）', r.stuck === true && r.moved === false, { stuck: r.stuck, moved: r.moved });
-      const sB = mk(L, map, { slots: [...G5.slice(0, 4), { c: LET.R, n: 1 }], cols: [[{ c: LET.R, n: 7 }], [], [], []], total: 9 });
+      const sB = mk(L, map, { slots: [...G5.slice(0, L.SLOTS - 1), { c: LET.R, n: 1 }], cols: [[{ c: LET.R, n: 7 }], [], [], []], total: 9 });
       check('1 箱でも運べる → false', L.isStuck(sB) === false, null);
-      const sC = mk(L, map, { slots: [...G5.slice(0, 4), null], cols: [[{ c: LET.R, n: 8 }], [], [], []], total: 9 });
+      const sC = mk(L, map, { slots: [...G5.slice(0, L.SLOTS - 1), null], cols: [[{ c: LET.R, n: 8 }], [], [], []], total: 9 });
       check('わくが空いていて押せる列がある → false', L.isStuck(sC) === false, null);
-      const sD = mk(L, map, { slots: [...G5.slice(0, 4), null], cols: [[{ c: LET.R, n: 4, ice: 3 }], [{ c: LET.R, n: 4, ice: 2 }], [], []], total: 9 });
+      const sD = mk(L, map, { slots: [...G5.slice(0, L.SLOTS - 1), null], cols: [[{ c: LET.R, n: 4, ice: 3 }], [{ c: LET.R, n: 4, ice: 2 }], [], []], total: 9 });
       check('わくが空いていても、手前が全部こおり（か空の列）で運べない → true', L.isStuck(sD) === true, null);
       const sE = mk(L, map, { slots: [{ c: LET.G, n: 1 }, { c: LET.R, n: 8 }, null, null, null], total: 9 });
       check('列が空で、わくに残りの箱（合計が合っている）→ false', L.isStuck(sE) === false, null);
-      const sW = L.validateState({ level: 1, W: 1, H: 1, picture: 'test', mirror: false, repeat: false, cells: [-1], total: 1, left: 0, cols: [[], [], [], []], slots: [null, null, null, null, null], t: 1, presses: 1, won: true });
+      const sW = L.validateState({ level: 1, W: 1, H: 1, picture: 'test', mirror: false, repeat: false, cells: [-1], total: 1, left: 0, cols: [[], [], [], []], slots: Array(L.SLOTS).fill(null), t: 1, presses: 1, won: true });
       check('クリアした局面は false', L.isStuck(sW) === false, null);
       check('おかしな引数は false', L.isStuck(null) === false && L.isStuck({}) === false, null);
     },
@@ -503,22 +505,23 @@ export const tests = [
           const big = L.replay(lv, pk, [[stl.t + 50, 0]], stl.t + 50);
           check(`${lv} 面：手の t より前に落ち着くと ok:false・applied 0`, big.ok === false && big.applied === 0, big.applied);
         }
-        // 押せない手（6 個目は full）
+        // 押せない手（SLOTS+1 個目は full）
         const lv = 5, pk = L.pickPicture(5, null);
         let s = L.createLevel(lv, pk).state;
         const mv = [];
-        while (mv.length < 5) { const col = [0, 1, 2, 3].find((cc) => L.canPress(s, cc) === null); if (col === undefined) break; mv.push([0, col]); s = L.press(s, col).state; }
+        while (mv.length < L.SLOTS) { const col = [0, 1, 2, 3].find((cc) => L.canPress(s, cc) === null); if (col === undefined) break; mv.push([0, col]); s = L.press(s, col).state; }
         const col6 = [0, 1, 2, 3].find((cc) => s.cols[cc].length > 0);
         const r6 = L.replay(lv, pk, [...mv, [0, col6]], 0);
-        check('押せない手（わくがいっぱい）で ok:false・applied 5', mv.length === 5 && col6 !== undefined && r6.ok === false && r6.applied === 5, { n: mv.length, ok: r6.ok, applied: r6.applied });
+        check('押せない手（わくがいっぱい）で ok:false・applied は わくの数', mv.length === L.SLOTS && col6 !== undefined && r6.ok === false && r6.applied === L.SLOTS, { n: mv.length, ok: r6.ok, applied: r6.applied });
         // t が逆順の手（既に進んだ時刻より前の手）は ok:false（MA9：押した手の t を見ない）
         {
-          let q = L.createLevel(lv, pk).state;
-          q = L.press(q, 0).state;
+          const cr = L.createLevel(lv, pk);
+          const col0 = cr.info.solution[0];   // 最初の 1 手は解の 1 手目（運べる箱。0 列目が運べるとは限らない）
+          const q = L.press(cr.state, col0).state;
           const st1 = L.step(q);
-          const colB = [1, 2, 3].find((cc) => L.canPress(st1.state, cc) === null);
+          const colB = [0, 1, 2, 3].find((cc) => L.canPress(st1.state, cc) === null);
           const colC = [0, 1, 2, 3].find((cc) => cc !== colB && L.canPress(st1.state, cc) === null);
-          const rev = st1.moved && colB !== undefined && colC !== undefined ? L.replay(lv, pk, [[0, 0], [st1.state.t, colB], [0, colC]], st1.state.t) : null;
+          const rev = st1.moved && colB !== undefined && colC !== undefined ? L.replay(lv, pk, [[0, col0], [st1.state.t, colB], [0, colC]], st1.state.t) : null;
           check('replay：t が逆順の手（進んだ時刻より前）で ok:false', rev !== null && rev.ok === false, rev && { ok: rev.ok, applied: rev.applied });
         }
         check('replay：t が最後の手より小さいと ok:false', L.replay(lv, pk, [[3, 0]], 1).ok === false || L.replay(lv, pk, [[0, 0]], -1).ok === false, null);
@@ -619,7 +622,7 @@ export const tests = [
       check('validateState：壊れた局面は null（cells の長さ・left の食いちがい・列が 3 つ・わくが 4 つ・id の重なり・数 0）', [
         { ...plain, cells: plain.cells.slice(1) }, { ...plain, left: 3 }, { ...plain, cols: plain.cols.slice(1) }, { ...plain, slots: plain.slots.slice(1) },
         { ...plain, cols: [[{ id: 1, color: 0, count: 2, lid: false, ice: 0 }], [{ id: 1, color: 0, count: 2, lid: false, ice: 0 }], [], []] },
-        { ...plain, slots: [{ id: 99, color: 0, count: 0 }, null, null, null, null] }, { ...plain, won: true },
+        { ...plain, slots: [{ id: 99, color: 0, count: 0 }, ...Array(L.SLOTS - 1).fill(null)] }, { ...plain, won: true },
       ].every((x) => L.validateState(x) === null), null);
     },
   },
@@ -761,6 +764,110 @@ export const tests = [
       check('同じ id をまた足しても増えない', L.addClean(s2, a) === s2, null);
       check('知らない id は足さず、元のまま正しい形で返す', L.addClean(s2, 'nanika') === s2 && L.addClean('{', 'nanika') === J({ v: 1, ids: [] }) && L.addClean(s2, 5) === s2, null);
       check('hasClean：ある／ない', L.hasClean(s2, a) === true && L.hasClean(s2, b) === true && L.hasClean(s1, b) === false && L.hasClean(null, a) === false && L.hasClean('{', a) === false, null);
+    },
+  },
+  {
+    id: 'AL15', tier: 'smoke', node: true, title: 'あまいものあつめ：箱の持ち玉の合計＝角砂糖の数（色ごと。1〜60 面・77・1000 面の最初と、解を再生するあいだ押すたび・はこぶたびに残りの角砂糖と一致・0 で終わる。崩れると絵が完成しない）',
+    async run({ check, root }) {
+      const L = load(root);
+      await withPictures(L, (kind) => {
+        const book48 = L.validateBook(JSON.stringify({ v: 1, got: Object.fromEntries(L.PICTURE_ORDER.map((p) => [p.id, 1])) }));
+        const levels = [];
+        for (let lv = 1; lv <= 60; lv++) levels.push([lv, L.pickPicture(lv, null)]);
+        levels.push([77, L.pickPicture(77, book48)], [1000, L.pickPicture(1000, book48)]);
+        const badStart = [], badMid = [], badEnd = [];
+        let checks = 0;
+        for (const [lv, pk] of levels) {
+          const c = L.createLevel(lv, pk);
+          let s = c.state;
+          const eq = (st) => J(sumByColor(st)) === J(sugarByColor(st));
+          if (!eq(s) || allBoxes(s).reduce((a, b) => a + b.count, 0) !== s.total) badStart.push({ lv, boxes: sumByColor(s), sugar: sugarByColor(s) });
+          // 解を再生しながら、1 手ごと・1 はこびごとに確かめる（全部の面だと重いので、1 面あたり最大 400 回まで）
+          let n = 0;
+          const guard = (st, what) => { if (n < 400 && !eq(st)) badMid.push({ lv, what, boxes: sumByColor(st), sugar: sugarByColor(st) }); n++; checks++; };
+          for (const col of c.info.solution) {
+            for (let i = 0; i < 5000; i++) { const r = L.step(s); if (!r.moved) break; s = r.state; guard(s, 'step'); }
+            const r = L.press(s, col);
+            if (r.outcome.kind !== 'press') break;
+            s = r.state; guard(s, 'press');
+          }
+          for (let i = 0; i < 5000; i++) { const r = L.step(s); if (!r.moved) break; s = r.state; guard(s, 'step'); }
+          if (!(s.won && s.left === 0 && Object.keys(sumByColor(s)).every((k) => sumByColor(s)[k] === 0))) badEnd.push({ lv, left: s.left, won: s.won, boxes: sumByColor(s) });
+        }
+        check(`最初の局面：色ごとの箱の持ち玉の合計＝角砂糖の数・全部の合計＝total（${kind}の絵・${levels.length} 面）`, badStart.length === 0, badStart);
+        check(`解の再生中も、押すたび・はこぶたびに 箱＋わくの持ち玉の合計＝残りの角砂糖（色ごと。${checks} 回）`, badMid.length === 0, badMid.slice(0, 5));
+        check('解を最後まで再生すると、残りの角砂糖 0・持ち玉 0・won', badEnd.length === 0, badEnd);
+      });
+    },
+  },
+  {
+    id: 'AL16', tier: 'smoke', node: true, title: 'あまいものあつめ：1 はこびで 2 個運ぶ段（XL・XXL・くり返しは carry 2、S・M・L は 1。carries は同じわくから 2 件・1 箱の上限と持ち玉を超えない）と、1・2 面は完全でたらめに遊んでも必ずクリアできる',
+    async run({ check, root }) {
+      const L = load(root);
+      await withPictures(L, (kind) => {
+        // paramsFor の carry（表：段ごと）
+        const cw = (lv, pk) => L.paramsFor(lv, pk).carry;
+        const pc = [[1, 1], [5, 1], [13, 1], [25, 2], [37, 2], [48, 2]].map(([lv, want]) => ({ lv, want, got: cw(lv, L.pickPicture(lv, null)) }));
+        check('carry：1〜24 面（S・M・L）は 1、25〜48 面（XL・XXL）は 2', pc.every((x) => x.got === x.want), pc);
+        check('carry：くり返し（49 面から）は 2', cw(49, L.pickPicture(49, null)) === 2 && cw(1000, { id: L.PICTURE_ORDER[47].id, mirror: true, repeat: true }) === 2, null);
+        const base = L.createLevel(25, L.pickPicture(25, null)).state;
+        check('createLevel の局面に carry が入る（XL=2・S=1）', base.carry === 2 && L.createLevel(1, L.pickPicture(1, null)).state.carry === 1, { xl: base.carry });
+        // 実際の面で解を再生：1 はこびの carries を数える
+        const stat = {};
+        const bad = [];
+        for (const lv of [3, 10, 20, 25, 30, 40, 48, 49, 60]) {
+          const c = L.createLevel(lv, L.pickPicture(lv, null));
+          const cap = c.state.carry;
+          let s = c.state, max = 0, two = 0, one = 0;
+          const tick = () => {
+            for (let i = 0; i < 5000; i++) {
+              const r = L.step(s);
+              if (!r.moved) return;
+              const per = {};
+              for (const k of r.carries) per[k.slot] = (per[k.slot] || 0) + 1;
+              const m = Math.max(...Object.values(per));
+              max = Math.max(max, m);
+              if (m === 2) two++; else one++;
+              // 同じ色・同じわく・1 はこびの 1 箱の上限・left が carries の数だけ減る・同じマスを 2 度運ばない
+              if (m > cap) bad.push({ lv, why: '1 箱が上限を超えて運んだ', per });
+              if (r.state.left !== s.left - r.carries.length) bad.push({ lv, why: 'left の減りが carries と合わない' });
+              if (new Set(r.carries.map((k) => k.cell)).size !== r.carries.length) bad.push({ lv, why: '同じマスを 2 度運んだ' });
+              if (!r.carries.every((k) => k.color === s.slots[k.slot].color)) bad.push({ lv, why: '色がちがう' });
+              for (const [k, n] of Object.entries(per)) if (n > s.slots[k].count) bad.push({ lv, why: '持ち玉より多く運んだ（残り 1 個の箱が 2 個運んだ）', slot: k });
+              s = r.state;
+            }
+          };
+          for (const col of c.info.solution) { tick(); const r = L.press(s, col); if (r.outcome.kind !== 'press') break; s = r.state; }
+          tick();
+          if (!s.won) bad.push({ lv, why: '解で終わらない' });
+          stat[lv] = { cap, max, two, one };
+        }
+        check('解の再生：どの面でも 1 はこびの 1 箱は carry 個まで・left の減り＝carries の数・同じマスを 2 度運ばない', bad.length === 0, bad.slice(0, 5));
+        const carry1 = [3, 10, 20].every((lv) => stat[lv].max === 1);
+        const carry2 = [25, 30, 40, 48, 49, 60].every((lv) => stat[lv].max === 2 && stat[lv].two > 0);
+        check('carry 1 の面は常に 1 件ずつ、carry 2 の面では 2 件のはこびが実際に起きる（空振りでない）', carry1 && carry2, stat);
+        // 1・2 面：完全でたらめ（押せる列をでたらめに・待つ・運ぶ。もどすは使わない）でも必ずクリアでき、うごかせなくならない
+        const rnd = (seed) => rngOf(seed);
+        const rows = [];
+        for (const lv of [1, 2]) {
+          const c = L.createLevel(lv, L.pickPicture(lv, null));
+          let won = 0, stuck = 0;
+          const N = 300;
+          for (let k = 0; k < N; k++) {
+            const r = rnd(k * 31 + lv);
+            let s = c.state, g = 0;
+            for (; g < 5000 && !s.won; g++) {
+              if (L.isStuck(s)) { stuck++; break; }
+              const cs = [0, 1, 2, 3].filter((x) => L.canPress(s, x) === null);
+              if (cs.length && r() < 0.5) s = L.press(s, cs[Math.floor(r() * cs.length)]).state;
+              else { const q = L.step(s); if (q.moved) s = q.state; else if (!cs.length) { stuck++; break; } }
+            }
+            if (s.won) won++;
+          }
+          rows.push({ lv, N, won, stuck });
+        }
+        check('1・2 面は完全でたらめに遊んでも 300 回すべてクリア（うごかせなくならない）', rows.every((x) => x.won === x.N && x.stuck === 0), rows);
+      });
     },
   },
 ];
