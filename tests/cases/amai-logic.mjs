@@ -421,8 +421,8 @@ export const tests = [
           if (J(a) !== J(b)) why.push('決定的でない');
           if (J(sumByColor(s)) !== J(sugarByColor(s))) why.push('色ごとの箱の合計が角砂糖とちがう');
           if (!allBoxes(s).every((x) => Number.isInteger(x.count) && x.count >= 1 && x.count <= 99)) why.push('箱の数が 1〜99 でない');
-          // 1・2 面の箱の上限：絵を割って角砂糖が 4 倍になり、持ち玉は 99 までなので 5→12（logic.js の EASY_BOXES）
-          if (lv <= 2 && allBoxes(s).length > 12) why.push('1・2 面の箱が 12 個より多い');
+          // 1・2 面の箱の上限は 5 のまま（1・2 面の絵だけは割っていない＝元の大きさなので。logic.js の EASY_BOXES = 5）
+          if (lv <= 2 && allBoxes(s).length > 5) why.push('1・2 面の箱が 5 個より多い');
           const lids = allBoxes(s).filter((x) => x.lid).length, ices = allBoxes(s).filter((x) => x.ice > 0).length;
           if (lids > info.params.lids || ices > info.params.ices) why.push(`仕掛けが表より多い（ふた ${lids}・こおり ${ices}）`);
           if (lv < 9 && lids) why.push('9 面より前に ふた');
