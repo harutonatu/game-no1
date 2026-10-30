@@ -22,19 +22,19 @@
 
   const NAME = "あまいものあつめ";
   const SLOTS = 3;
-  const EASY_BOXES = 5;   // 1〜2 面の箱の数の上限（段 0 のあいだは 5 のまま。わくは 3 なので §2.1 の「必ず入る」保証は弱まる）
+  const EASY_BOXES = 12;  // 1〜2 面の箱の数の上限（絵を 2 倍に割って角砂糖が 4 倍になったので 5→12。持ち玉は 99 までなので 5 箱では足りない）
   // 1 はこびで 1 箱が運ぶ角砂糖の数（段 0b の測定用。1 なら今までと同じ動き）。
   // CARRY_FROM 以上の面だけ CARRY_N 個運ぶ。持ち玉の合計＝角砂糖の数は変えない（アリの数は同じ。1 回で CARRY_N 匹が運ぶイメージ）。
   const CARRY_N = 1;
   const CARRY_FROM = 1;
   // 1 はこびで 2 個運ぶ段（段 0f の測定用。空なら今までと同じ動き）。くり返しの面には使わない
-  const CARRY_TIERS = { XL: 2, XXL: 2, repeat: 2 };
+  const CARRY_TIERS = {};
   const COLS = 4;
-  const TICK_MS = 500;
-  const FAST_MS = 250;
-  const MAX_W = 32;
-  const MAX_H = 24;
-  const MAX_SUGAR = 700;
+  const TICK_MS = 120;
+  const FAST_MS = 60;
+  const MAX_W = 64;
+  const MAX_H = 48;
+  const MAX_SUGAR = 2800;
   const MAX_COUNT = 99;
   const MAX_PRESSES = 400;
   const MAX_T = 5000;
@@ -47,9 +47,12 @@
   // どちらかが true のときは「S の順に押せば解ける」保証が崩れるので、解ける押し順を探して確かめる（solveSearch）。
   // over … 箱の持ち玉の上限を「ふちから届く数 R」の何倍まで許すか（段ごと。1 なら今までと同じ＝必ず単独で運び切れる）。
   //   1 より大きいと「置いた時点では運び切れない箱」ができ、道を開ける仕事が生まれる（①）。Infinity ならその色の残り全部。
-  const OVER = { S: 1.1, M: 1.02, L: 1.02, XL: 2, XXL: 1.1, repeat: 1.3 };
+  const OVER = { S: 1.1, M: 1.02, L: 1.02, XL: 1.25, XXL: 1.025, repeat: 1.3 };
+  // ANY_RATE：①（内側だけにある色の箱を最初から作る）を使う箱の割合（段ごと。1 なら全部の箱・0 なら使わない）。
+  // 絵を 2 倍に割ってマスが 4 倍になり、①の「入／切」だけでは難しさが飛びすぎたので、途中の強さを作るために足した
+  const ANY_RATE = { S: 1, M: 1, L: 1, XL: 0.25, XXL: 0.25, repeat: 1 };
   const PULL_ADD = { S: 0, M: 0, L: 0, XL: 0, XXL: 0, repeat: 0 };
-  const KSET = { L: [6, 20] };   // 段ごとの箱の数の幅の上書き。空なら TIERS の値
+  const KSET = { M: [16, 50], L: [24, 80], XL: [60, 99] };   // 段ごとの箱の数の幅の上書き。空なら TIERS の値
   const GEN_OPT = { shuffleCols: false, solveNodes: 15, genTries: 5, softenEvery: 1 };
   const SOLVE_NODES = 15;   // 解ける押し順の探索で開く局面の上限は「箱の数＋この余り」（1 回の tryBuild ごと・600 まで）
   const BASE_PICTURES = 48;
@@ -83,11 +86,11 @@
   // ---------------------------------------------------------------- 段と面の表（§2.1。仮）
   // 段の値（49 面からは lids・ices にこの「多い方」を使う。くり返しは +1）
   const TIERS = Object.freeze({
-    S: Object.freeze({ tier: "S", colors: Object.freeze([3, 4]), sugar: Object.freeze([110, 180]), kmin: 15, kmax: 25, pull: 0, lids: 0, ices: 0 }),
-    M: Object.freeze({ tier: "M", colors: Object.freeze([4, 5]), sugar: Object.freeze([200, 300]), kmin: 10, kmax: 25, pull: 2, lids: 1, ices: 0 }),
-    L: Object.freeze({ tier: "L", colors: Object.freeze([5, 7]), sugar: Object.freeze([300, 420]), kmin: 10, kmax: 30, pull: 4, lids: 2, ices: 1 }),
-    XL: Object.freeze({ tier: "XL", colors: Object.freeze([6, 8]), sugar: Object.freeze([420, 560]), kmin: 10, kmax: 30, pull: 8, lids: 3, ices: 2 }),
-    XXL: Object.freeze({ tier: "XXL", colors: Object.freeze([8, 10]), sugar: Object.freeze([520, 700]), kmin: 10, kmax: 30, pull: 12, lids: 4, ices: 3 }),
+    S: Object.freeze({ tier: "S", colors: Object.freeze([3, 4]), sugar: Object.freeze([440, 720]), kmin: 60, kmax: 99, pull: 0, lids: 0, ices: 0 }),
+    M: Object.freeze({ tier: "M", colors: Object.freeze([4, 5]), sugar: Object.freeze([800, 1200]), kmin: 40, kmax: 99, pull: 2, lids: 1, ices: 0 }),
+    L: Object.freeze({ tier: "L", colors: Object.freeze([5, 7]), sugar: Object.freeze([1200, 1680]), kmin: 40, kmax: 99, pull: 4, lids: 2, ices: 1 }),
+    XL: Object.freeze({ tier: "XL", colors: Object.freeze([6, 8]), sugar: Object.freeze([1680, 2240]), kmin: 40, kmax: 99, pull: 8, lids: 3, ices: 2 }),
+    XXL: Object.freeze({ tier: "XXL", colors: Object.freeze([8, 10]), sugar: Object.freeze([2080, 2800]), kmin: 40, kmax: 99, pull: 12, lids: 4, ices: 3 }),
   });
   // 1〜48 面の仕掛けの数（面の番号で決める）
   const LEVELS = Object.freeze([
@@ -100,7 +103,7 @@
     { from: 31, to: 36, tier: "XL", lids: 3, ices: 2 },
     { from: 37, to: 48, tier: "XXL", lids: 4, ices: 3 },
   ].map((r) => Object.freeze(r)));
-  const REPEAT_K = { kmin: 3, kmax: 10 };
+  const REPEAT_K = { kmin: 12, kmax: 40 };
 
   // 絵の並び（§2.6 の表の順）。絵を足すときは最後に足す（並べかえない・途中に入れない）。
   // id はローマ字（かなを 1 字ずつ書く形。のばす音は母音を重ねる）・英小文字だけ。
@@ -118,18 +121,28 @@
 
   // 予備 2 の絵（§2.2 の 8.。りんご。絵が読めないときもこれで遊べる）
   const FALLBACK_PICTURE = Object.freeze({ id: "ringo", name: "りんご", season: "", map: Object.freeze([
-    "....C.GG..",
-    "....CGGG..",
-    "..RRCRRR..",
-    ".RRRRRRRR.",
-    "RRRRRRRRRR",
-    "RRRRRRRRRR",
-    "RRRRRRRRRR",
-    "RRRRRRRRRR",
-    ".RRRRRRRR.",
-    "..RRR.RR..",
+    "........CC..GGGG....",
+    "........CC..GGGG....",
+    "........CCGGGGGG....",
+    "........CCGGGGGG....",
+    "....RRRRCCRRRRRR....",
+    "....RRRRCCRRRRRR....",
+    "..RRRRRRRRRRRRRRRR..",
+    "..RRRRRRRRRRRRRRRR..",
+    "RRRRRRRRRRRRRRRRRRRR",
+    "RRRRRRRRRRRRRRRRRRRR",
+    "RRRRRRRRRRRRRRRRRRRR",
+    "RRRRRRRRRRRRRRRRRRRR",
+    "RRRRRRRRRRRRRRRRRRRR",
+    "RRRRRRRRRRRRRRRRRRRR",
+    "RRRRRRRRRRRRRRRRRRRR",
+    "RRRRRRRRRRRRRRRRRRRR",
+    "..RRRRRRRRRRRRRRRR..",
+    "..RRRRRRRRRRRRRRRR..",
+    "....RRRRRR..RRRR....",
+    "....RRRRRR..RRRR....",
   ]) });
-  const FALLBACK_COUNT = 25;   // 予備 2 の箱の大きさの上限（りんごで 25・25・16・5・3 の 5 箱）
+  const FALLBACK_COUNT = 99;   // 予備 2 の箱の大きさの上限（持ち玉の上限と同じ。絵を 2 倍に割った分）
 
   // ---------------------------------------------------------------- 小さな道具
 
@@ -323,11 +336,13 @@
   }
 
   // 盤：{ W, H, cells, out, ord, own }。own が false の間は state の配列をそのまま読み、運ぶときに写す
-  const outCache = new WeakMap();   // cells の配列 → 外の表
+  const outCache = new WeakMap();   // cells の配列 → { out: 外の表, lists: 色ごとの並び }
   function boardOf(s) {
-    let out = outCache.get(s.cells);
-    if (!out) { out = computeOutside(s.W, s.H, s.cells); outCache.set(s.cells, out); }
-    return { W: s.W, H: s.H, cells: s.cells, out, ord: orderFor(s.W, s.H), own: false };
+    let e = outCache.get(s.cells);
+    const ord = orderFor(s.W, s.H);
+    if (!e) { e = { out: computeOutside(s.W, s.H, s.cells), lists: null }; outCache.set(s.cells, e); }
+    if (!e.lists) e.lists = buildLists(s.W, s.H, s.cells, ord);
+    return { W: s.W, H: s.H, cells: s.cells, out: e.out, ord, own: false, lists: e.lists, ptr: new Int32Array(COLORS.length) };
   }
   function isEdge(b, i) {
     const W = b.W, x = i % W, y = (i - x) / W;
@@ -335,20 +350,50 @@
     const o = b.out;
     return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;
   }
+  // 色ごとの「運ぶ順のマスの並び」（この盤のあいだだけ使う表）。
+  // マスは運ばれて空きになるだけ（色が増えることはない）ので、先頭の目印 p は後ろへ進めるだけでよい。
+  // 作るのは 1 回（全部の色をまとめて）。findTarget が絵の全マスを見なくてよくなる（マスが 4 倍になった分の重さを戻す）
+  // 並びそのものは盤をまたいで使い回す（運ばれて消えたマスが混じっていてもよい。見たときに色がちがえば飛ばす）。
+  // 先頭の目印だけは盤ごとに持つ（同じ局面から別の手を試すときに、進めた目印が混ざらないように）
+  function buildLists(W, H, cells, ord) {
+    const tmp = [];
+    for (let c = 0; c < COLORS.length; c++) tmp.push([]);
+    for (let k = 0; k < ord.length; k++) {
+      const i = ord[k], v = cells[i];
+      if (v >= 0) tmp[v].push(i);
+    }
+    const out = [];
+    for (let c = 0; c < COLORS.length; c++) out.push(Int32Array.from(tmp[c]));
+    return out;
+  }
+  function colorLists(b) {
+    if (!b.lists) b.lists = buildLists(b.W, b.H, b.cells, b.ord);
+    if (!b.ptr) b.ptr = new Int32Array(COLORS.length);
+    return b.lists;
+  }
   // その色の、運ぶ順で一番先のふちの角砂糖（無ければ -1）
   function findTarget(b, color) {
-    const ord = b.ord, cells = b.cells;
-    for (let k = 0; k < ord.length; k++) {
-      const i = ord[k];
+    const a = colorLists(b)[color];
+    if (!a) return -1;
+    const cells = b.cells, ptr = b.ptr;
+    let p = ptr[color];
+    while (p < a.length && cells[a[p]] !== color) p++;
+    ptr[color] = p;
+    for (let k = p; k < a.length; k++) {
+      const i = a[k];
       if (cells[i] === color && isEdge(b, i)) return i;
     }
     return -1;
   }
   // その色の、運ぶ順で一番先の角砂糖（ふちでなくてもよい。生成で「まだ届かない分」を数えるときだけ使う）
   function findAny(b, color) {
-    const ord = b.ord, cells = b.cells;
-    for (let k = 0; k < ord.length; k++) if (cells[ord[k]] === color) return ord[k];
-    return -1;
+    const a = colorLists(b)[color];
+    if (!a) return -1;
+    const cells = b.cells, ptr = b.ptr;
+    let p = ptr[color];
+    while (p < a.length && cells[a[p]] !== color) p++;
+    ptr[color] = p;
+    return p < a.length ? a[p] : -1;
   }
   // マス i を運ぶ（空きにして、外を広げる）
   function takeCell(b, i) {
@@ -361,8 +406,8 @@
   // ---------------------------------------------------------------- 局面
 
   const trusted = new WeakSet();
-  function freezeState(o) {
-    Object.freeze(o.cells);
+  function freezeState(o, lite) {
+    if (!lite) Object.freeze(o.cells);
     for (const c of o.cols) { for (const bx of c) Object.freeze(bx); Object.freeze(c); }
     Object.freeze(o.cols);
     for (const bx of o.slots) if (bx) Object.freeze(bx);
@@ -371,10 +416,10 @@
     trusted.add(o);
     return o;
   }
-  const mkState = (s, ch) => freezeState({
+  const mkState = (s, ch, lite) => freezeState({
     level: s.level, W: s.W, H: s.H, picture: s.picture, mirror: s.mirror, repeat: s.repeat,
     cells: s.cells, total: s.total, left: s.left, cols: s.cols, slots: s.slots, t: s.t, presses: s.presses, won: s.won, carry: s.carry, ...ch,
-  });
+  }, lite);
 
   // 1 はこびで 1 箱が運ぶ数。面の番号と絵から導く（paramsFor と同じ値。保存からは読まない）
   function carryFor(level, picture, mirror, repeat) {
@@ -512,11 +557,14 @@
     return true;
   }
 
-  function stepImpl(s) {
-    if (s.won) return { state: s, moved: false, carries: Object.freeze([]), won: true, stuck: false };
-    const b = boardOf(s);
+  // lite（skipStuck）：生成の再生用。stuck を数えず、運んだマスの札も作らない（数 n だけ返す）
+  function stepImpl(s, skipStuck, reuse) {
+    if (s.won) return { state: s, moved: false, carries: Object.freeze([]), n: 0, won: true, stuck: false };
+    // reuse：同じ cells の配列を持つ盤を続けて使う（lite の落ち着きの間だけ。写しは最初の 1 回だけになる）
+    const b = (skipStuck && reuse && reuse.cells === s.cells && reuse.own === true) ? reuse : boardOf(s);
     const slots = s.slots.slice();
     const carries = [];
+    let n = 0;
     let left = s.left;
     for (let k = 0; k < SLOTS; k++) {
       const bx = slots[k];
@@ -529,24 +577,27 @@
         takeCell(b, i);
         left--; count--; took++;
         const x = i % s.W;
-        carries.push(Object.freeze({ slot: k, id: bx.id, color: bx.color, cell: i, x, y: (i - x) / s.W, emptied: count === 0 }));
+        n++;
+        if (!skipStuck) carries.push(Object.freeze({ slot: k, id: bx.id, color: bx.color, cell: i, x, y: (i - x) / s.W, emptied: count === 0 }));
       }
       if (took === 0) continue;   // その色のふちが無い：待つ
       slots[k] = count === 0 ? null : { id: bx.id, color: bx.color, count };
     }
-    if (carries.length === 0) return { state: s, moved: false, carries: Object.freeze([]), won: false, stuck: stuckImpl(s, b) };
-    outCache.set(b.cells, b.out);
-    const state = mkState(s, { cells: b.cells, left, slots, t: s.t + 1, won: left === 0 });
-    return { state, moved: true, carries: Object.freeze(carries), won: state.won, stuck: stuckImpl(state, { ...b, own: false }) };
+    if (n === 0) return { state: s, moved: false, carries: Object.freeze([]), n: 0, won: false, stuck: skipStuck ? false : stuckImpl(s, b) };
+    outCache.set(b.cells, { out: b.out, lists: b.lists });
+    const state = mkState(s, { cells: b.cells, left, slots, t: s.t + 1, won: left === 0 }, skipStuck);
+    // skipStuck：生成の再生（verify・solveSearch）では stuck を見ないので数えない（マスが 4 倍になった分の手間を減らす）
+    const stuck = skipStuck ? false : stuckImpl(state, { ...b, own: false, ptr: new Int32Array(COLORS.length) });
+    return { state, moved: true, carries: Object.freeze(carries), n, won: state.won, stuck, board: b };
   }
 
   function step(state) {
     try {
       const s = asState(state);
-      if (!s) return { state, moved: false, carries: Object.freeze([]), won: false, stuck: false };
+      if (!s) return { state, moved: false, carries: Object.freeze([]), n: 0, won: false, stuck: false };
       return stepImpl(s);
     } catch (e) {
-      return { state, moved: false, carries: Object.freeze([]), won: false, stuck: false };
+      return { state, moved: false, carries: Object.freeze([]), n: 0, won: false, stuck: false };
     }
   }
 
@@ -652,9 +703,11 @@
   // ---------------------------------------------------------------- 面を作る（§2.2・§2.3・§2.4）
 
   // 盤（写し）で、ふちの角砂糖から上下左右に同じ色をたどって届く数（色ごと）。たどったマスを work に足す
+  const seenCache = new Map();   // 絵の大きさ → 使い回す作業用の表（毎回作ると GC が重い）
   function reachByColor(b, work) {
     const n = b.W * b.H;
-    const seen = new Uint8Array(n);
+    let seen = seenCache.get(n);
+    if (!seen) { seen = new Uint8Array(n); seenCache.set(n, seen); } else seen.fill(0);
     const R = new Array(COLORS.length).fill(0);
     const W = b.W, H = b.H, cells = b.cells;
     for (let i = 0; i < n; i++) {
@@ -677,7 +730,7 @@
 
   function picBoard(pic) {
     const cells = Array.from(pic.cells);
-    return { W: pic.W, H: pic.H, cells, out: computeOutside(pic.W, pic.H, cells), ord: orderFor(pic.W, pic.H), own: true };
+    return { W: pic.W, H: pic.H, cells, out: computeOutside(pic.W, pic.H, cells), ord: orderFor(pic.W, pic.H), own: true, lists: null, ptr: null };
   }
 
   // 運び切る順 S（1 箱だけで運び切れる箱の列）。chooser(cands, R, rem) → { color, n }
@@ -690,8 +743,10 @@
     while (left > 0) {
       const R = reachByColor(b, work);
       const cands = [];
-      // over>1（①）では、いまふちに出ていない色も選べる（内側だけにある色の箱が最初から作られる）
-      for (let c = 0; c < COLORS.length; c++) if (anyColor ? rem[c] > 0 : R[c] > 0) cands.push(c);
+      // over>1（①）では、いまふちに出ていない色も選べる（内側だけにある色の箱が最初から作られる）。
+      // anyColor が関数のときは箱ごとに決める（ANY_RATE）
+      const useAny = typeof anyColor === "function" ? anyColor() : !!anyColor;
+      for (let c = 0; c < COLORS.length; c++) if (useAny ? rem[c] > 0 : R[c] > 0) cands.push(c);
       if (!cands.length) return null;
       const { color, n } = chooser(cands, R, rem);
       if (n <= 0 || n > rem[color]) return null;
@@ -767,11 +822,13 @@
   function verify(state0, solution, lv, work) {
     let s = state0;
     const settle = () => {
+      let b = null;
       for (;;) {
-        const r = stepImpl(s);
+        const r = stepImpl(s, true, b);
         if (!r.moved) return;
-        work.n += r.carries.length;
+        work.n += r.n;
         s = r.state;
+        b = r.board && r.board.own ? r.board : null;
       }
     };
     for (const col of solution) {
@@ -791,11 +848,13 @@
     const path = [];
     const budget = { n: 0 };
     const settle = (s) => {
+      let b = null;
       for (;;) {
-        const r = stepImpl(s);
+        const r = stepImpl(s, true, b);
         if (!r.moved) return s;
-        work.n += r.carries.length;
+        work.n += r.n;
         s = r.state;
+        b = r.board && r.board.own ? r.board : null;
       }
     };
     function dfs(s) {
@@ -837,7 +896,11 @@
     const hard = (soften || 0) < 3;
     const over = (easy || noOver || !hard) ? 1 : 1 + ((prm.over || 1) - 1) * Math.pow(0.5, soften || 0);
     // 内側だけにある色の箱を最初から作るか（①の本体）。配り直しが 2 回を超えたらやめる
-    const anyColor = !easy && !noOver && hard && (prm.over || 1) > 1 && (soften || 0) < 2;
+    const anyBase = !easy && !noOver && hard && (prm.over || 1) > 1 && (soften || 0) < 2;
+    const rate = anyBase ? (prm.repeat ? ANY_RATE.repeat : ANY_RATE[prm.tier]) : 0;
+    const anyRate = typeof rate === "number" ? rate : 1;
+    // 箱ごとに①を使うかを決める（割合が 1 なら今までと同じ＝全部の箱で使う）
+    const anyColor = anyBase && (anyRate >= 1 ? true : (anyRate <= 0 ? false : () => rng() < anyRate));
     const shuffleCols = easy ? false : !!(opt || GEN_OPT).shuffleCols;
     const chooser = (cands, R, rem) => {
       const color = cands[randInt(rng, cands.length)];
@@ -1062,7 +1125,7 @@
   const api = Object.freeze({
     NAME, SLOTS, COLS, TICK_MS, FAST_MS, CARRY_N, CARRY_FROM,
     MAX_W, MAX_H, MAX_SUGAR, MAX_COUNT, MAX_PRESSES, MAX_T,
-    GEN_TRIES, GEN_WORK, BASE_PICTURES, REPEAT_FROM, GEN_OPT, OVER, CARRY_TIERS, PULL_ADD, REPEAT_K, KSET,
+    GEN_TRIES, GEN_WORK, BASE_PICTURES, REPEAT_FROM, GEN_OPT, OVER, ANY_RATE, CARRY_TIERS, PULL_ADD, REPEAT_K, KSET,
     PICTURE_ORDER,
     SAVE_KEY_SAVE, SAVE_KEY_BEST, SAVE_KEY_BOOK, SAVE_KEY_HELP, SAVE_KEY_FAST, SAVE_KEY_CLEAN,
     COLORS, LEVELS, TIERS,
