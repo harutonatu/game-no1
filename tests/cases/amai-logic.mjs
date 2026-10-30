@@ -139,11 +139,15 @@ export const tests = [
     id: 'AL1', tier: 'smoke', node: true, title: 'あまいものあつめ：定数・COLORS（10 色。文字・hex・印・名前・5×5 の点がすべてちがう）・NAME・paramsFor が §2.1 の表どおり（境界・壊れた値）',
     run({ check, root }) {
       const L = load(root);
-      const K = { NAME: 'あまいものあつめ', SLOTS: 3, COLS: 4, TICK_MS: 500, FAST_MS: 250, MAX_W: 32, MAX_H: 24, MAX_SUGAR: 700, MAX_COUNT: 99, MAX_PRESSES: 400, MAX_T: 5000,
+      const K = { NAME: 'あまいものあつめ', SLOTS: 3, COLS: 4, TICK_MS: 120, FAST_MS: 60, MAX_W: 64, MAX_H: 48, MAX_SUGAR: 2800, MAX_COUNT: 99, MAX_PRESSES: 400, MAX_T: 5000,
         GEN_TRIES: 20, GEN_WORK: 300000, BASE_PICTURES: 48, REPEAT_FROM: 9,
         SAVE_KEY_SAVE: 'amai.save', SAVE_KEY_BEST: 'amai.best', SAVE_KEY_BOOK: 'amai.book', SAVE_KEY_HELP: 'amai.help', SAVE_KEY_FAST: 'amai.fast' };
       const kBad = Object.entries(K).filter(([k, v]) => L[k] !== v).map(([k, v]) => ({ k, want: v, got: L[k] }));
       check('定数が契約 §6.2 のとおり', kBad.length === 0, kBad);
+      // 手直し（2026-10-30）：絵を 2×2 に割って 64×48・角砂糖 2800 まで、はこびの間隔を 500→120ms にした。
+      // ANY_RATE（①を使う箱の割合）は段ごとの表。XL・XXL だけ 0.25、ほかは 1
+      check('ANY_RATE（①を使う箱の割合）が表どおり（S・M・L・くり返し 1、XL・XXL 0.25）', J(L.ANY_RATE) === J({ S: 1, M: 1, L: 1, XL: 0.25, XXL: 0.25, repeat: 1 }), L.ANY_RATE);
+      check('はこびの間隔：ふだん 120ms・はやおくり 60ms（1 つの箱から 1 秒に約 8 匹）', L.TICK_MS === 120 && L.FAST_MS === 60 && L.FAST_MS * 2 === L.TICK_MS, { t: L.TICK_MS, f: L.FAST_MS });
       const C = L.COLORS;
       check('COLORS は 10 色で id が 0〜9・凍結', Array.isArray(C) && C.length === 10 && C.every((c, i) => c.id === i) && Object.isFrozen(C) && C.every((c) => Object.isFrozen(c)), C);
       const want = [['R', 'red', 'あか', '#E23B3B', 'circle'], ['O', 'orange', 'オレンジ', '#F28C28', 'triangle'], ['Y', 'yellow', 'きいろ', '#F2D13A', 'star'], ['G', 'green', 'みどり', '#3E9E4F', 'diamond'],
@@ -210,9 +214,9 @@ export const tests = [
         '閉じた空き': { ...ok, map: ['RRRR', 'RG.R', 'RGGR', 'RRRR'] },
         '上の行が空き': { ...ok, map: ['...', 'RRR', 'RRR'] },
         '右の列が空き': { ...ok, map: ['RR.', 'RR.', 'RR.'] },
-        '横 33': { ...ok, map: ['R'.repeat(33), 'R'.repeat(33), 'R'.repeat(33)] },
-        '縦 25': { ...ok, map: Array(25).fill('RRR') },
-        '角砂糖 701 個以上': { ...ok, map: Array(24).fill('R'.repeat(30)) },
+        '横 65': { ...ok, map: ['R'.repeat(65), 'R'.repeat(65), 'R'.repeat(65)] },
+        '縦 49': { ...ok, map: Array(49).fill('RRR') },
+        '角砂糖 2801 個以上': { ...ok, map: Array(48).fill('R'.repeat(59)) },
         'id が英小文字でない': { ...ok, id: 'Ringo1' },
         'name が空': { ...ok, name: '' },
         'name に漢字': { ...ok, name: '林檎' },
@@ -262,6 +266,14 @@ export const tests = [
         if (names.has(d.name)) badPic.push({ id: p.id, why: '名前が重なる ' + d.name });
         names.add(d.name);
         if (season[d.season] !== undefined) season[d.season]++;
+      }
+      // 手直し（2026-10-30）：1・2 面に出る絵だけは 2×2 に割らない（はじめての人が必ずクリアできる保証＝箱 12 個以下を守るため）。
+      // 割っていない前提を確かめる：1・2 面の絵は 32×24 以下
+      for (const lv of [1, 2]) {
+        const pk = L.pickPicture(lv, null);
+        const d = typeof P.byId === 'function' ? P.byId(pk.id) : P.byId[pk.id];
+        const q = d && L.parsePicture(d, false);
+        check(`${lv} 面の絵（${pk.id}）は割っていない（32×24 以下）`, !!q && q.W <= 32 && q.H <= 24, q && { W: q.W, H: q.H });
       }
       check('すべての絵が決まりを守る（段の色の数・角砂糖の数・名前が重ならない ほか）', badPic.length === 0, badPic);
       check('季節の絵が春・夏・秋・冬それぞれ 3 枚以上', Object.values(season).every((n) => n >= 3), season);
@@ -388,7 +400,7 @@ export const tests = [
     },
   },
   {
-    id: 'AL6', tier: 'smoke', node: true, title: 'あまいものあつめ：生成（1〜60 面と 1000 面が決定的・色ごとの箱の合計＝角砂糖・箱 1〜99・解で won・1・2 面は箱 5 個以下・ふたとこおりは表の面からだけ・最初の手前にふた無し・予備 2・work ≦ GEN_WORK）',
+    id: 'AL6', tier: 'smoke', node: true, title: 'あまいものあつめ：生成（1〜60 面と 1000 面が決定的・色ごとの箱の合計＝角砂糖・箱 1〜99・解で won・1・2 面は箱 12 個以下・ふたとこおりは表の面からだけ・最初の手前にふた無し・予備 2・work ≦ GEN_WORK）',
     async run({ check, root }) {
       const L = load(root);
       await withPictures(L, (kind) => {
@@ -409,7 +421,8 @@ export const tests = [
           if (J(a) !== J(b)) why.push('決定的でない');
           if (J(sumByColor(s)) !== J(sugarByColor(s))) why.push('色ごとの箱の合計が角砂糖とちがう');
           if (!allBoxes(s).every((x) => Number.isInteger(x.count) && x.count >= 1 && x.count <= 99)) why.push('箱の数が 1〜99 でない');
-          if (lv <= 2 && allBoxes(s).length > 5) why.push('1・2 面の箱が 5 個より多い');
+          // 1・2 面の箱の上限：絵を割って角砂糖が 4 倍になり、持ち玉は 99 までなので 5→12（logic.js の EASY_BOXES）
+          if (lv <= 2 && allBoxes(s).length > 12) why.push('1・2 面の箱が 12 個より多い');
           const lids = allBoxes(s).filter((x) => x.lid).length, ices = allBoxes(s).filter((x) => x.ice > 0).length;
           if (lids > info.params.lids || ices > info.params.ices) why.push(`仕掛けが表より多い（ふた ${lids}・こおり ${ices}）`);
           if (lv < 9 && lids) why.push('9 面より前に ふた');
@@ -627,7 +640,7 @@ export const tests = [
     },
   },
   {
-    id: 'AL11', tier: 'full', node: true, solo: true, title: 'あまいものあつめ：性能（1〜60 面と 1000 面の生成の合計が Node で 2 秒以内・1 面 100ms 以内・一番大きい絵の面で解を最後まで再生して 50ms 以内）',
+    id: 'AL11', tier: 'full', node: true, solo: true, title: 'あまいものあつめ：性能（1〜60 面と 1000 面の生成の合計が Node で 3 秒以内・1 面 250ms 以内・一番大きい絵の面で解を最後まで再生して 150ms 以内）',
     async run({ check, root }) {
       const L = load(root);
       await withPictures(L, (kind) => {
@@ -645,17 +658,22 @@ export const tests = [
         }
         const total = cpuMs(cpuOf(t0));
         const worst = per.reduce((m, x) => (x.ms > m.ms ? x : m), per[0]);
-        check(`生成の合計 ${total.toFixed(0)}ms ≦ 2000ms`, total <= 2000, total);
+        // 実測 1.4〜1.7 秒（絵を割る前は約 0.6 秒）。他のテストと並んで流れても落ちないよう 2000 → 3000ms にした
+        check(`生成の合計 ${total.toFixed(0)}ms ≦ 3000ms`, total <= 3000, total);
         // 手直し（2026-10-30）で面の作り方が「解ける押し順を探して確かめる」方式に変わり、1 面の生成が重くなった（中央 10ms・最大 95ms）。
         // 基準を 50 → 100ms にゆるめた。実機（iPhone SE 第2世代）で面の始めに止まらないかは試作で確かめる（docs/plans/amai-rework.md §13）
-        check(`1 面の最大 ${worst.ms}ms（${worst.lv} 面）≦ 100ms`, worst.ms <= 100, per.filter((x) => x.ms > 50));
+        // 手直し（2026-10-30・絵を 2×2 に割った）：マスが 4 倍（最大 64×48）になり、生成の探索も入るので 1 面の生成が重くなった
+        // （中央 16〜21ms・最大 160〜210ms）。基準を 100 → 250ms にゆるめた（実測の最大 210ms に余裕を足した値）。
+        // 実機（iPhone SE 第2世代）で面の始めに止まらないかは試作で確かめる。
+        check(`1 面の最大 ${worst.ms}ms（${worst.lv} 面）≦ 250ms`, worst.ms <= 250, per.filter((x) => x.ms > 100));
         // 一番大きい絵の面（角砂糖が一番多い 37〜48 面）で解を最後まで再生
         let big = null;
         for (let lv = 37; lv <= 48; lv++) { const c = L.createLevel(lv, null); if (!big || c.state.total > big.state.total) big = c; }
         const a = cpuOf();
         const pl = playSolution(L, big);
         const ms = cpuMs(cpuOf(a));
-        check(`一番大きい面（${big.info.level} 面・${big.state.W}×${big.state.H}・角砂糖 ${big.state.total}）の解の再生 ${ms.toFixed(1)}ms ≦ 50ms・won`, pl.ok && ms <= 50, ms);
+        check(`一番大きい面（${big.info.level} 面・${big.state.W}×${big.state.H}・角砂糖 ${big.state.total}）の解の再生 ${ms.toFixed(1)}ms ≦ 150ms・won`, pl.ok && ms <= 150, ms);
+        // 解の再生は角砂糖 1 個ごとに step を呼ぶので、角砂糖が 4 倍（最大 2576 個）になると約 4 倍かかる（実測 74ms）。50 → 150ms にした
         const b = cpuOf();
         const rp = L.replay(big.info.level, L.pickPicture(big.info.level, null), [], 0);
         check(`replay（生成を含む）${cpuMs(cpuOf(b)).toFixed(1)}ms ≦ 50ms`, rp.ok && cpuMs(cpuOf(b)) <= 50, null);
@@ -803,17 +821,19 @@ export const tests = [
     },
   },
   {
-    id: 'AL16', tier: 'smoke', node: true, title: 'あまいものあつめ：1 はこびで 2 個運ぶ段（XL・XXL・くり返しは carry 2、S・M・L は 1。carries は同じわくから 2 件・1 箱の上限と持ち玉を超えない）と、1・2 面は完全でたらめに遊んでも必ずクリアできる',
+    id: 'AL16', tier: 'smoke', node: true, title: 'あまいものあつめ：はこびの間隔（120ms・はやおくり 60ms）・全段 1 はこびで 1 箱 1 個（carry は全面 1。carries は同じわくから 1 件ずつ）と、1・2 面は完全でたらめに遊んでも必ずクリアできる',
     async run({ check, root }) {
       const L = load(root);
       await withPictures(L, (kind) => {
         // paramsFor の carry（表：段ごと）
         const cw = (lv, pk) => L.paramsFor(lv, pk).carry;
-        const pc = [[1, 1], [5, 1], [13, 1], [25, 2], [37, 2], [48, 2]].map(([lv, want]) => ({ lv, want, got: cw(lv, L.pickPicture(lv, null)) }));
-        check('carry：1〜24 面（S・M・L）は 1、25〜48 面（XL・XXL）は 2', pc.every((x) => x.got === x.want), pc);
-        check('carry：くり返し（49 面から）は 2', cw(49, L.pickPicture(49, null)) === 2 && cw(1000, { id: L.PICTURE_ORDER[47].id, mirror: true, repeat: true }) === 2, null);
+        const pc = [[1, 1], [5, 1], [13, 1], [25, 1], [37, 1], [48, 1]].map(([lv, want]) => ({ lv, want, got: cw(lv, L.pickPicture(lv, null)) }));
+        check('carry：全段 1（1・5・13・25・37・48 面。もう 2 個運びは使わない）', pc.every((x) => x.got === x.want), pc);
+        check('carry：くり返し（49 面から）も 1', cw(49, L.pickPicture(49, null)) === 1 && cw(1000, { id: L.PICTURE_ORDER[47].id, mirror: true, repeat: true }) === 1, null);
+        // ユーザーの指摘の本体：1 つの箱から一定の短い間隔で次々に運ぶ（1 秒に約 8 匹）。間隔を 500ms に戻すと不合格
+        check('はこびの間隔：TICK_MS 120・FAST_MS 60（1 秒に約 8 個）', L.TICK_MS === 120 && L.FAST_MS === 60 && Math.round(1000 / L.TICK_MS) === 8, { t: L.TICK_MS, f: L.FAST_MS });
         const base = L.createLevel(25, L.pickPicture(25, null)).state;
-        check('createLevel の局面に carry が入る（XL=2・S=1）', base.carry === 2 && L.createLevel(1, L.pickPicture(1, null)).state.carry === 1, { xl: base.carry });
+        check('createLevel の局面に carry が入る（XL・S とも 1）', base.carry === 1 && L.createLevel(1, L.pickPicture(1, null)).state.carry === 1, { xl: base.carry });
         // 実際の面で解を再生：1 はこびの carries を数える
         const stat = {};
         const bad = [];
@@ -845,9 +865,8 @@ export const tests = [
           stat[lv] = { cap, max, two, one };
         }
         check('解の再生：どの面でも 1 はこびの 1 箱は carry 個まで・left の減り＝carries の数・同じマスを 2 度運ばない', bad.length === 0, bad.slice(0, 5));
-        const carry1 = [3, 10, 20].every((lv) => stat[lv].max === 1);
-        const carry2 = [25, 30, 40, 48, 49, 60].every((lv) => stat[lv].max === 2 && stat[lv].two > 0);
-        check('carry 1 の面は常に 1 件ずつ、carry 2 の面では 2 件のはこびが実際に起きる（空振りでない）', carry1 && carry2, stat);
+        const carryAll1 = Object.values(stat).every((x) => x.cap === 1 && x.max === 1 && x.two === 0 && x.one > 0);
+        check('どの面でも 1 はこびで 1 箱から運ぶのは 1 個だけ（2 個運びが起きない・はこびは実際に起きる）', carryAll1, stat);
         // 1・2 面：完全でたらめ（押せる列をでたらめに・待つ・運ぶ。もどすは使わない）でも必ずクリアでき、うごかせなくならない
         const rnd = (seed) => rngOf(seed);
         const rows = [];

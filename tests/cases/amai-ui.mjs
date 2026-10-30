@@ -171,14 +171,17 @@ const makeStuckState = (p) => p.evaluate(() => {
   }
   const N = s.slots.length;   // わくの数
   if (inner.length < N) return { ok: false, why: `内側のマスが ${inner.length} 個しかない` };
+  // 手直し（2026-10-30）：絵を 2×2 に割ると内側のマスが 500 個を超え、箱の持ち玉の上限 99 を越える。
+  // 色 1 にするのは内側のうち わく N 個 × 50 個まで（残りの内側は色 0 のまま。まわりが全部角砂糖なので ふちには出ない）
+  const k1 = Math.min(inner.length, N * 50);
   for (const i of all) cells[i] = 0;
-  for (const i of inner) cells[i] = 1;
-  const base = Math.floor(inner.length / N), extra = inner.length % N;
+  for (const i of inner.slice(0, k1)) cells[i] = 1;
+  const base = Math.floor(k1 / N), extra = k1 % N;
   const slots = Array.from({ length: N }, (_, i) => i).map((i) => ({ id: 1 + i, color: 1, count: base + (i < extra ? 1 : 0) }));
-  const outer = all.length - inner.length;
-  const front = []; let left = outer, id = 100;
-  while (left > 0) { const n = Math.min(left, 50); front.push({ id: id++, color: 0, count: n, lid: false, ice: 0 }); left -= n; }
-  const ns = { ...s, cells, total: all.length, left: all.length, cols: [front, [], [], []], slots, won: false };
+  const outer = all.length - k1;
+  const cols = [[], [], [], []]; let left = outer, id = 100;
+  while (left > 0) { const n = Math.min(left, 50); cols[id % 4].push({ id: id++, color: 0, count: n, lid: false, ice: 0 }); left -= n; }
+  const ns = { ...s, cells, total: all.length, left: all.length, cols, slots, won: false };
   return { ok: G.setState(ns) === true, why: 'setState が false を返した', inner: inner.length };
 });
 // 自然に「うごかせない」になる押し方を、画面の中の AmaiLogic で探す（決まった乱数。見つからなければ null）
@@ -499,15 +502,25 @@ export const tests = [
         check(`${v.label}：遊び方の「わかった」(close) がスクロールなしで画面内にあり 44px 以上（${J(noScroll)}）`, o.shown && noScroll && noScroll.inside && noScroll.h >= 43.5 && noScroll.w >= 43.5, { o, noScroll });
         const hp = await overlayProbe(page, v.safe);
         check(`${v.label}：遊び方のカード：見出しが切れず、全ボタンに届き 44px 以上`, overlayOk(hp), hp);
-        // 遊び方の文（契約 §3.5）：巣は「ありの おうち」、ふち・わく・はこの すうじ の意味を 1 言ずつ
-        const ht = o.text;
-        check(`${v.label}：遊び方の文に「ありの おうちへ」「ふち」（えの まわり）「わく」（したの ${SLOTS_N}つの しかく）「はこの すうじ」（おさとうの かず）があり、「すへ」が無い`,
-          ['ありの おうちへ', 'えの まわり', `したの ${SLOTS_N}つの しかく`, 'はこの すうじ', 'おさとうの かず'].every((w) => ht.includes(w)) && !ht.includes('すへ'), ht);
+        // 遊び方の文（2026-10-30 UX レビューで差し替え）：「わく」「おなじ いろ」「ふち」と、いちばん大事な核
+        // 「なかの いろは、そとの いろを さきに はこんで みちを あけて」が入っていること。古い文（ありの おうちへ など）は無い
+        const ht = o.text.replace(/\s+/g, ' ');
+        check(`${v.label}：遊び方の文に核「なかの いろは、そとの いろを さきに はこんで みちを あけて」と「わく」（したの ${SLOTS_N}つの しかく）「おなじ いろ」「ふち」（えの そとがわ）「ずかん」がある`,
+          [`わく（したの ${SLOTS_N}つの しかく）`, 'おなじ いろ', 'ふち（えの そとがわ）', 'なかの いろは、そとの いろを さきに はこんで みちを あけて', 'ずかん'].every((w) => ht.includes(w)), ht);
         await clickCmd(page, 'close'); await wait(page, 100);
         const st = await makeStuckState(page);
         for (let i = 0; i < 30 && (await gs(page)).overlay !== 'stuck'; i++) { await skipG(page); await wait(page, 100); }
         const sp = await overlayProbe(page, v.safe);
         check(`${v.label}：うごかせないのカード：見出しが切れず、全ボタンに届き 44px 以上（setState ${st.ok}）`, st.ok && overlayOk(sp), { st, sp });
+        // 手詰まりのカードが わくを隠さない（2026-10-30 UX レビュー。カードを低く小さくした）：わく（#slots の箱）がカードと重ならず見えている
+        const cover = await page.evaluate(() => {
+          const c = document.querySelector('.overlay .card'); if (!c) return null;
+          const cr = c.getBoundingClientRect();
+          const boxes = [...document.querySelectorAll('#slots > *')].map((e) => e.getBoundingClientRect()).filter((q) => q.width > 0);
+          const hit = boxes.filter((q) => q.left < cr.right && q.right > cr.left && q.top < cr.bottom && q.bottom > cr.top).length;
+          return { n: boxes.length, hit, cardTop: Math.round(cr.top), cardH: Math.round(cr.height), slotsBottom: Math.round(Math.max(...boxes.map((q) => q.bottom))) };
+        });
+        check(`${v.label}：うごかせないのカードが出ていても わくの箱が全部見える（重なり ${cover && cover.hit}／${cover && cover.n}）`, !!cover && cover.n >= SLOTS_N && cover.hit === 0, cover);
         const hf = await page.evaluate(() => { const h = document.querySelector('#hint'); const q = h.getBoundingClientRect(), b = document.querySelector('#picBox').getBoundingClientRect(); return { t: h.textContent, fit: h.scrollWidth <= h.clientWidth + 1, oneLine: q.height <= 30, onPic: q.left < b.right - 0.5 && b.left < q.right - 0.5 && q.top < b.bottom - 0.5 && b.top < q.bottom - 0.5 }; });
         check(`${v.label}：うごかせないときの案内（${hf.t}）が 1 行で はみ出さず、絵に重ならない`, hf.t.length > 0 && hf.fit && hf.oneLine && !hf.onPic, hf);
         await gotoG(page, { 'amai.save': null });
@@ -551,7 +564,10 @@ export const tests = [
       const cf = await overlayInfo(page);
       check(`やりなおしで確認カード（restartYes・close。${cf.cmds.join(',')}）、「さいしょから」の文字、遊びは進まない`, cf.shown && cf.cmds.includes('restartYes') && cf.cmds.includes('close') && /さいしょから/.test(cf.text), cf);
       await clickCmd(page, 'close'); await wait(page, 100);
-      check('「やめる」(close) で閉じると局面はそのまま', J((({ t, presses, left }) => ({ t, presses, left }))(await lg(page))) === J((({ t, presses, left }) => ({ t, presses, left }))(mid)) && (await gs(page)).overlay === null, await gs(page));
+      // 手直し（2026-10-30）：1 はこびが 120ms になり、カードを閉じて待つ間にも運びが進む（前は 500ms で進まなかった）。
+      // 「そのまま」＝やりなおされていない（押した数が同じ・t は戻らない・left は増えない）に確かめ方を変えた
+      const aft = await lg(page);
+      check('「やめる」(close) で閉じると局面はそのまま（押した数が同じ・t が戻らない・left が増えない＝やりなおされていない）', aft.presses === mid.presses && aft.t >= mid.t && aft.left <= mid.left && (await gs(page)).overlay === null, { mid: { t: mid.t, presses: mid.presses, left: mid.left }, aft: { t: aft.t, presses: aft.presses, left: aft.left } });
       await page.click('#restartBtn'); await wait(page, 100);
       await clickCmd(page, 'restartYes'); await wait(page, 150);
       const re = await lg(page), rs = await gs(page);
@@ -570,7 +586,7 @@ export const tests = [
       for (let i = 0; i < 30 && (await gs(page)).overlay !== 'stuck'; i++) { await skipG(page); await wait(page, 100); }
       const s = await gs(page), ov = await overlayInfo(page);
       check(`phase "stuck"（data-phase ${await phaseAttr(page)}）・stuck true・カード（undo・restart。${ov.cmds.join(',')}）、負けの言葉が無い`,
-        s.phase === 'stuck' && s.stuck === true && (await phaseAttr(page)) === 'stuck' && s.overlay === 'stuck' && ov.cmds.includes('undo') && ov.cmds.includes('restart') && /うごかせないよ/.test(ov.text) && !/しっぱい|まけ/.test(ov.text), { s: s.phase, ov });
+        s.phase === 'stuck' && s.stuck === true && (await phaseAttr(page)) === 'stuck' && s.overlay === 'stuck' && ov.cmds.includes('undo') && ov.cmds.includes('restart') && /うごかせないよ/.test(ov.text) && /1手もどして ためしてね/.test(ov.text) && /まだ ふちに ないよ|わくが いっぱいだよ/.test(ov.text) && !/しっぱい|まけ/.test(ov.text), { s: s.phase, ov });
       const saveAfter = await stored(page, 'amai.save');
       check('うごかせないでも保存は消えない（amai.save が残っている）', saveBefore !== null && saveAfter !== null, { saveBefore, saveAfter });
       // 自然に詰ませる
@@ -613,7 +629,8 @@ export const tests = [
       await setLevel(page, 25);
       const sol = await solutionOf(page);
       const normal = await driveFor(page, 3000, sol);
-      check(`ふつうの速さ：3 秒で ${normal.dt} はこび（3〜8 を期待。0.5 秒に 1 はこび）`, normal.dt >= 3 && normal.dt <= 8, normal);
+      // 手直し（2026-10-30）：1 はこびの間隔 500 → 120ms。3 秒で約 25 はこび（実測 23）。0.5 秒に戻すと 6 で落ちる
+      check(`ふつうの速さ：3 秒で ${normal.dt} はこび（15〜30 を期待。0.12 秒に 1 はこび）`, normal.dt >= 15 && normal.dt <= 30, normal);
       await page.click('#fastBtn'); await sleep(100);
       const pr = await page.evaluate(() => document.querySelector('#fastBtn').getAttribute('aria-pressed'));
       check(`はやくを押すと aria-pressed "true"・getState().fast true・amai.fast が "1"（${pr}・${await stored(page, 'amai.fast')}）`, pr === 'true' && (await gs(page)).fast === true && (await stored(page, 'amai.fast')) === '1', pr);
