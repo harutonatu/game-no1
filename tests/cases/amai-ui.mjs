@@ -1173,7 +1173,9 @@ export const tests = [
       check('（裏）クリアの演出中を つかまえた', !!s2, s2);
       await setHidden(page, true); await wait(page, 3000);
       const h = await gs(page);
-      await setHidden(page, false); await wait(page, 3000);
+      // 戻ったあとは、残りのありんこが巣へ帰ってからクリアの演出になる。v54 で歩く速さに上限（600px/秒）を
+      // 付けたぶん長くかかるので、待ちを 3 秒 → 6 秒にした（カードが出ること自体は変えていない）
+      await setHidden(page, false); await wait(page, 6000);
       const s3 = await gs(page);
       check(`裏 → 表に戻ったあと、クリアのカードが出る（裏の間 ${h.overlay}・戻ったあと ${s3.overlay}）`, s3.overlay === 'clear' && !s3.paused, { h: h.overlay, s3 });
       await ctx.close();
