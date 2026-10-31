@@ -245,6 +245,11 @@
 :where(.slot) .want svg{width:100%;height:100%;display:block}
 :where(.slot) .wdots{position:absolute;right:3px;top:1px;font-size:12px;display:none;color:var(--ink,#1c1a22)}
 :where(.slot[data-wait="1"]) .want{display:block;animation:amaiStomp .36s steps(2) infinite}
+:where(.slot) .wlabel{position:absolute;left:0;right:0;bottom:0;display:none;font-size:10px;line-height:13px;height:13px;font-weight:800;text-align:center;color:#fff;background:rgba(32,26,20,.62);letter-spacing:.5px}
+:where(.slot[data-wait="1"]) .wlabel{display:block}
+:where(.slot[data-wait="1"]) .sbox{filter:saturate(.45) brightness(.8);padding:5px 0 13px;gap:1px}
+:where(.slot[data-wait="1"]) .sbox .bmark{width:30%;max-width:18px}
+:where(.box.front.amai-box[data-ready="1"]){outline:3px solid #ffe066;outline-offset:-1px}
 :where(.slot[data-wait="1"][data-calm="1"]) .want{display:none}
 :where(.slot[data-wait="1"][data-calm="1"]) .wdots{display:block}
 @keyframes amaiStomp{0%{transform:translateX(-2px) rotate(-6deg)}100%{transform:translateX(2px) rotate(6deg)}}
@@ -752,7 +757,8 @@
           box.setAttribute("aria-hidden", "true");
           box.dataset.id = String(b.id);
           box.setAttribute("style", boxVars(b.color));
-          box.innerHTML = markSvg(c.mark, inkFor(c.hex)) + `<b class="bnum">${b.count}</b><span class="want">${ANT_SVG}</span><span class="wdots">…</span>`;
+          box.innerHTML = markSvg(c.mark, inkFor(c.hex)) + `<b class="bnum">${b.count}</b><span class="want">${ANT_SVG}</span><span class="wdots">…</span>`
+            + '<span class="wlabel" aria-hidden="true">まってる</span>';
           el.insertBefore(box, sr || null);
         } else {
           const n = box.querySelector(".bnum");
@@ -765,12 +771,18 @@
     }
     function renderCols(st, force) {
       const cols = Array.isArray(st.cols) ? st.cols : [];
+      // 待っているわくがあるときだけ、いま運べる色（ふちに出ている色）の手前の箱を明るいふちで示す
+      const ready = waitingColors(st);
+      const slotsNow = Array.isArray(st.slots) ? st.slots : [];
+      const anyWait = !st.won && slotsNow.some((b) => b && !ready.has(b.color));
       for (let c = 0; c < COLS; c++) {
         const ce = colEls[c];
         if (!ce) continue;
         const list = Array.isArray(cols[c]) ? cols[c] : [];
         if (force) { ce.front._sig = null; ce.backs.forEach((b) => { b._sig = null; }); }
         paintBox(ce.front, list[0] || null, st, "front", c);
+        const f = list[0] || null;
+        ce.front.dataset.ready = anyWait && f && !f.lid && iceLeft(f, st) === 0 && ready.has(f.color) ? "1" : "0";
         for (let k = 0; k < ce.backs.length; k++) paintBox(ce.backs[k], k < backRows ? list[k + 1] || null : null, st, "back", c);
         const rest = Math.max(0, list.length - 1 - backRows);
         ce.col.dataset.rest = String(rest);
@@ -1090,7 +1102,7 @@
         const box = el && el.querySelector(".sbox:not(.ghost)");
         if (box && box.dataset.id === String(c.id)) { box.classList.add("ghost"); ghosts.push({ box, color: c.color, el }); }
       }
-      if (cur) { renderSlots(cur); setPicLabel(); }
+      if (cur) { renderSlots(cur); renderCols(cur); setPicLabel(); }
       for (const g of ghosts) {
         snd("empty");
         if (calm) { g.box.remove(); continue; }

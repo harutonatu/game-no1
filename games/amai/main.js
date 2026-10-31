@@ -179,11 +179,12 @@
       el.hint.style.fontSize = px + "px";
     }
   }
-  function setHint(text, keep) {
+  function setHint(text, keep, warn) {
     const t = text || "";
     if (hintFadeId) { clearTimeout(hintFadeId); timers.delete(hintFadeId); hintFadeId = 0; }
     el.hint.dataset.fade = "0";
     el.hint.dataset.soft = "0";
+    el.hint.dataset.warn = warn ? "1" : "0";
     if (el.hint.textContent !== t) { el.hint.textContent = t; fitHint(); }
     if (t && !keep) hintFadeId = later(() => { hintFadeId = 0; el.hint.dataset.fade = "1"; }, HINT_FADE_MS);
   }
@@ -213,6 +214,15 @@
     return w ? `${colorName(c)}（${w}）` : colorName(c);
   };
   const isStuckNow = () => !!(state && !state.won && safeCall(() => L.isStuck(state), false));
+  // 今ふちに出ている色（＝いま運べる色）。state は logic が作った本物の局面をそのまま渡す
+  function edgeColors() {
+    if (!state) return [];
+    const list = safeCall(() => L.edgeCells(state), []) || [];
+    const set = new Set();
+    for (const i of list) { const v = state.cells[i]; if (v >= 0) set.add(v); }
+    return [...set].sort((a, z) => a - z);
+  }
+  const edgeNames = () => edgeColors().map((c) => colorName(c)).filter(Boolean);
 
   // ===== 表示：ロジックの値をそのまま出す =====
   // 面の番号の字の大きさ：6 桁まで s、10 桁まで m、それより長いと l（16 桁でもはみ出さない。「…」で切らない）
@@ -250,8 +260,16 @@
     const slots = Array.isArray(state.slots) ? state.slots : [];
     const boxes = slots.filter((b) => b);
     if (!boxes.length) return presses.length === 0 && level <= 2 && !custom ? HINT_FIRST : HINT_IDLE;
-    const waiting = boxes.find((b) => !(safeCall(() => L.edgeCells(state, b.color), []) || []).length);
-    return waiting ? `${colorMark(waiting.color)}が ふちに でるのを まってるよ` : "";
+    const edge = edgeColors();
+    const waiting = boxes.find((b) => !edge.includes(b.color));
+    if (!waiting) return "";
+    // 1 匹も運べない（わくの箱が全部 待っている）ときは、いま運べる色を名前で出す
+    if (boxes.every((b) => !edge.includes(b.color))) {
+      const all = edgeNames();
+      const txt = all.length > 2 ? `${all.slice(0, 2).join("と ")} など` : all.join("と ");
+      if (txt) return `${txt}が はこべるよ。したの はこを おして`;
+    }
+    return `${colorMark(waiting.color)}が ふちに でるのを まってるよ`;
   }
 
   // ===== 演出の続き（ありんこを待つ・Promise から、または flush から同期で） =====
@@ -326,7 +344,7 @@
     renderTools();
     if (isStuckNow()) { if (el.hint.dataset.soft === "1") setHint("", true); waitAnts(enterStuck); return; }
     const h = stableHint();
-    if (h) setHint(h);
+    if (h) setHint(h, true, h.indexOf("が はこべるよ。") > 0);
     else if (el.hint.dataset.soft === "1") setHint("", true);
   }
   function enterStuck() {
@@ -867,11 +885,13 @@
         timers: timers.size, runId, ants: st && Number.isFinite(st.ants) ? st.ants : 0,
         canUndo: presses.length > 0, book: bookCountNow(),
         picture: pick.id, mirror: !!pick.mirror, repeat: !!pick.repeat, custom: !!custom,
-        pressList: clone(presses), hint: el.hint.textContent,
+        pressList: clone(presses), hint: el.hint.textContent, edge: edgeColors(),
         stats: st ? clone(st) : null   // render.stats()（{ ants, frameMs, redraws }。テスト AW19 用）
       };
     },
     press(col) { const k = onPress(col, "tap"); return k; },
+    // 今ふちに出ている色の一覧（小さい順）。getState() の写しは logic が受け付けないので、ここで本物の局面から取る
+    edgeColors() { return edgeColors(); },
     tick(n) {
       const k = Math.max(0, Math.min(SETTLE_MAX, Math.floor(Number(n) || 0)));
       return runSteps(k);

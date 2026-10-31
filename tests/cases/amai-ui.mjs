@@ -1259,4 +1259,47 @@ export const tests = [
       await ctx.close();
     },
   },
+  {
+    id: 'AW25', tier: 'full', title: 'あまいもの 待っているのが分かる：ふちに無い色の箱をわくに入れると、ありんこが 0 匹でも .slot に data-wait="1"・「まってる」の札が出て、#hint に いま運べる色の名前（data-warn="1"）、今すぐ運べる手前の箱に data-ready="1" が付く。運べる色だけのときは どれも付かない',
+    async run({ browser, check }) {
+      const { ctx, page } = await openG(browser, 'AW25');
+      await page.evaluate(() => window.AmaiGame.setLevel(3));
+      await wait(page, 300);
+      const edge0 = await page.evaluate(() => window.AmaiGame.edgeColors());
+      check(`edgeColors() が 今ふちに出ている色を返す（${JSON.stringify(edge0)}）`, Array.isArray(edge0) && edge0.length > 0, edge0);
+      // ふちに無い色（＝待っている色）の手前の箱を押す
+      const pressed = await page.evaluate(() => {
+        const g = window.AmaiGame.getState();
+        const f = g.cols.map((c, i) => ({ i, color: c[0] ? c[0].color : null })).find((x) => x.color !== null && !g.edge.includes(x.color));
+        if (!f) return null;
+        window.AmaiGame.press(f.i);
+        return f;
+      });
+      await wait(page, 1500);
+      const g1 = await gs(page);
+      const dom = await page.evaluate(() => ({
+        wait: [...document.querySelectorAll('.slot')].map((x) => x.dataset.wait),
+        label: [...document.querySelectorAll('.slot[data-wait="1"] .wlabel')].map((x) => [x.textContent, getComputedStyle(x).display]),
+        warn: document.querySelector('#hint').dataset.warn,
+        ready: [...document.querySelectorAll('.box.front')].map((x) => x.dataset.ready),
+      }));
+      check(`ふちに無い色（${JSON.stringify(pressed)}）を入れると ありんこ 0 匹・のこりが減らない（ants ${g1.ants}・left ${g1.left}）`, !!pressed && g1.ants === 0 && g1.stable, { pressed, g1: { ants: g1.ants, left: g1.left, stable: g1.stable } });
+      check(`わくに data-wait="1"（${dom.wait.join(',')}）と「まってる」の札（${JSON.stringify(dom.label)}）が出る`, dom.wait.includes('1') && dom.label.length > 0 && dom.label.every(([t, d]) => t === 'まってる' && d !== 'none'), dom);
+      check(`#hint に いま運べる色の名前が出て 薄くしない（data-warn ${dom.warn}）：「${g1.hint}」`, dom.warn === '1' && /が はこべるよ。したの はこを おして$/.test(g1.hint), { hint: g1.hint, warn: dom.warn });
+      check(`今すぐ運べる手前の箱に data-ready="1"（${dom.ready.join(',')}）`, dom.ready.includes('1'), dom);
+      // 運べる色だけのわくに戻すと 印は消える
+      await page.click('#undoBtn');
+      await wait(page, 500);
+      await page.evaluate(() => { const g = window.AmaiGame.getState();
+        const f = g.cols.map((c, i) => ({ i, color: c[0] ? c[0].color : null })).find((x) => x.color !== null && g.edge.includes(x.color));
+        if (f) window.AmaiGame.press(f.i); });
+      await wait(page, 600);
+      const dom2 = await page.evaluate(() => ({
+        wait: [...document.querySelectorAll('.slot')].map((x) => x.dataset.wait),
+        ready: [...document.querySelectorAll('.box.front')].map((x) => x.dataset.ready),
+      }));
+      check(`運べる色だけのときは data-wait も data-ready も付かない（wait ${dom2.wait.join(',')}・ready ${dom2.ready.join(',')}）`, !dom2.wait.includes('1') && !dom2.ready.includes('1'), dom2);
+      await ctx.close();
+    },
+  },
 ];
