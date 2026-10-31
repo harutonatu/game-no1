@@ -38,6 +38,8 @@
   const HINT_FIRST = "はこを おすと、ありんこが はこぶよ";
   const HINT_IDLE = "てまえの はこを おしてね";
   const HINT_STUCK = "うごかせないよ。「1手もどす」を おしてね";
+  const HINT_CALM = "「うごきを へらす」せってい なので、ありんこは でないよ。でも ちゃんと はこんでるよ";
+  let calmTold = false;   // 動きを減らす設定の案内は、1 回だけ出す
   const HINT_CARRY = "ありんこが はこんでるよ";   // 待っているだけのとき（押せる箱が無い・わくが いっぱい）に うすく出す
   const HINT_OPEN = "ふたが あいたよ";
   const HINT_THAW = "こおりが とけたよ";
@@ -359,6 +361,8 @@
   // pk：{ id, mirror, repeat }（無い・PICTURE_ORDER に無い絵なら pickPicture で選ぶ）。pr・t：保存の押した手と t（再開）
   function startLevel(lv, pk, pr, t) {
     clearLater();
+    // 「うごきを へらす」設定ではありんこを描かない（契約 §3.8）。何も出ないので、1 回だけ理由を知らせる
+    if (calm && !calmTold) { calmTold = true; later(() => setHint(HINT_CALM, true), 400); }
     runId += 1;
     cancelPending();
     safeCall(() => render.finishAll());
