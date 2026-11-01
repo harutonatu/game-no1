@@ -771,10 +771,10 @@
     }
     function renderCols(st, force) {
       const cols = Array.isArray(st.cols) ? st.cols : [];
-      // 待っているわくがあるときだけ、いま運べる色（ふちに出ている色）の手前の箱を明るいふちで示す
+      // いま運べる色（ふちに出ている色）の手前の箱を、いつでも明るいふちで示す。
+      // わくが空のとき（面を開いた直後・箱が全部消えたあと）も示す：どれを押せば ありんこが出るかが分からず
+      // 「ありんこが出ない」ことの元になっていた（ユーザー報告 2026-11-01「56になりましたが、アリンコは出ません」）
       const ready = waitingColors(st);
-      const slotsNow = Array.isArray(st.slots) ? st.slots : [];
-      const anyWait = !st.won && slotsNow.some((b) => b && !ready.has(b.color));
       for (let c = 0; c < COLS; c++) {
         const ce = colEls[c];
         if (!ce) continue;
@@ -782,7 +782,7 @@
         if (force) { ce.front._sig = null; ce.backs.forEach((b) => { b._sig = null; }); }
         paintBox(ce.front, list[0] || null, st, "front", c);
         const f = list[0] || null;
-        ce.front.dataset.ready = anyWait && f && !f.lid && iceLeft(f, st) === 0 && ready.has(f.color) ? "1" : "0";
+        ce.front.dataset.ready = !st.won && f && !f.lid && iceLeft(f, st) === 0 && ready.has(f.color) ? "1" : "0";
         for (let k = 0; k < ce.backs.length; k++) paintBox(ce.backs[k], k < backRows ? list[k + 1] || null : null, st, "back", c);
         const rest = Math.max(0, list.length - 1 - backRows);
         ce.col.dataset.rest = String(rest);

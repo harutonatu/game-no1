@@ -256,19 +256,35 @@
     if (custom || !state || state.won) return;   // クリアした面は、onWon が次の面を書く
     safeCall(() => writeKey(KEY_SAVE, L.makeSave(level, pick, presses, state.t)), false);
   }
+  // 押せる手前の箱（列の先頭）・こおりの残り・いま運べる色の名前の文
+  const frontBoxes = () => (Array.isArray(state && state.cols) ? state.cols : []).map((c) => (Array.isArray(c) ? c[0] : null)).filter((f) => !!f);
+  const iceRest = (f) => (f && Number.isSafeInteger(f.ice) && f.ice > 0 ? Math.max(0, f.ice - (Number(state.presses) || 0)) : 0);
+  function edgeText() {
+    const all = edgeNames();
+    return all.length > 2 ? `${all.slice(0, 2).join("と ")} など` : all.join("と ");
+  }
   // 落ち着いたときの案内：わくの箱が待っていれば「○いろの おさとうが…」、わくが空なら「てまえの はこを おしてね」
   function stableHint() {
     if (!state || state.won) return "";
     const slots = Array.isArray(state.slots) ? state.slots : [];
     const boxes = slots.filter((b) => b);
-    if (!boxes.length) return presses.length === 0 && level <= 2 && !custom ? HINT_FIRST : HINT_IDLE;
     const edge = edgeColors();
+    // わくが空のとき（面を開いた直後・箱が全部消えたあと）：押せる手前の箱に 運べない色が混ざっていれば、
+    // 運べる色を名前で出す（運べない箱を押すと ありんこが 1 匹も出ないため。ユーザー報告 2026-11-01「アリンコは出ません」）
+    if (!boxes.length) {
+      if (presses.length === 0 && level <= 2 && !custom) return HINT_FIRST;
+      const fronts = frontBoxes().filter((f) => !f.lid && iceRest(f) === 0);
+      if (fronts.length && !fronts.every((f) => edge.includes(f.color))) {
+        const txt = edgeText();
+        if (txt) return `${txt}が はこべるよ。したの はこを おして`;
+      }
+      return HINT_IDLE;
+    }
     const waiting = boxes.find((b) => !edge.includes(b.color));
     if (!waiting) return "";
     // 1 匹も運べない（わくの箱が全部 待っている）ときは、いま運べる色を名前で出す
     if (boxes.every((b) => !edge.includes(b.color))) {
-      const all = edgeNames();
-      const txt = all.length > 2 ? `${all.slice(0, 2).join("と ")} など` : all.join("と ");
+      const txt = edgeText();
       if (txt) return `${txt}が はこべるよ。したの はこを おして`;
     }
     return `${colorMark(waiting.color)}が ふちに でるのを まってるよ`;

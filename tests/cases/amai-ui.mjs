@@ -1260,7 +1260,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW25', tier: 'full', title: 'あまいもの 待っているのが分かる：ふちに無い色の箱をわくに入れると、ありんこが 0 匹でも .slot に data-wait="1"・「まってる」の札が出て、#hint に いま運べる色の名前（data-warn="1"）、今すぐ運べる手前の箱に data-ready="1" が付く。運べる色だけのときは どれも付かない',
+    id: 'AW25', tier: 'full', title: 'あまいもの 待っているのが分かる：ふちに無い色の箱をわくに入れると、ありんこが 0 匹でも .slot に data-wait="1"・「まってる」の札が出て、#hint に いま運べる色の名前（data-warn="1"）、今すぐ運べる手前の箱に data-ready="1" が付く（data-ready は いま運べる色の箱と一致する）',
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'AW25');
       await page.evaluate(() => window.AmaiGame.setLevel(3));
@@ -1298,7 +1298,46 @@ export const tests = [
         wait: [...document.querySelectorAll('.slot')].map((x) => x.dataset.wait),
         ready: [...document.querySelectorAll('.box.front')].map((x) => x.dataset.ready),
       }));
-      check(`運べる色だけのときは data-wait も data-ready も付かない（wait ${dom2.wait.join(',')}・ready ${dom2.ready.join(',')}）`, !dom2.wait.includes('1') && !dom2.ready.includes('1'), dom2);
+      check(`運べる色だけのときは data-wait が付かない（wait ${dom2.wait.join(',')}）`, !dom2.wait.includes('1'), dom2);
+      // data-ready は「いま運べる色の 押せる手前の箱」と一致する（わくが待っているかに関わらず付く。v57 の直し）
+      const rd = await page.evaluate(() => {
+        const g = window.AmaiGame.getState();
+        const edge = window.AmaiGame.edgeColors();
+        return [...document.querySelectorAll('#grid .col')].map((c) => {
+          const f = document.querySelector(`#grid .col[data-col="${c.dataset.col}"] .box.front`);
+          const b = (g.cols[Number(c.dataset.col)] || [])[0] || null;
+          const can = !!b && !b.lid && Math.max(0, (Number(b.ice) || 0) - (Number(g.presses) || 0)) === 0 && edge.includes(b.color);
+          return { col: c.dataset.col, ready: f ? f.dataset.ready : null, can };
+        });
+      });
+      check(`data-ready が いま運べる色の手前の箱と一致する（${J(rd)}）`, rd.length > 0 && rd.every((x) => (x.ready === '1') === x.can), rd);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'AW26', tier: 'smoke', title: 'あまいもの ページ自身の更新だけで運ぶ：tick() を使わず、面を開いて data-ready="1" の手前の箱を実際にタップするだけで、ページの rAF が回って のこりが減り ありんこが出る（WebKit の回帰）',
+    async run({ browser, check }) {
+      // 時計は本物（clock: false）。tick()・settle() は一度も呼ばない
+      const { ctx, page } = await openG(browser, 'AW26', { opts: { clock: false } });
+      await page.evaluate(() => { window.__tickN = 0; const t = window.AmaiGame.tick; window.AmaiGame.tick = (...a) => { window.__tickN++; return t(...a); }; });
+      await page.evaluate(() => window.AmaiGame.setLevel(3));
+      await sleep(500);   // カードを閉じた直後の 300ms は箱を押せない（BOARD_BLOCK_MS）
+      const g0 = await gs(page);
+      const marked = await page.evaluate(() => [...document.querySelectorAll('#grid .col .box.front')].map((f) => f.dataset.ready));
+      check(`面を開いた直後（わくが空）でも、運べる色の手前の箱に data-ready="1" が付く（${marked.join(',')}）`, marked.includes('1'), { marked, edge: g0.edge });
+      // 運べる色の箱を、本物のタップで押す（印が無ければ 0 列目を押す。その場合は上の確認が不合格になっている）
+      const col = marked.indexOf('1') >= 0 ? marked.indexOf('1') : 0;
+      await page.click(`#grid .col[data-col="${col}"] .box.front`);
+      await sleep(1500);
+      const g1 = await gs(page);
+      const tickN = await page.evaluate(() => window.__tickN);
+      check(`tick() を一度も呼んでいない（${tickN} 回）`, tickN === 0, { tickN });
+      check(`ページ自身の更新だけで のこりが減る（${g0.left} → ${g1.left}）`, g1.left < g0.left, { left0: g0.left, left1: g1.left, slots: g1.slots });
+      check(`ありんこが出ている（ants ${g1.ants}）`, g1.ants > 0 || g1.calm === true, { ants: g1.ants, calm: g1.calm });
+      // そのまま待っても止まらない（1 はこびが回り続ける）
+      await sleep(1500);
+      const g2 = await gs(page);
+      check(`そのまま待つと さらに減る、または運び切って落ち着く（${g1.left} → ${g2.left}・stable ${g2.stable}）`, g2.left < g1.left || g2.stable === true, { left1: g1.left, left2: g2.left, stable: g2.stable });
       await ctx.close();
     },
   },
