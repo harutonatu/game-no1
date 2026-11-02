@@ -108,22 +108,22 @@ def finish(name, holec='K'):
 # ================= 絵 =================
 canvas(64, 48)
 # ---- やま（左奥。雪をかぶった山）
-mt = poly([(-2, 37), (-2, 20), (4, 12), (8, 15), (13, 7), (27, 37)])
+mt = poly([(-1, 37), (-1, 22), (4, 13), (7, 16), (11, 9), (23, 37)])
 fill(mt, 'S')
-fill({(x, y) for x, y in mt if x >= 15 and y > 16 and (x - y) % 4 == 0}, 'W')
-cap = poly([(0.5, 17.5), (4, 12), (8, 15), (13, 7), (17.5, 16), (14.5, 14.5), (12, 17), (9, 15.5), (5.5, 18), (3, 16.5)])
+fill({(x, y) for x, y in mt if x >= 13 and y > 18 and (x - y) % 4 == 0}, 'W')
+cap = poly([(1, 18), (4, 13), (7, 16), (11, 9), (15, 18), (12.5, 16.5), (10, 18.5), (7.5, 17), (4.5, 19.5)])
 fill(cap, 'W')
 fill(edge(mt) - {(x, y) for x, y in mt if y > 34}, 'K')
-# ---- もみの木（右奥）
+# ---- もみの木（山の手前）
 tree = set()
-for (top, half, y1) in ((10, 3.5, 17), (14, 5.5, 23), (19, 7, 30)):
-    tree |= poly([(56, top), (56 + half, y1), (56 - half, y1)])
-trunk = rect(54, 30, 57, 36)
+for (top, half, y1) in ((14, 3, 20), (18, 4.5, 26), (22, 6, 32)):
+    tree |= poly([(8, top), (8 + half, y1), (8 - half, y1)])
+trunk = rect(7, 32, 9, 37)
 shape(trunk, 'O')
 shape(tree, 'G')
-for (y1, half) in ((16, 2.5), (22, 4.5), (29, 6)):
-    fill({(x, y1) for x in range(int(56 - half), int(56 + half) + 1) if x % 2 == 0} & tree, 'W')
-fill({(x, y) for x, y in tree - edge(tree) if x > 57 and (x + y) % 2 == 0}, 'K')
+for (y1, half) in ((19, 2), (25, 3.5), (31, 5)):
+    fill({(x, y1) for x in range(int(8 - half), int(8 + half) + 1) if x % 2 == 0} & tree, 'W')
+fill({(x, y) for x, y in tree - edge(tree) if x > 9 and (x + y) % 2 == 0}, 'K')
 # ---- 雪の地面
 snow = ell(32, 40.5, 30.5, 4.6)
 fill(snow, 'W')
@@ -131,28 +131,26 @@ fill({(x, y) for x, y in snow if (x * 5 + y * 7) % 13 == 0}, 'S')
 fill({(x, y) for x, y in snow if (x, y + 1) not in snow or (x, y + 2) not in snow}, 'S')
 fill(edge(snow) & {(x, y) for x, y in snow if y >= 40 or x < 5 or x > 58}, 'K')
 # ---- ボール（右手前。はずむ）
-fill({(x, y) for x, y in ell(52, 43, 5, 1.1) if get(x, y) in 'WS'}, 'S')
-ball = ell(52, 33, 5, 5)
+fill({(x, y) for x, y in ell(56, 43.5, 5, 1.1) if get(x, y) in 'WS'}, 'S')
+ball = ell(56.5, 36, 4.8, 4.8)
 fill(ball, 'R')
-fill({(x, y) for x, y in ball if abs(x - 52) <= 0}, 'W'); fill({(x, y) for x, y in ball if abs(y - 33) <= 0}, 'W')
-fill({(49, 30), (50, 30), (49, 31)}, 'W')
+fill({(x, y) for x, y in ball if abs((y - 36) + 0.7 * (x - 56.5)) < 1.3}, 'W')
+fill({(54, 33), (55, 33), (54, 34)}, 'W')
 fill(edge(ball), 'K')
-for a, b in (((50, 40), (50, 41)), ((54, 40), (54, 41)), ((52, 40), (52, 42))):
-    fill(line(a[0], a[1], b[0], b[1]), 'S')
+for a, b in (((61, 31), (63, 29)), ((62, 35), (63, 35))):
+    fill(line(a[0], a[1], b[0], b[1]), 'K')
 # ---- いぬ（ボールを おいかける。右むき）
 fill({(x, y) for x, y in ell(28, 43.3, 14, 1.4) if get(x, y) in 'WS'}, 'S')
-tail = ell(15, 20, 2.2, 5, ang=-30)
+tail = ell(18, 20, 2.2, 5, ang=-30)
 shape(tail, 'Y', sh='O')
 legs = (((20, 31), (16, 41)), ((24, 32), (24, 42)), ((32, 32), (34, 42)), ((36, 30), (42, 39)))
 for i, (a, b) in enumerate(legs):
     leg = line(a[0], a[1], b[0], b[1], 1.5)
     shape(leg, 'O' if i in (1, 2) else 'Y', sh=None if i in (1, 2) else 'O')
     shape(ell(b[0] + 0.5, b[1] + 0.5, 2.3, 1.6), 'W')
-body = ell(28, 27, 11.5, 6.3, ang=-6)
+body = ell(28, 28, 12, 7, ang=-6)
 shape(body, 'Y', sh='O')
-chest = ell(36, 29, 3.5, 3.5)
-shape(chest, 'W')
-head = ell(40, 18, 7, 6.2)
+head = ell(40.5, 18, 7.5, 6.6)
 shape(head, 'Y', sh='O')
 snout = ell(46.5, 20, 4.5, 3.2)
 shape(snout, 'W')
@@ -160,10 +158,8 @@ fill(rect(49, 17, 51, 18) | {(50, 19)}, 'K'); put(49, 17, 'W')         # 鼻
 mouth = poly([(43.5, 21.5), (49, 21.5), (47.5, 25), (45, 24.5)])
 fill(mouth, 'R'); fill(edge(mouth), 'K'); fill({(46, 24), (46, 23)}, 'P' if False else 'R')
 fill(ell(42.5, 15.5, 1.4, 1.8), 'K'); put(42, 15, 'W'); fill(line(41, 12.5, 44, 12.5), 'O')   # 目
-ear = poly([(35, 12.5), (39.5, 12.5), (37.5, 22.5), (33.5, 21)])       # たれた耳
+ear = poly([(34.5, 13), (38, 12.5), (36.8, 22), (33.3, 20.5)])       # たれた耳
 shape(ear, 'O')
 collar = line(34.5, 21, 36.5, 25.5, 0.8)
 fill(collar, 'R'); fill(edge(collar), 'K')
-for a, b in (((8, 26), (11, 26)), ((7, 30), (11, 30))):
-    fill(line(a[0], a[1], b[0], b[1]), 'K')                            # 動きの線
-finish('inuyukiyamabooru', holec='W')
+finish('inuyukiyamabooru', holec='S')
