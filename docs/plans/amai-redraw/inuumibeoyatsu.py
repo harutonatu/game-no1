@@ -1,8 +1,9 @@
 # うみべで いぬが おやつを たべる（inuumibeoyatsu）M 段。python3 inuumibeoyatsu.py で inuumibeoyatsu.txt を書き出す
-# 色は 5 つ（K ふちどり・Y すな・S うみ／パラソル・C いぬ（明るい所と口のまわりは Y）・W 波／パラソル／ほね）。場所の物は 海と パラソル の 2 つ
+# 色は 5 つ（K ふちどり・W いぬ／パラソル・C ぶちと耳・R 首輪／パラソル・Y すなと ほね）。場所の物は すなはまと パラソル
+# いぬは全部の絵でそろえる見た目（白い体・ちゃいろの ぶちと たれ耳・あかい首輪。手本 inudaidokorooyatsu・inukouenoyatsu）
 import math
 ID='inuumibeoyatsu'
-W,H=40,32
+W,H=44,32
 # ---- 道具（見本 nekokouenbooru.py と同じ描き方：部品を層で描き、ふちどりして重ねる）
 grid=[['.']*W for _ in range(H)]
 def layer(): return [[None]*W for _ in range(H)]
@@ -79,61 +80,49 @@ def save(fillcol):
     while all(r[-1]=='.' for r in rows): rows=[r[:-1] for r in rows]
     open(ID+'.txt','w').write('\n'.join(rows)+'\n')
     print('holes filled',n)
-# ---- 海と すなはま（下のすみを丸く切る。奥ほど細い波）
-HZ=9
-R0=9
-for y in range(HZ,H):
-    for x in range(W):
-        if x<R0 and y>H-1-R0 and (R0-x)**2+(y-(H-1-R0))**2>R0*R0: continue
-        if x>W-1-R0 and y>H-1-R0 and (x-(W-1-R0))**2+(y-(H-1-R0))**2>R0*R0: continue
-        s=14.5+0.8*math.sin(x/3.2)
-        if y<s-0.5: c='W' if (y==HZ+2 and (x//3)%3==0) or (y==HZ+4 and (x//4)%3==1) else 'S'
-        elif y<s+0.7: c='W'
-        else: c='C' if (x*7+y*13)%23==0 else 'Y'
-        put(grid,x,y,c)
-for x in range(W):
-    if grid[H-1][x]!='.' or grid[H-2][x]!='.': pass
-# 前のふち
-edge=layer()
+# ---- すなはま（ななめ上から見た島。前の面は ちゃいろ）
+ICX,ICY,IRX,IRY=21.5,25.5,21.5,5.6
+sd=layer()
+ell(sd,ICX,ICY,IRX,IRY,'Y')
 for y in range(H):
     for x in range(W):
-        if grid[y][x]=='.':
-            for dx,dy in((1,0),(-1,0),(0,1),(0,-1)):
-                X,Y=x+dx,y+dy
-                if 0<=X<W and 0<=Y<H and grid[Y][X]!='.' and Y>=HZ+6: edge[y][x]='K';break
-stamp(edge)
-# ---- パラソル（右奥。柱は いぬの 奥）
-shadow(35,26.5,5,1.4,'YC','C',solid=0.4)
-pl=layer(); line(pl,33,7,36,26,'C',0.4); draw(pl)
-cx,cy=32,7
+        if sd[y][x]=='Y' and (x*7+y*13)%19==0: sd[y][x]='C'
+for x in range(W):
+    q=1-((x+0.5-ICX)/IRX)**2
+    if q>0: put(sd,x,int(ICY+IRY*math.sqrt(q)),'C')
+draw(sd)
+# ---- パラソル（右奥。あかと しろの しま）
+shadow(40,27.0,4,1.2,'YC','C',solid=0.4)
+pl=layer(); line(pl,38,7,40,25,'C',0.4); draw(pl)
+cx,cy=37,6
 dome=layer()
-ell(dome,cx,cy+1,8,6,'S',ang=-8)
+ell(dome,cx,cy+1,7,6,'R',ang=-8)
 for y in range(H):
     for x in range(W):
         if dome[y][x]:
             if y>cy+0.4-0.15*(x-cx)+(1 if (x//3)%2 else 0): dome[y][x]=None
             else:
                 a=math.atan2(x+0.5-cx,cy+7-y-0.5); k=int((a+3.2)/0.22)%2
-                dome[y][x]='W' if k else 'S'
+                dome[y][x]='W' if k else 'R'
 draw(dome)
-dots(grid,[(31,0),(31,1)],'K')
+dots(grid,[(36,0)],'K')
 # ---- いぬ（すなに すわって、ほねを くわえる）
-shadow(19,29.4,11,1.5,'YC','K',solid=0.3)
+shadow(19,29.6,11,1.5,'YC','K',solid=0.3)
 dog=layer()
-line(dog,25,27,29.5,22,'C',0.9); line(dog,29.5,22,30,19.5,'C',0.7)   # しっぽ（ふる）
-ell(dog,18,23.6,7.4,6.0,'C',light=('Y',-0.75))                  # からだ
-ell(dog,24.4,26.4,3.4,3.4,'C')                                  # 後ろ足のもも
-ell(dog,17.4,22.6,3.4,4.4,'Y')                                  # むね
-line(dog,14.6,25,14.6,28.4,'C',1.0); line(dog,20.4,25,20.4,28.4,'C',1.0)   # 前足
-ell(dog,14.6,29.2,1.8,1.0,'Y'); ell(dog,20.4,29.2,1.8,1.0,'Y')
-ell(dog,26.4,29.4,2.4,1.0,'Y')
+line(dog,25,27,29,23.5,'C',0.9); line(dog,29,23.5,29.5,21.5,'C',0.7)   # しっぽ（ふる）
+ell(dog,18,23.6,7.4,6.0,'W')                                    # からだ
+ell(dog,24.4,26.4,3.4,3.4,'W')                                  # 後ろ足のもも
+ell(dog,22.6,23.0,2.6,2.2,'C')                                  # ぶち
+line(dog,14.6,25,14.6,28.4,'W',1.0); line(dog,20.4,25,20.4,28.4,'W',1.0)   # 前足
 draw(dog)
-dots(grid,[(15,25),(15,26),(21,25),(21,26)],'K')                 # 前足の わかれめ
-dots(grid,[(14,25),(14,26),(14,27),(20,25),(20,26),(20,27)],'C')
+dots(grid,[(15,25),(15,26),(15,27),(21,25),(21,26),(21,27)],'K')  # 前足の わかれめ
+dots(grid,[(14,30),(15,30),(20,30),(21,30)],'K')
 hd=layer()
-ell(hd,17.8,11.8,7.0,5.8,'C',light=('Y',-0.72))                # あたま
-ell(hd,17.8,15.4,3.8,2.4,'Y')                                   # 口のまわり
+ell(hd,17.8,11.8,7.0,5.8,'W')                                   # あたま
+ell(hd,20.6,10.2,2.8,2.4,'C')                                   # 目の まわりの ぶち
 draw(hd)
+col=layer(); ell(col,17.8,19.4,5.0,1.1,'R'); draw(col)           # 首輪
+dots(grid,[(17,20),(18,20),(17,21),(18,21)],'Y')                 # 首輪の 金具
 for (ex,ang) in [(10.6,14),(25.0,-14)]:                          # たれた耳
     er=layer(); ell(er,ex,12.6,2.4,5.0,'C',ang=ang); draw(er)
 dots(grid,[(14,10),(15,10),(14,11),(15,11)],'K'); put(grid,14,10,'W')   # 目
@@ -141,7 +130,7 @@ dots(grid,[(20,10),(21,10),(20,11),(21,11)],'K'); put(grid,20,10,'W')
 dots(grid,[(17,13),(18,13),(17,14),(18,14)],'K')                 # はな
 # ほね（口に よこに くわえる。頭の外へ はみ出す）
 bn=layer()
-line(bn,11,17,25,17,'W',0.6)
-for (x,y) in [(10,15.8),(10,18.2),(25.8,15.8),(25.8,18.2)]: ell(bn,x,y,1.4,1.3,'W')
+line(bn,11,16.5,25,16.5,'Y',0.4)
+for (x,y) in [(10.4,15.6),(10.4,17.6),(25.4,15.6),(25.4,17.6)]: ell(bn,x,y,1.2,1.1,'Y')
 draw(bn)
 save('Y')

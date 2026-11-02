@@ -76,7 +76,7 @@ def finish(name, holefill=None):
     print('holes', n, 'sugar', sum(c != '.' for r in rows for c in r))
 # ---- 場面 ----
 HOLE = 'W'
-# だいどころで いぬが ボールで あそぶ（あそぼうの ポーズ）。場所の物：まど・テーブル
+# だいどころで いぬが ボールで あそぶ（ボールの前で おすわりして しっぽを ふる）。場所の物：まど・テーブル
 # 床（板の間・奥へすぼまる目地）
 floor = rect(0, 30, 63, 47)
 fill(floor, 'Y')
@@ -86,64 +86,63 @@ for vx in (-60, -28, 4, 36, 68, 100, 132):
     fill(line(32 + (vx - 32) / 3, 30, vx, 47) & floor, 'O')
 fill({(x, 30) for x in range(W)}, 'K')
 # まど（左上・外は空と雲）
-win = rect(3, 0, 23, 13)
+win = rect(3, 0, 23, 9)
 fill(win, 'S')
 fill(ell(8, 4, 3, 1.4) | ell(10, 3.5, 2.5, 1.8), 'W')
-fill(ell(18, 9, 2.6, 1.3) | ell(20, 8.5, 2.2, 1.6), 'W')
-fill(rect(13, 0, 13, 13) | rect(3, 6, 23, 6), 'B')
+fill(ell(18, 7, 2.4, 1.1) | ell(20, 6.5, 2, 1.4), 'W')
+fill(rect(13, 0, 13, 9) | rect(3, 5, 23, 5), 'B')
 fill(edge(win), 'K')
-sill = rect(1, 14, 25, 15); fill(sill, 'W'); fill({(x, 15) for x in range(1, 26)}, 'S'); fill(edge(sill), 'K')
+sill = rect(1, 10, 25, 11); fill(sill, 'W'); fill({(x, 11) for x in range(1, 26)}, 'S'); fill(edge(sill), 'K')
 # テーブル（右奥・ななめ）
 fill(rect(60, 22, 61, 34), 'C'); fill(rect(61, 22, 61, 34), 'K')
-top = poly([(42, 16), (63, 16), (64, 20), (45, 20)])
+top = poly([(47, 16), (63, 16), (64, 20), (50, 20)])
 shape(top, 'C', hi='O', d=1)
-apron = rect(45, 21, 63, 23); shape(apron, 'C'); fill(line(46, 22, 62, 22), 'O')
-for lx in (46, 58):
+apron = rect(50, 21, 63, 23); shape(apron, 'C'); fill(line(51, 22, 62, 22), 'O')
+for lx in (51, 60):
     fill(rect(lx, 24, lx + 1, 37), 'C'); fill(rect(lx + 1, 24, lx + 1, 37), 'K'); fill({(lx - 1, y) for y in range(24, 38)} | {(lx, 38), (lx + 1, 38)}, 'K')
-cup = rect(51, 11, 55, 15); shape(cup, 'R', hi='W', d=1); fill({(56, 12), (57, 13), (56, 14)}, 'K')
-fill(ell(53, 38.5, 9, 0.9), 'O')
+cup = rect(54, 11, 58, 15); shape(cup, 'R', hi='W', d=1); fill({(59, 12), (60, 13), (59, 14)}, 'K')
+fill(ell(56, 38.5, 7, 0.9), 'O')
 # かげ
-fill(ell(25, 44.5, 19, 1.5), 'O')
-# いぬ（左むき。前は ふせて、おしりを上げて しっぽを ふる）
-tail = line(42, 19, 45, 12, 1.5) | line(45, 12, 44, 8, 1.1)
-shape(tail, 'W', sh='S', d=1)
-for a, b in (((48, 8), (50, 6)), ((48, 12), (50, 11)), ((40, 8), (40, 6))):
+fill(ell(29, 45.5, 13, 1.3), 'O')
+# いぬ（左むきに おすわり。白い体・ちゃいろの ぶちと たれ耳・あかい首輪）
+tail = line(37, 33, 42, 26, 1.3) | line(42, 26, 43, 22, 1.0)
+shape(tail, 'W', sh='S', d=1); fill({(42, 23), (43, 22)}, 'C')
+for a, b in (((46, 22), (48, 20)), ((46, 26), (48, 26)), ((40, 19), (41, 17))):    # ふる線
     fill(line(*a, *b), 'K')
-legB = line(41, 25, 43, 40, 1.8); shape(legB, 'S')                    # 奥の後ろ足
-fill(ell(44, 41, 2.6, 1.6), 'S'); fill(edge(ell(44, 41, 2.6, 1.6)), 'K')
-body = ell(31, 26, 13.5, 7.5, -26)
+fb = line(26, 33, 26, 43, 1.7); shape(fb, 'S')                          # 奥の まえあし
+fill(ell(25, 44, 2.4, 1.4), 'S'); fill(edge(ell(25, 44, 2.4, 1.4)), 'K')
+fill(ell(40, 44.3, 3, 1.5), 'S'); fill(edge(ell(40, 44.3, 3, 1.5)), 'K')    # 奥の うしろ足
+body = ell(30, 33, 8, 10.5, 12)
 shape(body, 'W', sh='S')
-spot = ell(34, 22.5, 5, 3, -26) & body
-fill(spot - edge(body), 'C'); fill({(x, y) for x, y in spot - edge(body) if (x - 1, y - 1) not in spot}, 'O')
-legF = line(37, 28, 38, 43, 2.0); shape(legF, 'W', sh='S', d=1)       # 手前の後ろ足
-f = ell(37, 44, 3.2, 2); shape(f, 'W'); fill({(36, 45), (38, 45)}, 'K')
-# まえあし（床に ぺたり）
-for y0, c in ((39, 'S'), (41.5, 'W')):
-    a = line(24, y0 - 3, 13, y0, 1.8)
-    shape(a, c, sh='S' if c == 'W' else None, d=1)
-    p = ell(12, y0 + 0.3, 2.8, 2); shape(p, c); fill({(11, int(y0) + 1), (13, int(y0) + 1)}, 'K')
-head = ell(19, 29.5, 7.5, 6.5)
-snout = ell(12, 32.5, 4.8, 3.2)
+haunch = ell(34, 38.5, 6.5, 6)
+shape(haunch, 'W', sh='S')
+spot = ell(33, 32, 4.5, 4) & (body | haunch); fill(spot - edge(body) - edge(haunch), 'C')
+hf = ell(31, 44.5, 4.5, 1.7); shape(hf, 'W', sh='S', d=1); fill({(28, 45), (30, 45)}, 'K')   # 手前の うしろ足
+ff = line(22, 32, 21, 43, 1.9); shape(ff, 'W', sh='S', d=1)             # 手前の まえあし
+fp = ell(20.5, 44, 2.8, 1.6); shape(fp, 'W'); fill({(19, 45), (21, 45)}, 'K')
+fill(line(24, 36, 24, 42), 'S')
+head = ell(23, 20, 7.8, 7)
+snout = ell(16, 23.5, 5, 3)
 shape(head | snout, 'W', sh='S')
-collar = line(25, 27, 26, 35, 0.9) & (body | head)
-fill(collar, 'R'); fill({(25, 36), (26, 36), (25, 37), (26, 37)}, 'Y'); fill(edge({(25, 36), (26, 36), (25, 37), (26, 37)} | {(25, 38), (26, 38)}) - {(25, 36), (26, 36)}, 'K'); fill({(25, 37), (26, 37)}, 'Y')
-nose = ell(8, 31, 1.8, 1.5); fill(nose, 'K'); put(8, 30, 'W')
-fill({(9, 34), (10, 34), (11, 34), (12, 34), (13, 34), (14, 33)}, 'K')     # 口
-fill({(10, 35), (11, 35), (12, 35), (11, 36)}, 'R'); fill({(9, 35), (10, 36), (11, 37), (12, 36), (13, 35)}, 'K')
-fill(rect(15, 26, 16, 28), 'K'); put(15, 26, 'W')                           # 目
-fill({(13, 24), (14, 23), (15, 23), (16, 23)}, 'K')                         # まゆ（わくわく）
-ear = poly([(21, 23), (26, 23), (26.5, 31), (24, 34), (21.5, 30)])
-shape(ear, 'C'); fill({(23, 25), (23, 26), (22, 27)}, 'O')
-fill(ell(18, 33.5, 1.6, 0.9), 'S')
+patch = ell(21.5, 18, 3, 2.6) & head; fill(patch, 'C')
+fill(rect(20, 17, 21, 19), 'K'); put(20, 17, 'W')                         # 目（ボールを見る）
+nose = ell(11.8, 22.6, 1.8, 1.5); fill(nose, 'K'); put(11, 22, 'W')
+fill({(13, 25), (14, 25), (15, 25), (16, 25), (17, 25), (18, 24)}, 'K')     # 口（わらう）
+fill({(14, 26), (15, 26), (16, 26), (15, 27)}, 'R'); fill({(13, 26), (14, 27), (15, 28), (16, 27), (17, 26)}, 'K')
+ear = poly([(25, 14), (30, 15), (30.5, 24), (28, 27), (25.5, 23)])
+shape(ear, 'C'); fill({(27, 16), (27, 17), (26, 18)}, 'O')
+collar = ell(25, 27.5, 4.5, 1.4) - snout
+fill(collar, 'R'); fill(edge(collar), 'K')
+tag = rect(23, 29, 24, 30); fill(tag, 'Y'); fill(edge(rect(22, 29, 25, 31)) - collar, 'K')
 # ボール（左手前。あかと しろ）
-ball = ell(5, 41.5, 4.8, 4.8)
+ball = ell(7, 41, 4.8, 4.8)
 shape(ball, 'R', hi='W', d=1)
-fill({(x, y) for x, y in ball if 41 <= y <= 42 and (x, y) not in edge(ball)}, 'W')
+fill({(x, y) for x, y in ball if 40 <= y <= 41 and (x, y) not in edge(ball)}, 'W')
 fill(edge(ball), 'K')
-fill(ell(6, 46.5, 4, 0.9), 'O')
-for a, b in (((1, 34), (2, 33)), ((5, 33), (5, 32)), ((9, 34), (10, 33))):   # はねる線
+fill(ell(8, 46, 4, 0.9), 'O')
+for a, b in (((2, 33), (3, 34)), ((7, 32), (7, 33)), ((12, 33), (11, 34))):   # はねる線
     fill(line(*a, *b), 'K')
 # テーブルの下（奥のかべ）は かげの色で うめる
-fill({(x, y) for x, y in rect(48, 24, 57, 29) if g[y][x] == '.'}, 'O')
-fill({(x, y) for x, y in rect(48, 24, 57, 29) if (x + y) % 3 == 0}, 'C')
+fill({(x, y) for x, y in rect(53, 24, 59, 29) if g[y][x] == '.'}, 'O')
+fill({(x, y) for x, y in rect(53, 24, 59, 29) if (x + y) % 3 == 0}, 'C')
 finish('inudaidokorobooru')

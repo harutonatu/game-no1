@@ -110,40 +110,43 @@ canvas(46, 33)
 # ---- しばふ（ななめ上から見た島。上の面＝草、前の面＝土）
 lawn = ell(22, 26.5, 21.5, 4.6)
 fill(lawn, 'G')
-fill({(x, y) for x, y in lawn if (x * 7 + y * 3) % 9 == 0}, 'Y')
+fill({(x, y) for x, y in lawn if (x * 7 + y * 3) % 9 == 0}, 'K')
 front = {(x, y + d) for x, y in lawn if (x, y + 1) not in lawn for d in (1, 2) if abs(x - 22) < 18 or d == 1}
-fill(front, 'O')
+fill(front, 'C')
 fill(edge(lawn | front) & {(x, y) for x, y in lawn | front if y > 26}, 'K')
 fill({(x, y + 1) for x, y in lawn | front if (x, y + 1) not in lawn | front}, 'K')
 # ---- 木（右奥）
 trunk = poly([(33, 8), (36.5, 8), (37, 24), (39, 26.8), (31, 26.8), (32.5, 24)])
-shape(trunk, 'O')
-fill({(x, y) for x, y in trunk - edge(trunk) if x == 33}, 'Y')
+shape(trunk, 'C')
+fill({(x, y) for x, y in trunk - edge(trunk) if x == 35 and y % 3 == 0}, 'K')
 leaves = ell(35, 5.5, 7.5, 5.5) | ell(29.5, 8, 4, 3.2) | ell(41, 8.5, 3.5, 3.2)
 shape(leaves, 'G')
-fill({(x, y) for x, y in leaves - edge(leaves) if (x * 5 + y * 3) % 7 == 0 and y < 7}, 'Y')
+fill({(x, y) for x, y in leaves - edge(leaves) if (x * 5 + y * 3) % 7 == 0 and y < 7}, 'W')
 fill({(x, y) for x, y in leaves - edge(leaves) if (x, y + 2) not in leaves and (x + y) % 2 == 0}, 'K')
-# ---- いぬ（ふせて ねむる。左むき）
-fill({(x, y) for x, y in ell(22, 28, 15, 1.4) if get(x, y) in 'GY' and (x + y) % 3 != 0}, 'K')   # かげ
+# ---- いぬ（白い体・ちゃいろの ぶちと たれ耳・あかい首輪。ふせて ねむる。左むき）
+fill({(x, y) for x, y in ell(22, 28, 15, 1.4) if get(x, y) == 'G' and (x + y) % 3 != 0}, 'K')   # かげ
 tail = ell(38.5, 18, 2.6, 5, ang=30)
-shape(tail, 'Y', sh='O')
+shape(tail, 'W'); fill(ell(39.8, 15.2, 1.4, 1.8, ang=30) - edge(tail), 'C')
 body = ell(24.5, 21, 12.5, 6.8)
-shape(body, 'Y', sh='O')
+shape(body, 'W')
+for sp in (ell(28, 17.5, 3.8, 2.6), ell(34, 21, 2.2, 2)):              # せなかの ぶち
+    fill(sp - edge(body), 'C')
 hind = ell(31, 23.5, 5, 4)                                            # 後ろ足のもも
-shape(hind, 'Y', sh='O')
-fill(ell(28, 27.3, 4, 1.2), 'Y'); fill(edge(ell(28, 27.3, 4, 1.2)), 'K')   # 後ろ足
+shape(hind, 'W')
+fill(ell(28, 27.3, 4, 1.2), 'W'); fill(edge(ell(28, 27.3, 4, 1.2)), 'K')   # 後ろ足
 paws = ell(10, 26.5, 6, 1.6)                                          # 前足（あごの下）
 shape(paws, 'W'); fill({(7, 27), (10, 27), (13, 27)}, 'K')
-chest = ell(16, 23.5, 3.5, 3)
-shape(chest, 'W')
 head = ell(12.5, 17, 7, 6)
-shape(head, 'Y', sh='O')
+shape(head, 'W')
+fill(ell(9.5, 14.5, 2.3, 2) - edge(head), 'C')                         # 目のまわりの ぶち
 snout = ell(5.5, 20.3, 4.5, 3)
 shape(snout, 'W')
 fill(rect(1, 18, 3, 19), 'K')                                        # 鼻
-fill({(4, 22), (5, 22), (6, 22), (7, 21)}, 'K')                               # 口
+fill({(4, 22), (5, 22), (6, 22), (7, 21)}, 'K')                       # 口
+collar = line(21, 17, 22, 24.5, 0.6) - head                        # 首輪
+fill(collar, 'R'); fill(ring(collar) - head, 'K')
 ear = poly([(13, 11.5), (18, 12.5), (20, 20), (17.8, 22.8), (15.3, 19.5)])   # たれた耳
-shape(ear, 'O')
+shape(ear, 'C')
 fill(line(8, 16, 11, 16), 'K'); put(7, 15, 'K'); put(12, 15, 'K')     # とじた目
 # ---- Zz（あたまの上）
 z(2, 0, 4); z(9, 3, 3); z(15, 6, 2)

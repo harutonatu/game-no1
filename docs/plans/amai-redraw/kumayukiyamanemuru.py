@@ -124,47 +124,55 @@ for (ty, hw, hh) in ((14, 3, 6), (19, 5, 7), (25, 7, 9)):
     fill({(x, y) for (x, y) in t if x < 59 and (x + y) % 2 == 0}, 'K')
     fill({(x, y) for (x, y) in t if y <= ty + 1 or (y == ty + hh - 1 and x % 3 != 1)}, 'W')
     fill(edge(t) - {(x, y) for (x, y) in t if y <= ty + 1}, 'K')
-# ---- 雪の山（大きな こんもり）とほらあな ----
-hill = ell(29, 53, 34, 37)
+# ---- 雪の山（大きな こんもり）と、大きく暗い ほらあなの入り口 ----
+hill = ell(30, 58, 37, 46)
 shape(hill, 'W')
-fill({(x, y) for (x, y) in hill if x > 34 + (y - 16) * 0.3 and ((x + y) % 2 == 0 or x > 52)} - edge(hill), 'S')
-cave = {(x, y) for (x, y) in ell(30, 45, 18, 14.5) if y <= 45}
+fill({(x, y) for (x, y) in hill if x > 36 + (y - 14) * 0.3 and ((x + y) % 2 == 0 or x > 54)} - edge(hill), 'S')
+CAVE = ell(31, 47, 25, 26)
+cave = {(x, y) for (x, y) in CAVE if y <= 45}
 fill(cave, 'K')
 fill({(x, y) for (x, y) in cave if (x + y) % 2 == 0 and ((x - 1, y) not in cave or (x + 1, y) not in cave or (x, y - 1) not in cave)}, 'B')
-fill({(x, y) for (x, y) in ell(30, 45, 19.5, 16) - ell(30, 45, 18, 14.5) if y <= 44} & hill, 'S')
-for ix in (17, 22, 28, 34, 40, 45):                            # つらら
+fill({(x, y) for (x, y) in ell(31, 47, 26.5, 27.5) - CAVE if y <= 44} & hill, 'S')
+for ix in (11, 19, 37, 45, 51):                            # つらら
     L = 3 if ix % 2 else 2
     top = min(y for (x, y) in cave if x == ix)
     fill({(ix, top + k) for k in range(L)}, 'W'); put(ix, top + L, 'S')
 # ---- 落ち葉のふとん ----
-bed = ell(30, 45, 16, 2.4)
+bed = ell(32, 45, 21, 2.4)
 fill(bed, 'O')
 for (x, y) in bed:
     if (x * 3 + y) % 5 == 0: put(x, y, 'R')
     elif (x + y * 2) % 4 == 0: put(x, y, 'Y')
 fill({(x, y) for (x, y) in bed if (x, y + 1) not in bed}, 'C')
-# ---- くま（まるくなって ねむる）----
-body = ell(34, 39.5, 11.5, 5.5)
+# ---- くま（入り口から 体を出して、前足に あごをのせて ねむる。顔は こちら）----
+body = ell(41, 36, 13, 8)                                      # 体（奥へ）
 fill(body, 'C')
 fill({(x, y) for (x, y) in body if (x, y - 1) not in body or (x, y - 2) not in body}, 'O')
 fill({(x, y) for (x, y) in body if (x, y + 1) not in body or (x + 1, y) not in body}, 'K')
-leg = ell(42, 43, 4.2, 2)
-shape(leg, 'C'); fill(ell(45, 43, 1.3, 1.2), 'O')
-fill(line(37, 35, 39, 38) | line(33, 35, 35, 38), 'K')          # 毛のすじ
-earB = ell(16, 32.5, 2.6, 2.4); shape(earB, 'C'); fill(ell(16, 32.8, 1.1, 1.0), 'P')
-earF = ell(24, 32.5, 2.6, 2.4); shape(earF, 'C'); fill(ell(24, 32.8, 1.1, 1.0), 'P')
-head = ell(20, 39, 7, 5.6)
+fill(line(44, 31, 46, 35) | line(49, 32, 51, 36) | line(39, 31, 41, 35), 'K')   # 毛のすじ
+leg = ell(51, 42.5, 4.5, 2.3)
+shape(leg, 'C'); fill(ell(54, 42.5, 1.3, 1.2), 'O')
+for (cx) in (14, 32):                                          # 丸い耳 2 つ
+    e = ell(cx, 23.5, 3.8, 3.6); shape(e, 'C'); fill(ell(cx, 23.8, 1.9, 1.8), 'P')
+head = ell(23, 32, 11, 9)
 fill(head, 'C')
-fill({(x, y) for (x, y) in head if (x, y - 1) not in head or (x + 1, y - 1) not in head}, 'O')
+fill({(x, y) for (x, y) in head if ((x, y - 1) not in head or (x, y - 2) not in head) and x > 16}, 'O')
 fill(edge(head), 'K')
-mz = ell(15.5, 41, 3, 2.1)
-fill(mz, 'O'); fill(edge(mz), 'K'); fill(rect(13, 40, 14, 40), 'K')
-for (dx, dy) in ((0, 0), (1, 1), (2, 1), (3, 0)): put(19 + dx, 38 + dy, 'K')   # とじた目
-fill(ell(21.5, 41, 1.5, 0.9), 'P')
-paw = ell(21, 44, 3.8, 1.7)
-shape(paw, 'C'); fill({(19, 44), (21, 44), (23, 44)}, 'O')
-# ---- Zzz（ほらあなの上の夜空）----
-zz(21, 24, 4, 'K'); zz(26, 18, 5, 'K'); zz(33, 9, 6, 'Y')
+for ex in (16, 26):                                            # とじた目（下へ ふくらむ線）
+    for (dx, dy) in ((0, 0), (1, 1), (2, 1), (3, 1), (4, 0)): put(ex + dx, 30 + dy, 'K')
+mz = ell(23, 36.5, 5.5, 3.6)                                       # 白いマズル
+fill(mz, 'W'); fill({(x, y) for (x, y) in mz if (x, y + 1) not in mz}, 'S'); fill(edge(mz), 'K')
+fill(rect(22, 34, 24, 35), 'K'); put(22, 34, 'W')   # 鼻
+fill({(23, 36), (22, 37), (24, 37)}, 'K')   # 口
+fill(ell(14.5, 35, 2.2, 1.2) | ell(31.5, 35, 2.2, 1.2), 'P')   # ほっぺ
+for cx in (15, 31):                                            # 前足（あごの下）
+    p = ell(cx, 42, 5, 2.6); shape(p, 'C'); fill({(cx - 2, 42), (cx, 42), (cx + 2, 42)}, 'O')
+# ---- Zzz（雪の上は くろ、夜空は きいろ）----
+def zzs(x, y, n):
+    for i in range(n):
+        for (px, py) in ((x + i, y), (x + i, y + n - 1), (x + n - 1 - i, y + i)):
+            put(px, py, 'K' if at(px, py) in ('W', 'S') else 'Y')
+zzs(34, 10, 5); zzs(39, 2, 6)
 # ---- 手前の雪 ----
 snow = {(x, y) for (x, y) in ALL if y >= 46 - 1.2 * math.sin(x / 5.0)}
 fill(snow, 'W'); fill({(x, y) for (x, y) in snow if (x, y - 1) not in snow}, 'S')

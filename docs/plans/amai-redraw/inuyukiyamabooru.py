@@ -119,7 +119,7 @@ tree = set()
 for (top, half, y1) in ((14, 3, 20), (18, 4.5, 26), (22, 6, 32)):
     tree |= poly([(8, top), (8 + half, y1), (8 - half, y1)])
 trunk = rect(7, 32, 9, 37)
-shape(trunk, 'O')
+shape(trunk, 'C')
 shape(tree, 'G')
 for (y1, half) in ((19, 2), (25, 3.5), (31, 5)):
     fill({(x, y1) for x in range(int(8 - half), int(8 + half) + 1) if x % 2 == 0} & tree, 'W')
@@ -139,27 +139,33 @@ fill({(54, 33), (55, 33), (54, 34)}, 'W')
 fill(edge(ball), 'K')
 for a, b in (((61, 31), (63, 29)), ((62, 35), (63, 35))):
     fill(line(a[0], a[1], b[0], b[1]), 'K')
-# ---- いぬ（ボールを おいかける。右むき）
+# ---- いぬ（白い体・ちゃいろの ぶちと たれ耳・あかい首輪。ボールを おいかける。右むき）
 fill({(x, y) for x, y in ell(28, 43.3, 14, 1.4) if get(x, y) in 'WS'}, 'S')
-tail = ell(18, 20, 2.2, 5, ang=-30)
-shape(tail, 'Y', sh='O')
-legs = (((20, 31), (16, 41)), ((24, 32), (24, 42)), ((32, 32), (34, 42)), ((36, 30), (42, 39)))
-for i, (a, b) in enumerate(legs):
-    leg = line(a[0], a[1], b[0], b[1], 1.5)
-    shape(leg, 'O' if i in (1, 2) else 'Y', sh=None if i in (1, 2) else 'O')
-    shape(ell(b[0] + 0.5, b[1] + 0.5, 2.3, 1.6), 'W')
-body = ell(28, 28, 12, 7, ang=-6)
-shape(body, 'Y', sh='O')
+tail = ell(17.5, 21, 2, 4.5, ang=-35)
+shape(tail, 'W', sh='S', d=1); fill(ell(16, 18.5, 1.2, 1.7, ang=-35) - edge(tail), 'C')
+def leg(a, b, far):
+    m = line(a[0], a[1], b[0], b[1], 1.5)
+    shape(m, 'W', sh='S' if far else None, d=2 if far else 1)
+    shape(ell(b[0] + 0.5, b[1] + 0.3, 2.3, 1.6), 'W')
+leg((20, 31), (14, 40), True)                                          # 奥の後ろ足
+leg((35, 31), (41, 39), True)                                          # 奥の前足
+body = ell(28, 27.5, 12, 6.8, ang=-6)
+shape(body, 'W', sh='S', d=1)
+fill(ell(25, 24, 5, 2.8) - edge(body), 'C')                            # せなかの ぶち
+fill(ell(19.5, 29, 2.2, 2.4) - edge(body), 'C')
+leg((22, 32), (21, 42), False)                                          # 手前の後ろ足
+leg((33, 32), (31, 42), False)                                          # 手前の前足
 head = ell(40.5, 18, 7.5, 6.6)
-shape(head, 'Y', sh='O')
+shape(head, 'W', sh='S', d=1)
+fill(ell(42.5, 15, 2.6, 2.4) - edge(head), 'C')                         # 目のまわりの ぶち
 snout = ell(46.5, 20, 4.5, 3.2)
 shape(snout, 'W')
 fill(rect(49, 17, 51, 18) | {(50, 19)}, 'K'); put(49, 17, 'W')         # 鼻
 mouth = poly([(43.5, 21.5), (49, 21.5), (47.5, 25), (45, 24.5)])
-fill(mouth, 'R'); fill(edge(mouth), 'K'); fill({(46, 24), (46, 23)}, 'P' if False else 'R')
-fill(ell(42.5, 15.5, 1.4, 1.8), 'K'); put(42, 15, 'W'); fill(line(41, 12.5, 44, 12.5), 'O')   # 目
-ear = poly([(34.5, 13), (38, 12.5), (36.8, 22), (33.3, 20.5)])       # たれた耳
-shape(ear, 'O')
-collar = line(34.5, 21, 36.5, 25.5, 0.8)
-fill(collar, 'R'); fill(edge(collar), 'K')
+fill(mouth, 'R'); fill(edge(mouth), 'K'); fill({(46, 24), (46, 23)}, 'R')
+fill(ell(42.5, 15.5, 1.3, 1.7), 'K'); put(42, 15, 'W')                 # 目
+collar = line(34.5, 19, 36, 26, 0.8) - head                            # 首輪
+fill(collar, 'R'); fill(ring(collar) - head, 'K')
+ear = poly([(34.5, 12.5), (38.5, 12), (37, 22.5), (33.3, 20.5)])       # たれ耳
+shape(ear, 'C')
 finish('inuyukiyamabooru', holec='S')

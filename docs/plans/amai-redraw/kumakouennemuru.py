@@ -108,50 +108,50 @@ def finish(name, holec='K'):
 # ================= 絵 =================
 canvas(64, 48)
 # ---- しばふ（ななめ上から見た島。前の面＝土）
-lawn = ell(32, 41.3, 29, 4.3)
+lawn = ell(32, 41.3, 27.5, 4.2)
 fill(lawn, 'G')
 fill({(x, y) for x, y in lawn if (x * 7 + y * 3) % 11 == 0}, 'Y')
 front = {(x, y + 1) for x, y in lawn if (x, y + 1) not in lawn}
 fill(front, 'C')
 fill({(x, y + 1) for x, y in lawn | front if (x, y + 1) not in lawn | front}, 'K')
-fill(edge(lawn) & {(x, y) for x, y in lawn if x < 3 or x > 60}, 'K')
-for x in range(2, 62, 3):                                              # 奥のふちの草
+fill(edge(lawn) & {(x, y) for x, y in lawn if x < 5 or x > 58}, 'K')
+for x in range(4, 61, 3):                                              # 奥のふちの草
     ys = [y for (xx, y) in lawn if xx == x]
     if ys: put(x, min(ys) - 1, 'G'); put(x, min(ys) - 2, 'K')
-# ---- 木（右奥。こかげ）
-trunk = poly([(51, 12), (56, 12), (56.5, 32), (59.5, 37), (47, 37), (50.5, 32)])
+# ---- 木（左。くまが もたれる）
+trunk = poly([(12, 10), (19, 10), (19.5, 34), (23, 39), (7, 39), (11.5, 34)])
 shape(trunk, 'C')
-fill({(x, y) for x, y in trunk - edge(trunk) if x == 55 and y % 3 == 0}, 'K')
-leaves = ell(53, 8.5, 9, 6.3) | ell(45.5, 12, 4, 3.3) | ell(60.5, 12.5, 3.5, 3.3)
+for bx in (13, 16):
+    fill({(bx + (y // 5) % 2, y) for y in range(12, 37) if y % 5 != 0} & trunk, 'K')   # 木の皮
+leaves = ell(15, 6, 11, 5.5) | ell(6, 9, 4.2, 3.2) | ell(24.5, 9, 4.2, 3.2)
 shape(leaves, 'G')
-fill({(x, y) for x, y in leaves - edge(leaves) if (x * 5 + y * 3) % 9 == 0 and y < 9}, 'Y')
+fill({(x, y) for x, y in leaves - edge(leaves) if (x * 5 + y * 3) % 9 == 0 and y < 7}, 'Y')
 fill({(x, y) for x, y in leaves - edge(leaves) if (x, y + 2) not in leaves and (x + y) % 2 == 0}, 'K')
-fill({(x, y) for x, y in ell(50, 38.5, 13, 1.8) if get(x, y) in 'GY' and (x + y) % 2 == 0}, 'K')   # こかげ
-# ---- くま（あおむけで ねむる。あたまは左）
-fill({(x, y) for x, y in ell(30, 41.5, 18, 1.6) if get(x, y) in 'GY'}, 'K')
-for cx, cy, ang in ((41, 24, 20), (47, 29, 60)):                       # 後ろ足（上を むく）
-    leg = ell(cx, cy, 3.6, 5, ang=ang)
-    shape(leg, 'C')
-pad1 = ell(42.3, 20.5, 2.6, 2, ang=20); shape(pad1, 'P', o=None)
-pad2 = ell(50.5, 27.5, 2.2, 2.4, ang=60); shape(pad2, 'P', o=None)
-body = ell(34, 33, 13.5, 7.5)
+# ---- くま（木に もたれて すわって ねむる）
+fill({(x, y) for x, y in ell(31, 42, 15, 1.5) if get(x, y) in 'GY'}, 'K')   # かげ
+body = ell(29, 32, 11, 9)
 shape(body, 'C', hi='O', d=1)
-belly = ell(33, 30.5, 9, 4.2)
-fill(belly, 'O'); fill({(x, y) for x, y in belly if (x, y - 1) not in belly or (x - 1, y - 1) not in belly}, 'Y')
-fill(edge(belly) & {(x, y) for x, y in belly if y > 31}, 'C')
-earL = ell(7, 22.5, 3.8, 3.8); shape(earL, 'C'); fill(ell(7, 22.8, 1.9, 1.9), 'P')
-earR = ell(22, 22, 3.8, 3.8); shape(earR, 'C'); fill(ell(22, 22.3, 1.9, 1.9), 'P')
-head = ell(14.5, 30.5, 10, 8.5)
+belly = ell(29.5, 33.5, 6.5, 5.5)
+fill(belly, 'O'); fill({(x, y) for x, y in belly if (x - 1, y - 1) not in belly}, 'Y')
+for cx, cy in ((21.5, 40.5), (39, 40.5)):                              # 足（前へ のばす）
+    f = ell(cx, cy, 4.8, 3.2)
+    shape(f, 'C'); fill(ell(cx, cy, 2.4, 1.6), 'P')
+for cx, ang in ((22.5, 25), (36.5, -25)):                                # うで（おなかの上）
+    a = ell(cx, 32.5, 2.3, 4.5, ang=ang)
+    shape(a, 'C')
+earL = ell(18.5, 8.5, 4.3, 4.3); earR = ell(38, 9.5, 4.3, 4.3)
+shape(earL, 'C'); fill(ell(18.5, 8.8, 2.2, 2.2), 'P')
+shape(earR, 'C'); fill(ell(38, 9.8, 2.2, 2.2), 'P')
+head = ell(28.5, 17.5, 11.5, 9, ang=8)                                 # あたまを 少し かたむける
 shape(head, 'C', hi='O', d=1)
-mz = ell(14.5, 34, 4.5, 3.3)
+mz = ell(29.5, 22.3, 5.8, 4, ang=8)
 fill(mz, 'W'); fill(edge(mz), 'K')
-fill(rect(13, 32, 16, 33) | {(14, 34), (15, 34)}, 'K'); put(13, 32, 'W')   # 鼻
-fill({(13, 36), (14, 35), (15, 35), (16, 36)}, 'K')                    # 口
-for ex in (9, 20):                                                     # とじた目（下に ふくらむ弧）
-    fill({(ex - 2, 28), (ex - 1, 29), (ex, 29), (ex + 1, 29), (ex + 2, 28)}, 'K')
-fill(ell(7, 32, 1.8, 1.1) | ell(22, 32, 1.8, 1.1), 'P')
-arm = ell(29, 29, 5, 2.4, ang=-15)                                     # おなかの上の うで
-shape(arm, 'C'); fill({(25, 29), (26, 28)}, 'O')
-# ---- Zz（あたまの上）
-z(16, 13, 5); z(24, 8, 4); z(31, 4, 3)
-finish('kumakouennemuru', holec='G')
+fill(rect(28, 20, 31, 20) | {(29, 21), (30, 21)}, 'K')                      # 鼻
+fill({(29, 22), (30, 22), (28, 24), (29, 23), (30, 23), (31, 24)}, 'K')                              # 口
+for ex, ey in ((22, 16), (34.5, 16.5)):                                    # とじた目（下に ふくらむ弧）
+    ex, ey = int(ex), int(ey)
+    fill({(ex - 2, ey), (ex - 1, ey + 1), (ex, ey + 1), (ex + 1, ey + 1), (ex + 2, ey)}, 'K')
+fill(ell(20.5, 20, 2, 1.2) | ell(37.5, 21.5, 2, 1.2), 'P')               # ほっぺ
+# ---- Zz（右上）
+z(46, 12, 5); z(53, 6, 4); z(59, 2, 3)
+finish('kumakouennemuru', holec='C')

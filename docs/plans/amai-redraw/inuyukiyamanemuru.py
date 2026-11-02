@@ -1,5 +1,6 @@
 # ゆきやまで いぬが ねむる（inuyukiyamanemuru）M 段。python3 inuyukiyamanemuru.py で inuyukiyamanemuru.txt を書き出す
-# 色は 5 つ（K ふちどり・W 雪・S 山と雪のかげ・C いぬ・R マフラー）。場所の物は 山 1 つ（雪は地面）
+# 色は 5 つ（K ふちどり・W 雪といぬ・S 山とかげ・C ぶちと耳・R 首輪）
+# いぬは全部の絵でそろえる見た目（手本 inudaidokorooyatsu・inukouenoyatsu）。白い体は K のふちどりと S のかげで雪から区切る。場所の物は 山 1 つ（雪は地面）
 import math
 ID='inuyukiyamanemuru'
 W,H=42,33
@@ -94,29 +95,24 @@ for x in range(W):
     if q>0: put(gr,x,int(26.0+6.0*math.sqrt(q)),'S')
 draw(gr)
 shadow(22,27.4,15,1.6,'W','S',solid=0.3)
-# ---- いぬ（雪の上で まるくなって ねむる。赤い マフラー）
+# ---- いぬ（雪の上で まるくなって ねむる。白い体・ちゃいろの ぶちと たれ耳・あかい首輪）
 dog=layer()
-ell(dog,23,20.6,10.4,5.8,'C',light=('W',-0.9))                 # からだ
+ell(dog,23,20.6,10.4,5.8,'W',shade=('S',0.6))                 # からだ
+ell(dog,25.4,18.6,3.6,2.6,'C')                                  # ぶち
 ell(dog,28.6,25.2,6.6,1.6,'C')                                  # まるめた しっぽ
-ell(dog,30.6,26.0,2.6,0.8,'W')                                  # しっぽの先
 draw(dog)
-sc=layer()
-ell(sc,16.6,21.0,2.8,5.0,'R',ang=-10)                           # マフラー
-line(sc,17,24,21,27.5,'R',1.0)
-for y in range(H):
-    for x in range(W):
-        if sc[y][x]=='R' and (x-y)%5==0: sc[y][x]='W'
-draw(sc)
 hd=layer()
-ell(hd,10.4,19.8,6.6,5.4,'C')                                   # あたま（前足に のせる）
-ell(hd,6.0,22.4,3.0,2.0,'W')                                    # 口のまわり
-ell(hd,7.0,26.0,3.0,1.2,'C'); ell(hd,13.0,26.2,3.0,1.2,'C')      # 前足
+ell(hd,10.4,19.8,6.6,5.4,'W',shade=('S',0.85))                 # あたま（前足に のせる）
+ell(hd,12.0,17.2,2.6,1.8,'C')                                   # 目の まわりの ぶち
+ell(hd,7.0,26.0,3.0,1.2,'W'); ell(hd,13.0,26.2,3.0,1.2,'W')      # 前足
 draw(hd)
-er=layer(); ell(er,13.8,17.0,2.4,4.2,'C',ang=-50); draw(er)      # たれた耳
+er=layer(); ell(er,14.4,17.2,1.8,3.6,'C',ang=-40); draw(er)      # たれた耳
+col=layer(); ell(col,18.4,21.0,1.7,5.2,'R',ang=-8); draw(col)   # 首輪
 for ex in (5,10):                                               # とじた目
     dots(grid,[(ex,18),(ex+1,19),(ex+2,19),(ex+3,18)],'K')
 dots(grid,[(3,21),(4,21),(3,22),(4,22)],'K')                     # はな
 dots(grid,[(5,23),(6,23),(7,22)],'K')
+for x in (8,9,14,15): put(grid,x,26,'K') if grid[26][x]=='W' else None   # 指
 # ---- Zzz と 雪のつぶ
 def z(x,y,n):
     for i in range(n): put(grid,x+i,y,'K'); put(grid,x+i,y+n-1,'K'); put(grid,x+n-1-i,y+i,'K')

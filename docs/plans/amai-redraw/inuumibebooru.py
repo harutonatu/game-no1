@@ -116,11 +116,11 @@ fill({(x, y) for x, y in sea if y == 27}, 'B')
 fill({(x, y) for x, y in sea if y in (29, 31) and (x // 3 + y) % 4 == 0}, 'B')
 fill({(x, y) for x, y in sea if y == 31 or (y == 30 and x % 5 in (0, 1))}, 'W')   # 波うちぎわ
 fill(sand, 'Y')
-fill({(x, y) for x, y in sand if (x * 7 + y * 5) % 13 == 0}, 'O')
+fill({(x, y) for x, y in sand if (x * 7 + y * 5) % 13 == 0}, 'C')
 fill(edge(ground) & {(x, y) for x, y in ground if y > 27}, 'K')
 fill({(x, y) for x, y in ground if y == 27}, 'K')
 # ---- パラソル（左奥）
-fill({(x, y) for x, y in ell(13, 41.5, 7, 1.2) if get(x, y) in 'YO' and (x + y) % 2 == 0}, 'O')
+fill({(x, y) for x, y in ell(13, 41.5, 7, 1.2) if get(x, y) in 'YC' and (x + y) % 2 == 0}, 'C')
 pole = line(9.5, 41, 11.5, 9)
 fill(pole, 'K')
 can = poly([(-1, 13.5), (3, 7), (11, 3.5), (19, 5), (25, 10), (24, 11.5), (19, 10.5), (13, 12), (7, 11), (1, 14.5)])
@@ -140,33 +140,47 @@ fill({(52, 4), (51, 5), (52, 5)}, 'W')
 fill(edge(ball), 'K')
 for a, b in (((60, 13), (62, 15)), ((48, 1), (47, 0)), ((61, 2), (63, 1))):
     fill(line(a[0], a[1], b[0], b[1]), 'K')                              # 動きの線
-# ---- いぬ（ボールへ とびつく。右むき）
-fill({(x, y) for x, y in ell(31, 40.5, 12, 1.4) if get(x, y) in 'YO'}, 'K')   # かげ
-tail = ell(15, 14, 2.2, 5, ang=-35)
-shape(tail, 'Y', sh='O')
-for a, b in (((21, 25), (12, 28)), ((24, 27), (17, 33))):              # 後ろ足（うしろへ のばす）
-    leg = line(a[0], a[1], b[0], b[1], 1.6)
-    shape(leg, 'Y', sh='O')
-    shape(ell(b[0] - 1, b[1] + 0.5, 2.3, 1.7), 'W')
-body = ell(28, 22, 11.5, 6, ang=-22)
-shape(body, 'Y', sh='O')
-fill({(x, y) for x, y in ell(30, 25, 6, 2, ang=-22)} & body - edge(body), 'W')   # おなか
-for a, b in (((35, 21), (42, 26)), ((33, 23), (38, 29))):              # 前足（ボールへ のばす）
-    leg = line(a[0], a[1], b[0], b[1], 1.6)
-    shape(leg, 'Y', sh='O')
-    shape(ell(b[0] + 0.5, b[1] + 0.5, 2.2, 1.8), 'W')
-head = ell(40, 11.5, 7, 6.2)
-chest = ell(37, 19, 3.2, 3)
-shape(chest, 'W')
-shape(head, 'Y', sh='O')
-snout = ell(46.5, 13, 4.6, 3.2)
+# ---- いぬ（白い体・ちゃいろの ぶちと たれ耳・あかい首輪。ボールを おって かける。右むき）
+fill({(x, y) for x, y in ell(29, 39, 13, 1.3) if get(x, y) in 'YC'}, 'K')   # かげ
+tail = ell(16.5, 18, 1.8, 4, ang=-50)
+shape(tail, 'W', sh='S', d=1); fill(ell(14.5, 16.3, 1.1, 1.5, ang=-50) - edge(tail), 'C')
+def leg(a, b, far):
+    m = line(a[0], a[1], b[0], b[1], 1.5)
+    shape(m, 'W', sh='S' if far else None, d=2 if far else 1)
+    f = ell(b[0] + 0.5, b[1], 2.2, 1.5)
+    shape(f, 'W')
+leg((20, 26), (13, 35), True)                                          # 奥の後ろ足
+leg((36, 26), (41, 35), True)                                          # 奥の前足
+body = ell(28, 23, 11.5, 6)
+shape(body, 'W', sh='S', d=1)
+fill(ell(25, 20, 4.5, 2.6) - edge(body), 'C')                          # せなかの ぶち
+fill(ell(32, 24, 2, 1.6) - edge(body), 'C')
+leg((22, 27), (21, 37), False)                                          # 手前の後ろ足
+leg((34, 27), (32, 37), False)                                          # 手前の前足
+head = ell(41, 13.5, 6.5, 6)
+shape(head, 'W', sh='S', d=1)
+fill(ell(42.5, 10.8, 2.4, 2.2) - edge(head), 'C')                       # 目のまわりの ぶち
+snout = ell(47, 15.5, 4.3, 3)
 shape(snout, 'W')
-fill(rect(49, 10, 51, 11) | {(50, 12)}, 'K'); put(49, 10, 'W')                      # 鼻
-mouth = poly([(43, 14.5), (49, 14), (47, 17), (44, 16.5)])             # あけた口と した
-fill(mouth, 'R'); fill(edge(mouth), 'K'); fill({(45, 16)}, 'R')
-fill(ell(42.5, 9, 1.4, 1.8), 'K'); put(42, 8, 'W'); fill(line(41, 6, 44, 6), 'O')                   # 目
-ear = poly([(35, 6), (39.5, 6), (37.5, 16), (33.5, 14.5)])                  # 耳（うしろへ なびく）
-shape(ear, 'O')
-collar = line(34.5, 14, 36.5, 18.5, 0.8)
-fill(collar, 'R'); fill(edge(collar), 'K'); put(36, 18, 'Y')
+fill(rect(50, 13, 51, 14) | {(50, 15)}, 'K'); put(50, 13, 'W')         # 鼻
+mouth = poly([(44, 17), (49.5, 17), (48, 20), (45, 19.5)])             # あけた口と した
+fill(mouth, 'R'); fill(edge(mouth), 'K'); put(46, 19, 'R')
+fill(ell(42.5, 11, 1.2, 1.6), 'K'); put(42, 10, 'W')                   # 目（ボールを 見る）
+collar = line(35, 15, 36.5, 21, 0.8) - head                            # 首輪
+fill(collar, 'R'); fill(ring(collar) - head, 'K')
+ear = poly([(35, 8), (39.5, 8), (38, 18), (34, 16.5)])                  # たれ耳
+shape(ear, 'C')
+# 足のあいだの 閉じた空き：うみの高さは うみの色、下は すなの色
+def inner():
+    out = set(); st = [(x, y) for x in range(W) for y in (0, H - 1)] + [(x, y) for y in range(H) for x in (0, W - 1)]
+    st = [p for p in st if g[p[1]][p[0]] == '.']; out = set(st)
+    while st:
+        x, y = st.pop()
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            q = (x + dx, y + dy)
+            if 0 <= q[0] < W and 0 <= q[1] < H and q not in out and g[q[1]][q[0]] == '.':
+                out.add(q); st.append(q)
+    return [(x, y) for y in range(H) for x in range(W) if g[y][x] == '.' and (x, y) not in out]
+for x, y in inner():
+    g[y][x] = 'S' if y < 32 else 'Y'
 finish('inuumibebooru', holec='Y')
