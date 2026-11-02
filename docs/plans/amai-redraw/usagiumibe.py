@@ -35,75 +35,68 @@ def fill(m,f):
 def outline(m,c='K'):
     for (x,y) in m:
         if any((x+dx,y+dy) not in m for dx,dy in((1,0),(-1,0),(0,1),(0,-1))): put(x,y,c)
+# 2 回目：うさぎを絵の半分の大きさに。場所の物は パラソルと海 の 2 つ（砂浜は地面、タオルはうさぎの下に敷くだけ）
 # --- 海と砂浜（下のすみを丸く切る） ---
-def shore(x): return 26+x*0.06+1.3*math.sin(x/4.5)
-R0=15
-ground=set((x,y) for y in range(19,H) for x in range(W)
+HZ=17
+def shore(x): return 22.5+x*0.04+1.0*math.sin(x/4.5)
+R0=16
+ground=set((x,y) for y in range(HZ,H) for x in range(W)
            if not ((x<R0 and y>H-1-R0 and (R0-x)**2+(y-(H-1-R0))**2>R0*R0) or (x>W-1-R0 and y>H-1-R0 and (x-(W-1-R0))**2+(y-(H-1-R0))**2>R0*R0)))
 for (x,y) in ground:
     s=shore(x)
-    if y<21: c='B'
-    elif y<s-1: c='B' if (y==22 and (x//5)%3==0) or (y==24 and (x//4+1)%4==0) else 'S'
+    if y<HZ+2: c='B'
+    elif y<s-1: c='B' if (y==HZ+3 and (x//5)%3==0) else 'S'
     elif y<s+0.5: c='W'
     elif y<s+2: c='O' if (x//3+y)%2==0 else 'Y'
     else: c='O' if (x*13+y*7)%37==0 else 'Y'
     put(x,y,c)
-for x0,y0 in((3,23),(30,23),(50,22)): line(x0,y0,x0+4,y0,'W')
-# --- パラソルのかげ（砂に落ちる。右下へずらす）と柱のかげ ---
-fill(mask_ell(45,41,17,4.5),lambda x,y:'O' if g[y][x] in 'YO' else None)
-# --- タオル（斜めから見た四角。しまは長い向きに） ---
-def tw_y(x): return 33-3*(x-9)/40
-tw=mask_poly([(9,33),(49,30),(56,44),(13,47)])
-fill(tw,lambda x,y:'R' if (x//3)%3==0 else ('W' if y==tw_y(x)+2 else 'P'))
+# --- パラソルのかげ（砂に落ちる） ---
+fill(mask_ell(50,40,14,4),lambda x,y:'O' if g[y][x] in 'YO' else None)
+# --- タオル（うさぎの下に敷く。しま） ---
+tw=mask_poly([(6,33),(54,30),(60,44),(4,47)])
+fill(tw,lambda x,y:'R' if (x//3)%3==0 else 'P')
 outline(tw)
-# --- パラソルの柱（タオルの奥に立つ） ---
-line(46,10,49,31,'K',1)
-# --- うさぎ（左を向いて ねそべる。目を とじる） ---
-body=mask_ell(36,38,10,4.8)|mask_ell(43,36.5,6,4.6)
-head=mask_ell(23,36,6.2,5.2)
-paw=mask_ell(19.5,41.5,3.5,1.6)
-tail=mask_ell(49.5,34.5,2.2,2.2)
-ear1=mask_ell(31,26,8,2.4,-38)
-ear2=mask_ell(28,27.5,7,2.2,-58)
-def shade(cx,cy,ry):
-    return lambda x,y:'S' if y>cy+ry*0.55 else 'W'
-fill(ear2,lambda x,y:'S'); outline(ear2)
-fill(ear1,lambda x,y:'W'); outline(ear1)
-fill(mask_ell(31.3,25.8,5,0.9,-38),lambda x,y:'P')
-fill(body,shade(38,37,4.8)); outline(body)
-fill(tail,lambda x,y:'W'); outline(tail)
-fill(head,shade(23,36,5.2)); outline(head)
-fill(paw,lambda x,y:'W'); outline(paw)
-for (x,y) in((19,35),(20,36),(21,36),(22,35)): put(x,y,'K')   # とじた目
-for (x,y) in((20,38),(21,38),(22,38)): put(x,y,'P')            # ほっぺ
-for (x,y) in((17,36),(17,37)): put(x,y,'P')                    # はな
-put(18,38,'K')                                                 # くち
-for (x,y) in((25,32),(26,32),(24,33)): put(x,y,'W')            # 頭の光
-# 後ろ足（体の下から 後ろへ のびる）
-foot=mask_ell(47,41.5,4.5,1.6)
-fill(foot,lambda x,y:'W'); outline(foot)
-for (x,y) in((47,41),(48,41),(49,41)): put(x,y,'P')
-# 体の下のかげ（タオルに落ちる）
-for x in range(28,48): 
-    if g[44][x] in 'PW': put(x,44,'R' if g[44][x]=='P' else 'P')
-# --- パラソル（ななめから見た かさ。赤と白のしま・右がかげ） ---
-cx,cy=44,13
-dome=set((x,y) for (x,y) in mask_ell(cx,cy,21,10,-8) if y<=cy+1.5-0.14*(x-cx)+(1 if (x//4)%2 else 0))
+# --- パラソル（柱はうさぎの奥） ---
+cx,cy=49,8
+line(50,9,53,32,'K',1)
+dome=set((x,y) for (x,y) in mask_ell(cx,cy,14,7,-6) if y<=cy+1-0.1*(x-cx)+(1 if (x//4)%2 else 0))
 def stripe(x,y):
-    a=math.atan2(x-cx,cy+4-y); k=int((a+3.2)/0.26)%2
+    a=math.atan2(x-cx,cy+3-y); k=int((a+3.2)/0.3)%2
     if k==0: return 'R'
-    return 'P' if x>cx+5 else 'W'
+    return 'P' if x>cx+4 else 'W'
 fill(dome,stripe); outline(dome)
-for y in range(1,5): put(cx-1,y,'K')
-put(cx-2,1,'K');put(cx,1,'K')
-# --- Zzz（ねむり。頭から上へ） ---
+put(cx-1,0,'K');put(cx-1,1,'K');put(cx-1,2,'K')
+# --- うさぎ（絵の半分。頭を前足にのせて ねむる） ---
+WS=lambda cx,cy,rx,ry:(lambda x,y:'S' if ((x-cx)/rx)*0.5+((y-cy)/ry)>0.62 else 'W')
+ear2=mask_ell(36,18,9.5,3.2,-28); ear1=mask_ell(28,16,10,3.4,-62)
+body=mask_ell(42,35,14,7.5); tail=mask_ell(56.5,31,2.6,2.6)
+foot=mask_ell(53,41.5,5,1.8)
+head=mask_ell(22,30,11,8.5)
+pawL=mask_ell(15,39.5,4,2.2); pawR=mask_ell(27,40,4,2.2)
+fill(ear2,WS(36,18,9.5,3.2)); outline(ear2)
+fill(mask_ell(36.5,17.7,6.5,1.1,-28),lambda x,y:'P')
+fill(ear1,WS(28,16,10,3.4)); outline(ear1)
+fill(mask_ell(28.3,15.5,6.8,1.2,-62),lambda x,y:'P')
+fill(body,WS(42,35,14,7.5)); outline(body)
+fill(tail,lambda x,y:'W'); outline(tail)
+fill(foot,lambda x,y:'W'); outline(foot)
+for x in (51,53,55): put(x,42,'P')
+fill(head,WS(22,30,11,8.5)); outline(head)
+for p in (pawL,pawR):
+    fill(p,lambda x,y:'W'); outline(p)
+for (x,y) in((14,40),(16,40),(26,41),(28,41)): put(x,y,'K')     # 指
+# 顔：とじた目（下へ ふくらむ線）・ピンクの鼻・口・ほっぺ
+for ex in (14,26):
+    for (dx,dy) in((0,0),(1,1),(2,1),(3,1),(4,0)): put(ex+dx,29+dy,'K')
+for (x,y) in((20,31),(21,31),(22,31),(21,32)): put(x,y,'P')
+for (x,y) in((21,33),(20,34),(19,34),(22,34),(23,34)): put(x,y,'K')
+for (x,y) in((12,32),(13,32),(14,32),(12,33),(13,33),(28,32),(29,32),(30,32),(29,33),(30,33)): put(x,y,'P')
+for (x,y) in((16,24),(17,24),(15,25)): put(x,y,'S')                # 頭の丸み
+# --- Zzz と たいよう（小さく） ---
 def z(x,y,n,c='K'):
     for i in range(n): put(x+i,y,c); put(x+i,y+n-1,c); put(x+n-1-i,y+i,c)
-z(14,22,4);z(8,13,5);z(15,2,6)
-# --- たいよう ---
-fill(mask_ell(5,5,3.5,3.5),lambda x,y:'Y' if x+y<10 else 'O')
-for a in range(0,360,45):
-    r=math.radians(a); put(round(5+5.5*math.cos(r)),round(5+5.5*math.sin(r)),'O')
+z(11,11,5);z(3,5,5);z(11,0,6)  # 斜めの線が見える大きさ
+fill(mask_ell(29,3,2.6,2.6),lambda x,y:'Y' if x+y<33 else 'O')
 # 文字の地図を書き出す（むだな空き行・列を切る）
 rows=[''.join(r) for r in g]
 while rows and set(rows[0])=={'.'}: rows.pop(0)

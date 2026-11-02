@@ -54,144 +54,107 @@ def shape(m, c, o='K', sh=None, hi=None):
     if o:
         fill(edge(m), o)
 
-# ---- 床（板の間・遠近の線）y 31..47 ----
-rug = ell(35, 41.5, 30, 6)                            # 床のしきもの（だ円＝ななめから見た丸）
-fill(rug, 'Y')
-fill({(x, y) for x, y in rug if ((x - 35) / 30) ** 2 + ((y - 41.5) / 6) ** 2 > .62}, 'O')
-fill({(x, y) for x, y in rug if (x + 2 * y) % 7 == 0 and ((x - 35) / 30) ** 2 + ((y - 41.5) / 6) ** 2 <= .62}, 'O')
-fill(edge(rug), 'K')
-fill({(x, 31) for x in range(W)}, 'K')               # 壁と床のさかい（はばき）
-fill({(x, 30) for x in range(W)}, 'C')
-for x0 in (0, 21, 44):                               # 床板の目地（奥へすぼまる）
-    pass
-# ---- 窓（右上・外は空と木）----
-win = rect(40, 1, 61, 19)
+# ---- 床（板の間・奥へすぼまる目地）y 39..47 ----
+floor = rect(0, 39, 63, 47)
+fill(floor, 'Y')
+for y in (41, 44):
+    fill({(x, y) for x in range(W)}, 'O')
+for vx in (-60, -28, 4, 36, 68, 100, 132):
+    fill(line(32 + (vx - 32) // 3, 39, vx, 47), 'O')
+fill({(x, 39) for x in range(W)}, 'K')
+
+# ---- まど（右上・外は空とおか）----
+win = rect(39, 0, 63, 21)
 fill(win, 'S')
-fill(ell(55, 15, 6, 4) | ell(49, 17, 5, 3), 'G')      # 外の木
-fill(ell(46, 6, 3, 1.6) | ell(49, 5, 3, 2), 'W')      # くも
+fill(ell(56, 4, 3, 3), 'Y')                                           # おひさま
+fill(ell(44, 5, 3.5, 1.6) | ell(47, 4, 3, 2), 'W')                    # くも
+fill(ell(50, 24, 16, 7) & win, 'G')                                         # おか
+fill({(x, y) for x, y in ell(50, 24, 16, 7) & win if (x * 3 + y * 5) % 11 == 0}, 'Y')   # 花
+fill(ell(60, 13, 3, 3.5) | ell(42, 15, 2.5, 3), 'G')                  # 木
+fill(rect(60, 16, 60, 18) | rect(42, 17, 42, 18), 'C')
+fill(edge(ell(60, 13, 3, 3.5)) | edge(ell(42, 15, 2.5, 3)), 'K')
+fill(rect(51, 0, 52, 21) | rect(39, 10, 63, 10), 'B')                 # まどわく
 fill(edge(win), 'K')
-fill(rect(50, 1, 51, 19), 'B'); fill(rect(40, 10, 61, 10), 'B')   # 窓わく（十字）
-fill(rect(41, 1, 61, 1), 'B')
-fill(edge(win), 'K')
-fill(rect(38, 20, 63, 21), 'W'); fill({(x, 21) for x in range(38, 64)}, 'K')  # 窓台
-fill(rect(38, 0, 39, 22) & poly([(38, 0), (40, 0), (40, 22), (38, 22)]), 'P')  # カーテン左
-fill(poly([(62, 0), (64, 0), (64, 23), (62, 23)]), 'P')
-fill(line(38, 0, 38, 22) | line(63, 0, 63, 23), 'R')
-fill(ell(57, 18, 2, 2), 'R'); fill({(57, 16), (56, 17)}, 'G')       # 窓台のトマト
+fill(rect(38, 22, 63, 23), 'W'); fill({(x, 23) for x in range(38, 64)}, 'K')   # まど台
+fill(edge(rect(38, 22, 63, 23)) - {(x, 22) for x in range(39, 63)}, 'K')
 
-# ---- 左のこんろ台となべ ----
-cab = poly([(0, 18), (16, 18), (19, 15), (19, 30), (16, 33), (0, 33)])   # 斜めの台
-fill(cab, 'B')
-top = poly([(0, 15), (19, 15), (16, 18), (0, 18)])
-fill(top, 'W')
-fill(edge(cab), 'K')
-fill(line(16, 18, 16, 33), 'K'); fill(line(0, 18, 16, 18), 'K')
-fill(rect(2, 21, 13, 21) | rect(2, 21, 2, 30) | rect(13, 21, 13, 30) | rect(2, 30, 13, 30), 'K')
-fill(rect(3, 22, 12, 22), 'S')                                        # とびらの光
-fill({(11, 25), (11, 26)}, 'Y')                                       # とって
-fill(line(17, 20, 17, 30), 'S')                                       # 側面の明るい所
-pot = ell(8, 12, 6, 2.5) | rect(2, 7, 14, 12)
-fill(pot, 'R'); fill({(x, y) for x, y in pot if x <= 4}, 'C')
-fill({(x, y) for x, y in pot if x >= 11 and 8 <= y <= 12}, 'O')
-fill(edge(pot), 'K')
-fill(rect(0, 9, 1, 9) | rect(15, 9, 16, 9), 'K')                     # なべの取っ手
-lid = ell(8, 6, 7, 1.6)
-fill(lid, 'W'); fill(edge(lid), 'K'); fill({(8, 4), (7, 3), (8, 3), (9, 3)}, 'K')
-for sx, sy in ((4, 2), (12, 2)):                             # ゆげ
-    fill({(sx, sy), (sx + 1, sy - 1), (sx, sy - 2)}, 'W')
-fill(rect(0, 14, 18, 14), 'K')                                         # 台の奥のへり
-
-# ---- 床のかげ（テーブルといすの下）----
-fill(ell(48, 39.5, 14, 1.3) | ell(20, 41, 7, 1.2), 'C')
-
-# ---- いす（くまのうしろ・みどり）----
-back = poly([(6, 17), (11, 16), (12, 34), (7, 35)])
-shape(back, 'G', sh=None)
-fill(line(10, 18, 10, 32), 'Y')
-seat = poly([(9, 33), (27, 33), (29, 36), (11, 37)])
-fill(seat, 'G'); fill(edge(seat), 'K')
-for lx0, ly0, lx1, ly1 in ((11, 37, 11, 46), (27, 36, 28, 45), (14, 37, 15, 42), (9, 35, 9, 44)):
-    fill(line(lx0, ly0, lx1, ly1) | line(lx0 + 1, ly0, lx1 + 1, ly1), 'G')
-    fill(line(lx0 + 1, ly0, lx1 + 1, ly1), 'K')
-
-# ---- くま（ななめ右むき・すわっている）----
-body = ell(20, 27, 9, 8.5)
-shape(body, 'C', sh='K', hi='O')
-belly = ell(23, 28, 4.5, 5.5)
-fill(belly, 'O'); fill({(x, y) for x, y in belly if (x + 1, y) not in belly or (x, y - 1) not in belly}, 'Y')
-leg = ell(25, 35, 5, 2.6)                                           # ひざ（手前の足）
-shape(leg, 'C', hi='O')
-foot = ell(29, 38, 2.2, 3)
-shape(foot, 'C'); fill({(29, 38), (29, 39)}, 'O')
-# 頭
-earL = ell(13, 6, 3, 3); earR = ell(23, 4, 3, 3)
-shape(earL, 'C'); fill(ell(13, 6, 1.4, 1.4), 'P')
-shape(earR, 'C'); fill(ell(23, 4, 1.4, 1.4), 'P')
-head = ell(19, 13, 9, 8)
-shape(head, 'C', sh='K')
-fill({(x, y) for x, y in head if (x + 1, y) not in head and (x, y) not in edge(head)} | {(x, y) for x, y in head if (x + 2, y) not in head and (x, y) not in edge(head) and y > 8}, 'O')
-fill(ell(14, 13, 2.2, 1.6), 'K'); fill(ell(14, 13, 1.4, 1), 'C')     # 左の目（奥・かげ）
-mz = ell(23.5, 16, 4, 2.8)                                             # 口もと（右へ出す）
-shape(mz, 'Y', sh='O')
-fill({(26, 14), (27, 14), (26, 15), (27, 15), (25, 14)}, 'K'); put(26, 14, 'W')  # 鼻
-fill({(22, 18), (23, 18), (24, 19), (25, 18), (26, 17)}, 'K')        # 口
-fill({(25, 19), (24, 18)}, 'R')                                      # 口をあける
-fill(ell(22, 11, 1.3, 1.6), 'K'); put(22, 10, 'W')                    # 右の目（手前）
-fill({(16, 16), (17, 17)}, 'P')                                      # ほっぺ
-fill({(20, 7), (21, 7), (22, 8)}, 'O')                               # 頭の光
-# よだれかけ（えりもと）
-bib = poly([(15, 20), (28, 19), (26, 24), (17, 24)])
-fill(bib, 'W'); fill({(x, y) for x, y in bib if (x + y) % 4 == 0}, 'S'); fill(edge(bib), 'K')
-
-# ---- テーブル（ななめ・テーブルかけ）----
-ttop = poly([(30, 24), (58, 24), (64, 33), (34, 33)])
+# ---- テーブル（右・ななめ・テーブルかけ）----
+fill(rect(61, 33, 62, 46), 'C'); fill(rect(62, 33, 62, 46), 'K')     # 奥の脚
+ttop = poly([(34, 27), (60, 27), (64, 33), (37, 33)])
 fill(ttop, 'W')
-for x, y in ttop:                                                    # 赤白のチェック（斜め）
-    u = (x - 30 - (y - 24) * 4 / 9) // 3
-    v = (y - 24) // 2
+for x, y in ttop:
+    u = (x - 34 - (y - 27) * 3 / 6) // 3
+    v = (y - 27) // 2
     if (u + v) % 2 == 0:
         put(x, y, 'R')
-skirt = poly([(34, 33), (63, 33), (63, 37), (34, 37)])                # 手前に垂れる布
+skirt = rect(37, 34, 63, 37)
 fill(skirt, 'R'); fill({(x, y) for x, y in skirt if (x // 3) % 2 == 0}, 'W')
-fill({(x, 37) for x in range(34, 64) if x % 3 == 1}, 'P')
-side = poly([(30, 24), (34, 33), (34, 37), (30, 28)])                 # 左の側面（かげ）
+fill({(x, 37) for x in range(37, 64) if x % 3 == 1}, 'P')
+side = poly([(34, 27), (37, 33), (37, 38), (34, 32)])
 fill(side, 'P')
-fill(edge(ttop | skirt | side), 'K')
-fill(line(34, 33, 63, 33), 'K')
-for lx in (36, 60):
+fill(edge(ttop | skirt | side), 'K'); fill(line(37, 33, 63, 33), 'K')
+for lx in (39, 58):
     fill(rect(lx, 38, lx + 1, 46), 'C'); fill(rect(lx + 1, 38, lx + 1, 46), 'K')
-fill(rect(32, 31, 33, 41), 'C'); put(33, 41, 'K'); fill(rect(33, 31, 33, 40), 'K')   # 奥の脚
+fill(ell(50, 46, 13, 1.2), 'O')                                       # 床のかげ
 
-# ---- テーブルの上：ホットケーキ・ミルク ----
-plate = ell(46, 30, 8, 2.2)
-fill(plate, 'W'); fill({(x, y) for x, y in plate if y == 31}, 'S'); fill(edge(plate), 'K')
-pk = ell(45, 25.5, 6, 1.8) | rect(39, 26, 51, 29) | ell(45, 29, 6, 1.6)   # 3 まいの重なり
+# ---- くま（少し右むき・絵の半分）----
+fill(ell(20, 46, 15, 1.3), 'O')                                       # 床のかげ
+body = ell(20, 35, 14, 11.5)
+shape(body, 'C', sh='K')
+fill({(x, y) for x, y in body if (x + 1, y) not in body or (x + 2, y) not in body} - edge(body), 'O')
+belly = ell(23, 37, 7, 7.5)
+fill(belly, 'O'); fill({(x, y) for x, y in belly if (x - 1, y - 1) not in belly}, 'Y')
+footL = ell(10, 44, 4.5, 3); footR = ell(29, 44, 4.5, 3)
+for f, cx in ((footL, 10), (footR, 29)):
+    shape(f, 'C'); fill(ell(cx, 44, 2.3, 1.5), 'O'); fill(edge(ell(cx, 44, 2.3, 1.5)), 'C')
+earL = ell(10, 6, 4.5, 4.5); earR = ell(32, 5, 4.5, 4.5)
+shape(earL, 'C'); fill(ell(10, 6.5, 2.4, 2.4), 'P')
+shape(earR, 'C'); fill(ell(32, 5.5, 2.4, 2.4), 'P')
+head = ell(21, 15, 13, 11)
+shape(head, 'C', sh='K')
+fill({(x, y) for x, y in head if (x + 2, y) not in head and (x, y) not in edge(head) and 7 <= y <= 18} | {(x, y) for x, y in head if (x, y - 2) not in head and (x, y) not in edge(head) and 20 <= x <= 28}, 'O')   # 右上の光
+mz = ell(25, 20.5, 5.6, 4.2)                                           # 口まわり（丸いマズル）
+fill(mz, 'W'); fill({(x, y) for x, y in mz if (x, y + 1) not in mz or (x - 1, y + 1) not in mz}, 'O')
+fill(edge(mz), 'K')
+nose = rect(24, 18, 28, 19) | rect(25, 20, 27, 20)
+fill(nose, 'K'); put(25, 18, 'W')
+fill({(26, 21)}, 'K')                                       # 鼻の下
+mouth = rect(25, 22, 27, 23)                                       # あけた口
+fill(mouth, 'R'); fill({(24, 22), (28, 22), (24, 23), (28, 23), (25, 24), (26, 24), (27, 24)}, 'K'); fill({(26, 23)}, 'P')
+for ex, ey, rx in ((15, 13, 1.6), (29, 12, 1.8)):                     # 目（奥は少し小さい）
+    e = ell(ex, ey, rx, 2.2)
+    fill(e, 'K'); put(ex, ey - 1, 'W')
+fill(ell(15, 19, 2.2, 1.2), 'P')             # ほっぺ
+
+# ---- ホットケーキ（テーブルの上・大きく）----
+plate = ell(49, 31, 10, 2.4)
+fill(plate, 'W'); fill({(x, y) for x, y in plate if y >= 32}, 'S'); fill(edge(plate), 'K')
+pk = ell(49, 21.5, 8, 2.3) | rect(41, 22, 57, 29) | ell(49, 29, 8, 2)
 fill(pk, 'O')
-fill({(x, 27) for x in range(39, 52)} & pk, 'Y'); fill({(x, 29) for x in range(39, 52)} & pk, 'Y')
-fill({(x, y) for x, y in pk if x >= 49 and y >= 26}, 'C')                # 右のかげ
-topc = ell(45, 25, 6, 1.6)
-fill(topc, 'Y'); fill({(x, y) for x, y in topc if x >= 48}, 'O')
+for y in (24, 26, 28):
+    fill({(x, y) for x in range(W)} & pk, 'Y')
+fill({(x, y) for x, y in pk if x >= 55 and y >= 22}, 'C')
+topc = ell(49, 21.5, 8, 2.3)
+fill(topc, 'Y'); fill({(x, y) for x, y in topc if x >= 53 and y >= 21}, 'O')
 fill(edge(pk | topc), 'K')
-fill(rect(44, 23, 46, 24), 'Y'); fill(rect(44, 23, 46, 23), 'W'); fill(edge(rect(43, 22, 47, 24)) - {(43, 22), (47, 22), (43, 23), (47, 23), (44,22),(45,22),(46,22)}, 'O')   # バター
-fill({(41, 25), (40, 26), (40, 27), (49, 25), (50, 26), (50, 27), (50, 28)}, 'C')             # シロップ
-fill(ell(48, 23, 1.2, 1.2), 'R'); put(48, 22, 'G'); put(49, 22, 'G')                          # いちご
-fill(rect(39, 27, 40, 29), 'Y'); put(39, 28, 'O')                                            # 切り口
-# コップのミルク
-cup = rect(55, 23, 59, 29)
-fill(cup, 'W'); fill(rect(58, 24, 58, 28), 'S'); fill(edge(cup), 'K'); fill(rect(56, 23, 58, 23), 'S')
-# ---- くまの腕とフォーク（口へ運ぶ）----
-arm = poly([(25, 24), (29, 21), (33, 18), (36, 20), (31, 25), (27, 28)])
-shape(arm, 'C', hi='O')
-paw = ell(34, 19, 2.6, 2.2)
-shape(paw, 'C'); put(34, 18, 'O'); put(35, 19, 'O')
-fill(line(33, 18, 29, 16), 'W'); fill(line(34, 20, 30, 17), 'K')     # フォークの柄
-fill({(28, 15), (27, 16), (28, 17)}, 'S')
-bite = ell(28, 17, 1.6, 1.2); fill(bite, 'O'); put(28, 16, 'Y')      # 口へ運ぶ一切れ
-fill(edge(bite), 'C')
-armL = poly([(28, 29), (37, 27), (38, 30), (29, 32)])                # 手前の腕（皿をおさえる）
-shape(armL, 'C', hi='O')
-fill(ell(38, 29, 2, 1.8), 'C'); fill(edge(ell(38, 29, 2, 1.8)), 'K')
+fill({(42, 22), (42, 23), (42, 24), (43, 22), (56, 22), (56, 23), (56, 24), (56, 25), (55, 22), (48, 23), (48, 24)}, 'C')  # シロップ
+butter = rect(47, 18, 51, 20)
+fill(butter, 'Y'); fill(rect(47, 18, 51, 18), 'W'); fill(rect(51, 19, 51, 20), 'O'); fill(edge(butter) - {(x, 20) for x in range(48, 51)}, 'K')
+fill(ell(54, 20, 1.6, 1.4), 'R'); fill(edge(ell(54, 20, 1.6, 1.4)), 'K'); fill({(54, 18), (55, 18), (53, 18)}, 'G')   # いちご
+fill(ell(44, 20, 1.6, 1.4), 'R'); fill(edge(ell(44, 20, 1.6, 1.4)), 'K'); fill({(44, 18), (43, 18), (45, 18)}, 'G')
+fill(rect(41, 25, 42, 29), 'Y'); fill({(41, 26), (41, 28)}, 'O')      # 切り口
 
+# ---- うで・フォーク（ひと切れを口へ）----
+arm = poly([(29, 34), (33, 29), (37, 25), (40, 27), (36, 32), (32, 37)])
+shape(arm, 'C')
+fill({(x, y) for x, y in arm if (x + 1, y - 1) not in arm} - edge(arm), 'O')
+paw = ell(38, 25.5, 2.8, 2.5)
+shape(paw, 'C'); fill({(38, 24), (39, 25)}, 'O')
+fill(line(37, 24, 33, 22) | line(38, 24, 34, 22), 'S'); fill(line(38, 23, 34, 21), 'K')   # フォークの柄
+bite = ell(32, 23, 2, 1.6)                                      # 口へ運ぶひと切れ
+fill(bite, 'O'); fill({(x, y) for x, y in bite if (x, y - 1) not in bite}, 'Y'); fill(edge(bite), 'K')
+armL = poly([(8, 30), (4, 36), (6, 39), (11, 34)])                    # 奥のうで
+shape(armL, 'C')
 # ---- 閉じた空きをなくす・数える ----
 def closed():
     out = set(); st = [(x, y) for x in range(W) for y in (0, H - 1)] + [(x, y) for y in range(H) for x in (0, W - 1)]
