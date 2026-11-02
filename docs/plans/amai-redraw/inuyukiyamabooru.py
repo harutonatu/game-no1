@@ -1,0 +1,169 @@
+# ゆきやまで いぬが ボールで あそぶ（inuyukiyamabooru・段 L）
+# 部品（楕円・多角形・線・ふちどり）で描いて、文字の地図 <id>.txt を書き出す（見本 kumadaidokorooyatsu.py と同じ作り方）
+import os, math, sys
+g = None
+W = H = 0
+
+def canvas(w, h):
+    global g, W, H
+    W, H = w, h
+    g = [['.'] * W for _ in range(H)]
+
+def put(x, y, c):
+    if 0 <= x < W and 0 <= y < H:
+        g[y][x] = c
+
+def get(x, y):
+    return g[y][x] if 0 <= x < W and 0 <= y < H else '.'
+
+def ell(cx, cy, rx, ry, ang=0):
+    a = math.radians(ang); ca, sa = math.cos(a), math.sin(a)
+    s = set()
+    for y in range(H):
+        for x in range(W):
+            dx, dy = x - cx, y - cy
+            u = (dx * ca + dy * sa) / rx; v = (-dx * sa + dy * ca) / ry
+            if u * u + v * v <= 1.0:
+                s.add((x, y))
+    return s
+
+def rect(x0, y0, x1, y1):
+    return {(x, y) for y in range(max(0, y0), min(H - 1, y1) + 1) for x in range(max(0, x0), min(W - 1, x1) + 1)}
+
+def poly(pts):
+    s = set(); n = len(pts)
+    for y in range(H):
+        for x in range(W):
+            px, py = x + .5, y + .5; ins = False
+            for i in range(n):
+                ax, ay = pts[i]; bx, by = pts[(i + 1) % n]
+                if (ay > py) != (by > py) and px < ax + (py - ay) * (bx - ax) / (by - ay):
+                    ins = not ins
+            if ins: s.add((x, y))
+    return s
+
+def line(x0, y0, x1, y1, w=0):
+    s = set(); n = int(max(abs(x1 - x0), abs(y1 - y0), 1) * 2)
+    r = int(math.ceil(w))
+    for i in range(n + 1):
+        x = x0 + (x1 - x0) * i / n; y = y0 + (y1 - y0) * i / n
+        for oy in range(-r, r + 1):
+            for ox in range(-r, r + 1):
+                if ox * ox + oy * oy <= w * w + .01:
+                    s.add((int(round(x + ox)), int(round(y + oy))))
+    return {(x, y) for x, y in s if 0 <= x < W and 0 <= y < H}
+
+def fill(m, c):
+    for x, y in m: put(x, y, c)
+
+def edge(m):
+    return {(x, y) for x, y in m if any((x + dx, y + dy) not in m
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))}
+
+def ring(m):
+    """m のすぐ外がわ 1 マス"""
+    return {(x + dx, y + dy) for x, y in m for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+            if (x + dx, y + dy) not in m and 0 <= x + dx < W and 0 <= y + dy < H}
+
+def shape(m, c, o='K', sh=None, hi=None, d=2):
+    """塗って、かげ（右下）・明るい所（左上）を付けて、ふちどり。"""
+    fill(m, c)
+    if sh:
+        fill({(x, y) for x, y in m if (x + d, y) not in m or (x, y + d) not in m}, sh)
+    if hi:
+        fill({(x, y) for x, y in m if ((x - d, y) not in m or (x, y - d) not in m)
+              and (x + d, y) in m and (x, y + d) in m}, hi)
+    if o:
+        fill(edge(m), o)
+
+def dither(m, c, k=2):
+    fill({(x, y) for x, y in m if (x + y) % k == 0}, c)
+
+def z(x, y, n, c='K'):
+    fill(line(x, y, x + n, y) | line(x + n, y, x, y + n) | line(x, y + n, x + n, y + n), c)
+
+def finish(name, holec='K'):
+    out = set(); st = [(x, y) for x in range(W) for y in (0, H - 1)] + [(x, y) for y in range(H) for x in (0, W - 1)]
+    st = [p for p in st if g[p[1]][p[0]] == '.']; out = set(st)
+    while st:
+        x, y = st.pop()
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            q = (x + dx, y + dy)
+            if 0 <= q[0] < W and 0 <= q[1] < H and q not in out and g[q[1]][q[0]] == '.':
+                out.add(q); st.append(q)
+    n = 0
+    for y in range(H):
+        for x in range(W):
+            if g[y][x] == '.' and (x, y) not in out:
+                g[y][x] = holec; n += 1
+    rows = [''.join(r) for r in g]
+    while rows and set(rows[0]) == {'.'}: rows.pop(0)
+    while rows and set(rows[-1]) == {'.'}: rows.pop()
+    while rows and all(r[0] == '.' for r in rows): rows = [r[1:] for r in rows]
+    while rows and all(r[-1] == '.' for r in rows): rows = [r[:-1] for r in rows]
+    here = os.path.dirname(os.path.abspath(__file__))
+    open(os.path.join(here, name + '.txt'), 'w').write('\n'.join(rows) + '\n')
+    print(name, 'holes', n, 'size', len(rows[0]), 'x', len(rows), 'sugar', sum(c != '.' for r in rows for c in r))
+
+# ================= 絵 =================
+canvas(64, 48)
+# ---- やま（左奥。雪をかぶった山）
+mt = poly([(-2, 37), (-2, 20), (4, 12), (8, 15), (13, 7), (27, 37)])
+fill(mt, 'S')
+fill({(x, y) for x, y in mt if x >= 15 and y > 16 and (x - y) % 4 == 0}, 'W')
+cap = poly([(0.5, 17.5), (4, 12), (8, 15), (13, 7), (17.5, 16), (14.5, 14.5), (12, 17), (9, 15.5), (5.5, 18), (3, 16.5)])
+fill(cap, 'W')
+fill(edge(mt) - {(x, y) for x, y in mt if y > 34}, 'K')
+# ---- もみの木（右奥）
+tree = set()
+for (top, half, y1) in ((10, 3.5, 17), (14, 5.5, 23), (19, 7, 30)):
+    tree |= poly([(56, top), (56 + half, y1), (56 - half, y1)])
+trunk = rect(54, 30, 57, 36)
+shape(trunk, 'O')
+shape(tree, 'G')
+for (y1, half) in ((16, 2.5), (22, 4.5), (29, 6)):
+    fill({(x, y1) for x in range(int(56 - half), int(56 + half) + 1) if x % 2 == 0} & tree, 'W')
+fill({(x, y) for x, y in tree - edge(tree) if x > 57 and (x + y) % 2 == 0}, 'K')
+# ---- 雪の地面
+snow = ell(32, 40.5, 30.5, 4.6)
+fill(snow, 'W')
+fill({(x, y) for x, y in snow if (x * 5 + y * 7) % 13 == 0}, 'S')
+fill({(x, y) for x, y in snow if (x, y + 1) not in snow or (x, y + 2) not in snow}, 'S')
+fill(edge(snow) & {(x, y) for x, y in snow if y >= 40 or x < 5 or x > 58}, 'K')
+# ---- ボール（右手前。はずむ）
+fill({(x, y) for x, y in ell(52, 43, 5, 1.1) if get(x, y) in 'WS'}, 'S')
+ball = ell(52, 33, 5, 5)
+fill(ball, 'R')
+fill({(x, y) for x, y in ball if abs(x - 52) <= 0}, 'W'); fill({(x, y) for x, y in ball if abs(y - 33) <= 0}, 'W')
+fill({(49, 30), (50, 30), (49, 31)}, 'W')
+fill(edge(ball), 'K')
+for a, b in (((50, 40), (50, 41)), ((54, 40), (54, 41)), ((52, 40), (52, 42))):
+    fill(line(a[0], a[1], b[0], b[1]), 'S')
+# ---- いぬ（ボールを おいかける。右むき）
+fill({(x, y) for x, y in ell(28, 43.3, 14, 1.4) if get(x, y) in 'WS'}, 'S')
+tail = ell(15, 20, 2.2, 5, ang=-30)
+shape(tail, 'Y', sh='O')
+legs = (((20, 31), (16, 41)), ((24, 32), (24, 42)), ((32, 32), (34, 42)), ((36, 30), (42, 39)))
+for i, (a, b) in enumerate(legs):
+    leg = line(a[0], a[1], b[0], b[1], 1.5)
+    shape(leg, 'O' if i in (1, 2) else 'Y', sh=None if i in (1, 2) else 'O')
+    shape(ell(b[0] + 0.5, b[1] + 0.5, 2.3, 1.6), 'W')
+body = ell(28, 27, 11.5, 6.3, ang=-6)
+shape(body, 'Y', sh='O')
+chest = ell(36, 29, 3.5, 3.5)
+shape(chest, 'W')
+head = ell(40, 18, 7, 6.2)
+shape(head, 'Y', sh='O')
+snout = ell(46.5, 20, 4.5, 3.2)
+shape(snout, 'W')
+fill(rect(49, 17, 51, 18) | {(50, 19)}, 'K'); put(49, 17, 'W')         # 鼻
+mouth = poly([(43.5, 21.5), (49, 21.5), (47.5, 25), (45, 24.5)])
+fill(mouth, 'R'); fill(edge(mouth), 'K'); fill({(46, 24), (46, 23)}, 'P' if False else 'R')
+fill(ell(42.5, 15.5, 1.4, 1.8), 'K'); put(42, 15, 'W'); fill(line(41, 12.5, 44, 12.5), 'O')   # 目
+ear = poly([(35, 12.5), (39.5, 12.5), (37.5, 22.5), (33.5, 21)])       # たれた耳
+shape(ear, 'O')
+collar = line(34.5, 21, 36.5, 25.5, 0.8)
+fill(collar, 'R'); fill(edge(collar), 'K')
+for a, b in (((8, 26), (11, 26)), ((7, 30), (11, 30))):
+    fill(line(a[0], a[1], b[0], b[1]), 'K')                            # 動きの線
+finish('inuyukiyamabooru', holec='W')

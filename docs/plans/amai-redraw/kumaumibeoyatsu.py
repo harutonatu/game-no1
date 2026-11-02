@@ -124,15 +124,15 @@ for (x, y) in sand:
     if (x * 5 + y * 11) % 13 == 0: put(x, y, 'O')
 fill({(x, y) for (x, y) in sand if (x, y - 1) not in sand}, 'W')
 # ---- パラソル（右・みどりと白のしま）----
-shadow(50, 43, 13, 2.5, 'YOW', 'O', 1.0)
-fill(line(52, 8, 50, 44, 1.6), 'C'); fill(line(53, 8, 51, 44), 'K')
-pcx, pcy = 50, 12
-dome = {(x, y) for (x, y) in ell(pcx, pcy + 2, 15, 9) if y <= pcy + 2 + 0.05 * abs(x - pcx) + (1 if (x // 3) % 2 else 0)}
+shadow(55, 43, 9, 2, 'YOW', 'O', 1.0)
+fill(line(57, 8, 56, 43, 1.6), 'C'); fill(line(58, 8, 57, 43), 'K')
+pcx, pcy = 54, 11
+dome = {(x, y) for (x, y) in ell(pcx, pcy + 2, 13, 8) if y <= pcy + 2 + 0.05 * abs(x - pcx) + (1 if (x // 3) % 2 else 0)}
 def stripe(x, y):
-    a = math.atan2(x + .5 - pcx, pcy + 4 - y); k = int((a + 3.2) / 0.35) % 2
+    a = math.atan2(x + .5 - pcx, pcy + 4 - y); k = int((a + 3.2) / 0.5) % 2
     return 'G' if k == 0 else 'W'
 fill(dome, stripe); fill(edge(dome), 'K')
-fill({(50, 3), (51, 3), (50, 4), (51, 4)}, 'K')
+fill({(54, 3), (55, 3), (54, 4), (55, 4)}, 'K')
 # ---- くま（すわって、ソフトクリームを なめる）----
 shadow(25, 46, 14, 1.5, 'YOW', 'O', 1.0)
 body = ell(25, 37, 12, 9.5)
@@ -153,20 +153,21 @@ fill({(29, 25), (30, 26), (31, 26), (32, 26)}, 'K'); fill({(31, 27), (32, 27), (
 for ex in (21, 32):
     fill(ell(ex + .5, 18.5, 1.4, 1.9), 'K'); put(ex, 17, 'W')       # 目
 fill(ell(19.5, 23, 1.8, 1), 'P')
-# ---- ソフトクリーム（右手で 口の前へ）----
-cone = poly([(33, 28), (41, 28), (37, 40)])
+# ---- ソフトクリーム（右手で 口の前へ。大きく）----
+cone = poly([(39, 28), (49, 28), (44, 41)])
 fill(cone, 'O')
 for (x, y) in cone:
     if (x + y) % 3 == 0 or (x - y) % 3 == 0: put(x, y, 'C')
 fill(edge(cone), 'K')
-s1 = ell(37, 26, 5, 3); s2 = ell(36.5, 22.5, 4, 2.8); s3 = ell(36, 19.5, 2.6, 2)
+s1 = ell(44, 26, 6, 3.2); s2 = ell(44, 22, 4.8, 3); s3 = ell(44, 18.5, 3.2, 2.2)
 for (sc, c) in ((s1, 'P'), (s2, 'W'), (s3, 'W')):
     fill(sc, c)
-fill({(x, y) for (x, y) in s1 if x <= 33 or (x, y + 1) not in s1}, 'R')
-fill({(x, y) for (x, y) in s2 | s3 if x <= 33 or ((x, y + 1) not in (s2 | s3) and x < 36)}, 'S')
+fill({(x, y) for (x, y) in s1 if x >= 48 or (x, y + 1) not in s1}, 'R')
+fill({(x, y) for (x, y) in s2 | s3 if x >= 47 or ((x, y + 1) not in (s2 | s3) and x > 44)}, 'S')
 fill(edge(s1 | s2 | s3) - {(x, y) for (x, y) in s1 if y >= 28}, 'K')
-fill({(36, 17), (36, 16), (35, 16)}, 'K')                            # とがった先
-fill({(40, 28), (40, 29), (40, 30)}, 'P'); put(40, 31, 'K')          # たれた しずく
-paw = ell(38, 34, 3, 2.6); shape(paw, 'C'); fill({(37, 33), (38, 33)}, 'O')
-arm = line(30, 36, 36, 35, 4); fill(arm - paw, 'C'); fill(edge(arm) - paw - body, 'K')
+fill({(44, 16), (44, 15), (45, 15)}, 'K')                            # とがった先
+fill({(39, 28), (39, 29), (39, 30)}, 'P'); put(39, 31, 'K')          # たれた しずく
+paw = ell(44, 37.5, 3, 2.6); shape(paw, 'C'); fill({(43, 36), (44, 36)}, 'O')
+arm = line(31, 38, 42, 38, 4); fill(arm - paw, 'C'); fill(edge(arm) - paw - body, 'K')
+fill({(33, 25), (34, 25), (35, 25), (36, 24), (34, 26), (35, 26)}, 'P'); fill({(36, 25), (35, 27), (34, 27), (33, 26), (37, 24)}, 'K')   # べろ
 finish('kumaumibeoyatsu', 'Y')
