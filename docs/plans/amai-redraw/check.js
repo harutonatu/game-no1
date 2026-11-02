@@ -1,10 +1,10 @@
-// 使い方：node check.js <id> <段 L|XL|XXL> <名前>   （<id>.txt を読み、決まりを確かめて <id>.png を作る）
+// 使い方：node check.js <id> <段 S|M|L|XL|XXL> <名前>   （<id>.txt を読み、決まりを確かめて <id>.png を作る）
 const fs=require('fs'),path=require('path');
 const [id,tier,name]=process.argv.slice(2);
 const L=require(path.resolve(__dirname,'../../../games/amai/logic.js'));
 const map=fs.readFileSync(path.join(__dirname,id+'.txt'),'utf8').split('\n').map(s=>s.trimEnd()).filter(s=>s.length);
 const p=L.parsePicture({id,name,season:'',map},false);
-const R={L:[1264,1600,5,7],XL:[1688,2240,6,8],XXL:[2096,2576,8,10]}[tier];
+const R={S:[476,692,3,4],M:[856,1128,4,5],L:[1264,1600,5,7],XL:[1688,2240,6,8],XXL:[2096,2576,8,10]}[tier];
 const cnt={};let sugar=0;for(const r of map)for(const c of r)if(c!='.'){cnt[c]=(cnt[c]||0)+1;sugar++;}
 const nc=Object.keys(cnt).length;
 console.log(`parsePicture: ${p?'OK':'NG（はしの行列・各色3個以上・閉じた空き・幅のそろい・文字を確かめる）'}`);

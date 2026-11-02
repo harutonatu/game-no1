@@ -1,4 +1,4 @@
-# うみべで うさぎが ねむる（XL・64x48）。部品で描いて文字の地図 usagiumibe.txt を書き出す。
+# うみべで うさぎが ねむる（XL・64x48）。部品で描いて文字の地図 usagiumibenemuru.txt を書き出す。
 import math
 W,H=64,48
 g=[['.']*W for _ in range(H)]
@@ -101,4 +101,4 @@ fill(mask_ell(29,3,2.6,2.6),lambda x,y:'Y' if x+y<33 else 'O')
 rows=[''.join(r) for r in g]
 while rows and set(rows[0])=={'.'}: rows.pop(0)
 while rows and set(rows[-1])=={'.'}: rows.pop()
-open('usagiumibe.txt','w').write('\n'.join(rows)+'\n')
+open('usagiumibenemuru.txt','w').write('\n'.join(rows)+'\n')

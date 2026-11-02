@@ -40,8 +40,84 @@
 ### 見本 1 回目の結果（2026-11-02）
 - ユーザー「おすすめで。よく出来てます！」＝方向（場面・1 マス＝1 粒）は採用。決まり 6・7 を足して、うさぎ（白いかたまりに見える）とくま（口が黄色くアヒルのよう・物が多い）を描き直す。ねこはそのまま。
 
+### 見本 2 回目の結果と決定（2026-11-02）
+- うさぎ・くまを決まり 6・7 で描き直した（`compare2.png`）。
+- ユーザー「おすすめで」で決まったこと：
+  - **1・2 面のりんご・さくらんぼは残し、3〜48 面の 46 枚を場面の絵に置き換える**
+  - 表を増やす：場所に **ゆきやま**、主役に **いぬ** を足す（4×4×3＝48 通り。46 枚を使う）
+- 見本の id を「主役＋場所＋していること」の形に改名した：`nekokouenbooru`・`usagiumibenemuru`・`kumadaidokorooyatsu`
+
 ## 3. このあと
 1. 見本の画像をユーザーに見せて、方向を決める。
 2. 良ければ残りを 10 枚ずつ描き直す（表を 4 つに増やして 48 通りにするかは見本のあとで決める）。
 3. 難しさを測り直し（amai-rework.md §13 の測り方）、テストを流して公開。
 4. 採ったら、約束 §2.6 に描く決まりを書き写す（W-09）。
+
+## 4. 46 枚の割り当て（PM。2026-11-02）
+
+- 外した 2 通り：ゆきやまで ねこが ねむる・ゆきやまで うさぎが ねむる（雪の上で眠るのは不自然なため）。
+- 並びは、となりの面で場所・主役・していることがなるべく重ならないように並べた。見本 3 枚は L・XL・XXL の最初の面に置いた。
+- 季節：ゆきやま＝`fuyu`、うみべ＝`natsu`、ほか＝`""`。
+- id は「主役＋場所＋していること」のローマ字（英小文字だけ）。**今の 46 枚とは別の id**にする（ずかん・保存は id で覚えているため。古い id の扱いは §5 の組み込みで決める）。
+- 段ごとの決まり：S 角砂糖 476〜692・色 3〜4／M 856〜1128・4〜5／L 1264〜1600・5〜7／XL 1688〜2240・6〜8／XXL 2096〜2576・8〜10。大きさはどれも 64×48 以下（S・M は角砂糖が少ないので、場面を小さめの画面にまとめる）。
+
+| 面 | 段 | id | 場面 | 季節 |
+|---|---|---|---|---|
+| 3 | S | `nekoyukiyamaoyatsu` | ゆきやまで ねこが おやつを たべる | fuyu |
+| 4 | S | `usagidaidokoronemuru` | だいどころで うさぎが ねむる | "" |
+| 5 | M | `inuumibeoyatsu` | うみべで いぬが おやつを たべる | natsu |
+| 6 | M | `usagikouennemuru` | こうえんで うさぎが ねむる | "" |
+| 7 | M | `kumaumibebooru` | うみべで くまが ボールで あそぶ | natsu |
+| 8 | M | `nekodaidokorooyatsu` | だいどころで ねこが おやつを たべる | "" |
+| 9 | M | `inuyukiyamanemuru` | ゆきやまで いぬが ねむる | fuyu |
+| 10 | M | `usagiyukiyamabooru` | ゆきやまで うさぎが ボールで あそぶ | fuyu |
+| 11 | M | `nekoyukiyamabooru` | ゆきやまで ねこが ボールで あそぶ | fuyu |
+| 12 | M | `inukouennemuru` | こうえんで いぬが ねむる | "" |
+| 13 | L | `nekokouenbooru` | こうえんで ねこが ボールで あそぶ（見本・済） | "" |
+| 14 | L | `kumayukiyamaoyatsu` | ゆきやまで くまが おやつを たべる | fuyu |
+| 15 | L | `usagikouenoyatsu` | こうえんで うさぎが おやつを たべる | "" |
+| 16 | L | `inuumibebooru` | うみべで いぬが ボールで あそぶ | natsu |
+| 17 | L | `usagikouenbooru` | こうえんで うさぎが ボールで あそぶ | "" |
+| 18 | L | `kumakouennemuru` | こうえんで くまが ねむる | "" |
+| 19 | L | `inuyukiyamabooru` | ゆきやまで いぬが ボールで あそぶ | fuyu |
+| 20 | L | `kumadaidokoronemuru` | だいどころで くまが ねむる | "" |
+| 21 | L | `nekodaidokorobooru` | だいどころで ねこが ボールで あそぶ | "" |
+| 22 | L | `kumakouenoyatsu` | こうえんで くまが おやつを たべる | "" |
+| 23 | L | `inukouenbooru` | こうえんで いぬが ボールで あそぶ | "" |
+| 24 | L | `nekoumibeoyatsu` | うみべで ねこが おやつを たべる | natsu |
+| 25 | XL | `usagiumibenemuru` | うみべで うさぎが ねむる（見本・済） | natsu |
+| 26 | XL | `inudaidokorobooru` | だいどころで いぬが ボールで あそぶ | "" |
+| 27 | XL | `inuyukiyamaoyatsu` | ゆきやまで いぬが おやつを たべる | fuyu |
+| 28 | XL | `nekoumibenemuru` | うみべで ねこが ねむる | natsu |
+| 29 | XL | `kumadaidokorobooru` | だいどころで くまが ボールで あそぶ | "" |
+| 30 | XL | `nekodaidokoronemuru` | だいどころで ねこが ねむる | "" |
+| 31 | XL | `nekokouenoyatsu` | こうえんで ねこが おやつを たべる | "" |
+| 32 | XL | `kumaumibenemuru` | うみべで くまが ねむる | natsu |
+| 33 | XL | `kumakouenbooru` | こうえんで くまが ボールで あそぶ | "" |
+| 34 | XL | `inudaidokorooyatsu` | だいどころで いぬが おやつを たべる | "" |
+| 35 | XL | `nekoumibebooru` | うみべで ねこが ボールで あそぶ | natsu |
+| 36 | XL | `inuumibenemuru` | うみべで いぬが ねむる | natsu |
+| 37 | XXL | `kumadaidokorooyatsu` | だいどころで くまが おやつを たべる（見本・済） | "" |
+| 38 | XXL | `usagiumibebooru` | うみべで うさぎが ボールで あそぶ | natsu |
+| 39 | XXL | `usagiyukiyamaoyatsu` | ゆきやまで うさぎが おやつを たべる | fuyu |
+| 40 | XXL | `inudaidokoronemuru` | だいどころで いぬが ねむる | "" |
+| 41 | XXL | `kumayukiyamabooru` | ゆきやまで くまが ボールで あそぶ | fuyu |
+| 42 | XXL | `usagidaidokorooyatsu` | だいどころで うさぎが おやつを たべる | "" |
+| 43 | XXL | `kumayukiyamanemuru` | ゆきやまで くまが ねむる | fuyu |
+| 44 | XXL | `usagiumibeoyatsu` | うみべで うさぎが おやつを たべる | natsu |
+| 45 | XXL | `nekokouennemuru` | こうえんで ねこが ねむる | "" |
+| 46 | XXL | `inukouenoyatsu` | こうえんで いぬが おやつを たべる | "" |
+| 47 | XXL | `usagidaidokorobooru` | だいどころで うさぎが ボールで あそぶ | "" |
+| 48 | XXL | `kumaumibeoyatsu` | うみべで くまが おやつを たべる | natsu |
+
+## 5. 作業の分け方（PM）
+
+| 担当 | モデル | 中身 | 編集してよいファイル |
+|---|---|---|---|
+| 絵 1〜5 | Opus（見て分かる絵を描くのは判断が要る） | 残り 43 枚を 9・9・9・8・8 枚に分けて並列に描く。1 枚ごとに `<id>.py`・`.txt`・`.png` を書き、`node check.js <id> <段> <名前>` で全部 OK。画像を見ての直しは 1 枚 2 回まで | `docs/plans/amai-redraw/<自分の id>.*` だけ |
+| PM | Opus | 5 人の絵を見て、見本と並べて弱い絵だけ直しを頼む。途中の成果はこまめにコミット・push | ― |
+| 組み込み | Opus（id の入れ替え・ずかん・保存の互換に判断が要る） | `pictures-c.js`（新しい 46 枚）・`PICTURE_ORDER` の 3〜48 を新しい id に・古い id の扱い（保存の途中の面・ずかんの数）・`sw.js` の `APP_FILES`・テスト（AL2・AL16 ほか）・約束 §2.6 と §2.1 の書き換え（W-09） | 絵のあと。計画を別に書く |
+| 難しさの測り直し | Opus | amai-rework.md §13 の測り方で全段を測り、目安（でたらめ 30〜50%・ゆるい 60% 以上）から外れたらつまみを直す | `logic.js` のつまみ |
+| 関門・公開 | Haiku | 版上げ・Chromium smoke／full・WebKit smoke | ― |
+| レビュー | 技術 Opus・UX Sonnet | 作り直しなので 6 観点（CLAUDE.md 4 章） | ― |
+

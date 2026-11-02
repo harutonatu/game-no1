@@ -1,4 +1,4 @@
-# こうえんで ねこが あそぶ（nekokouen）L 段の見本。python3 nekokouen.py で nekokouen.txt を書き出す
+# こうえんで ねこが あそぶ（nekokouenbooru）L 段の見本。python3 nekokouenbooru.py で nekokouenbooru.txt を書き出す
 import math
 W, H = 64, 48
 grid = [['.'] * W for _ in range(H)]
@@ -212,5 +212,5 @@ lines = [''.join(r) for r in grid]
 # はしの空き行・列を切る
 while lines and set(lines[0]) == {'.'}: lines.pop(0)
 while lines and set(lines[-1]) == {'.'}: lines.pop()
-open('nekokouen.txt', 'w').write('\n'.join(lines) + '\n')
+open('nekokouenbooru.txt', 'w').write('\n'.join(lines) + '\n')
 print('holes filled', holes)

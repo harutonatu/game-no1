@@ -1,5 +1,5 @@
-# だいどころで くまが たべる（kumadaidokoro・段 XXL・64x48）
-# 部品（楕円・多角形・線・ふちどり）で描いて、文字の地図 kumadaidokoro.txt を書き出す。
+# だいどころで くまが たべる（kumadaidokorooyatsu・段 XXL・64x48）
+# 部品（楕円・多角形・線・ふちどり）で描いて、文字の地図 kumadaidokorooyatsu.txt を書き出す。
 import os
 W, H = 64, 48
 g = [['.'] * W for _ in range(H)]
@@ -172,5 +172,5 @@ for x, y in closed():
     g[y][x] = 'W'   # 閉じた空きは壁の光で埋める
 
 here = os.path.dirname(os.path.abspath(__file__))
-open(os.path.join(here, 'kumadaidokoro.txt'), 'w').write('\n'.join(''.join(r) for r in g) + '\n')
+open(os.path.join(here, 'kumadaidokorooyatsu.txt'), 'w').write('\n'.join(''.join(r) for r in g) + '\n')
 print(sum(c != '.' for r in g for c in r))
