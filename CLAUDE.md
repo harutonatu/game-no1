@@ -5,7 +5,7 @@
 次に作るゲームの経緯と候補は [docs/game-plan.md](docs/game-plan.md)、テストの詳細は [tests/README.md](tests/README.md) と [tests/design.md](tests/design.md) にあります。重複は書かず、そちらを見てください。
 事業化（ビジネスモデル・収益化）の検討と決定は [docs/business-plan.md](docs/business-plan.md) にあります。
 見つかった不具合・改善案、作業の進め方の改善策（ワークフローやテストの時間など）は [docs/issues.md](docs/issues.md)（課題管理表）に書き、直したら状態を更新し、docs/issues-done.md へ移します。
-最新の引き継ぎは [docs/handoff.md](docs/handoff.md)（2026-10-29、v50 公開後・あまいものあつめは配信停止）。新しい会話は、まずこれを読んでください。
+最新の引き継ぎは [docs/handoff.md](docs/handoff.md)（2026-11-02、v58 公開後・あまいものあつめはメニューに戻した。13 本）。新しい会話は、まずこれを読んでください。
 
 ## 1. プロジェクト概要
 
@@ -14,7 +14,7 @@
 | 場所 | 役割 |
 |---|---|
 | `index.html` | メニュー画面。ゲーム一覧は中の `GAMES` 配列、最下部に版と更新日を表示 |
-| `games/<名前>/` | 1ゲーム1フォルダ（`blocks` `2048` `kiritori` `irocode` `zenmai` `pikatto` `hashi` `irobin` `matomete` `michibiki` `seizai` `asteroid` の12本） |
+| `games/<名前>/` | 1ゲーム1フォルダ（`blocks` `2048` `kiritori` `irocode` `zenmai` `pikatto` `hashi` `irobin` `matomete` `michibiki` `seizai` `asteroid` `amai` の13本） |
 | `common/sfx.js` | 共通の効果音（`YubiSfx.create("<ゲーム名>")`、音の表はゲームごと） |
 | `common/version.js` | 版の表示（`version` と `date`） |
 | `common/debug.js` | デバッグ表示（`?debug=1`。ふだんは何もしない）。仕組みと命令は [docs/debug.md](docs/debug.md) |
