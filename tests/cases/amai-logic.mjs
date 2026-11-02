@@ -195,7 +195,11 @@ export const tests = [
       const tiers = PO.slice(0, 48).map((p) => p.tier).join(',');
       const wantT = [...Array(4).fill('S'), ...Array(8).fill('M'), ...Array(12).fill('L'), ...Array(12).fill('XL'), ...Array(12).fill('XXL')].join(',');
       check('PICTURE_ORDER は 48 枚・段が 4/8/12/12/12・id は英小文字だけで重ならない', PO.length >= 48 && tiers === wantT && PO.every((p) => /^[a-z]+$/.test(p.id)) && new Set(PO.map((p) => p.id)).size === PO.length, PO);
-      check('1 枚目 ringo・3 枚目 sakura・9 枚目 suika・14 枚目 yukidaruma・20 枚目 momiji', PO[0].id === 'ringo' && PO[2].id === 'sakura' && PO[8].id === 'suika' && PO[13].id === 'yukidaruma' && PO[19].id === 'momiji', PO.slice(0, 20).map((p) => p.id));
+      // 3〜48 面は場面の絵（計画書 docs/plans/amai-redraw.md §4。見本 3 枚は L・XL・XXL の最初の面）
+      check('1 枚目 ringo・2 枚目 sakuranbo・3 枚目 nekoyukiyamaoyatsu・13 枚目 nekokouenbooru・25 枚目 usagiumibenemuru・37 枚目 kumadaidokorooyatsu・48 枚目 kumaumibeoyatsu',
+        PO[0].id === 'ringo' && PO[1].id === 'sakuranbo' && PO[2].id === 'nekoyukiyamaoyatsu' && PO[12].id === 'nekokouenbooru' && PO[24].id === 'usagiumibenemuru' && PO[36].id === 'kumadaidokorooyatsu' && PO[47].id === 'kumaumibeoyatsu', PO.map((p) => p.id));
+      const OLD = ['sakura', 'ichigo', 'kinoko', 'suika', 'yukidaruma', 'momiji', 'kumatofuusen', 'kanransha'];
+      check('描き直す前の古い id（sakura・ichigo …）は PICTURE_ORDER に無い', OLD.every((id) => !PO.some((p) => p.id === id)), OLD.filter((id) => PO.some((p) => p.id === id)));
     },
   },
   {
@@ -276,9 +280,22 @@ export const tests = [
         check(`${lv} 面の絵（${pk.id}）は割っていない（32×24 以下）`, !!q && q.W <= 32 && q.H <= 24, q && { W: q.W, H: q.H });
       }
       check('すべての絵が決まりを守る（段の色の数・角砂糖の数・名前が重ならない ほか）', badPic.length === 0, badPic);
-      check('季節の絵が春・夏・秋・冬それぞれ 3 枚以上', Object.values(season).every((n) => n >= 3), season);
-      const need = ['sakura', 'suika', 'momiji', 'yukidaruma'];
-      check('さくら・すいか・もみじ・ゆきだるま がある', need.every((id) => defs.some((x) => x.p.id === id && x.d)), need);
+      // 季節（計画書 amai-redraw.md §4）：ゆきやま＝fuyu・うみべ＝natsu・ほか＝""
+      const wantSeason = (id) => (/yukiyama/.test(id) ? 'fuyu' : /umibe/.test(id) ? 'natsu' : '');
+      const badSeason = defs.filter(({ p, d }) => d && d.season !== wantSeason(p.id)).map(({ p, d }) => `${p.id}:${d.season}`);
+      check('季節は ゆきやまの絵＝fuyu・うみべの絵＝natsu・ほか＝""（なつ・ふゆ それぞれ 3 枚以上）', badSeason.length === 0 && season.natsu >= 3 && season.fuyu >= 3, { badSeason, season });
+      const need = ['nekokouenbooru', 'usagiumibenemuru', 'kumadaidokorooyatsu'];
+      check('見本 3 枚（こうえんの ねこ・うみべの うさぎ・だいどころの くま）がある', need.every((id) => defs.some((x) => x.p.id === id && x.d)), need);
+      // 3〜48 面の絵は 1 マス＝1 粒で描いた場面（2×2 に割った地図でない）：2×2 のかたまりの区切りに合わない色の境目がある
+      const notSplit = [];
+      for (const { p, d } of defs.slice(2)) {
+        const q = d && L.parsePicture(d, false);
+        if (!q) continue;
+        let odd = 0;
+        for (let y = 0; y < q.H; y++) for (let x = 1; x < q.W; x += 2) if (q.cells[y * q.W + x] !== q.cells[y * q.W + x - 1]) odd++;
+        if (odd === 0) notSplit.push(p.id);
+      }
+      check('3〜48 面の絵は 2×2 に割った地図でない（1 マス＝1 粒）', notSplit.length === 0, notSplit);
     },
   },
   {
@@ -549,12 +566,12 @@ export const tests = [
       const nb = bb.filter((v) => L.validateBest(v) !== 0).map(String);
       check('validateBest：壊れた値は 0', nb.length === 0, nb);
       check('validateBest：正しい値', L.validateBest('0') === 0 && L.validateBest('7') === 7 && L.validateBest('9007199254740991') === 9007199254740991 && L.validateBest(12) === 12, null);
-      const good = { v: 1, level: 7, pic: 'hiyoko', mirror: false, rep: false, presses: [[0, 2], [0, 1], [12, 3]], t: 41 };
+      const good = { v: 1, level: 7, pic: 'inuumibeoyatsu', mirror: false, rep: false, presses: [[0, 2], [0, 1], [12, 3]], t: 41 };
       const g = L.validateSave(J(good));
-      check('validateSave：正しい形', g && g.level === 7 && J(g.pick) === J({ id: 'hiyoko', mirror: false, repeat: false }) && J(g.presses) === J(good.presses) && g.t === 41, g);
+      check('validateSave：正しい形', g && g.level === 7 && J(g.pick) === J({ id: 'inuumibeoyatsu', mirror: false, repeat: false }) && J(g.presses) === J(good.presses) && g.t === 41, g);
       const badSaves = {
         '壊れた JSON': '{"v":1,', 'JSON でない': 'abc', 'v ちがい': J({ ...good, v: 2 }), 'level 0': J({ ...good, level: 0 }), 'level 1.5': J({ ...good, level: 1.5 }),
-        'pic が英小文字でない': J({ ...good, pic: 'Hiyoko' }), 'pic が無い': J({ ...good, pic: undefined }), 'mirror が文字': J({ ...good, mirror: 'false' }), 'rep が無い': J({ ...good, rep: undefined }),
+        'pic が英小文字でない': J({ ...good, pic: 'Inuumibeoyatsu' }), 'pic が無い': J({ ...good, pic: undefined }), 'mirror が文字': J({ ...good, mirror: 'false' }), 'rep が無い': J({ ...good, rep: undefined }),
         'presses が配列でない': J({ ...good, presses: {} }), '手の形ちがい（長さ 3）': J({ ...good, presses: [[0, 1, 2]] }), '手の形ちがい（文字）': J({ ...good, presses: [['0', 1]] }),
         '列 4': J({ ...good, presses: [[0, 4]] }), '列 -1': J({ ...good, presses: [[0, -1]] }), 't が負': J({ ...good, presses: [[-1, 0]] }),
         't の逆順': J({ ...good, presses: [[5, 0], [3, 1]] }), '長すぎ': J({ ...good, presses: Array(401).fill([0, 0]) }), 't > MAX_T': J({ ...good, t: 5001, presses: [] }),
@@ -564,21 +581,21 @@ export const tests = [
       check('validateSave：壊れた保存は null（' + Object.keys(badSaves).length + ' 通り）', passed.length === 0, passed);
       check('validateSave：文字でない引数は null', L.validateSave(null) === null && L.validateSave(good) === null, null);
       check('validateSave：手 400 個・t 5000 は読める', L.validateSave(J({ ...good, presses: Array(400).fill([0, 0]), t: 5000 })) !== null, null);
-      const ms = L.makeSave(7, { id: 'hiyoko', mirror: false, repeat: false }, [[0, 2], [12, 3]], 41);
-      check('makeSave の形（v・level・pic・mirror・rep・presses・t）と往復', J(JSON.parse(ms)) === J({ v: 1, level: 7, pic: 'hiyoko', mirror: false, rep: false, presses: [[0, 2], [12, 3]], t: 41 }) && L.validateSave(ms) !== null, ms);
-      check('makeSave：くり返しの pick（mirror・rep が true）', (() => { const o = JSON.parse(L.makeSave(50, { id: 'suika', mirror: true, repeat: true }, [], 0)); return o.mirror === true && o.rep === true && o.pic === 'suika'; })(), null);
+      const ms = L.makeSave(7, { id: 'inuumibeoyatsu', mirror: false, repeat: false }, [[0, 2], [12, 3]], 41);
+      check('makeSave の形（v・level・pic・mirror・rep・presses・t）と往復', J(JSON.parse(ms)) === J({ v: 1, level: 7, pic: 'inuumibeoyatsu', mirror: false, rep: false, presses: [[0, 2], [12, 3]], t: 41 }) && L.validateSave(ms) !== null, ms);
+      check('makeSave：くり返しの pick（mirror・rep が true）', (() => { const o = JSON.parse(L.makeSave(50, { id: 'usagikouennemuru', mirror: true, repeat: true }, [], 0)); return o.mirror === true && o.rep === true && o.pic === 'usagikouennemuru'; })(), null);
       // ずかん
-      const raw = J({ v: 1, got: { ringo: 2, sakura: 'x', ichigo: 0, Kame: 3, momiji: 10000, nai: 4, suika: 1.5, kinoko: 9999 } });
+      const raw = J({ v: 1, got: { ringo: 2, sakura: 'x', ichigo: 0, Kame: 3, momiji: 10000, nai: 4, suika: 1.5, inuumibeoyatsu: 9999 } });
       const vb = L.validateBook(raw);
-      check('validateBook：壊れた項目だけ捨て、ほか（PICTURE_ORDER に無い id も）は残す', J({ ...vb.got }) === J({ ringo: 2, nai: 4, kinoko: 9999 }), { ...vb.got });
+      check('validateBook：壊れた項目だけ捨て、ほか（PICTURE_ORDER に無い id も）は残す', J({ ...vb.got }) === J({ ringo: 2, nai: 4, inuumibeoyatsu: 9999 }), { ...vb.got });
       const empt = ['{', 'null', '[]', J({ v: 2, got: { ringo: 1 } }), J({ v: 1, got: [] }), J({ v: 1 }), '', null, 5].map((r) => Object.keys(L.validateBook(r).got).length);
       check('validateBook：全体が壊れていれば空', empt.every((n) => n === 0), empt);
       check('validateBook：constructor などの名前でも壊れない', (() => { const b = L.validateBook(J({ v: 1, got: { constructor: 2 } })); return b.got.constructor === 2 && L.bookCount(J({ v: 1, got: {} })) === 0; })(), null);
       const ab = JSON.parse(L.addToBook(raw, 'ringo'));
-      check('addToBook：1 足す・ほかの絵を消さない', ab.v === 1 && ab.got.ringo === 3 && ab.got.nai === 4 && ab.got.kinoko === 9999, ab);
-      check('addToBook：9999 で止まる', JSON.parse(L.addToBook(raw, 'kinoko')).got.kinoko === 9999, null);
+      check('addToBook：1 足す・ほかの絵を消さない', ab.v === 1 && ab.got.ringo === 3 && ab.got.nai === 4 && ab.got.inuumibeoyatsu === 9999, ab);
+      check('addToBook：9999 で止まる', JSON.parse(L.addToBook(raw, 'inuumibeoyatsu')).got.inuumibeoyatsu === 9999, null);
       check('addToBook：壊れた book なら新しく 1', J(JSON.parse(L.addToBook('{', 'ringo'))) === J({ v: 1, got: { ringo: 1 } }), null);
-      check('addToBook：おかしな id は足さない（消しもしない）', J(JSON.parse(L.addToBook(raw, 'Bad1')).got) === J({ ringo: 2, nai: 4, kinoko: 9999 }), null);
+      check('addToBook：おかしな id は足さない（消しもしない）', J(JSON.parse(L.addToBook(raw, 'Bad1')).got) === J({ ringo: 2, nai: 4, inuumibeoyatsu: 9999 }), null);
       check('bookCount：PICTURE_ORDER にある絵だけ数える', L.bookCount(raw) === 2 && L.bookCount('{') === 0 && L.bookCount(null) === 0, L.bookCount(raw));
       check('recordBest', J(L.recordBest('3', 5)) === J({ best: 5, improved: true }) && J(L.recordBest('5', 5)) === J({ best: 5, improved: false }) && J(L.recordBest('abc', 1)) === J({ best: 1, improved: true }) && J(L.recordBest('9', 2)) === J({ best: 9, improved: false }), null);
       check('validateFlag："1" だけ true', L.validateFlag('1') === true && [null, '', '0', 'true', 1, true].every((v) => L.validateFlag(v) === false), null);
@@ -768,21 +785,23 @@ export const tests = [
     },
   },
   {
-    id: 'AL14', tier: 'smoke', node: true, title: 'あまいものあつめ：「1手もどし なし！」の印 validateClean・addClean・hasClean（壊れた値・形ちがい・重複・知らない id を捨てる・足す・ある／ない・例外を出さない）',
+    id: 'AL14', tier: 'smoke', node: true, title: 'あまいものあつめ：「1手もどし なし！」の印 validateClean・addClean・hasClean（壊れた値・形ちがい・重複・壊れた id を捨てる・知らない id は残す・足す・ある／ない・例外を出さない）',
     async run({ check, root }) {
       const L = load(root);
       const PO = L.PICTURE_ORDER, a = PO[0].id, b = PO[1].id;
       check('保存のキーは amai.clean', L.SAVE_KEY_CLEAN === 'amai.clean', L.SAVE_KEY_CLEAN);
       const bad = [null, undefined, '', '{', 5, [], 'x', J([]), J({ v: 2, ids: [a] }), J({ v: 1 }), J({ v: 1, ids: 'x' }), J({ v: 1, ids: { 0: a } })];
       check('壊れた値・形ちがいは空', bad.every((r) => J(L.validateClean(r)) === J({ ids: [] })), null);
-      const v = L.validateClean(J({ v: 1, ids: [a, a, 'nanika', 5, null, b, a] }));
-      check('重複・知らない id・文字でない値を捨てて使える分だけ（順は最初に出た順）', J(v) === J({ ids: [a, b] }), v);
+      const v = L.validateClean(J({ v: 1, ids: [a, a, 'nanika', 5, null, b, a, 'Bad1', '', 'x'.repeat(65), 'nanika'] }));
+      check('重複・壊れた id（英小文字でない・空・65 字）・文字でない値を捨て、PICTURE_ORDER に無い id（古い絵の id）は残す（順は最初に出た順）', J(v) === J({ ids: [a, 'nanika', b] }), v);
       const s1 = L.addClean(null, a);
       check('足す：正しい形の文字列', s1 === J({ v: 1, ids: [a] }), s1);
       const s2 = L.addClean(s1, b);
       check('もう1つ足す', s2 === J({ v: 1, ids: [a, b] }), s2);
       check('同じ id をまた足しても増えない', L.addClean(s2, a) === s2, null);
       check('知らない id は足さず、元のまま正しい形で返す', L.addClean(s2, 'nanika') === s2 && L.addClean('{', 'nanika') === J({ v: 1, ids: [] }) && L.addClean(s2, 5) === s2, null);
+      const s3 = L.addClean(J({ v: 1, ids: ['sakura', a] }), b);
+      check('古い id（sakura）の入った印に足しても、古い id を消さない', s3 === J({ v: 1, ids: ['sakura', a, b] }), s3);
       check('hasClean：ある／ない', L.hasClean(s2, a) === true && L.hasClean(s2, b) === true && L.hasClean(s1, b) === false && L.hasClean(null, a) === false && L.hasClean('{', a) === false, null);
     },
   },
@@ -889,6 +908,54 @@ export const tests = [
         }
         check('1・2 面は完全でたらめに遊んでも 300 回すべてクリア（うごかせなくならない）', rows.every((x) => x.won === x.N && x.stuck === 0), rows);
       });
+    },
+  },
+  {
+    id: 'AL17', tier: 'smoke', node: true, title: 'あまいものあつめ：描き直す前の古い絵の id（計画書 amai-redraw.md §7.1）：途中の保存の絵が古い id でも落ちず同じ面の番号で新しい絵の面になる・ずかん／もどしなしの印の古い id は消さないが数えない',
+    async run({ check, root }) {
+      const L = load(root);
+      const PO = L.PICTURE_ORDER;
+      const OLD = ['sakura', 'ichigo', 'kinoko', 'hiyoko', 'nekonokao', 'basu', 'kumatofuusen', 'kanransha'];
+      check('古い id は PICTURE_ORDER に無い', OLD.every((id) => !PO.some((p) => p.id === id)), null);
+      // 途中の保存（amai.save）の絵が古い id：形は正しいので読める（面の番号を保つ）
+      const sv = L.validateSave(J({ v: 1, level: 5, pic: 'kinoko', mirror: false, rep: false, presses: [[0, 1], [3, 2]], t: 9 }));
+      check('validateSave：古い id の保存も読める（level 5・pic kinoko）', !!sv && sv.level === 5 && sv.pick.id === 'kinoko', sv);
+      await withPictures(L, () => {
+        const rows = [];
+        for (const [lv, id] of [[3, 'sakura'], [5, 'kinoko'], [13, 'nekonokao'], [25, 'basu'], [48, 'kanransha']]) {
+          let ok = false, detail = null;
+          try {
+            const c = L.createLevel(lv, { id, mirror: false, repeat: false });
+            const p = L.paramsFor(lv, { id, mirror: false, repeat: false });
+            ok = c.state.level === lv && c.state.picture === PO[lv - 1].id && p.picture === PO[lv - 1].id && p.tier === PO[lv - 1].tier && c.info.fallback === 0;
+            const r = L.replay(lv, { id, mirror: false, repeat: false }, [[0, 1]], 3);   // 押せない手でも落ちない（ok:false なら画面は同じ面の最初から）
+            ok = ok && !!r && !!r.state && r.state.level === lv;
+            detail = { level: c.state.level, picture: c.state.picture, fallback: c.info.fallback };
+          } catch (e) { detail = String(e); }
+          if (!ok) rows.push({ lv, id, detail });
+        }
+        check('古い id の pick で面を作ると、同じ面の番号で PICTURE_ORDER の新しい絵の面になる（落ちない・予備に落ちない）', rows.length === 0, rows);
+        const pk = L.pickPicture(5, L.validateBook(J({ v: 1, got: { kinoko: 3 } })));
+        check('pickPicture：古い id がずかんにあっても 5 面は新しい絵', pk.id === PO[4].id && pk.mirror === false && pk.repeat === false, pk);
+      });
+      // 49 面から：古い id だけのずかんなら、くり返しは 9 枚目の新しい絵から（古い id は数えない）
+      const oldBook = J({ v: 1, got: Object.fromEntries(OLD.map((id) => [id, 5])) });
+      const p49 = L.pickPicture(49, oldBook);
+      check('49 面から：古い id の回数は、くり返しの選び方に入らない（9 枚目の新しい絵）', p49.id === PO[8].id && p49.repeat === true, p49);
+      // ずかん（amai.book）：古い id は消さずに残すが、数えない
+      const raw = J({ v: 1, got: { ringo: 2, sakura: 4, kinoko: 9, [PO[2].id]: 1, kanransha: 1 } });
+      const vb = L.validateBook(raw);
+      check('validateBook：古い id（sakura・kinoko・kanransha）を残す', vb.got.sakura === 4 && vb.got.kinoko === 9 && vb.got.kanransha === 1 && vb.got.ringo === 2, { ...vb.got });
+      check('bookCount：PICTURE_ORDER にある絵だけ数える（ringo と 3 枚目の 2 枚）', L.bookCount(raw) === 2, L.bookCount(raw));
+      const ab = JSON.parse(L.addToBook(raw, PO[3].id));
+      check('addToBook：新しい絵を足しても古い id を消さない', ab.got.sakura === 4 && ab.got.kinoko === 9 && ab.got.kanransha === 1 && ab.got[PO[3].id] === 1, ab.got);
+      check('bookCount：足したあとは 3 枚', L.bookCount(JSON.stringify(ab)) === 3, null);
+      // 1手もどし なし の印（amai.clean）：古い id は消さずに残す（hasClean は新しい絵には関係しない）
+      const vc = L.validateClean(J({ v: 1, ids: ['sakura', PO[0].id, 'kinoko'] }));
+      check('validateClean：古い id を残す', J(vc) === J({ ids: ['sakura', PO[0].id, 'kinoko'] }), vc);
+      const ac = JSON.parse(L.addClean(J({ v: 1, ids: ['sakura'] }), PO[2].id));
+      check('addClean：新しい絵を足しても古い id を消さない', J(ac.ids) === J(['sakura', PO[2].id]), ac);
+      check('hasClean：古い id の印は新しい絵に付かない', L.hasClean(J({ v: 1, ids: ['sakura'] }), PO[2].id) === false, null);
     },
   },
 ];

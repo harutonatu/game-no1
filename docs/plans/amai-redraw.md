@@ -146,3 +146,7 @@
 |---|---|---|---|
 | 組み込み | Opus | 7.1 のとおり。`build.js`・`pictures-a.js`・`pictures-b.js`・`logic.js`（`PICTURE_ORDER` と古い id の扱い）・`main.js`（ずかんの数）・`index.html`（メニューの `amaiBest` の数）・テスト（古い id を参照している所・古い id のデータの新しい項目）・約束 `docs/ari-contract.md`（§2.6 の表と描く決まり 1〜7、古い id の扱い。W-09） | `games/amai/`・`index.html`・`tests/cases/amai-*.mjs`・`tests/mutants/`（amai の分だけ）・`docs/ari-contract.md`・`docs/plans/amai-redraw/build.js` |
 | 難しさの測り直し | Opus | 組み込みのあと。amai-rework.md §13 の測り方で全段 | `logic.js` のつまみ |
+
+### 7.3 公開の承認（2026-11-02）
+- ユーザー「公開して」→ 確かめの質問に「全部通ったら公開 (Recommended)」。
+- ＝ 組み込み → 難しさの測り直し → 関門（Chromium smoke・full、WebKit smoke）→ レビュー 6 観点 → 指摘を直す、をすべて終えたら、**改めて聞かずに公開してよい**。どこかで止まったら（関門の不合格の原因が分からない・レビューで 3 点以下が出て方針と引き換えになる、など）ユーザーに相談する。

@@ -108,15 +108,17 @@
   // 絵の並び（§2.6 の表の順）。絵を足すときは最後に足す（並べかえない・途中に入れない）。
   // id はローマ字（かなを 1 字ずつ書く形。のばす音は母音を重ねる）・英小文字だけ。
   // 配列そのものは凍結しない（テスト AL13 が 49 枚目を足して確かめるため）。中の項目は凍結。
+  // 3〜48 面は 2026-11-02 に場面の絵へ描き直し、id も替えた（計画書 docs/plans/amai-redraw.md §7）。古い id（sakura・ichigo …）は
+  // ここに無いので、途中の保存の絵が古い id なら main が同じ面の番号で新しい絵から始め、ずかん・もどしなしの印の古い id は残すが数えない。
   const PICTURE_ORDER = [
-    ["ringo", "S"], ["sakuranbo", "S"], ["sakura", "S"], ["ichigo", "S"],
-    ["kinoko", "M"], ["hiyoko", "M"], ["chuurippu", "M"], ["onigiri", "M"], ["suika", "M"], ["sakana", "M"], ["donguri", "M"], ["choucho", "M"],
-    ["nekonokao", "L"], ["yukidaruma", "L"], ["kame", "L"], ["koinobori", "L"], ["keeki", "L"], ["asagao", "L"],
-    ["katatsumuri", "L"], ["momiji", "L"], ["inunokao", "L"], ["tebukuro", "L"], ["himawari", "L"], ["kuri", "L"],
-    ["basu", "XL"], ["ohanamidango", "XL"], ["pengin", "XL"], ["kakigoori", "XL"], ["fune", "XL"], ["satsumaimo", "XL"],
-    ["kujira", "XL"], ["kurisumasutsurii", "XL"], ["ouchi", "XL"], ["hanabi", "XL"], ["kikansha", "XL"], ["kakashi", "XL"],
-    ["nijitokumo", "XXL"], ["tanpopotomitsubachi", "XXL"], ["rokettotohoshi", "XXL"], ["umitosunahama", "XXL"], ["kumatofuusen", "XXL"], ["otsukimi", "XXL"],
-    ["oshiro", "XXL"], ["kamakura", "XXL"], ["kyouryuu", "XXL"], ["takoage", "XXL"], ["kabutomushitoki", "XXL"], ["kanransha", "XXL"],
+    ["ringo", "S"], ["sakuranbo", "S"], ["nekoyukiyamaoyatsu", "S"], ["usagidaidokoronemuru", "S"],
+    ["inuumibeoyatsu", "M"], ["usagikouennemuru", "M"], ["kumaumibebooru", "M"], ["nekodaidokorooyatsu", "M"], ["inuyukiyamanemuru", "M"], ["usagiyukiyamabooru", "M"], ["nekoyukiyamabooru", "M"], ["inukouennemuru", "M"],
+    ["nekokouenbooru", "L"], ["kumayukiyamaoyatsu", "L"], ["usagikouenoyatsu", "L"], ["inuumibebooru", "L"], ["usagikouenbooru", "L"], ["kumakouennemuru", "L"],
+    ["inuyukiyamabooru", "L"], ["kumadaidokoronemuru", "L"], ["nekodaidokorobooru", "L"], ["kumakouenoyatsu", "L"], ["inukouenbooru", "L"], ["nekoumibeoyatsu", "L"],
+    ["usagiumibenemuru", "XL"], ["inudaidokorobooru", "XL"], ["inuyukiyamaoyatsu", "XL"], ["nekoumibenemuru", "XL"], ["kumadaidokorobooru", "XL"], ["nekodaidokoronemuru", "XL"],
+    ["nekokouenoyatsu", "XL"], ["kumaumibenemuru", "XL"], ["kumakouenbooru", "XL"], ["inudaidokorooyatsu", "XL"], ["nekoumibebooru", "XL"], ["inuumibenemuru", "XL"],
+    ["kumadaidokorooyatsu", "XXL"], ["usagiumibebooru", "XXL"], ["usagiyukiyamaoyatsu", "XXL"], ["inudaidokoronemuru", "XXL"], ["kumayukiyamabooru", "XXL"], ["usagidaidokorooyatsu", "XXL"],
+    ["kumayukiyamanemuru", "XXL"], ["usagiumibeoyatsu", "XXL"], ["nekokouennemuru", "XXL"], ["inukouenoyatsu", "XXL"], ["usagidaidokorobooru", "XXL"], ["kumaumibeoyatsu", "XXL"],
   ].map(([id, tier]) => Object.freeze({ id, tier }));
 
   // 予備 2 の絵（§2.2 の 8.。りんご。絵が読めないときもこれで遊べる）
@@ -1081,7 +1083,8 @@
     return bookString(b);
   }
 
-  // 「1手もどし なし！」で クリアした絵の印：{"v":1,"ids":[…]}。壊れた・知らない id・重複は捨てる
+  // 「1手もどし なし！」で クリアした絵の印：{"v":1,"ids":[…]}。壊れた id（英小文字でない・65 字以上）・重複は捨てる。
+  // PICTURE_ORDER に無い id（3〜48 面の絵を描き直す前の古い id など）は捨てずに残す（データを消さない。amai.book と同じ。計画書 amai-redraw.md §7.1）
   function validateClean(raw) {
     const out = { ids: [] };
     try {
@@ -1090,7 +1093,7 @@
       if (!o || typeof o !== "object" || Array.isArray(o) || o.v !== BOOK_V || !Array.isArray(o.ids)) return out;
       const seen = new Set();
       for (const id of o.ids) {
-        if (typeof id !== "string" || seen.has(id) || !PICTURE_ORDER.some((p) => p.id === id)) continue;
+        if (typeof id !== "string" || seen.has(id) || !ID_RE.test(id) || id.length > 64) continue;
         seen.add(id);
         out.ids.push(id);
       }

@@ -352,7 +352,7 @@ export const tests = [
   },
   {
     id: 'AW3', tier: 'smoke', title: 'あまいもの データ：2 回押して何はこびか進め再読み込みすると同じ局面（t・left・わく・列・絵）、49 面（くり返し）でも同じ、壊れた amai.save・amai.best・amai.book でも落ちない、ほかのゲームの保存キーを変えない',
-    async run({ browser, check }) {
+    async run({ browser, check, root }) {
       const others = { 'blockpuzzle.best': '777', 'tile2048.best': '888', 'hashi.best': '55', 'zenmai.progress': '{"stars":{"z01":3}}', 'pikatto.bestSolo': '321', 'kiritori.best': '99', 'irobin.best': '4' };
       const { ctx, page } = await openG(browser, 'AW3', { v: SMOKE_V(), extra: others });
       const s0 = await gs(page);
@@ -403,6 +403,28 @@ export const tests = [
         if (!((s.level === 1 || s.level === 3) && s.presses === 0 && s.t === 0 && s.phase === 'play')) bad.push(`${raw}: level ${s.level} presses ${s.presses} t ${s.t} phase ${s.phase}`);
       }
       check(`壊れた amai.save（${BAD_SAVE.length} 通り）でも落ちず、面の最初（または 1 面）から始まる`, bad.length === 0, bad);
+      // 描き直す前の古い絵の id（計画書 amai-redraw.md §7.1）：途中の保存の絵が古い id でも落ちず、同じ面の番号で新しい絵の面を最初から。
+      // ずかんの古い id は消さないが「M / 48」に数えない
+      const PO = loadLogic(root).PICTURE_ORDER;
+      const oldBook = J({ v: 1, got: { kinoko: 4, sakura: 2, kanransha: 1, [PO[0].id]: 1 } });
+      const oldRows = [];
+      for (const [lv, id] of [[5, 'kinoko'], [25, 'basu'], [43, 'oshiro']]) {
+        await seed(page, { 'amai.help': '1', 'amai.best': String(lv - 1), 'amai.book': oldBook, 'amai.clean': J({ v: 1, ids: ['sakura'] }),
+          'amai.save': J({ v: 1, level: lv, pic: id, mirror: false, rep: false, presses: [[0, 1], [4, 2]], t: 9 }) });
+        await page.goto(AM); await wait(page, 300);
+        const ok = await page.evaluate(() => !!window.AmaiGame).catch(() => false);
+        if (!ok) { oldRows.push(`${id}: 起動しない`); continue; }
+        const s = await gs(page), lgS = await lg(page), d = await domNums(page);
+        const sv = JSON.parse((await stored(page, 'amai.save')) || '{}');
+        if (!(s.level === lv && d.level === lv && lgS.picture === PO[lv - 1].id && s.presses === 0 && s.t === 0 && s.phase === 'play' && sv.level === lv && sv.pic === PO[lv - 1].id)) {
+          oldRows.push(`${lv} 面 ${id}: level ${s.level}/${d.level} 絵 ${lgS.picture} presses ${s.presses} t ${s.t} phase ${s.phase} 保存 ${sv.level}/${sv.pic}`);
+        }
+      }
+      check('古い絵の id の amai.save（5 面 kinoko・25 面 basu・43 面 oshiro）でも落ちず、同じ面の番号で新しい絵の面を最初から始め、保存も新しい絵になる', oldRows.length === 0, oldRows);
+      await page.click('#bookBtn'); await wait(page, 150);
+      const ob = await overlayInfo(page);
+      check(`ずかん：古い id（kinoko・sakura・kanransha）は数えず「1 / ${PO.length}」（${ob.text.slice(0, 40)}）`, ob.shown && new RegExp(`(^|\\D)1\\s*/\\s*${PO.length}`).test(ob.text), ob.text.slice(0, 80));
+      check('ずかん・もどしなしの印の古い id は消さない（amai.book・amai.clean がそのまま）', (await stored(page, 'amai.book')) === oldBook && (await stored(page, 'amai.clean')) === J({ v: 1, ids: ['sakura'] }), { book: await stored(page, 'amai.book'), clean: await stored(page, 'amai.clean') });
       const BAD_BEST = ['abc', '-5', '1e400', '{}', '1.5', 'NaN', 'Infinity', '', '9007199254740992'];
       const bad2 = [];
       for (const raw of BAD_BEST) {
@@ -966,6 +988,19 @@ export const tests = [
       await page.goto(BASE); await wait(page, 200);
       const cb = await card();
       check(`ずかんに 2 枚なら「3 めん クリア」に「ずかん 2」が付く（${cb && cb.bestAll}）`, cb && /3 めん クリア/.test(cb.bestAll) && /ずかん\s*2/.test(cb.bestAll), cb);
+      // 描き直す前の古い id（sakura・kinoko …）は amai.book に残っていても数えない（ずかんの「M / 48」と同じ。計画書 amai-redraw.md §7.1）
+      const menuSrc = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+      const mIds = (() => { const m = /const AMAI_IDS = \[([\s\S]*?)\];/.exec(menuSrc); return m ? [...m[1].matchAll(/"([a-z]+)"/g)].map((x) => x[1]) : null; })();
+      check(`メニューの AMAI_IDS（${mIds && mIds.length} 枚）が logic.js の PICTURE_ORDER の id と同じ並び`, !!mIds && J(mIds) === J(LG.PICTURE_ORDER.map((p) => p.id)), mIds);
+      await seed(page, { 'amai.best': '30', 'amai.book': J({ v: 1, got: { sakura: 3, kinoko: 1, kanransha: 9, [ids[0]]: 1, [ids[1]]: 2 } }) });
+      await page.goto(BASE); await wait(page, 200);
+      const co = await card();
+      check(`古い id が 3 枚・新しい絵が 2 枚のずかんなら「ずかん 2」（${co && co.bestAll}）`, co && /30 めん クリア/.test(co.bestAll) && /ずかん\s*2(?!\d)/.test(co.bestAll), co);
+      const oldOnly = J({ v: 1, got: { sakura: 3, kinoko: 1 } });
+      await seed(page, { 'amai.best': '30', 'amai.book': oldOnly });
+      await page.goto(BASE); await wait(page, 200);
+      const co2 = await card();
+      check(`古い id だけのずかんなら「ずかん」を出さない（${co2 && co2.bestAll}）・amai.book は消さない`, co2 && /30 めん クリア/.test(co2.bestAll) && !/ずかん/.test(co2.bestAll) && (await stored(page, 'amai.book')) === oldOnly, co2);
       const bad = [];
       for (const [best, book] of [['abc', '{not json'], ['-1', 'null'], ['1.5', '[]'], ['', '{"v":1,"got":5}'], ['0', '{"v":1,"got":{"x":"y"}}'], ['NaN', ''], ['Infinity', '{}'], ['1e400', '{"v":1,"got":[]}'], ['{}', '{"v":9}'], ['9007199254740992', '{"v":1,"got":{"zzz":1}}']]) {
         await seed(page, { 'amai.best': best, 'amai.book': book });
@@ -998,7 +1033,10 @@ export const tests = [
         const notYet = (text.match(/？？？/g) || []).length;
         check(`${v.label}：「2 / ${total}」、クリアした絵の名前（${names[0]}・${names[2]}）と「1 かい」「3 かい」、まだの絵は「？？？」が ${total - 2} 個（${notYet}）`,
           new RegExp(`2\\s*/\\s*${total}`).test(text) && text.includes(names[0]) && text.includes(names[2]) && /1\s*かい/.test(text) && /3\s*かい/.test(text) && notYet === total - 2, { text: text.slice(0, 200), notYet });
-        check(`${v.label}：まだの絵の名前は出ない（例：${names[10]}）・季節の札（はる・なつ・あき・ふゆ）が出る`, !text.includes(names[10]) && ['はる', 'なつ', 'あき', 'ふゆ'].every((w) => text.includes(w)), text.slice(0, 160));
+        // 季節の札：3〜48 面を場面の絵に描き直し、季節は うみべ＝なつ・ゆきやま＝ふゆ だけになった（計画書 amai-redraw.md §4）
+        const seasonsIn = [...new Set(order.map((p) => LG.pictureById(p.id, false).season).filter(Boolean))];
+        const SW = { haru: 'はる', natsu: 'なつ', aki: 'あき', fuyu: 'ふゆ' };
+        check(`${v.label}：まだの絵の名前は出ない（例：${names[10]}）・季節の札（${seasonsIn.map((x) => SW[x]).join('・')}）が出る`, !text.includes(names[10]) && seasonsIn.length >= 2 && seasonsIn.every((x) => text.includes(SW[x])), text.slice(0, 160));
         const sc = await page.evaluate(() => {
           const card = document.querySelector('#card'), ov = document.querySelector('#overlay');
           const els = [ov, card, ...card.querySelectorAll('*')];

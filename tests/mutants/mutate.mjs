@@ -491,7 +491,10 @@ const M = [
   ['MA27 あまいものあつめ：1手もどしを使ったのに「もどしなし」を書く（見つける：AW23）', 'ルール', 'games/amai/main.js', 'const clean = !custom && !restored && noUndo === true;', 'const clean = !custom && !restored;'],
   ['MA28 あまいものあつめ：クリアしても amai.clean に書かない（見つける：AW23）', 'データ', 'games/amai/main.js', 'if (typeof rc === "string") writeKey(KEY_CLEAN, rc);', ''],
   ['MA29 あまいものあつめ：カードの間もプレイ画面を inert にしない（見つける：AW24）', 'アクセシビリティ', 'games/amai/main.js', 'el.playView.setAttribute("inert", "");', ''],
-  ['MA30 あまいものあつめ：validateClean が重複・知らない id を捨てない（見つける：AL14）', '保存データ互換', 'games/amai/logic.js', 'if (typeof id !== "string" || seen.has(id) || !PICTURE_ORDER.some((p) => p.id === id)) continue;', 'if (typeof id !== "string") continue;'],
+  ['MA30 あまいものあつめ：validateClean が重複・壊れた id を捨てない（見つける：AL14）', '保存データ互換', 'games/amai/logic.js', 'if (typeof id !== "string" || seen.has(id) || !ID_RE.test(id) || id.length > 64) continue;', 'if (typeof id !== "string") continue;'],
+  ['MA32 あまいものあつめ：validateClean が古い絵の id（PICTURE_ORDER に無い id）を捨てる（見つける：AL14・AL17・AW3）', 'データ消失', 'games/amai/logic.js', 'if (typeof id !== "string" || seen.has(id) || !ID_RE.test(id) || id.length > 64) continue;', 'if (typeof id !== "string" || seen.has(id) || !ID_RE.test(id) || id.length > 64 || !PICTURE_ORDER.some((p) => p.id === id)) continue;'],
+  ['MA33 あまいものあつめ：bookCount が PICTURE_ORDER に無い古い id も数える（見つける：AL9・AL17・AW3）', 'ルール', 'games/amai/logic.js', 'for (const p of PICTURE_ORDER) if (gotOf(b, p.id) > 0) n++;', 'for (const k of Object.keys(b.got)) if (gotOf(b, k) > 0) n++;'],
+  ['MA34 あまいものあつめ：メニューのずかんの数が古い id も数える（見つける：AW16）', 'ルール', 'index.html', 'for (const k of AMAI_IDS) {', 'for (const k of Object.keys(b.got).slice(0, 5000)) {'],
   ['MA31 あまいものあつめ：logic.js を事前キャッシュから外す（見つける：AW14）', 'オフライン', 'sw.js', '  "./games/amai/logic.js",\n', ''],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
