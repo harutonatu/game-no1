@@ -347,12 +347,12 @@ export const tests = [
     },
   },
   {
-    id: 'L13', tier: 'smoke', node: true, title: '共有の見た目の横展開（X-26）：いろびん以外の 11 本の head に description・og:*・twitter:card が 1 つずつ、og:url はそのゲームの公開の場所、og:image はメニューの絵、meta は title より前、文は「広告なし・登録なし。」で始まり og:title は「名前｜ゆびあそび」',
+    id: 'L13', tier: 'smoke', node: true, title: '共有の見た目の横展開（X-26）：いろびん以外の 12 本の head に description・og:*・twitter:card が 1 つずつ、og:url はそのゲームの公開の場所、og:image はメニューの絵、meta は title より前、文は「広告なし・登録なし。」で始まり og:title は「名前｜ゆびあそび」',
     run({ check, root }) {
       const BASE = 'https://harutonatu.github.io/game-no1/';
       const rd = (f) => fs.readFileSync(path.join(root, f), 'utf8');
       const games = [...rd('index.html').matchAll(/\{ name: "([^"]+)"[^\n]*?url: "games\/([a-z0-9]+)\/"/g)].map((m) => ({ name: m[1], dir: m[2] })).filter((g) => g.dir !== 'irobin');
-      check(`いろびん以外のゲームが 11 本（${games.map((g) => g.dir).join(',')}）`, games.length === 11, games);
+      check(`いろびん以外のゲームが 12 本（${games.map((g) => g.dir).join(',')}）`, games.length === 12, games);
       for (const g of games) {
         const f = `games/${g.dir}/index.html`;
         const html = rd(f);

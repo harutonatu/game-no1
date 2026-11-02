@@ -31,7 +31,7 @@ node tests/run.mjs full       # 公開前に（目標 60 秒以内）
 | `JSON` | — | 結果を JSON に書き出すパス |
 | `CLOCK` | — | `0` で待ち時間の早送りを止め、すべて実時間で待つ（早送りのせいで合否が変わっていないかの確認用） |
 | `TEST_TIMEOUT` | `60000` | 1 項目の上限（ms）。止まっても全体は止まらない。項目ごとに `timeout:`（ms）で長くできる（既定より長いときだけ使う。FW19 は WebKit で 50〜56 秒かかるので 120000。T-24。BW31・BW32 は WebKit（画面あり）で 75〜99 秒かかるので 180000。T-35） |
-| （参考）AL・AW・MA | あまいものあつめ（`games/amai/`）の項目。v50 で配信を止めたが、**v52 で試作として戻した**（メニューには出さず URL だけで開ける）。ロジック AL・画面 AW・変異 MA。手直しの経緯は [docs/plans/amai-rework.md](../docs/plans/amai-rework.md) |
+| AL・AW・MA | あまいものあつめ（`games/amai/`）の項目。v50 で配信を止め、v52 で試作として戻し（メニューには出さず URL だけ）、**v58 でメニューのカードを戻した**（ユーザー「アリンコのゲームがメニューにない、というのを繰り返し言ってます」）。ロジック AL・画面 AW・変異 MA。手直しの経緯は [docs/plans/amai-rework.md](../docs/plans/amai-rework.md) |
 | `HEADED` | — | `1` で画面を出してブラウザを起動する（既定はヘッドレス）。下の「画面を出して流す」 |
 
 **速さを測る項目は最後に 1 つずつ**：速さを測る項目（A5・WW10・KW10・FW18・HW19、`solo: true`）は、WORKERS が 2 以上のとき、ほかのグループが全部終わってから 1 つずつ流れる（出力に「（速さ・1 つずつ）」と出る）。並列の負荷で速さの測定が落ちないため（T-02・T-09）。WORKERS=1 なら今までどおり。
@@ -97,6 +97,7 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 | ミチビキ空港（games/michibiki/）の変更 | smoke ＋ `ONLY=FW6,FW7,FW8,FW9,FW10,FW11,FW12,FW13,FW14,FW15,FW16,FW17,FW18,FW19,FW22,FW23,FW24 node tests/run.mjs full`（ロジックだけなら `ONLY=FL1,FL2,FL3,FL4,FL5,FL6,FL7,FL8,FL9,FL10,FL11,FL12,FL13 node tests/run.mjs full`、約 20 秒。ルール・保存・出現を変えたら `ONLY=FL1,…,FL13,FW1,…,FW24 M=MF1,…,MF32 node tests/mutants/mutate.mjs both`） |
 | もくもくこうば（games/seizai/）の変更 | smoke ＋ `ONLY=WW7,WW8,WW9,WW10,WW11,WW12,WW13,WW14,WW15,WW16,WW17,WW18,WW19,WW20,WW21,WW22,WW23,WW24,WW25,WW26,WW27,WW28,WW29 node tests/run.mjs full`（ロジックだけなら `ONLY=WL1,WL2,WL3,WL4,WL5,WL6,WL7,WL8,WL9,WL10,WL11,WL12,WL13,WL14 node tests/run.mjs full`。経済・保存・閉じた間・船・注文を変えたら `ONLY=WL1,…,WL11,WW1,…,WW19 M=MW1,…,MW50 PORT=9640 WORKERS=2 node tests/mutants/mutate.mjs both`。10 個ずつ M を区切って流す。さいしょから（契約 §21）を変えたら `ONLY=WW25 M=MW61,MW62,MW63,MW64 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`。古いページから書き戻さない（X-20）を変えたら `ONLY=WW26 M=MW65,MW66,MW67 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`。かんな の速さ・もう強くできない つまり（契約 §23・SZ-08）を変えたら `ONLY=WL14,WW27,X1 M=MW68,MW69 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`） |
 | ちきゅうを守れ！ほしくだき（games/asteroid/）の変更 | smoke ＋ `ONLY=KW8,KW9,KW10,KW11,KW12,KW13,KW14,KW15,KW16,KW17,KW20,KW21,KW23,KW25,KW26 node tests/run.mjs full`（ロジックだけなら `ONLY=KL1,…,KL23 node tests/run.mjs full`。ルール・保存・中断・画面の流れを変えたら `WORKERS=3 PORT=9650 ONLY=KL1,…,KL23,KW1,…,KW26,X1 M=MK1,…,MK83 node tests/mutants/mutate.mjs full`（全部で 1 時間あまり。直した所の MK だけに絞ってよい）。KW3（はね返し）を変えたら 20 回続けて流して 0 回落ちることを確かめる（T-19）。ロジックの数値を変えたら main.js の gostar の表 `ARMS` も測り直す（design.md §10.68）） |
+| あまいものあつめ（games/amai/）の変更 | smoke ＋ `ONLY=AL1,…,AL16,AW5,…,AW26,L12,L13,V13,X1 node tests/run.mjs full`（ロジックだけなら `ONLY=AL1,…,AL16`。メニューのカードだけなら `ONLY=AW16,V1,V13,L10,L13`。変異は中身の仕組みを変えたときだけ `M=MA1,…,MA31 node tests/mutants/mutate.mjs both`） |
 | 遠隔テストの中継（tests/relay/・common/debug-relay.js・common/debug.js の relay の部分） | smoke ＋ `ONLY=RL1,RL2,RL3,RL4,RL5,RL6,RL7,RL8,RL9,RL10,RL11,RL12 node tests/run.mjs full` を Chromium と WebKit（`BROWSER=webkit WORKERS=1`）の両方で。ONLY は番号を並べる形（`ONLY=RL` では絞れない）。約 30〜50 秒 |
 | 公開前（master へ反映する前） | `node tests/run.mjs full` ＋ 下の「実機確認リスト」 |
 | テストを変えたとき・中身の仕組み（点数計算・保存・日付・ルール）を変えたとき | `node tests/mutants/mutate.mjs both`（そのゲームの分だけ。テストがわざと入れた不具合を見つけられるか） |

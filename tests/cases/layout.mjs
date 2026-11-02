@@ -409,6 +409,7 @@ export const tests = [
         'blockpuzzle.best': '9999999', 'tile2048.best': '3932100', 'kiritori.best': '99999', 'irocode.stats': JSON.stringify({ best: 10 }),
         'zenmai.progress': JSON.stringify({ stars, unlocked: 15 }), 'pikatto.bestSolo': '5000', 'hashi.best': '9999', 'irobin.best': '999', 'irobin.book': JSON.stringify({ v: 1, a: {}, s: Object.fromEntries(Array.from({ length: 999 }, (_, i) => [String(i + 1), [3, 30]])), last: 999 }),
         'matomete.best': '9999999', 'michibiki.best': '9999', 'seizai.best': '3', 'asteroid.best': '9999',
+        'amai.best': '9007199254740991', 'amai.book': JSON.stringify({ v: 1, got: Object.fromEntries(Array.from({ length: 48 }, (_, i) => ['e' + String.fromCharCode(97 + (i % 26)) + String.fromCharCode(97 + Math.floor(i / 26)), 1])) }),
       };
       for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app'), view('i13', 'p', 'app')]) {
         const { ctx, page } = await newPage(browser, v, 'V13 ' + v.label, { clock: true });
