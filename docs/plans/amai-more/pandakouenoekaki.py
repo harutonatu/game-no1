@@ -1,0 +1,416 @@
+# こうえんで ぱんだが おえかきを する（pandakouenoekaki・段 XXL・64x48 以下）
+# 部品（楕円・多角形・線・ふちどり・かげ）で描いて、文字の地図 pandakouenoekaki.txt を書き出す（1 マス＝1 粒）。amai-redraw/kumayukiyamabooru.py の部品をまねた。
+# ---- 部品（楕円・多角形・線・ふちどり・かげ）。見本 kumadaidokorooyatsu.py をまねた ----
+import os, math
+W, H = 64, 48
+g = [['.'] * W for _ in range(H)]
+ALL = {(x, y) for y in range(H) for x in range(W)}
+
+def put(x, y, c):
+    if 0 <= x < W and 0 <= y < H:
+        g[y][x] = c
+
+def at(x, y):
+    return g[y][x] if 0 <= x < W and 0 <= y < H else None
+
+def ell(cx, cy, rx, ry, ang=0):
+    a = math.radians(ang); ca, sa = math.cos(a), math.sin(a)
+    s = set()
+    for (x, y) in ALL:
+        dx, dy = x + .5 - cx, y + .5 - cy
+        u = dx * ca + dy * sa; v = -dx * sa + dy * ca
+        if (u / rx) ** 2 + (v / ry) ** 2 <= 1.0:
+            s.add((x, y))
+    return s
+
+def rect(x0, y0, x1, y1):
+    return {(x, y) for y in range(max(0, y0), min(H - 1, y1) + 1) for x in range(max(0, x0), min(W - 1, x1) + 1)}
+
+def poly(pts):
+    s = set(); n = len(pts)
+    for (x, y) in ALL:
+        px, py = x + .5, y + .5; ins = False
+        for i in range(n):
+            ax, ay = pts[i]; bx, by = pts[(i + 1) % n]
+            if (ay > py) != (by > py) and px < ax + (py - ay) * (bx - ax) / (by - ay):
+                ins = not ins
+        if ins: s.add((x, y))
+    return s
+
+def line(x0, y0, x1, y1, w=0):
+    if w <= 0:
+        s = set(); n = max(abs(x1 - x0), abs(y1 - y0), 1)
+        for i in range(int(round(n)) + 1):
+            t = i / max(1, round(n))
+            s.add((int(round(x0 + (x1 - x0) * t)), int(round(y0 + (y1 - y0) * t))))
+        return s
+    s = set(); L2 = (x1 - x0) ** 2 + (y1 - y0) ** 2 or 1
+    for (x, y) in ALL:
+        px, py = x + .5, y + .5
+        t = max(0, min(1, ((px - x0) * (x1 - x0) + (py - y0) * (y1 - y0)) / L2))
+        if math.hypot(px - x0 - t * (x1 - x0), py - y0 - t * (y1 - y0)) <= w / 2:
+            s.add((x, y))
+    return s
+
+def fill(m, c):
+    for x, y in m:
+        put(x, y, c(x, y) if callable(c) else c)
+
+def edge(m):
+    return {(x, y) for x, y in m if any((x + dx, y + dy) not in m
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))}
+
+def shape(m, c, o='K', sh=None, hi=None, sw=2, hw=2):
+    """塗って、かげ（左下）・明るい所（右上）を付けて、ふちどり。"""
+    fill(m, c)
+    if sh:
+        fill({(x, y) for x, y in m if (x - sw, y) not in m or (x, y + sw) not in m}, sh)
+    if hi:
+        fill({(x, y) for x, y in m if ((x + hw, y) not in m or (x, y - hw) not in m)
+              and (x - sw, y) in m and (x, y + sw) in m}, hi)
+    if o:
+        fill(edge(m), o)
+
+def shadow(cx, cy, rx, ry, on, c='K', solid=0.5):
+    for (x, y) in ell(cx, cy, rx, ry):
+        q = ((x + .5 - cx) / rx) ** 2 + ((y + .5 - cy) / ry) ** 2
+        if at(x, y) in on and (q < solid or (x + y) % 2 == 0):
+            put(x, y, c)
+
+def zz(x, y, n, c='K'):
+    for i in range(n):
+        put(x + i, y, c); put(x + i, y + n - 1, c); put(x + n - 1 - i, y + i, c)
+
+def finish(name, holec='W'):
+    out = set(); st = [(x, y) for x in range(W) for y in (0, H - 1)] + [(x, y) for y in range(H) for x in (0, W - 1)]
+    st = [p for p in st if g[p[1]][p[0]] == '.']; out = set(st)
+    while st:
+        x, y = st.pop()
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            q = (x + dx, y + dy)
+            if 0 <= q[0] < W and 0 <= q[1] < H and q not in out and g[q[1]][q[0]] == '.':
+                out.add(q); st.append(q)
+    for y in range(H):
+        for x in range(W):
+            if g[y][x] == '.' and (x, y) not in out:
+                g[y][x] = holec                      # 閉じた空きをうめる
+    rows = [''.join(r) for r in g]
+    while rows and set(rows[0]) == {'.'}: rows.pop(0)
+    while rows and set(rows[-1]) == {'.'}: rows.pop()
+    while rows and all(r[0] == '.' for r in rows): rows = [r[1:] for r in rows]
+    while rows and all(r[-1] == '.' for r in rows): rows = [r[:-1] for r in rows]
+    here = os.path.dirname(os.path.abspath(__file__))
+    open(os.path.join(here, name + '.txt'), 'w').write('\n'.join(rows) + '\n')
+    cnt = {}
+    for r in rows:
+        for ch in r:
+            if ch != '.': cnt[ch] = cnt.get(ch, 0) + 1
+    print(name, sum(cnt.values()), len(cnt), cnt)
+
+# ---- 場面と主役の部品（絵 B。58〜66 面で同じ部品を使う）----
+def cells(m, f):
+    return {(x, y) for (x, y) in m if f(x, y)}
+
+def dither(m, c, k=2):
+    fill(cells(m, lambda x, y: (x + y) % k == 0), c)
+
+def zzz(x, y, c='K'):
+    zz(x, y, 3, c); zz(x + 4, y - 4, 4, c); zz(x + 9, y - 9, 5, c)
+
+def cloud(cx, cy, s=1.0):
+    m = ell(cx, cy, 5 * s, 2 * s) | ell(cx - 3 * s, cy + .5, 3 * s, 1.6 * s) | ell(cx + 1 * s, cy - 1.4 * s, 3 * s, 2 * s)
+    fill(m, 'W'); fill(cells(m, lambda x, y: (x, y + 1) not in m), 'S')
+
+# 空（上の何行かは あけておく）
+def sky(y0, y1, x0=0, x1=63):
+    fill(rect(x0, y0, x1, y1), 'S')
+
+# もり：奥の木立（みき C・葉 G。奥は くらい）と 地面（落ち葉）
+def bg_forest(gy=33, top=6):
+    back = rect(0, top + 6, 63, gy)
+    fill(back, 'G'); fill(cells(back, lambda x, y: (x + y) % 2 == 0), 'K')
+    for tx in (3, 13, 25, 37, 49, 59):
+        t = rect(tx, top + 8, tx + 2, gy)
+        fill(t, 'C'); fill(cells(t, lambda x, y: x == tx + 2), 'K'); fill(cells(t, lambda x, y: x == tx), 'O')
+    can = set()
+    for i, cx in enumerate(range(-2, 70, 9)):
+        can |= ell(cx, top + 6 + (i % 2) * 2.5, 6.5, 6)
+    fill(can, 'G')
+    fill(cells(can, lambda x, y: (x, y + 2) not in can and (x + y) % 2 == 0), 'K')
+    fill(cells(can, lambda x, y: (x * 7 + y * 3) % 11 == 0 and (x, y + 2) in can), 'Y')
+    fill(edge(can) - cells(can, lambda x, y: (x, y + 1) not in can), 'K')
+    gr = rect(0, gy, 63, H - 1)
+    fill(gr, 'G'); fill({(x, gy) for x in range(W)}, 'K')
+    for (x, y) in gr:
+        if y > gy and (x * 5 + y * 7) % 23 == 0: put(x, y, 'K')
+        elif y > gy + 1 and (x * 11 + y * 5) % 29 == 0: put(x, y, 'O')
+        elif y > gy + 1 and (x * 13 + y * 3) % 37 == 0: put(x, y, 'Y')
+
+# もりの 大きな木（手前。みき C・葉 G）
+def big_tree(tx, gy, cy=10, r=11):
+    trunk = poly([(tx - 2, gy + 2), (tx, cy + 4), (tx + 4, cy + 4), (tx + 6, gy + 2)])
+    shape(trunk, 'C', hi='O', hw=1)
+    fill(cells(trunk, lambda x, y: (y % 5 == 0) and x == tx + 2), 'K')
+    root = ell(tx + 2, gy + 1.5, 6, 1.6); fill(root - trunk, 'K')
+    crown = ell(tx + 2, cy, r, r * 0.75) | ell(tx - r * 0.6, cy + 3, r * 0.6, r * 0.5) | ell(tx + 2 + r * 0.7, cy + 3, r * 0.6, r * 0.5)
+    fill(crown, 'G')
+    fill(cells(crown, lambda x, y: ((x, y + 3) not in crown or (x - 3, y) not in crown) and (x + y) % 2 == 0), 'K')
+    fill(cells(crown, lambda x, y: (x * 3 + y * 5) % 9 == 0 and (x, y - 2) in crown and (x + 3, y) in crown and (x, y + 3) in crown), 'Y')
+    fill(edge(crown), 'K')
+
+# きのこ（あか・しろの ぽつぽつ）
+def mushroom(cx, by, s=1.0):
+    st = rect(int(cx - 1 * s), int(by - 4 * s), int(cx + 1 * s), by)
+    shape(st, 'W', sh='S', sw=1)
+    cap = ell(cx + .5, by - 4.5 * s, 4 * s, 2.8 * s) - rect(0, int(by - 4 * s) + 1, W - 1, H - 1)
+    fill(cap, 'R')
+    fill(cells(cap, lambda x, y: (x * 3 + y * 2) % 5 == 0 and (x, y - 1) in cap), 'W')
+    fill(edge(cap), 'K')
+
+# 切りかぶ
+def stump(cx, by, rx=6, h=5):
+    side = rect(cx - rx, by - h, cx + rx, by) | ell(cx + .5, by, rx + 1, 1.5)
+    shape(side, 'C', hi='O', hw=1)
+    fill(cells(side, lambda x, y: (x - cx) % 3 == 0 and by - h + 2 <= y < by), 'K')
+    top_ = ell(cx + .5, by - h, rx + 1, 2)
+    fill(top_, 'Y'); fill(ell(cx + .5, by - h, rx * 0.55, 1.1), 'O'); put(cx, by - h, 'C')
+    fill(edge(top_), 'K')
+
+# こうえん：空・くも・しば生（花）
+def bg_park(gy=32, top=4, clouds=((9, 5, 1.0), (50, 4, 0.9))):
+    sky(top, gy)
+    for (cx, cy, s_) in clouds: cloud(cx, top + cy, s_)
+    gr = {(x, y) for (x, y) in ALL if y >= gy + 1.2 * math.sin(x / 7.0)}
+    fill(gr, 'G')
+    fill(cells(gr, lambda x, y: (x, y - 1) not in gr), 'K')
+    for (x, y) in gr:
+        if (x, y - 1) in gr and (x * 5 + y * 7) % 19 == 0: put(x, y, 'K')
+        elif (x, y - 2) in gr and (x * 11 + y * 3) % 41 == 0:
+            put(x, y, 'W'); put(x - 1, y, 'Y')
+    return gr
+
+# こうえんの木（丸い葉）
+def park_tree(tx, gy, cy=12, r=9):
+    trunk = rect(tx, cy + 3, tx + 3, gy + 1)
+    shape(trunk, 'C', hi='O', hw=1)
+    crown = ell(tx + 2, cy, r, r * 0.85) | ell(tx - r * 0.5, cy + 3, r * 0.55, r * 0.5) | ell(tx + 2 + r * 0.6, cy + 3.5, r * 0.6, r * 0.5)
+    fill(crown, 'G')
+    fill(cells(crown, lambda x, y: ((x, y + 3) not in crown or (x - 3, y) not in crown) and (x + y) % 2 == 0), 'K')
+    fill(cells(crown, lambda x, y: (x * 3 + y * 5) % 11 == 0 and (x + 2, y - 2) in crown and (x, y + 3) in crown), 'Y')
+    fill(edge(crown), 'K')
+
+# ベンチ（ななめ）
+def bench(x0, gy, w=16):
+    seat = poly([(x0 + 2, gy - 9), (x0 + w + 2, gy - 9), (x0 + w, gy - 6), (x0, gy - 6)])
+    back = rect(x0 + 2, gy - 15, x0 + w + 2, gy - 13) | rect(x0 + 2, gy - 12, x0 + w + 2, gy - 11)
+    for lx in (x0 + 1, x0 + w - 2):
+        fill(rect(lx, gy - 6, lx + 1, gy), 'K')
+    for lx in (x0 + 3, x0 + w + 1):
+        fill(rect(lx, gy - 15, lx, gy - 9), 'K')
+    shape(back, 'C', hi='O', hw=1); shape(seat, 'C', hi='O', hw=1)
+
+# うみべ：空・海（なみ）・すな
+def bg_beach(sy=18, gy=28, top=3):
+    sky(top, sy)
+    sea = rect(0, sy, 63, gy)
+    fill(sea, 'S'); fill(rect(0, sy, 63, sy + 2), 'B')
+    fill(cells(sea, lambda x, y: y > sy + 2 and (x + 3 * y) % 9 < 3 and y % 3 == 0), 'B')
+    fill(cells(sea, lambda x, y: y >= gy - 1 and (x // 3 + y) % 2 == 0), 'W')
+    sand = {(x, y) for (x, y) in ALL if y > gy + 1.0 * math.sin(x / 6.0)}
+    fill(sand, 'Y')
+    for (x, y) in sand:
+        if (x * 7 + y * 5) % 13 == 0: put(x, y, 'O')
+    fill(cells(sand, lambda x, y: (x, y - 1) not in sand), 'W')
+    return sand
+
+# パラソル
+def parasol(px, gy, ty=2, r=11):
+    fill(line(px, ty + 2, px, gy, 0) | line(px + 1, ty + 2, px + 1, gy, 0), 'K')
+    top_ = poly([(px - r, ty + 7), (px + .5, ty), (px + r + 1, ty + 7)]) | ell(px + .5, ty + 6, r + .5, 1.5)
+    fill(top_, lambda x, y: 'R' if int((math.atan2(x + .5 - px - .5, y + .5 - ty) * 6)) % 2 == 0 else 'W')
+    fill(cells(top_, lambda x, y: (x, y + 1) not in top_), 'P')
+    fill(edge(top_), 'K')
+    fill(ell(px + .5, gy, 3, 1), 'K')
+
+# ゆきやま：空（雪のつぶ）・山・雪の地面
+def bg_snow(gy=30, top=3, peaks=((14, 6, 18, 16), (52, 9, 16, 20))):
+    sk = rect(0, top, 63, gy + 2)
+    fill(sk, 'S')
+    fill(cells(sk, lambda x, y: (x * 5 + y * 3) % 17 == 0 and y < gy - 4), 'W')
+    for (px, py, wl, wr) in peaks:
+        m = poly([(px - wl, gy + 1), (px, py), (px + wr, gy + 1)])
+        fill(m, 'W')
+        fill(cells(m, lambda x, y: x > px + (y - py) * 0.25), 'S')
+        low = cells(m, lambda x, y: y > py + 8 + (2 if (x // 2) % 2 else 0))
+        fill(cells(low, lambda x, y: x > px + (y - py) * 0.25), 'B')
+        fill(cells(low, lambda x, y: x <= px + (y - py) * 0.25 and (x + y) % 3 == 0), 'S')
+        fill(edge(m) - cells(m, lambda x, y: y >= gy), 'K')
+    ground = {(x, y) for (x, y) in ALL if y >= gy + 2.5 * math.sin(x / 9.0)}
+    fill(ground, 'W')
+    for (x, y) in ground:
+        if (y - gy - 2.5 * math.sin(x / 9.0)) < 1.2: put(x, y, 'K')
+    return ground
+
+def fir(tx, gy, top=14):
+    fill(rect(tx, gy - 5, tx + 1, gy), 'C'); fill(rect(tx + 1, gy - 5, tx + 1, gy), 'K')
+    n = 3; span = gy - 5 - top
+    for i in range(n):
+        ty = top + i * span // (n + 0.4); hw = 3 + i * 2.5; hh = span // n + 2
+        t = poly([(tx + .5 - hw, ty + hh), (tx + 1, ty), (tx + 1.5 + hw, ty + hh)])
+        fill(t, 'G')
+        fill(cells(t, lambda x, y: x < tx and (x + y) % 2 == 0), 'K')
+        fill(cells(t, lambda x, y: y <= ty + 1 or (y == ty + hh - 1 and x % 3 != 0)), 'W')
+        fill(edge(t) - cells(t, lambda x, y: y <= ty + 1), 'K')
+
+# イーゼル と 紙（art(x0, y0, x1, y1) が 中の絵を描く）
+def easel(x0, y0, x1, y1, gy, art):
+    mx = (x0 + x1) // 2
+    fill(line(mx - 1, y0 - 2, x0 - 2, gy, 2), 'C'); fill(line(mx, y0 - 2, x1 + 2, gy, 2), 'C')
+    fill(line(mx, y0, mx + 1, gy - 2, 2), 'K')
+    fill(rect(x0 - 2, y1 + 1, x1 + 2, y1 + 2), 'C'); fill(rect(x0 - 2, y1 + 2, x1 + 2, y1 + 2), 'K')
+    paper = rect(x0, y0, x1, y1)
+    fill(paper, 'W'); fill(cells(paper, lambda x, y: x == x1 - 1), 'S')
+    art(x0 + 1, y0 + 1, x1 - 1, y1 - 1)
+    fill(edge(paper), 'K')
+
+def art_rainbow(x0, y0, x1, y1):
+    cx = (x0 + x1) / 2 + .5; cy = y1 + 1
+    for (r, c) in ((8.5, 'R'), (7.3, 'O'), (6.1, 'Y'), (4.9, 'G'), (3.7, 'B')):
+        fill(ell(cx, cy, r, r * 0.9) & rect(x0, y0, x1, y1) - ell(cx, cy, r - 1.2, (r - 1.2) * 0.9), c)
+
+# ふで（え のぐ つき）・パレット
+def brush(x0, y0, x1, y1, tip='R'):
+    fill(line(x0, y0, x1, y1), 'C')
+    fill(line(x0, y0 + 1, x1, y1 + 1) - line(x0, y0, x1, y1), 'K')
+    fill({(x1, y1), (x1 + (1 if x1 > x0 else -1), y1), (x1, y1 + 1)}, tip)
+
+def palette(cx, cy):
+    m = ell(cx, cy, 5, 3.2) - ell(cx - 3, cy + 1.6, 1.2, 1)
+    shape(m, 'O', sh='C', sw=1)
+    for (dx, dy, c) in ((-2, -1, 'R'), (0, -2, 'Y'), (2, -1, 'B'), (3, 1, 'G')):
+        fill({(int(cx + dx), int(cy + dy)), (int(cx + dx) + 1, int(cy + dy))}, c)
+
+# ---- 主役：すわった形（右むき 斜め）。kind = panda / kuma / neko / inu / usagi ----
+SKIN = {'panda': ('W', 'S', None), 'kuma': ('C', None, 'O'), 'neko': ('O', None, 'Y'),
+        'inu': ('W', 'S', None), 'usagi': ('W', 'S', None)}
+
+def blob(m, kind, dark=False):
+    c, sh, hi = SKIN[kind]
+    if kind == 'panda' and dark:
+        shape(m, 'K', o='K'); fill(cells(m, lambda x, y: (x - 1, y) in m and (x, y + 1) in m and (x + 1, y) in m and (x, y - 1) in m and ((x + 2, y) not in m or (x, y - 2) not in m) and (x + y) % 2 == 0), 'B')
+        return
+    shape(m, c, sh=sh, hi=hi, sw=2, hw=1)
+
+def animal(kind, cx, by, armB=None, armF=None, eyes='open', mouth='smile', look=1, hold=None):
+    """cx＝体の まんなか、by＝足の下。armB＝奥のうでの先、armF＝手前のうでの先。"""
+    hx, hy = cx + 1, by - 27
+    footB = ell(cx - 6, by - 2.5, 4.6, 2.8); footF = ell(cx + 7, by - 2.3, 5, 2.9)
+    body = ell(cx, by - 12, 11, 10.5)
+    head = ell(hx, hy, 10.5, 8.6)
+    # 耳（奥）
+    if kind == 'usagi':
+        for (ex, ang) in ((hx - 3, -12), (hx + 4, 14)):
+            e = ell(ex, hy - 13, 2.8, 8, ang); blob(e, kind)
+            fill(ell(ex + (-0.4 if ang < 0 else 0.4), hy - 12.5, 1.1, 5.5, ang) - edge(e), 'P')
+    elif kind == 'neko':
+        for (ex, d) in ((hx - 6, -1), (hx + 6, 1)):
+            e = poly([(ex - 4, hy - 4), (ex + d * 1.5, hy - 12), (ex + 4, hy - 4)]); blob(e, kind)
+            fill(poly([(ex - 1.8, hy - 5), (ex + d * 1.2, hy - 9.5), (ex + 1.8, hy - 5)]), 'P')
+    elif kind in ('kuma', 'panda'):
+        for ex in (hx - 7.5, hx + 7.5):
+            e = ell(ex, hy - 7, 3.8, 3.8); blob(e, kind, dark=True)
+            if kind == 'kuma': fill(ell(ex, hy - 6.7, 1.9, 1.9), 'P')
+    # しっぽ（奥）
+    if kind == 'neko':
+        t = line(cx - 10, by - 3, cx - 17, by - 14, 4) | line(cx - 17, by - 14, cx - 15, by - 20, 4); blob(t, kind)
+        fill(cells(t, lambda x, y: y % 3 == 0) - edge(t), 'C')
+    elif kind == 'inu':
+        t = ell(cx - 12, by - 9, 2.2, 4.5, -35); shape(t, 'C')
+    elif kind in ('usagi', 'panda'):
+        t = ell(cx - 11, by - 5, 2.6, 2.4); blob(t, kind, dark=(kind == 'panda'))
+    # 奥のうで
+    if armB:
+        a = line(cx - 6, by - 17, armB[0], armB[1], 5); blob(a, kind, dark=True)
+    blob(footB, kind, dark=True)
+    blob(body, kind)
+    if kind == 'kuma':
+        bl = ell(cx + 1, by - 10, 6.5, 6.5) & body
+        fill(bl, 'O'); fill(cells(bl, lambda x, y: (x + 1, y - 1) not in bl), 'Y')
+    if kind == 'neko':
+        bl = ell(cx + 2, by - 11, 5.5, 7) & body
+        fill(bl - edge(body), 'W')
+        for k in range(3):
+            fill(cells(body, lambda x, y: x < cx - 4 and abs(y - (by - 18 + k * 4) + (x - cx) * 0.3) < 0.8) - edge(body), 'C')
+    if kind == 'inu':
+        fill(ell(cx - 5, by - 15, 5, 4) & body - edge(body), 'C')
+    if kind == 'panda':  # かたの くろい帯
+        band = (ell(cx, by - 19, 11, 3.2) & body) | (ell(cx, by - 18.5, 10.5, 3.6) & body)
+        fill(band, 'K')
+    fill(edge(body), 'K')
+    blob(footF, kind, dark=True)
+    if kind in ('kuma',): fill(ell(cx + 7.5, by - 2.2, 2.4, 1.4), 'O')
+    if kind == 'panda': fill(ell(cx + 7.5, by - 2.4, 2.2, 1.3), 'C')
+    # あたま
+    blob(head, kind)
+    if kind == 'neko':
+        for k in (-1, 1):
+            fill(cells(head, lambda x, y: abs(x - (hx + k * 1.5)) < 0.6 and y < hy - 5), 'C')
+        fill(cells(head, lambda x, y: abs(x - hx) < 0.6 and y < hy - 4), 'C')
+        fill(ell(hx + 1.5 * look, hy + 3.5, 4.5, 2.8) & head - edge(head), 'W')
+    fill(edge(head), 'K')
+    if kind == 'inu':  # たれ耳と 目の ぶち
+        fill(ell(hx + 5 * look, hy - 2, 3, 2.6) & head - edge(head), 'C')
+    if kind == 'kuma':
+        mz = ell(hx + 1.5 * look, hy + 3.5, 4.6, 3.2)
+        fill(mz, 'W'); fill(cells(mz, lambda x, y: (x, y + 1) not in mz), 'S'); fill(edge(mz), 'K')
+    # 目
+    ex1, ex2, ey = hx - 4 + look, hx + 5 + look, hy - 1
+    for i, ex in enumerate((ex1, ex2)):
+        if kind == 'panda':
+            p = ell(ex + .5, ey + 1.5, 2.6, 3.3, 25 if i == 0 else -25); fill(p, 'K')
+            if eyes == 'open': fill({(ex, ey), (ex + 1, ey)}, 'W'); put(ex, ey + 1, 'W')
+            else: fill({(ex - 1, ey + 1), (ex, ey + 2), (ex + 1, ey + 2), (ex + 2, ey + 1)}, 'W')
+        else:
+            if eyes == 'open':
+                fill(ell(ex + .5, ey + 1, 1.3, 1.9), 'K'); put(ex, ey, 'W')
+            else:
+                fill({(ex - 1, ey + 1), (ex, ey + 2), (ex + 1, ey + 2), (ex + 2, ey + 1)}, 'K')
+    # 鼻と 口
+    nx, ny = hx + 1 + look * 1, hy + 2
+    fill({(nx, ny), (nx + 1, ny), (nx, ny + 1), (nx + 1, ny + 1)} if kind in ('kuma', 'inu', 'panda') else {(nx, ny), (nx + 1, ny)},
+         'K' if kind != 'usagi' and kind != 'neko' else 'P')
+    if mouth == 'smile':
+        fill({(nx - 2, ny + 2), (nx - 1, ny + 3), (nx, ny + 2), (nx + 1, ny + 2), (nx + 2, ny + 3), (nx + 3, ny + 2)}, 'K')
+    elif mouth == 'open':
+        fill(rect(nx - 1, ny + 2, nx + 2, ny + 4), 'K'); fill({(nx, ny + 4), (nx + 1, ny + 4), (nx, ny + 3), (nx + 1, ny + 3)}, 'R')
+    elif mouth == 'line':
+        fill({(nx - 1, ny + 3), (nx, ny + 3), (nx + 1, ny + 3), (nx + 2, ny + 3)}, 'K')
+    # ほっぺ
+    fill({(ex1 - 3, hy + 3), (ex1 - 2, hy + 3), (ex2 + 3, hy + 3), (ex2 + 4, hy + 3)}, 'P')
+    if kind == 'inu':  # たれ耳（手前）と くびわ
+        for (ex, ang) in ((hx - 9, 18), ):
+            e = ell(ex, hy + 1, 3.2, 6.5, ang); shape(e, 'C'); fill(cells(e, lambda x, y: (x - 1, y) not in e) - edge(e), 'O')
+        col = ell(cx + 1, by - 20.5, 8, 1.5) - head
+        fill(col, 'R'); fill(edge(col) & cells(col, lambda x, y: (x, y + 1) not in col), 'K')
+        fill({(cx + 3, by - 19), (cx + 4, by - 19), (cx + 3, by - 18), (cx + 4, by - 18)}, 'Y')
+    if kind == 'neko':
+        for d in (-1, 1):
+            fill(line(hx + 1.5 * look + d * 6, hy + 2, hx + 1.5 * look + d * 9, hy + 1), 'K')
+    # 手前のうで
+    if hold == 'back': pass
+    if armF:
+        a = line(cx + 5, by - 17, armF[0], armF[1], 5); blob(a, kind, dark=True)
+    return head, body
+
+# ---- この絵 ----
+# こうえんで ぱんだが おえかきを する：しば生に すわった ぱんだが、イーゼルの紙に 虹を描く。場所の物は 木 1 つ（＋イーゼル）。
+GY = 33
+bg_park(GY, top=9, clouds=((30, 3, 1.0),))
+park_tree(7, GY, cy=11, r=8)
+easel(44, 9, 61, 24, 46, art_rainbow)
+fill(ell(53, 46.5, 10, 1.2), 'K')
+shadow(24, 46, 15, 1.5, 'GKYW', 'K', 1.0)
+animal('panda', 24, 46, armB=(30, 32), armF=(41, 22), look=1)
+palette(31, 33)
+brush(41, 21, 46, 15, 'R')
+finish('pandakouenoekaki', 'W')
