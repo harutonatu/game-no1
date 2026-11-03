@@ -126,19 +126,20 @@ def sky(y0, y1, x0=0, x1=63):
     fill(rect(x0, y0, x1, y1), 'S')
 
 # もり：奥の木立（みき C・葉 G。奥は くらい）と 地面（落ち葉）
-def bg_forest(gy=33, top=6):
+def bg_forest(gy=33, top=6, trunks=(3, 13, 25, 37, 49, 59)):
     back = rect(0, top + 6, 63, gy)
-    fill(back, 'G'); fill(cells(back, lambda x, y: (x + y) % 2 == 0), 'K')
-    for tx in (3, 13, 25, 37, 49, 59):
-        t = rect(tx, top + 8, tx + 2, gy)
+    fill(back, 'S')
+    fill(cells(back, lambda x, y: y > gy - 6 and (x + y) % 2 == 0), 'G')
+    for tx in trunks:
+        t = rect(tx, top + 6, tx + 2, gy)
         fill(t, 'C'); fill(cells(t, lambda x, y: x == tx + 2), 'K'); fill(cells(t, lambda x, y: x == tx), 'O')
     can = set()
     for i, cx in enumerate(range(-2, 70, 9)):
-        can |= ell(cx, top + 6 + (i % 2) * 2.5, 6.5, 6)
+        can |= ell(cx, top + 5 + (i % 2) * 2.5, 6.5, 5.5)
     fill(can, 'G')
     fill(cells(can, lambda x, y: (x, y + 2) not in can and (x + y) % 2 == 0), 'K')
     fill(cells(can, lambda x, y: (x * 7 + y * 3) % 11 == 0 and (x, y + 2) in can), 'Y')
-    fill(edge(can) - cells(can, lambda x, y: (x, y + 1) not in can), 'K')
+    fill(edge(can), 'K')
     gr = rect(0, gy, 63, H - 1)
     fill(gr, 'G'); fill({(x, gy) for x in range(W)}, 'K')
     for (x, y) in gr:
@@ -149,7 +150,7 @@ def bg_forest(gy=33, top=6):
 # もりの 大きな木（手前。みき C・葉 G）
 def big_tree(tx, gy, cy=10, r=11):
     trunk = poly([(tx - 2, gy + 2), (tx, cy + 4), (tx + 4, cy + 4), (tx + 6, gy + 2)])
-    shape(trunk, 'C', hi='O', hw=1)
+    shape(trunk, 'C', hi='O', hw=2)
     fill(cells(trunk, lambda x, y: (y % 5 == 0) and x == tx + 2), 'K')
     root = ell(tx + 2, gy + 1.5, 6, 1.6); fill(root - trunk, 'K')
     crown = ell(tx + 2, cy, r, r * 0.75) | ell(tx - r * 0.6, cy + 3, r * 0.6, r * 0.5) | ell(tx + 2 + r * 0.7, cy + 3, r * 0.6, r * 0.5)
@@ -170,7 +171,7 @@ def mushroom(cx, by, s=1.0):
 # 切りかぶ
 def stump(cx, by, rx=6, h=5):
     side = rect(cx - rx, by - h, cx + rx, by) | ell(cx + .5, by, rx + 1, 1.5)
-    shape(side, 'C', hi='O', hw=1)
+    shape(side, 'C', hi='O', hw=2)
     fill(cells(side, lambda x, y: (x - cx) % 3 == 0 and by - h + 2 <= y < by), 'K')
     top_ = ell(cx + .5, by - h, rx + 1, 2)
     fill(top_, 'Y'); fill(ell(cx + .5, by - h, rx * 0.55, 1.1), 'O'); put(cx, by - h, 'C')
@@ -192,7 +193,7 @@ def bg_park(gy=32, top=4, clouds=((9, 5, 1.0), (50, 4, 0.9))):
 # こうえんの木（丸い葉）
 def park_tree(tx, gy, cy=12, r=9):
     trunk = rect(tx, cy + 3, tx + 3, gy + 1)
-    shape(trunk, 'C', hi='O', hw=1)
+    shape(trunk, 'C', hi='O', hw=2)
     crown = ell(tx + 2, cy, r, r * 0.85) | ell(tx - r * 0.5, cy + 3, r * 0.55, r * 0.5) | ell(tx + 2 + r * 0.6, cy + 3.5, r * 0.6, r * 0.5)
     fill(crown, 'G')
     fill(cells(crown, lambda x, y: ((x, y + 3) not in crown or (x - 3, y) not in crown) and (x + y) % 2 == 0), 'K')
@@ -202,12 +203,12 @@ def park_tree(tx, gy, cy=12, r=9):
 # ベンチ（ななめ）
 def bench(x0, gy, w=16):
     seat = poly([(x0 + 2, gy - 9), (x0 + w + 2, gy - 9), (x0 + w, gy - 6), (x0, gy - 6)])
-    back = rect(x0 + 2, gy - 15, x0 + w + 2, gy - 13) | rect(x0 + 2, gy - 12, x0 + w + 2, gy - 11)
+    back = rect(x0 + 2, gy - 16, x0 + w + 2, gy - 15) | rect(x0 + 2, gy - 12, x0 + w + 2, gy - 11)
     for lx in (x0 + 1, x0 + w - 2):
         fill(rect(lx, gy - 6, lx + 1, gy), 'K')
     for lx in (x0 + 3, x0 + w + 1):
-        fill(rect(lx, gy - 15, lx, gy - 9), 'K')
-    shape(back, 'C', hi='O', hw=1); shape(seat, 'C', hi='O', hw=1)
+        fill(rect(lx, gy - 16, lx, gy - 9), 'K')
+    shape(back, 'C', hi='O', hw=2); shape(seat, 'C', hi='O', hw=2)
 
 # うみべ：空・海（なみ）・すな
 def bg_beach(sy=18, gy=28, top=3):
@@ -284,10 +285,10 @@ def brush(x0, y0, x1, y1, tip='R'):
     fill(line(x0, y0 + 1, x1, y1 + 1) - line(x0, y0, x1, y1), 'K')
     fill({(x1, y1), (x1 + (1 if x1 > x0 else -1), y1), (x1, y1 + 1)}, tip)
 
-def palette(cx, cy):
+def palette(cx, cy, cols='RYBG'):
     m = ell(cx, cy, 5, 3.2) - ell(cx - 3, cy + 1.6, 1.2, 1)
     shape(m, 'O', sh='C', sw=1)
-    for (dx, dy, c) in ((-2, -1, 'R'), (0, -2, 'Y'), (2, -1, 'B'), (3, 1, 'G')):
+    for (dx, dy), c in zip(((-2, -1), (0, -2), (2, -1), (3, 1)), cols):
         fill({(int(cx + dx), int(cy + dy)), (int(cx + dx) + 1, int(cy + dy))}, c)
 
 # ---- 主役：すわった形（右むき 斜め）。kind = panda / kuma / neko / inu / usagi ----
@@ -299,9 +300,10 @@ def blob(m, kind, dark=False):
     if kind == 'panda' and dark:
         shape(m, 'K', o='K'); fill(cells(m, lambda x, y: (x - 1, y) in m and (x, y + 1) in m and (x + 1, y) in m and (x, y - 1) in m and ((x + 2, y) not in m or (x, y - 2) not in m) and (x + y) % 2 == 0), 'B')
         return
-    shape(m, c, sh=sh, hi=hi, sw=2, hw=1)
+    shape(m, c, sh=sh, sw=2)
+    if hi: fill(cells(m, lambda x, y: (x, y - 2) not in m and (x, y - 1) in m and (x - 2, y) in m and (x + 2, y) in m), hi)
 
-def animal(kind, cx, by, armB=None, armF=None, eyes='open', mouth='smile', look=1, hold=None):
+def animal(kind, cx, by, armB=None, armF=None, eyes='open', mouth='smile', look=1, hold=None, up=False):
     """cx＝体の まんなか、by＝足の下。armB＝奥のうでの先、armF＝手前のうでの先。"""
     hx, hy = cx + 1, by - 27
     footB = ell(cx - 6, by - 2.5, 4.6, 2.8); footF = ell(cx + 7, by - 2.3, 5, 2.9)
@@ -330,7 +332,9 @@ def animal(kind, cx, by, armB=None, armF=None, eyes='open', mouth='smile', look=
         t = ell(cx - 11, by - 5, 2.6, 2.4); blob(t, kind, dark=(kind == 'panda'))
     # 奥のうで
     if armB:
-        a = line(cx - 6, by - 17, armB[0], armB[1], 5); blob(a, kind, dark=True)
+        a = line(cx - (9 if up else 6), by - 17, armB[0], armB[1], 5); blob(a, kind, dark=True)
+    if armF and up:
+        a = line(cx + 9, by - 17, armF[0], armF[1], 5); blob(a, kind, dark=True)
     blob(footB, kind, dark=True)
     blob(body, kind)
     if kind == 'kuma':
@@ -353,9 +357,8 @@ def animal(kind, cx, by, armB=None, armF=None, eyes='open', mouth='smile', look=
     # あたま
     blob(head, kind)
     if kind == 'neko':
-        for k in (-1, 1):
-            fill(cells(head, lambda x, y: abs(x - (hx + k * 1.5)) < 0.6 and y < hy - 5), 'C')
-        fill(cells(head, lambda x, y: abs(x - hx) < 0.6 and y < hy - 4), 'C')
+        for k in (-2, 0, 2):
+            fill(cells(head, lambda x, y: x == hx + look + k and hy - 8 < y < hy - 5 + (k == 0)), 'C')
         fill(ell(hx + 1.5 * look, hy + 3.5, 4.5, 2.8) & head - edge(head), 'W')
     fill(edge(head), 'K')
     if kind == 'inu':  # たれ耳と 目の ぶち
@@ -376,7 +379,7 @@ def animal(kind, cx, by, armB=None, armF=None, eyes='open', mouth='smile', look=
             else:
                 fill({(ex - 1, ey + 1), (ex, ey + 2), (ex + 1, ey + 2), (ex + 2, ey + 1)}, 'K')
     # 鼻と 口
-    nx, ny = hx + 1 + look * 1, hy + 2
+    nx, ny = hx + 2 * look, hy + 2
     fill({(nx, ny), (nx + 1, ny), (nx, ny + 1), (nx + 1, ny + 1)} if kind in ('kuma', 'inu', 'panda') else {(nx, ny), (nx + 1, ny)},
          'K' if kind != 'usagi' and kind != 'neko' else 'P')
     if mouth == 'smile':
@@ -390,15 +393,15 @@ def animal(kind, cx, by, armB=None, armF=None, eyes='open', mouth='smile', look=
     if kind == 'inu':  # たれ耳（手前）と くびわ
         for (ex, ang) in ((hx - 9, 18), ):
             e = ell(ex, hy + 1, 3.2, 6.5, ang); shape(e, 'C'); fill(cells(e, lambda x, y: (x - 1, y) not in e) - edge(e), 'O')
-        col = ell(cx + 1, by - 20.5, 8, 1.5) - head
+        col = ell(cx + 1, by - 18.5, 9, 1.6) - head
         fill(col, 'R'); fill(edge(col) & cells(col, lambda x, y: (x, y + 1) not in col), 'K')
-        fill({(cx + 3, by - 19), (cx + 4, by - 19), (cx + 3, by - 18), (cx + 4, by - 18)}, 'Y')
+        fill({(cx - 4, by - 17), (cx - 3, by - 17), (cx - 4, by - 16), (cx - 3, by - 16)}, 'Y')
     if kind == 'neko':
         for d in (-1, 1):
             fill(line(hx + 1.5 * look + d * 6, hy + 2, hx + 1.5 * look + d * 9, hy + 1), 'K')
     # 手前のうで
     if hold == 'back': pass
-    if armF:
+    if armF and not up:
         a = line(cx + 5, by - 17, armF[0], armF[1], 5); blob(a, kind, dark=True)
     return head, body
 
@@ -432,6 +435,48 @@ def art_mountain(x0, y0, x1, y1):   # 雪の山 と おひさま
     m = poly([(x0 - 1, y1 + 1), (x0 + 7, y0 + 3), (x1 + 1, y1 + 1)])
     fill(m, 'B'); fill(cells(m, lambda x, y: y < y0 + 6), 'W')
     fill(ell(x1 - 2.5, y0 + 2.5, 2, 2), 'Y')
+
+def art_sun(x0, y0, x1, y1):   # おひさま と かもめ
+    cx, cy = x0 + 5.5, y0 + 5
+    for k in range(8):
+        a = k * math.pi / 4
+        put(int(round(cx - .5 + math.cos(a) * 4.2)), int(round(cy - .5 + math.sin(a) * 4.2)), 'R')
+    sun = ell(cx, cy, 2.8, 2.8); fill(sun, 'Y'); fill(cells(sun, lambda x, y: (x + 1, y + 1) not in sun), 'O')
+    fill(rect(x0, y1 - 2, x1, y1), 'S'); fill(cells(rect(x0, y1 - 2, x1, y1), lambda x, y: (x + y) % 3 == 0), 'B')
+    for (bx, by_) in ((x1 - 4, y0 + 4),):
+        fill({(bx - 1, by_), (bx, by_ + 1), (bx + 1, by_), (bx + 2, by_ + 1), (bx + 3, by_)}, 'K')
+
+# すなの おしろ
+def sandcastle(x0, gy):
+    base = rect(x0, gy - 5, x0 + 11, gy)
+    t1 = rect(x0 + 1, gy - 9, x0 + 4, gy - 5); t2 = rect(x0 + 7, gy - 11, x0 + 10, gy - 5)
+    m = base | t1 | t2
+    for (tx0, ty) in ((x0 + 1, gy - 9), (x0 + 7, gy - 11)):
+        m |= {(tx0, ty - 1), (tx0 + 3, ty - 1)}
+    shape(m, 'O', hi='Y', hw=2)
+    fill({(x0 + 5, gy - 2), (x0 + 6, gy - 2), (x0 + 5, gy - 1), (x0 + 6, gy - 1), (x0 + 5, gy), (x0 + 6, gy)}, 'K')
+    fill(line(x0 + 9, gy - 12, x0 + 9, gy - 16), 'K'); fill({(x0 + 10, gy - 16), (x0 + 11, gy - 16), (x0 + 10, gy - 15)}, 'R')
+
+# ボール（あか と しろの しま。上に うごきの線）
+def ball(cx, cy, r=4.5, lines=True):
+    b = ell(cx, cy, r, r)
+    fill(b, 'R')
+    for (x, y) in b:
+        if abs(y + .5 - (cy + .5 + 0.07 * (x + .5 - cx) ** 2)) < 0.9: put(x, y, 'W')
+    fill(cells(b, lambda x, y: (x - 1, y + 2) not in b and (x, y - 3) in b and x < cx), 'C')
+    fill({(int(cx) + 1, int(cy - r) + 2), (int(cx) + 2, int(cy - r) + 2), (int(cx) + 2, int(cy - r) + 3)}, 'W')
+    fill(edge(b), 'K')
+    if lines:
+        for (a, b_, c, d) in ((cx + r + 2, cy - 2, cx + r + 4, cy - 3), (cx + r + 2, cy + 1, cx + r + 5, cy + 1), (cx + r + 1, cy + 4, cx + r + 3, cy + 5)):
+            fill(line(int(a), int(b_), int(c), int(d)), 'K')
+
+# クッキー（チョコの つぶ。かじった あと つき）
+def cookie(cx, cy, r=3.5, bite=True):
+    m = ell(cx, cy, r, r * 0.9)
+    if bite: m -= ell(cx + r * 0.9, cy - r * 0.6, r * 0.45, r * 0.45)
+    fill(m, 'Y'); fill(cells(m, lambda x, y: (x - 1, y + 1) not in m), 'O')
+    fill(cells(m, lambda x, y: (x * 3 + y * 5) % 7 == 0) - edge(m), 'C')
+    fill(edge(m), 'K')
 
 # ---- この絵 ----
 # ゆきやまで ぱんだが おえかきを する：あかい マフラーの ぱんだが、雪の上の イーゼルで ゆきだるまを 描く。場所の物は 山（背景）と もみの木。

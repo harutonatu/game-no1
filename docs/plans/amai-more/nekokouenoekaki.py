@@ -97,7 +97,7 @@ fill({(x, y) for x, y in crown if (x - 2, y - 2) not in crown and (x - 1, y - 1)
 fill({(x, y) for x, y in crown if (x * 5 + y * 3) % 11 == 0}, 'Y')
 fill(edge(crown), 'K')
 fill(ell(56, 35, 6, 1.1), 'K')
-cl = ell(40, 4, 5, 2) | ell(43, 2.5, 3.5, 2.3) | ell(4, 6, 4, 1.6) | ell(7, 5, 3, 2); fill(cl, 'W'); fill({(x, y) for x, y in cl if (x, y + 1) not in cl}, 'S')  # くも
+cl = ell(5, 5, 5, 2) | ell(8, 3.5, 3.5, 2.3) | ell(42, 22, 4, 1.6) | ell(45, 21, 3, 2); fill(cl, 'W'); fill({(x, y) for x, y in cl if (x, y + 1) not in cl}, 'S')  # くも
 # スケッチブック（右の しばふの上。ななめに おく）
 fill(ell(49, 46, 15, 1.2), 'K')
 book = poly([(36, 30), (61, 28), (64, 45), (33, 46)])

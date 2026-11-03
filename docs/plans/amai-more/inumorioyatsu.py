@@ -203,11 +203,11 @@ def park_tree(tx, gy, cy=12, r=9):
 # ベンチ（ななめ）
 def bench(x0, gy, w=16):
     seat = poly([(x0 + 2, gy - 9), (x0 + w + 2, gy - 9), (x0 + w, gy - 6), (x0, gy - 6)])
-    back = rect(x0 + 2, gy - 15, x0 + w + 2, gy - 13) | rect(x0 + 2, gy - 12, x0 + w + 2, gy - 11)
+    back = rect(x0 + 2, gy - 16, x0 + w + 2, gy - 15) | rect(x0 + 2, gy - 12, x0 + w + 2, gy - 11)
     for lx in (x0 + 1, x0 + w - 2):
         fill(rect(lx, gy - 6, lx + 1, gy), 'K')
     for lx in (x0 + 3, x0 + w + 1):
-        fill(rect(lx, gy - 15, lx, gy - 9), 'K')
+        fill(rect(lx, gy - 16, lx, gy - 9), 'K')
     shape(back, 'C', hi='O', hw=2); shape(seat, 'C', hi='O', hw=2)
 
 # うみべ：空・海（なみ）・すな
@@ -303,7 +303,7 @@ def blob(m, kind, dark=False):
     shape(m, c, sh=sh, sw=2)
     if hi: fill(cells(m, lambda x, y: (x, y - 2) not in m and (x, y - 1) in m and (x - 2, y) in m and (x + 2, y) in m), hi)
 
-def animal(kind, cx, by, armB=None, armF=None, eyes='open', mouth='smile', look=1, hold=None):
+def animal(kind, cx, by, armB=None, armF=None, eyes='open', mouth='smile', look=1, hold=None, up=False):
     """cx＝体の まんなか、by＝足の下。armB＝奥のうでの先、armF＝手前のうでの先。"""
     hx, hy = cx + 1, by - 27
     footB = ell(cx - 6, by - 2.5, 4.6, 2.8); footF = ell(cx + 7, by - 2.3, 5, 2.9)
@@ -332,7 +332,9 @@ def animal(kind, cx, by, armB=None, armF=None, eyes='open', mouth='smile', look=
         t = ell(cx - 11, by - 5, 2.6, 2.4); blob(t, kind, dark=(kind == 'panda'))
     # 奥のうで
     if armB:
-        a = line(cx - 6, by - 17, armB[0], armB[1], 5); blob(a, kind, dark=True)
+        a = line(cx - (9 if up else 6), by - 17, armB[0], armB[1], 5); blob(a, kind, dark=True)
+    if armF and up:
+        a = line(cx + 9, by - 17, armF[0], armF[1], 5); blob(a, kind, dark=True)
     blob(footB, kind, dark=True)
     blob(body, kind)
     if kind == 'kuma':
@@ -399,7 +401,7 @@ def animal(kind, cx, by, armB=None, armF=None, eyes='open', mouth='smile', look=
             fill(line(hx + 1.5 * look + d * 6, hy + 2, hx + 1.5 * look + d * 9, hy + 1), 'K')
     # 手前のうで
     if hold == 'back': pass
-    if armF:
+    if armF and not up:
         a = line(cx + 5, by - 17, armF[0], armF[1], 5); blob(a, kind, dark=True)
     return head, body
 
@@ -461,7 +463,7 @@ def ball(cx, cy, r=4.5, lines=True):
     fill(b, 'R')
     for (x, y) in b:
         if abs(y + .5 - (cy + .5 + 0.07 * (x + .5 - cx) ** 2)) < 0.9: put(x, y, 'W')
-    fill(cells(b, lambda x, y: (x - 1, y + 2) not in b and (x, y - 3) in b), 'C')
+    fill(cells(b, lambda x, y: (x - 1, y + 2) not in b and (x, y - 3) in b and x < cx), 'C')
     fill({(int(cx) + 1, int(cy - r) + 2), (int(cx) + 2, int(cy - r) + 2), (int(cx) + 2, int(cy - r) + 3)}, 'W')
     fill(edge(b), 'K')
     if lines:

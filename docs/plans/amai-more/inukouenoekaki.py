@@ -215,8 +215,9 @@ def critter(sp, hx, hy, bx, by, hand=None, hand2=None, eyes='open', mouth='smile
     # 口
     mx, my = (hx + 4, hy + 6) if sp != 'inu' else (hx + 9, hy + 6)
     if sp == 'neko': mx, my = hx + 3, hy + 5
-    if sp == 'neko' and mouth == 'smile': put(mx, my - 1, 'K'); my += 1
-    if mouth == 'smile':
+    if sp == 'neko' and mouth == 'smile':
+        fill({(mx, my - 1), (mx - 1, my), (mx + 1, my), (mx - 2, my), (mx + 2, my)}, 'K'); put(mx, my, 'W')
+    elif mouth == 'smile':
         fill({(mx - 2, my), (mx - 1, my + 1), (mx, my), (mx + 1, my + 1), (mx + 2, my)}, 'K')
     elif mouth == 'open':
         fill(rect(mx - 1, my, mx + 1, my + 1), 'R'); fill({(mx, my + 1)}, 'P')

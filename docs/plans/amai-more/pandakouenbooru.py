@@ -463,7 +463,7 @@ def ball(cx, cy, r=4.5, lines=True):
     fill(b, 'R')
     for (x, y) in b:
         if abs(y + .5 - (cy + .5 + 0.07 * (x + .5 - cx) ** 2)) < 0.9: put(x, y, 'W')
-    fill(cells(b, lambda x, y: (x - 1, y + 2) not in b and (x, y - 3) in b), 'C')
+    fill(cells(b, lambda x, y: (x - 1, y + 2) not in b and (x, y - 3) in b and x < cx), 'C')
     fill({(int(cx) + 1, int(cy - r) + 2), (int(cx) + 2, int(cy - r) + 2), (int(cx) + 2, int(cy - r) + 3)}, 'W')
     fill(edge(b), 'K')
     if lines:
@@ -486,10 +486,10 @@ park_tree(5, GY, cy=13, r=8)
 bench(45, 42, w=14)
 shadow(52, 42.5, 10, 1.2, 'GKYW', 'K', 1.0)
 shadow(30, 46, 15, 1.5, 'GKYW', 'K', 1.0)
-head, body = animal('panda', 30, 46, armB=(17, 12), armF=(44, 12), look=0, mouth='open', up=True)
-for px in (17, 44):
-    pw = ell(px + .5, 11, 2.8, 2.6); fill(pw, 'K'); fill({(px, 10), (px + 1, 10)}, 'B')
-ball(31, 5, 5, lines=False)
+head, body = animal('panda', 30, 46, armB=(12, 17), armF=(49, 17), look=0, mouth='open', up=True)
+for px in (12, 49):
+    pw = ell(px + .5, 16, 2.8, 2.6); fill(pw, 'K'); fill({(px, 15), (px + 1, 15)}, 'B')
+ball(31.5, 5, 5, lines=False)
 for (a, b, c, d) in ((23, 2, 21, 1), (23, 6, 20, 7), (39, 2, 41, 1), (39, 6, 42, 7)):
     fill(line(a, b, c, d), 'K')
 finish('pandakouenbooru', 'W')
