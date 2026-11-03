@@ -1181,7 +1181,8 @@ export const tests = [
         check(`ほかの列 ${c} を押す（${k}）：こおりの残りが ${left}（data-ice ${ice}）${left === 0 ? '、音 thaw が鳴る（' + thawed + '）' : ''}`, k === 'press' && ice === String(left) && (left === 0 ? thawed : !thawed), { k, ice, thawed });
       }
       // わくは 3 つ：3 回押すと埋まるので、アリが運んでわくが空くまで待ってから押す
-      for (let i = 0; i < 60 && (await gs(page)).slots.every((x) => x !== null); i++) { await skipG(page); await wait(page, 100); }
+      // （2026-11-03：箱を大きく（KSET 80〜99）したので、待つだけでは間に合わない。tick ではこびを進める）
+      for (let i = 0; i < 60 && (await gs(page)).slots.every((x) => x !== null); i++) { await page.evaluate(() => window.AmaiGame.tick(10)); await skipG(page); await wait(page, 50); }
       const k0 = await pressCol(page, 0); await skipG(page);
       const fin = await gs(page);
       check(`とけたあとは押せて、わくに入る（${k0}・わくの箱 ${fin.slots.filter(Boolean).length} 個）`, k0 === 'press' && fin.slots.filter(Boolean).length >= 1, fin.slots);

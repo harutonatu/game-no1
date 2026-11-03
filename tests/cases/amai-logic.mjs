@@ -145,8 +145,8 @@ export const tests = [
       const kBad = Object.entries(K).filter(([k, v]) => L[k] !== v).map(([k, v]) => ({ k, want: v, got: L[k] }));
       check('定数が契約 §6.2 のとおり', kBad.length === 0, kBad);
       // 手直し（2026-10-30）：絵を 2×2 に割って 64×48・角砂糖 2800 まで、はこびの間隔を 500→120ms にした。
-      // ANY_RATE（①を使う箱の割合）は段ごとの表。XL・XXL だけ 0.25、ほかは 1
-      check('ANY_RATE（①を使う箱の割合）が表どおり（S・M・L・くり返し 1、XL・XXL 0.25）', J(L.ANY_RATE) === J({ S: 1, M: 1, L: 1, XL: 0.25, XXL: 0.25, repeat: 1 }), L.ANY_RATE);
+      // ANY_RATE（①を使う箱の割合）は段ごとの表。M 0.5（2026-11-03）・XL・XXL 0.25、ほかは 1（OVER が 1 の段では使われない）
+      check('ANY_RATE（①を使う箱の割合）が表どおり（S・L・くり返し 1、M 0.5、XL・XXL 0.25）', J(L.ANY_RATE) === J({ S: 1, M: 0.5, L: 1, XL: 0.25, XXL: 0.25, repeat: 1 }), L.ANY_RATE);
       check('はこびの間隔：ふだん 120ms・はやおくり 60ms（1 つの箱から 1 秒に約 8 匹）', L.TICK_MS === 120 && L.FAST_MS === 60 && L.FAST_MS * 2 === L.TICK_MS, { t: L.TICK_MS, f: L.FAST_MS });
       const C = L.COLORS;
       check('COLORS は 10 色で id が 0〜9・凍結', Array.isArray(C) && C.length === 10 && C.every((c, i) => c.id === i) && Object.isFrozen(C) && C.every((c) => Object.isFrozen(c)), C);
@@ -161,7 +161,7 @@ export const tests = [
       // §2.1 の表（1〜48 面は PICTURE_ORDER の絵で）
       // 箱の数の幅は TIERS の値。ただし段ごとの上書き KSET・くり返しの REPEAT_K があればそれ（logic.js が公開する表を読む。表の持ち主は logic.js）
       const KR = (tier) => (L.KSET && L.KSET[tier]) || [L.TIERS[tier].kmin, L.TIERS[tier].kmax];
-      const T = (lv, tier, kmin, kmax, pull, lids, ices) => ({ lv, tier, kmin: KR(tier)[0], kmax: KR(tier)[1], pull, lids, ices });
+      const T = (lv, tier, kmin, kmax, pull, lids, ices) => ({ lv, tier, kmin: KR(tier)[0], kmax: KR(tier)[1], pull: pull + ((L.PULL_ADD && L.PULL_ADD[tier]) || 0), lids, ices });   // pull は段の値＋PULL_ADD（2026-11-03 に L・XL・XXL を 0 にした）
       const table = [
         T(1, 'S', 15, 25, 0, 0, 0), T(2, 'S', 15, 25, 0, 0, 0), T(4, 'S', 15, 25, 0, 0, 0),
         T(5, 'M', 10, 25, 2, 0, 0), T(8, 'M', 10, 25, 2, 0, 0), T(9, 'M', 10, 25, 2, 1, 0), T(12, 'M', 10, 25, 2, 1, 0),
@@ -185,7 +185,7 @@ export const tests = [
       const pX = L.paramsFor(1000, { id: L.PICTURE_ORDER[47].id, mirror: true, repeat: true });
       check('1000 面（くり返し・XXL の絵）：pull 14・lids 5・ices 4', pX.tier === 'XXL' && pX.pull === 14 && pX.lids === 5 && pX.ices === 4 && pX.kmin === L.REPEAT_K.kmin && pX.kmax === L.REPEAT_K.kmax, pX);
       const pA = L.paramsFor(60, { id: L.PICTURE_ORDER[30].id, mirror: false, repeat: false });
-      check('49 面から（足した絵の扱い・くり返しでない）：その絵の段の行・lids・ices は段の多い方', pA.tier === 'XL' && pA.kmin === KR('XL')[0] && pA.kmax === KR('XL')[1] && pA.pull === 8 && pA.lids === 3 && pA.ices === 2 && pA.repeat === false, pA);
+      check('49 面から（足した絵の扱い・くり返しでない）：その絵の段の行・lids・ices は段の多い方', pA.tier === 'XL' && pA.kmin === KR('XL')[0] && pA.kmax === KR('XL')[1] && pA.pull === 8 + L.PULL_ADD.XL && pA.lids === 3 && pA.ices === 2 && pA.repeat === false, pA);
       // 壊れた値は 1 面
       const one = J(L.paramsFor(1, null));
       const broken = [0, -3, NaN, Infinity, 'abc', null, undefined, {}, 1.7].map((v) => ({ v: String(v), same: J(L.paramsFor(v, null)) === one }));

@@ -47,12 +47,14 @@
   // どちらかが true のときは「S の順に押せば解ける」保証が崩れるので、解ける押し順を探して確かめる（solveSearch）。
   // over … 箱の持ち玉の上限を「ふちから届く数 R」の何倍まで許すか（段ごと。1 なら今までと同じ＝必ず単独で運び切れる）。
   //   1 より大きいと「置いた時点では運び切れない箱」ができ、道を開ける仕事が生まれる（①）。Infinity ならその色の残り全部。
-  const OVER = { S: 1.1, M: 1.02, L: 1.02, XL: 1.25, XXL: 1.025, repeat: 1.3 };
+  // 2026-11-03（場面の絵 46 枚に入れ替えて測り直し。計画書 docs/plans/amai-redraw.md §8.4〜§8.6）：新しい絵は詰みやすいので、
+  // L・XL・XXL・くり返しは①を使わない（1＝S の順で必ず解ける作り。作る時間も最大 20〜30ms に下がる）。M だけ①を少し強めた
+  const OVER = { S: 1.1, M: 1.25, L: 1, XL: 1, XXL: 1, repeat: 1 };
   // ANY_RATE：①（内側だけにある色の箱を最初から作る）を使う箱の割合（段ごと。1 なら全部の箱・0 なら使わない）。
   // 絵を 2 倍に割ってマスが 4 倍になり、①の「入／切」だけでは難しさが飛びすぎたので、途中の強さを作るために足した
-  const ANY_RATE = { S: 1, M: 1, L: 1, XL: 0.25, XXL: 0.25, repeat: 1 };
-  const PULL_ADD = { S: 0, M: 0, L: 0, XL: 0, XXL: 0, repeat: 0 };
-  const KSET = { M: [16, 50], L: [24, 80], XL: [60, 99] };   // 段ごとの箱の数の幅の上書き。空なら TIERS の値
+  const ANY_RATE = { S: 1, M: 0.5, L: 1, XL: 0.25, XXL: 0.25, repeat: 1 };   // OVER が 1 の段では使われない
+  const PULL_ADD = { S: 0, M: 0, L: -4, XL: -8, XXL: -12, repeat: 0 };   // 段の pull に足す（L・XL・XXL は pull 0 にした。2026-11-03）
+  const KSET = { M: [16, 50], L: [80, 99], XL: [95, 99], XXL: [95, 99] };   // 段ごとの箱の数の幅の上書き。空なら TIERS の値
   const GEN_OPT = { shuffleCols: false, solveNodes: 15, genTries: 5, softenEvery: 1 };
   const SOLVE_NODES = 15;   // 解ける押し順の探索で開く局面の上限は「箱の数＋この余り」（1 回の tryBuild ごと・600 まで）
   const BASE_PICTURES = 48;
