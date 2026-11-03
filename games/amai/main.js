@@ -724,7 +724,8 @@
         <p class="got"><span data-f="g"></span><span class="rest" data-f="r"></span></p>
         <button class="primary" type="button" data-cmd="close">とじる</button>
       </div>
-      <ul class="book"></ul>`, { g: `${got} / ${ORDER.length}`, r: got < ORDER.length ? `あと ${ORDER.length - got} まい` : "ぜんぶ そろったよ" }, "book");
+      <p class="selnote wnote"><span class="wreath inline" aria-hidden="true"></span><span data-f="w"></span></p>
+      <ul class="book"></ul>`, { w: "＝ 1手もどし なしで クリア", g: `${got} / ${ORDER.length}`, r: got < ORDER.length ? `あと ${ORDER.length - got} まい` : "ぜんぶ そろったよ" }, "book");
     const ul = el.card.querySelector("ul.book");
     if (!ul) return;
     for (const item of ORDER) {
@@ -778,7 +779,8 @@
         <button class="primary" type="button" data-cmd="close">とじる</button>
       </div>
       <p class="selnote"><span class="best" data-f="g"></span><span data-f="n"></span></p>
-      <ul class="levels"></ul>`, { g: best > 0 ? `ここまで ${best} めん。` : "", n: "あそんだ めんと、つぎの めんを えらべるよ" }, "select");
+      <p class="selnote wnote"><span class="wreath inline" aria-hidden="true"></span><span data-f="w"></span></p>
+      <ul class="levels"></ul>`, { g: best > 0 ? `ここまで ${best} めん。` : "", n: "あそんだ めんと、つぎの めんを えらべるよ", w: "＝ 1手もどし なしで クリア" }, "select");
     const ul = el.card.querySelector("ul.levels");
     if (!ul) return;
     const item = (n, opt) => {
@@ -805,7 +807,11 @@
       }
       const no = document.createElement("span"); no.className = "no"; no.textContent = opt && opt.more ? `${n} めん` : String(n); btn.appendChild(no);
       btn.setAttribute("aria-label", label);
-      if (n === level) { li.dataset.current = "1"; btn.setAttribute("aria-current", "true"); }
+      if (n === level) {
+        li.dataset.current = "1"; btn.setAttribute("aria-current", "true");
+        const now_ = document.createElement("span"); now_.className = "here"; now_.textContent = "いま"; btn.appendChild(now_);   // 色だけに頼らない（E-4）
+        label += "（いま）";
+      }
       li.appendChild(btn);
       return li;
     };
@@ -975,6 +981,7 @@
     if (overlay === "select") { hideOverlay(); return; }
     if (overlay === "confirm") {
       if (confirmFrom === "stuck" && isStuckNow()) { overlay = null; showStuckCard(); return; }
+      if (confirmFrom === "select") { overlay = null; showSelect(); return; }   // 確かめで「やめる」：面えらびの一覧に戻る（E-5）
       hideOverlay();
     }
   }

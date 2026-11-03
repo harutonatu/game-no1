@@ -1465,8 +1465,11 @@ export const tests = [
       check(`押した数 1 で 2 面を選ぶと確かめ（${oc.text}）：「はじめる」「やめる」`, (await gs(page)).overlay === 'confirm' && /2 めんを はじめる？/.test(oc.text) && /とちゅうは きえる/.test(oc.text) && oc.cmds.includes('selectYes') && oc.cmds.includes('close'), oc);
       await clickCmd(page, 'close'); await wait(page, 150);
       const sc = await gs(page);
-      check(`「やめる」で 3 面のまま・押した数 1 のまま（${sc.level}・${sc.presses}・${sc.overlay}）`, sc.level === 3 && sc.presses === 1 && sc.overlay === null, sc);
-      await page.click('#selectBtn'); await wait(page, 150);
+      const lc = await list();
+      const here = await page.evaluate(() => [...document.querySelectorAll('#card ul.levels li[data-current="1"] .here')].map((e) => e.textContent));
+      check(`「やめる」で 3 面のまま・押した数 1 のまま（${sc.level}・${sc.presses}）・面えらびの一覧に戻る（カード ${sc.overlay}・${lc.kind}・${lc.n} 個）（E-5）・いまの面に文字「いま」（${J(here)}）（E-4）`, sc.level === 3 && sc.presses === 1 && sc.overlay === 'select' && lc.kind === 'select' && lc.n === 100 && J(here) === J(['いま']), { sc, lc, here });
+      const wn = await page.evaluate(() => { const n = document.querySelector('#card p.wnote'); return { t: n ? n.textContent.trim() : null, w: !!(n && n.querySelector('.wreath')) }; });
+      check(`面えらびの上に花輪の説明の行（${J(wn.t)}）（E-3）`, wn.w && /1手もどし なしで クリア/.test(wn.t || ''), wn);
       await pickLv(2);
       await clickCmd(page, 'selectYes'); await wait(page, 200);
       const s2 = await gs(page);
@@ -1521,8 +1524,12 @@ export const tests = [
       await page.click('#selectBtn'); await wait(page, 150);
       const m1 = await marks();
       check(`面えらび：花輪は 2・5 面だけ（${J(m1.sel.map((x) => x.lv))}）・読み上げに「1手もどし なし」・ずかんに無い 21 面と鍵つきの 51 面には付けない`, J(m1.sel.map((x) => x.lv)) === J([2, 5]) && m1.sel.every((x) => x.w && x.c && x.label.includes('1手もどし なし')), m1.sel);
+      const ws = await page.evaluate(() => { const w = document.querySelector('#card ul.levels li[data-clean="1"] .wreath'); const r = w && w.getBoundingClientRect(); return r ? Math.round(r.width) : 0; });
+      check(`面えらびの花輪が 24px 以上（${ws}px）（E-3）`, ws >= 24, ws);
       await page.keyboard.press('Escape'); await wait(page, 150);
       await page.click('#bookBtn'); await wait(page, 150);
+      const bn = await page.evaluate(() => { const n = document.querySelector('#card p.wnote'); return n ? n.textContent.trim() : null; });
+      check(`ずかんの上にも花輪の説明の行（${J(bn)}）（E-3）`, /1手もどし なしで クリア/.test(bn || ''), bn);
       const m2 = await marks();
       check(`ずかん：花輪は ${PO[1]}・${PO[4]} だけ（${J(m2.book.map((x) => x.id))}）・★ は出さない・花輪は aria-hidden で .sr に「1手もどし なし」`, J(m2.book.map((x) => x.id)) === J([PO[1], PO[4]]) && m2.book.every((x) => x.w && x.c && !x.star && x.hid === 'true' && x.sr.includes('1手もどし なし')), m2.book);
       await page.keyboard.press('Escape'); await wait(page, 150);
@@ -1659,10 +1666,24 @@ export const tests = [
         await wait(page, 600);
         const cp = await overlayProbe(page, v.safe);
         check(`${v.label}：クリアのカード（ともだちに おくる 付き）の見出しが切れず、全ボタンに届き 44px 以上（${J(cp.btns.map((b) => b.cmd))}）`, s.overlay === 'clear' && overlayOk(cp) && cp.btns.some((b) => b.cmd === 'share'), cp);
+        const cta = await page.evaluate(() => [...document.querySelectorAll('.tools .cta')].map((b) => ({ id: b.id, sw: b.scrollWidth, cw: b.clientWidth })));
+        check(`${v.label}：下のボタン（${cta.length} 個）の字がはみ出さない（E-1）`, cta.length >= 5 && cta.every((b) => b.sw <= b.cw), cta);
         const sw = await page.evaluate(() => { const b = document.querySelector('#card [data-cmd="share"]'); return { sw: b.scrollWidth, cw: b.clientWidth, sh: b.scrollHeight, ch: b.clientHeight }; });
         check(`${v.label}：「ともだちに おくる」の文字がボタンに収まる（${J(sw)}）`, sw.sw <= sw.cw + 1 && sw.sh <= sw.ch + 1, sw);
         await ctx.close();
       }
+      // E-2：横向きで背が低い（568×270）でも、クリアのカードの中をスクロールして全ボタンに届く
+      const v2 = custom(568, 270, null, 'SE Safari 横 568×270');
+      const { ctx: c2, page: p2 } = await openG(browser, 'AW31 568×270', { v: v2, extra: { 'amai.save': null, 'amai.best': '3' } });
+      await solveToClear(p2);
+      await wait(p2, 600);
+      const sc = await p2.evaluate(() => {
+        const card = document.querySelector('#card'), sh = card.querySelector('[data-cmd="share"]');
+        card.scrollTop = card.scrollHeight; const q = sh.getBoundingClientRect(), cr = card.getBoundingClientRect();
+        return { scrollable: card.scrollHeight > card.clientHeight, ovScroll: document.querySelector('#overlay').scrollHeight > document.querySelector('#overlay').clientHeight + 1, shBottom: q.bottom, cardBottom: cr.bottom, ih: innerHeight };
+      });
+      check(`568×270：クリアのカードの中をスクロールして「ともだちに おくる」まで届く（下 ${Math.round(sc.shBottom)} ≤ 画面 ${sc.ih}）・カード自身がスクロール（${sc.scrollable}）（E-2）`, sc.shBottom <= sc.ih + 0.5 && sc.cardBottom <= sc.ih + 0.5, sc);
+      await c2.close();
     },
   },
 ];
