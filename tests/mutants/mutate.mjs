@@ -498,6 +498,14 @@ const M = [
   ['MA34 あまいものあつめ：メニューのずかんの数が古い id も数える（見つける：AW16）', 'ルール', 'index.html', 'for (const k of AMAI_IDS) {', 'for (const k of Object.keys(b.got).slice(0, 5000)) {'],
   ['MA31 あまいものあつめ：logic.js を事前キャッシュから外す（見つける：AW14）', 'オフライン', 'sw.js', '  "./games/amai/logic.js",\n', ''],
   ['MA36 あまいものあつめ：くり返しが 49 面から（足した 49〜100 面の絵が順に出ない。見つける：AL1・AL13・AL17）', 'ルール', 'games/amai/logic.js', 'const BASE_PICTURES = 100;', 'const BASE_PICTURES = 48;'],
+  ['MA38 あまいものあつめ：面えらびでベスト＋2 面まで選べる（見つける：AL18・AW28）', 'ルール', 'games/amai/logic.js', 'const top = b < Number.MAX_SAFE_INTEGER ? b + 1 : Number.MAX_SAFE_INTEGER;', 'const top = b < Number.MAX_SAFE_INTEGER - 1 ? b + 2 : Number.MAX_SAFE_INTEGER;'],
+  ['MA39 あまいものあつめ：面えらびで、途中まで押していても確かめずに始める（見つける：AW28）', '操作', 'games/amai/main.js', 'if (presses.length && phase !== "clear") {\n      selectTarget = n;', 'if (false) {\n      selectTarget = n;'],
+  ['MA40 あまいものあつめ：前の面を選ぶとベストが下がる（見つける：AW28）', 'データ消失', 'games/amai/main.js', '    const pk = safeCall(() => L.pickPicture(n, readBook()), null);\n    setHint("えを つくっているよ");', '    best = n - 1; writeKey(KEY_BEST, String(best));\n    const pk = safeCall(() => L.pickPicture(n, readBook()), null);\n    setHint("えを つくっているよ");'],
+  ['MA41 あまいものあつめ：ずかんのクリアした絵すべてに花輪（見つける：AW29）', 'ルール', 'games/amai/main.js', 'const clean = n > 0 && p && isClean(id);', 'const clean = n > 0 && p;'],
+  ['MA42 あまいものあつめ：面えらびで、ずかんに無い絵の面にも花輪（見つける：AW29）', 'ルール', 'games/amai/main.js', 'if (p && got && isClean(p.id)) {', 'if (p && isClean(p.id)) {'],
+  ['MA43 あまいものあつめ：canShare を見ずに画像を付けて送る（見つける：AW30）', '操作', 'games/amai/main.js', 'if (c.file && typeof navigator.canShare === "function" && safeCall(() => navigator.canShare({ files: [c.file] }), false) === true) data.files = [c.file];', 'if (c.file) data.files = [c.file];'],
+  ['MA44 あまいものあつめ：送るのをやめても失敗の吹き出しを出す（見つける：AW30）', '操作', 'games/amai/main.js', 'if (name === "AbortError" || myRun !== runId', 'if (myRun !== runId'],
+  ['MA45 あまいものあつめ：面えらびの鍵つきの面が押せる見た目（disabled でない。見つける：AW28）', 'ルール', 'games/amai/main.js', '        btn.disabled = true;\n', ''],
   ['MA37 あまいものあつめ：pictures-c.js（49〜100 面の絵）を事前キャッシュから外す（見つける：AW14）', 'オフライン', 'sw.js', '  "./games/amai/pictures-c.js",\n', ''],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];

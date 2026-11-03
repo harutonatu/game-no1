@@ -1003,6 +1003,24 @@ export const tests = [
       check('validateBest：ベスト 60 はそのまま読める', L.validateBest('60') === 60, L.validateBest('60'));
     },
   },
+  {
+    id: 'AL18', tier: 'smoke', node: true, title: 'あまいものあつめ：面えらびの範囲 levelChoices・canSelect（1〜ベスト＋1 面。一覧は 1〜100 面、ベスト＋1 が 101 面より先なら「つづき」を 1 つ。壊れたベストは 0 として 1 面だけ。16 桁で上限を超えない。例外を出さない）',
+    async run({ check, root }) {
+      const L = load(root);
+      const M = Number.MAX_SAFE_INTEGER;
+      const eq = (best, want) => { const r = L.levelChoices(best); return J(r) === J(want) ? true : r; };
+      for (const [best, want] of [[0, { top: 1, list: 100, open: 1, more: 0 }], ['5', { top: 6, list: 100, open: 6, more: 0 }], [5, { top: 6, list: 100, open: 6, more: 0 }], [99, { top: 100, list: 100, open: 100, more: 0 }], [100, { top: 101, list: 100, open: 100, more: 101 }], ['150', { top: 151, list: 100, open: 100, more: 151 }], [M - 1, { top: M, list: 100, open: 100, more: M }], [M, { top: M, list: 100, open: 100, more: M }]]) {
+        const r = eq(best, want);
+        check(`levelChoices(${J(best)}) → ${J(want)}`, r === true, r);
+      }
+      const bads = [null, undefined, '', 'abc', '-1', -1, '1.5', 1.5, '{', NaN, Infinity, {}, [], '9'.repeat(30)];
+      check('壊れたベストは 0 として扱う（1 面だけ）・例外を出さない', bads.every((b) => { try { return J(L.levelChoices(b)) === J({ top: 1, list: 100, open: 1, more: 0 }); } catch (e) { return false; } }), bads.map((b) => { try { return L.levelChoices(b); } catch (e) { return String(e); } }));
+      check('canSelect：ベスト 5 なら 1〜6 面だけ', [1, 2, 6].every((n) => L.canSelect(5, n) === true) && [0, 7, 100, -1, 1.5, '3', null, NaN].every((n) => L.canSelect(5, n) === false), null);
+      check('canSelect：ベスト 150 なら 151 面まで・152 面は選べない', L.canSelect(150, 151) === true && L.canSelect(150, 100) === true && L.canSelect(150, 152) === false, null);
+      check('canSelect：壊れたベストでも 1 面は選べ、2 面は選べない', L.canSelect('x', 1) === true && L.canSelect('x', 2) === false && L.canSelect(undefined, 1) === true, null);
+      check('canSelect：16 桁の上限の面', L.canSelect(M, M) === true && L.canSelect(M - 1, M) === true && L.canSelect(M - 2, M) === false, null);
+    },
+  },
 ];
 
 // ---- 単体で流す：node tests/cases/amai-logic.mjs [ID...] ----

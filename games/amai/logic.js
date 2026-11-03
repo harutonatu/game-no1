@@ -1140,6 +1140,19 @@
     } catch (e) { return 0; }
   }
 
+  // 面えらび（2026-11-03。計画書 docs/plans/amai-select.md §1）：選べるのは 1〜ベスト＋1 面。
+  // 一覧に並べるのは 1〜100 面（BASE_PICTURES。絵が 1 枚ずつ決まっている面）。ベスト＋1 が 101 面より先なら、
+  // その 1 面だけを「つづき」として別に出す（一覧を長くしない）。壊れたベストは 0（1 面だけ選べる）。例外を出さない
+  function levelChoices(best) {
+    const b = validateBest(best);
+    const top = b < Number.MAX_SAFE_INTEGER ? b + 1 : Number.MAX_SAFE_INTEGER;   // 選べる一番先の面
+    const list = Math.min(BASE_PICTURES, PICTURE_ORDER.length);                 // 一覧の面の数（鍵つきも並べる）
+    return { top, list, open: Math.min(top, list), more: top > list ? top : 0 };
+  }
+  function canSelect(best, level) {
+    return Number.isSafeInteger(level) && level >= 1 && level <= levelChoices(best).top;   // 数だけ（"3" などの文字は通さない）
+  }
+
   function validateFlag(raw) {
     return raw === "1";
   }
@@ -1158,6 +1171,7 @@
     replay, validateState,
     validateSave, makeSave,
     validateBest, recordBest, validateBook, addToBook, bookCount, validateClean, addClean, hasClean,
+    levelChoices, canSelect,
     validateFlag, colorName,
   });
   root.AmaiLogic = api;

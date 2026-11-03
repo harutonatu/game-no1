@@ -52,7 +52,7 @@
     head: document.querySelector(".head"), title: $("gameTitle"), level: $("level"), levelBox: $("levelBox"), left: $("left"),
     helpBtn: $("helpBtn"), soundBtn: $("soundBtn"), playView: $("playView"), picBox: $("picBox"), pic: $("pic"), nest: $("nest"),
     slots: $("slots"), grid: $("grid"), fx: $("fx"), hint: $("hint"),
-    undoBtn: $("undoBtn"), restartBtn: $("restartBtn"), fastBtn: $("fastBtn"), bookBtn: $("bookBtn"),
+    undoBtn: $("undoBtn"), restartBtn: $("restartBtn"), fastBtn: $("fastBtn"), bookBtn: $("bookBtn"), selectBtn: $("selectBtn"),
     overlay: $("overlay"), card: $("card")
   };
   const missing = Object.keys(el).filter((k) => !el[k]);
@@ -146,7 +146,7 @@
   let custom = null;            // setState で入れた最初の局面（テスト用。保存しない）
   let customHist = [];          // setState の局面での 1手もどす用（押す前の state の列）
   let phase = "play";           // play | stuck | clear
-  let overlay = null;           // null | help | book | clear | stuck | confirm
+  let overlay = null;           // null | help | book | select | clear | stuck | confirm
   let hiddenNow = !!document.hidden;
   let stable = false;           // 落ち着いた（1 はこびを進めても何も運べない）
   let fast = false;
@@ -155,7 +155,8 @@
   let cardShownAt = -Infinity;
   let blockUntil = -Infinity;
   let bookFrom = "play";        // ずかんを開いた所（play | clear）
-  let confirmFrom = "play";     // やりなおしの確認を開いた所（play | stuck）
+  let confirmFrom = "play";     // やりなおし・面えらびの確認を開いた所（play | stuck | select）
+  let selectTarget = 0;         // 面えらびの確認で「はじめる」を押したら始める面
   let hintFadeId = 0;
   let noUndo = null;            // この面で 1手もどすを使っていない：true／使った：false／分からない（途中から再開・テストの局面）：null。保存しない
 
@@ -602,12 +603,16 @@
       <p data-f="c"></p>
       <p class="count" data-f="g"></p>
       <div class="btns">
+        <p class="share-note" aria-live="polite"></p>
         <button class="cta primary" type="button" data-cmd="next">つぎの めんへ</button>
         <button class="cta half" type="button" data-cmd="book">ずかん</button>
         <button class="cta half" type="button" data-cmd="menu">メニューへ</button>
+        <button class="cta share" type="button" data-cmd="share">ともだちに おくる</button>
       </div>`, { h: `${c.level} めん クリア！`, n: c.name, k: "1手もどし なし！", c: countText, g: total ? `ずかん ${c.got} / ${total}` : "" }, "clear");
+    sharing = false;   // 送る画面の返事が来ない端末でも、次のカードでは押せるように戻す
     const box = el.card.querySelector(".clearpic");
     if (box && picture) box.appendChild(pictureCanvas(picture, 120, { mono: false, marks: false }));
+    if (lastClear) safeCall(() => prepareShareFile(lastClear));
     if (again) {
       const bk = el.card.querySelector('button[data-cmd="book"]');
       if (bk) { try { bk.focus({ preventScroll: true }); } catch (e) { bk.focus(); } }
@@ -736,16 +741,194 @@
         if (/^\s+$/.test(part)) { nm.appendChild(document.createTextNode(part)); return; }
         const w = document.createElement("span"); w.className = "w"; w.textContent = part; nm.appendChild(w);
       });
-      if (n > 0 && p && isClean(id)) {   // 1 回でも 1手もどし なしで クリアした絵
-        const star = document.createElement("span"); star.className = "star"; star.textContent = "★"; star.setAttribute("aria-hidden", "true");
-        const sr = document.createElement("span"); sr.className = "sr"; sr.textContent = "（1手もどし なし）";
-        nm.appendChild(star); nm.appendChild(sr);
-      }
+      const clean = n > 0 && p && isClean(id);   // 1 回でも 1手もどし なしで クリアした絵：花輪（読み上げは .sr）
+      if (clean) { const sr = document.createElement("span"); sr.className = "sr"; sr.textContent = "（1手もどし なし）"; nm.appendChild(sr); }
       li.appendChild(nm);
+      if (clean) { li.dataset.clean = "1"; li.appendChild(wreath()); }
       if (n > 0) { const cnt = document.createElement("span"); cnt.className = "cnt"; cnt.textContent = `${n} かい`; li.appendChild(cnt); }
       const season = p && SEASON_WORD[p.season];
       if (season) { const s = document.createElement("span"); s.className = "season"; s.dataset.season = p.season; s.textContent = season; li.appendChild(s); }
       ul.appendChild(li);
+    }
+  }
+
+  // ===== 花輪（1手もどし なしで クリアした印。面えらびとずかん。形は CSS の輪＝色だけに頼らない） =====
+  function wreath() {
+    const w = document.createElement("span");
+    w.className = "wreath";
+    w.setAttribute("aria-hidden", "true");
+    return w;
+  }
+
+  // ===== 面えらび（計画書 docs/plans/amai-select.md §1。契約 §3.5） =====
+  // 選べるのは 1〜ベスト＋1 面（L.levelChoices）。一覧は 1〜100 面（その先は鍵つき）。ベスト＋1 が 101 面より先なら「つづき」を 1 つ
+  const choices = () => safeCall(() => L.levelChoices(best), null) || { top: 1, list: Math.min(100, ORDER.length || 1), open: 1, more: 0 };
+  function showSelect() {
+    if (overlay !== null) return;
+    flush();
+    if (overlay !== null) return;   // 待っていた続きがクリア・うごかせないのカードを出した：その上に重ねない
+    safeCall(() => render.pause());
+    const ch = choices();
+    const book = readBook();
+    const rawClean = readKey(KEY_CLEAN);
+    const isClean = (id) => typeof L.hasClean === "function" && !!safeCall(() => L.hasClean(rawClean, id), false);
+    showCard(`
+      <div class="bookhead">
+        <h2 id="cardTitle">めんを えらぶ</h2>
+        <button class="primary" type="button" data-cmd="close">とじる</button>
+      </div>
+      <p class="selnote"><span class="best" data-f="g"></span><span data-f="n"></span></p>
+      <ul class="levels"></ul>`, { g: best > 0 ? `ここまで ${best} めん。` : "", n: "あそんだ めんと、つぎの めんを えらべるよ" }, "select");
+    const ul = el.card.querySelector("ul.levels");
+    if (!ul) return;
+    const item = (n, opt) => {
+      const li = document.createElement("li");
+      li.dataset.level = String(n);
+      const open = n <= ch.top;
+      li.dataset.open = open ? "1" : "0";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.dataset.cmd = "level";
+      btn.dataset.level = String(n);
+      let label = `${n} めん`;
+      if (opt && opt.more) { li.classList.add("more"); const t = document.createElement("span"); t.className = "lb"; t.textContent = "つづき"; btn.appendChild(t); label = `つづき ${n} めん`; }
+      if (open && !(opt && opt.more)) {
+        const pk = safeCall(() => L.pickPicture(n, book), null);
+        const p = pk ? safeCall(() => L.pictureById(pk.id, false), null) : null;
+        const got = !!(p && book.got && Number.isSafeInteger(book.got[p.id]) && book.got[p.id] > 0);
+        if (p) { const cv = pictureCanvas(p, 48, { mono: !got, marks: false }); cv.style.width = ""; cv.style.height = ""; btn.appendChild(cv); }   // 大きさは CSS（48×36 に収める）
+        if (p && got && isClean(p.id)) { li.dataset.clean = "1"; btn.appendChild(wreath()); label += "（1手もどし なし）"; }
+      } else if (!open) {
+        const q = document.createElement("span"); q.className = "q"; q.textContent = "？"; q.setAttribute("aria-hidden", "true"); btn.appendChild(q);
+        btn.disabled = true;
+        label += "（まだ）";
+      }
+      const no = document.createElement("span"); no.className = "no"; no.textContent = opt && opt.more ? `${n} めん` : String(n); btn.appendChild(no);
+      btn.setAttribute("aria-label", label);
+      if (n === level) { li.dataset.current = "1"; btn.setAttribute("aria-current", "true"); }
+      li.appendChild(btn);
+      return li;
+    };
+    if (ch.more) ul.appendChild(item(ch.more, { more: true }));
+    for (let n = 1; n <= ch.list; n++) ul.appendChild(item(n));
+    // いまの面（無ければ選べる一番先）が見えるように、カードの中だけをスクロールする
+    const cur = ul.querySelector('li[data-current="1"]') || ul.querySelector(`li[data-level="${ch.open}"]`);
+    if (cur) {
+      const head = el.card.querySelector(".bookhead");
+      const top = cur.offsetTop - (head ? head.offsetHeight : 0) - 8;
+      if (top > 0) el.card.scrollTop = top;
+    }
+  }
+  // 面を選んだ：押した数が 1 以上なら確かめる（やりなおしの確かめと同じ形）。同じ面で押した数 0 なら閉じるだけ
+  function chooseLevel(n) {
+    if (overlay !== "select") return false;
+    if (!safeCall(() => L.canSelect(best, n), false)) return false;
+    if (n === level && !presses.length && phase !== "clear" && !custom) { hideOverlay(); return true; }
+    if (presses.length && phase !== "clear") {
+      selectTarget = n;
+      confirmFrom = "select";
+      showCard(`
+      <h2 id="cardTitle" data-f="h"></h2>
+      <p>いまの めんの とちゅうは きえるよ</p>
+      <div class="btns">
+        <button class="cta primary" type="button" data-cmd="selectYes">はじめる</button>
+        <button class="cta" type="button" data-cmd="close">やめる</button>
+      </div>`, { h: `${n} めんを はじめる？` }, "confirm");
+      return true;
+    }
+    return startChosen(n);
+  }
+  // 選んだ面を最初から始める。ベスト（amai.best）は下げない（書かない）。絵の作りは 1 フレーム後（goNext と同じ）
+  function startChosen(n) {
+    if (!safeCall(() => L.canSelect(best, n), false)) return false;
+    sfx.unlock();
+    hideOverlay();
+    const pk = safeCall(() => L.pickPicture(n, readBook()), null);
+    setHint("えを つくっているよ");
+    requestAnimationFrame(() => {
+      startLevel(n, pk, [], 0);
+      sfx.play("start");
+    });
+    return true;
+  }
+
+  // ===== ともだちに おくる（計画書 §3。いろびんの共有と同じ形。課題 IB-60・IB-61 の教訓） =====
+  const SHARE_URL = "https://harutonatu.github.io/game-no1/games/amai/";   // 個人の情報は入れない
+  const NOTE_FAIL_SHARE = "ともだちに おくれなかったよ。したの あどれすを ながおしして「コピー」を えらんでね";
+  const NOTE_FAIL_COPY = "コピーできなかったよ。したの あどれすを ながおしして「コピー」を えらんでね";
+  const NOTE_COPIED = "コピーしたよ。LINE などの にゅうりょくらんに はりつけてね";
+  const SHARE_LABEL = "ともだちに おくる";
+  let sharing = false;
+  function shareText(c) {
+    const total = ORDER.length;
+    return `${NAME} ${c.level}めん クリア！${c.clean ? " もどしなし" : ""}${total ? ` ずかん ${c.got}/${total}` : ""}`;
+  }
+  // クリアした絵の PNG（ドットをくっきり拡大・背景つき）。カードを出したときに作っておく（押したときに待たない。share は押した直後に呼ぶ）
+  function prepareShareFile(c) {
+    if (!c || c.file !== undefined || !picture) return;
+    c.file = null;
+    try {
+      const W = Math.max(1, Number(picture.W) || 1), H = Math.max(1, Number(picture.H) || 1);
+      const cell = Math.max(4, Math.floor(480 / Math.max(W, H)));
+      const pad = cell * 4;
+      const cv = document.createElement("canvas");
+      cv.width = W * cell + pad * 2;
+      cv.height = H * cell + pad * 2;
+      const ctx = cv.getContext("2d");
+      if (!ctx || typeof R.drawPicture !== "function" || typeof cv.toBlob !== "function" || typeof File !== "function") return;
+      ctx.fillStyle = "#1b1f2e";
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.imageSmoothingEnabled = false;
+      R.drawPicture(ctx, picture, { cell, x: pad, y: pad, mono: false, marks: false });
+      cv.toBlob((blob) => {
+        if (!blob) return;
+        try { c.file = new File([blob], `amai-${String(c.level).slice(0, 20)}.png`, { type: "image/png" }); } catch (e) { /* 画像なしで送る */ }
+      }, "image/png");
+    } catch (e) { c.file = null; }
+  }
+  function setShareNote(text, url) {
+    const n = el.card.querySelector(".share-note");
+    if (!n) return;
+    n.textContent = text;
+    if (url) { const u = document.createElement("span"); u.className = "url"; u.textContent = SHARE_URL; n.appendChild(u); }
+  }
+  function doShare() {
+    if (sharing || overlay !== "clear") return;
+    const c = lastClear;
+    if (!c) return;
+    const text = shareText(c);
+    const myRun = runId;
+    try {
+      if (typeof navigator.share === "function") {
+        const data = { title: NAME, text, url: SHARE_URL };
+        // 画像を送れる端末だけ画像つき。送れなければ文と URL だけ
+        if (c.file && typeof navigator.canShare === "function" && safeCall(() => navigator.canShare({ files: [c.file] }), false) === true) data.files = [c.file];
+        sharing = true;
+        let pr;
+        try { pr = navigator.share(data); } catch (e) { pr = Promise.reject(e); }
+        Promise.resolve(pr).then(() => {}, (e) => {
+          const name = e && e.name;
+          if (name === "AbortError" || myRun !== runId || overlay !== "clear") return;   // やめた：何も出さない
+          setShareNote(NOTE_FAIL_SHARE, true);
+        }).then(() => { sharing = false; });
+      } else if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        sharing = true;
+        Promise.resolve().then(() => navigator.clipboard.writeText(`${text}\n${SHARE_URL}`)).then(() => {
+          sharing = false;
+          if (overlay !== "clear" || myRun !== runId) return;
+          const btn = el.card.querySelector("button.share");
+          if (btn) {
+            btn.textContent = "コピーしたよ";
+            later(() => { const b = el.card.querySelector("button.share"); if (b) b.textContent = SHARE_LABEL; setShareNote("", false); }, 3000);
+          }
+          setShareNote(NOTE_COPIED, false);
+        }, () => { sharing = false; if (overlay === "clear" && myRun === runId) setShareNote(NOTE_FAIL_COPY, true); });
+      } else {
+        setShareNote(NOTE_FAIL_COPY, true);
+      }
+    } catch (e) {
+      sharing = false;
+      setShareNote(NOTE_FAIL_COPY, true);
     }
   }
 
@@ -789,12 +972,15 @@
       hideOverlay();
       return;
     }
+    if (overlay === "select") { hideOverlay(); return; }
     if (overlay === "confirm") {
       if (confirmFrom === "stuck" && isStuckNow()) { overlay = null; showStuckCard(); return; }
       hideOverlay();
     }
   }
   el.overlay.addEventListener("click", (e) => {
+    const note = e.target && e.target.closest ? e.target.closest(".share-note") : null;
+    if (note) { if (!(e.target.closest && e.target.closest(".url"))) note.textContent = ""; return; }   // 吹き出しは押すと閉じる。あどれすを長おしして選ぶ途中では閉じない（IB-60）
     const btn = e.target && e.target.closest ? e.target.closest("[data-cmd]") : null;
     if (!btn) return;
     if ((overlay === "clear" || overlay === "stuck") && now() - cardShownAt < CARD_LOCK_MS) return;   // 出た直後の連打で押し間違えない
@@ -803,6 +989,9 @@
     else if (cmd === "menu") goMenu();
     else if (cmd === "close") closeCard();
     else if (cmd === "restartYes") doRestart();
+    else if (cmd === "level") chooseLevel(Number(btn.dataset.level));
+    else if (cmd === "selectYes") { if (overlay === "confirm" && confirmFrom === "select") startChosen(selectTarget); }
+    else if (cmd === "share") doShare();
     else if (cmd === "book") showBook("clear");
     else if (cmd === "undo") { if (overlay === "stuck" && presses.length) { hideOverlay(); undo(); } }
     else if (cmd === "restart") { if (overlay === "stuck") askRestart("stuck"); }
@@ -812,6 +1001,7 @@
   el.restartBtn.addEventListener("click", () => askRestart("play"));
   el.fastBtn.addEventListener("click", () => toggleFast());
   el.bookBtn.addEventListener("click", () => showBook("play"));
+  el.selectBtn.addEventListener("click", () => showSelect());
   // 演出の途中で絵を押したら、演出を終わらせる（待たせない）
   el.picBox.addEventListener("pointerdown", () => { if (render.busy && overlay === null && !hiddenNow && phase === "clear") flush(); });
 
@@ -822,6 +1012,7 @@
       case "restart": askRestart("play"); break;
       case "fast": if (overlay === null) toggleFast(); break;
       case "book": if (overlay === null) showBook("play"); break;
+      case "select": if (overlay === null) showSelect(); break;
       case "sound": toggleSound(); break;
       case "help": showHelp(); break;
       case "close": closeCard(); break;

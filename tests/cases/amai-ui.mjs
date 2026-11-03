@@ -1,6 +1,6 @@
 // AW: あまいものあつめの画面（games/amai/）。契約は docs/ari-contract.md（§3 画面・§3.4 DOM・§3.6 進行とテスト用 API・§4 保存・§5 効果音と色・§7.3 テスト・§9.2 教訓）。
 //   画面の DOM は契約 §3.4 だけに頼る：a#back・#helpBtn・#soundBtn・#playView[data-phase]・#level・#left・#pic・#slots .slot[data-slot/color/count/wait]・
-//     #grid .col[data-col/rest]・.box.front / .box.back [data-id/color/mark/count/lid/ice]・#hint・#undoBtn・#restartBtn・#fastBtn[aria-pressed]・#bookBtn・
+//     #grid .col[data-col/rest]・.box.front / .box.back [data-id/color/mark/count/lid/ice]・#hint・#undoBtn・#restartBtn・#fastBtn[aria-pressed]・#bookBtn・#selectBtn・
 //     #overlay・#card・.overlay [data-cmd=next/menu/book/close/restartYes/undo/restart]
 //   テスト用の公開 API（契約 §3.6）：window.AmaiGame = { getState, press, tick, settle, solution, skip, setLevel, setState, logic }
 //   計算ロジックは AL（amai-logic.mjs）で確かめる。ここでは Node で読んだ logic.js（同じ root）と、画面の中の AmaiLogic を「期待値の計算機」として使う。
@@ -501,8 +501,8 @@ export const tests = [
     id: 'AW5', tier: 'full', title: 'あまいもの 画面内：SE 縦・SE 縦 Safari（320×454）・SE 横・568×270・667×375・13 横・iPad 縦横で、1 面と 48 面（32×24 の絵）でも手前の箱・わく・ボタンが 44×44 以上で safe-area の中、.head・#picBox・#slots・#grid・#tools が重ならずはみ出さない、16 桁の面番号、遊び方の「わかった」がスクロールなしで押せる',
     async run({ browser, check }) {
       const VS = [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), custom(568, 270, null, 'SE Safari 横 568×270'), custom(667, 375, [0, 0, 0, 0], 'SE相当 横 667×375'), view('i13', 'l', 'app'), view('iPad', 'p', 'app'), view('iPad', 'l', 'app')];
-      const SEL = 'a#back, #helpBtn, #soundBtn, .box.front, .slot, #undoBtn, #restartBtn, #fastBtn, #bookBtn, .head, #picBox, #hint, #slots, #grid, #tools';
-      const MIN = 'a#back, #helpBtn, #soundBtn, .box.front, .slot, #undoBtn, #restartBtn, #fastBtn, #bookBtn';
+      const SEL = 'a#back, #helpBtn, #soundBtn, .box.front, .slot, #undoBtn, #restartBtn, #fastBtn, #bookBtn, #selectBtn, .head, #picBox, #hint, #slots, #grid, #tools';
+      const MIN = 'a#back, #helpBtn, #soundBtn, .box.front, .slot, #undoBtn, #restartBtn, #fastBtn, #bookBtn, #selectBtn';
       for (const v of VS) {
         for (const lv of [1, 48]) {
           const { ctx, page } = await openG(browser, `AW5 ${v.label} ${lv}`, { v });
@@ -1243,12 +1243,12 @@ export const tests = [
     },
   },
   {
-    id: 'AW23', tier: 'full', title: 'あまいもの 1手もどし なし：1手もどすを使わずにクリアするとカードに「1手もどし なし！」・amai.clean に入り・ずかんの名前の横に ★。もどした面・途中から再開した面では出さない。壊れた amai.clean でも落ちない',
+    id: 'AW23', tier: 'full', title: 'あまいもの 1手もどし なし：1手もどすを使わずにクリアするとカードに「1手もどし なし！」・amai.clean に入り・ずかんの絵に花輪（.wreath。2026-11-03 に ★ から置き換え）。もどした面・途中から再開した面では出さない。壊れた amai.clean でも落ちない',
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'AW23');
       const WORD = '1手もどし なし！';
       const hasClean = (raw, id) => page.evaluate(([raw, id]) => { const L = window.AmaiLogic; return typeof L.hasClean === 'function' ? L.hasClean(raw, id) : 'no hasClean'; }, [raw, id]);
-      const starOf = (id) => page.evaluate((id) => { const li = document.querySelector(`#card ul.book li[data-id="${id}"]`); return li ? { star: !!li.querySelector('.star'), text: li.textContent } : null; }, id);
+      const starOf = (id) => page.evaluate((id) => { const li = document.querySelector(`#card ul.book li[data-id="${id}"]`); return li ? { star: !!li.querySelector('.wreath') && li.dataset.clean === '1' && !li.textContent.includes('★'), text: li.textContent } : null; }, id);
       // (a) もどさずにクリア
       await gotoG(page, { 'amai.save': null });
       const { s } = await solveToClear(page);
@@ -1258,7 +1258,7 @@ export const tests = [
       await wait(page, 600);
       await clickCmd(page, 'book'); await wait(page, 150);
       const st = await starOf(s.picture);
-      check(`ずかんで ${s.picture} の名前の横に ★（${J(st)}）`, !!st && st.star, st);
+      check(`ずかんで ${s.picture} に花輪（${J(st)}）`, !!st && st.star, st);
       // (b) 1手もどしてからクリア
       await gotoG(page, { 'amai.save': null });
       const sol = await solutionOf(page);
@@ -1285,7 +1285,7 @@ export const tests = [
         await wait(page, 600);
         await clickCmd(page, 'book'); await wait(page, 150);
         const st6 = await starOf(s6.picture);
-        check(`壊れた amai.clean（${bad}）でも落ちず、カードに「${WORD}」・ずかんに ★（保存 ${raw6}）`, s6.overlay === 'clear' && o6.text.includes(WORD) && !!st6 && st6.star && (await hasClean(raw6, s6.picture)) === true, { raw6, st6 });
+        check(`壊れた amai.clean（${bad}）でも落ちず、カードに「${WORD}」・ずかんに花輪（保存 ${raw6}）`, s6.overlay === 'clear' && o6.text.includes(WORD) && !!st6 && st6.star && (await hasClean(raw6, s6.picture)) === true, { raw6, st6 });
       }
       await ctx.close();
     },
@@ -1428,6 +1428,241 @@ export const tests = [
       check(`ずかんの名前（${bk.spans} 語）が言葉の途中で折り返されない（崩れた ${J(bk.bad)}）・3 列（${bk.cols}）`, bk.spans >= 48 && bk.bad.length === 0 && bk.cols === 3, bk);
       check(`48 枚そろっても見出し「ずかん」が 1 行（高さ ${Math.round(bk.h2h)}px・幅 ${Math.round(bk.h2w)}px）・横スクロールなし`, bk.h2h <= bk.lh * 1.5 && bk.h2w > 40 && !bk.hscroll, bk);
       await ctx.close();
+    },
+  },
+
+  // ================= 面えらび・花輪・ともだちに おくる（2026-11-03。計画書 docs/plans/amai-select.md §1・§3） =================
+  {
+    id: 'AW28', tier: 'full', title: 'あまいもの 面えらび：「めん」で一覧（1〜100 面）・選べるのは 1〜ベスト＋1 面（その先は押せない「？」）・選ぶと最初から・押した数 1 以上なら確かめ（やめる／はじめる）・ベスト（amai.best）は下がらない・クリアの「つぎの めんへ」は選んだ面の次・ベスト 100 超は「つづき」・壊れた amai.best でも落ちない',
+    async run({ browser, check }) {
+      const PO = await (async () => { const { ctx, page } = await openG(browser, 'AW28 絵'); const ids = await page.evaluate(() => window.AmaiLogic.PICTURE_ORDER.map((x) => x.id)); await ctx.close(); return ids; })();
+      const { ctx, page } = await openG(browser, 'AW28', { extra: { 'amai.best': '5', 'amai.save': null } });
+      const list = () => page.evaluate(() => {
+        const lis = [...document.querySelectorAll('#card ul.levels li')];
+        return { kind: document.querySelector('#overlay:not([hidden]) #card')?.dataset.kind || null, n: lis.length, open: lis.filter((l) => l.dataset.open === '1').map((l) => Number(l.dataset.level)), more: lis.filter((l) => l.classList.contains('more')).map((l) => Number(l.dataset.level)), dis: lis.filter((l) => l.querySelector('button').disabled).map((l) => Number(l.dataset.level)), cur: lis.filter((l) => l.dataset.current === '1').map((l) => Number(l.dataset.level)), q: lis.filter((l) => l.dataset.open === '0' && l.querySelector('.q') && !l.querySelector('canvas')).length };
+      });
+      const pickLv = async (n) => { const ok = await page.evaluate((n) => { const b = document.querySelector(`#card ul.levels button[data-level="${n}"]`); if (!b) return false; b.click(); return true; }, n); await wait(page, 200); return ok; };
+      const s0 = await gs(page);
+      check(`ベスト 5・保存なしで開くと 6 面（${s0.level}）`, s0.level === 6, s0.level);
+      await page.click('#selectBtn'); await wait(page, 150);
+      const l1 = await list();
+      check(`「めん」で面えらびのカード（${l1.kind}）・1〜100 面（${l1.n} 個）・選べるのは 1〜6 面（${J(l1.open)}）・7 面から先は押せない「？」（${l1.dis.length} 個・「？」${l1.q} 個）・いまの面 6 に印（${J(l1.cur)}）・「つづき」なし`, l1.kind === 'select' && l1.n === 100 && J(l1.open) === J([1, 2, 3, 4, 5, 6]) && l1.dis.length === 94 && l1.dis[0] === 7 && l1.q === 94 && J(l1.cur) === J([6]) && l1.more.length === 0, l1);
+      await pickLv(7);
+      const s7 = await gs(page);
+      check(`押せない 7 面を押しても何も起きない（面 ${s7.level}・カード ${s7.overlay}）`, s7.level === 6 && s7.overlay === 'select', s7);
+      // 押した数 0：すぐ始まる
+      await pickLv(3);
+      const s3 = await gs(page);
+      check(`押した数 0 で 3 面を選ぶと、確かめなしで 3 面の最初から（面 ${s3.level}・押した ${s3.presses}・絵 ${s3.picture}・カード ${s3.overlay}）`, s3.level === 3 && s3.presses === 0 && s3.t === 0 && s3.picture === PO[2] && s3.overlay === null, s3);
+      const sv3 = JSON.parse((await stored(page, 'amai.save')) || '{}');
+      check(`ベストは 5 のまま（${await stored(page, 'amai.best')}）・途中の保存は 3 面（${sv3.level}）`, (await stored(page, 'amai.best')) === '5' && sv3.level === 3, sv3);
+      // 押した数 1：確かめ
+      const sol = await solutionOf(page);
+      await settleG(page); await pressCol(page, sol[0]); await skipG(page);
+      await page.click('#selectBtn'); await wait(page, 150);
+      await pickLv(2);
+      const oc = await overlayInfo(page);
+      check(`押した数 1 で 2 面を選ぶと確かめ（${oc.text}）：「はじめる」「やめる」`, (await gs(page)).overlay === 'confirm' && /2 めんを はじめる？/.test(oc.text) && /とちゅうは きえる/.test(oc.text) && oc.cmds.includes('selectYes') && oc.cmds.includes('close'), oc);
+      await clickCmd(page, 'close'); await wait(page, 150);
+      const sc = await gs(page);
+      check(`「やめる」で 3 面のまま・押した数 1 のまま（${sc.level}・${sc.presses}・${sc.overlay}）`, sc.level === 3 && sc.presses === 1 && sc.overlay === null, sc);
+      await page.click('#selectBtn'); await wait(page, 150);
+      await pickLv(2);
+      await clickCmd(page, 'selectYes'); await wait(page, 200);
+      const s2 = await gs(page);
+      check(`「はじめる」で 2 面の最初から（${s2.level}・押した ${s2.presses}・t ${s2.t}）`, s2.level === 2 && s2.presses === 0 && s2.t === 0 && s2.overlay === null, s2);
+      // 選んだ面をクリア：ベストは下がらない・つぎは 3 面
+      const { s: c2 } = await solveToClear(page);
+      check(`選んだ 2 面をクリアしてもベストは 5 のまま（${await stored(page, 'amai.best')}・state ${c2.best}）`, c2.overlay === 'clear' && (await stored(page, 'amai.best')) === '5' && c2.best === 5, c2);
+      await wait(page, 600);
+      await clickCmd(page, 'next'); await wait(page, 250);
+      const n3 = await gs(page);
+      check(`「つぎの めんへ」は選んだ面の次（3 面。${n3.level}）`, n3.level === 3 && n3.presses === 0, n3);
+      // Esc で閉じる・どの画面からもメニューへ
+      await page.click('#selectBtn'); await wait(page, 150);
+      const back = await reachable(page, 'a#back');
+      await page.keyboard.press('Escape'); await wait(page, 150);
+      check(`面えらびの間も「← メニュー」が押せる（${back}）・Esc で閉じる（${(await gs(page)).overlay}）`, back && (await gs(page)).overlay === null, back);
+      // ベスト 150：一覧は 100 面まで＋「つづき（151 めん）」
+      await gotoG(page, { 'amai.best': '150', 'amai.save': null });
+      await page.click('#selectBtn'); await wait(page, 150);
+      const l2 = await list();
+      check(`ベスト 150：一覧 ${l2.n} 個（1〜100 面＋つづき）・つづきは 151 面（${J(l2.more)}）・1〜100 面は全部選べる（${l2.open.length - 1}）・いまの面 151 に印（${J(l2.cur)}）`, l2.n === 101 && J(l2.more) === J([151]) && l2.open.length === 101 && l2.dis.length === 0 && J(l2.cur) === J([151]), l2);
+      await pickLv(100);
+      const s100 = await gs(page);
+      check(`ベスト 150 で 100 面を選べる（${s100.level}・絵 ${s100.picture}）・ベストは 150 のまま`, s100.level === 100 && s100.picture === PO[99] && (await stored(page, 'amai.best')) === '150', s100);
+      await page.click('#selectBtn'); await wait(page, 150);
+      await pickLv(151);
+      const s151 = await gs(page);
+      check(`「つづき」で 151 面（${s151.level}）`, s151.level === 151 && s151.presses === 0, s151);
+      // 壊れた amai.best
+      for (const bad of ['abc', '-1', '{', '1.5', '']) {
+        await gotoG(page, { 'amai.best': bad, 'amai.save': null });
+        await page.click('#selectBtn'); await wait(page, 150);
+        const lb = await list();
+        check(`壊れた amai.best（${J(bad)}）でも落ちず、選べるのは 1 面だけ（${J(lb.open)}）`, lb.kind === 'select' && J(lb.open) === J([1]) && lb.n === 100, lb);
+      }
+      await ctx.close();
+    },
+  },
+  {
+    id: 'AW29', tier: 'full', title: 'あまいもの 花輪：1手もどし なしでクリアした面（amai.clean。さかのぼって付く）にだけ、面えらびの一覧とずかんの両方で花輪（.wreath・読み上げ「1手もどし なし」）。ずかんに無い絵・鍵つきの面には付けない。もどさずにクリアするとその面に付く。壊れた amai.clean・amai.book でも落ちない',
+    async run({ browser, check }) {
+      const { ctx, page } = await openG(browser, 'AW29');
+      const PO = await page.evaluate(() => window.AmaiLogic.PICTURE_ORDER.map((x) => x.id));
+      const got = {}; PO.slice(0, 10).forEach((id) => { got[id] = 1; });
+      const clean = [PO[1], PO[4], 'nanika', PO[20], PO[50]];
+      await gotoG(page, { 'amai.best': '30', 'amai.save': null, 'amai.book': J({ v: 1, got }), 'amai.clean': J({ v: 1, ids: clean }) });
+      const marks = () => page.evaluate(() => {
+        const sel = [...document.querySelectorAll('#card ul.levels li')].filter((l) => l.querySelector('.wreath') || l.dataset.clean === '1').map((l) => ({ lv: Number(l.dataset.level), w: !!l.querySelector('.wreath'), c: l.dataset.clean === '1', label: l.querySelector('button').getAttribute('aria-label') || '' }));
+        const book = [...document.querySelectorAll('#card ul.book li')].filter((l) => l.querySelector('.wreath') || l.dataset.clean === '1').map((l) => ({ id: l.dataset.id, w: !!l.querySelector('.wreath'), c: l.dataset.clean === '1', sr: l.querySelector('.sr')?.textContent || '', star: l.textContent.includes('★'), hid: l.querySelector('.wreath')?.getAttribute('aria-hidden') }));
+        return { sel, book };
+      });
+      await page.click('#selectBtn'); await wait(page, 150);
+      const m1 = await marks();
+      check(`面えらび：花輪は 2・5 面だけ（${J(m1.sel.map((x) => x.lv))}）・読み上げに「1手もどし なし」・ずかんに無い 21 面と鍵つきの 51 面には付けない`, J(m1.sel.map((x) => x.lv)) === J([2, 5]) && m1.sel.every((x) => x.w && x.c && x.label.includes('1手もどし なし')), m1.sel);
+      await page.keyboard.press('Escape'); await wait(page, 150);
+      await page.click('#bookBtn'); await wait(page, 150);
+      const m2 = await marks();
+      check(`ずかん：花輪は ${PO[1]}・${PO[4]} だけ（${J(m2.book.map((x) => x.id))}）・★ は出さない・花輪は aria-hidden で .sr に「1手もどし なし」`, J(m2.book.map((x) => x.id)) === J([PO[1], PO[4]]) && m2.book.every((x) => x.w && x.c && !x.star && x.hid === 'true' && x.sr.includes('1手もどし なし')), m2.book);
+      await page.keyboard.press('Escape'); await wait(page, 150);
+      // もどさずにクリアすると、その面に付く（ベスト 30 → 31 面）
+      const s0 = await gs(page);
+      const { s } = await solveToClear(page);
+      await wait(page, 600);
+      await clickCmd(page, 'next'); await wait(page, 250);
+      await page.click('#selectBtn'); await wait(page, 150);
+      const m3 = await marks();
+      check(`${s0.level} 面をもどさずにクリア（${s.overlay}）すると、面えらびのその面に花輪（${J(m3.sel.map((x) => x.lv))}）`, s.overlay === 'clear' && m3.sel.some((x) => x.lv === s0.level), m3.sel);
+      await page.keyboard.press('Escape'); await wait(page, 150);
+      // 壊れた amai.clean・amai.book
+      for (const [bk, cl] of [['{', '{'], [J({ v: 1, got: 5 }), J({ v: 1, ids: 'x' })], ['[1]', J({ v: 1, ids: [null, 5, {}, PO[0]] })]]) {
+        await gotoG(page, { 'amai.best': '10', 'amai.save': null, 'amai.book': bk, 'amai.clean': cl });
+        await page.click('#selectBtn'); await wait(page, 150);
+        const a = await marks();
+        const kind = await page.evaluate(() => document.querySelector('#card')?.dataset.kind);
+        await page.keyboard.press('Escape'); await wait(page, 150);
+        await page.click('#bookBtn'); await wait(page, 150);
+        const b = await marks();
+        const kind2 = await page.evaluate(() => document.querySelector('#card')?.dataset.kind);
+        check(`壊れた amai.book（${bk}）・amai.clean（${cl}）でも面えらび（${kind}）・ずかん（${kind2}）が開き、ずかんに無い絵に花輪を付けない（${a.sel.length}・${b.book.length}）`, kind === 'select' && kind2 === 'book' && a.sel.length === 0 && b.book.length === 0, { a, b });
+        await page.keyboard.press('Escape'); await wait(page, 150);
+      }
+      await ctx.close();
+    },
+  },
+  {
+    id: 'AW30', tier: 'full', title: 'あまいもの ともだちに おくる：クリアのカードのボタンで navigator.share に 文（「N めん クリア！」・もどしなし・ずかん M/100）・URL・クリアした絵の PNG（canShare が true のときだけ）を渡す。canShare が無い・false なら文と URL だけ。やめた（AbortError）ら何も出さない・失敗したら あどれすの吹き出し（あどれすを押しても閉じない・ほかを押すと閉じる）。share が無ければ文と URL をコピー。落ちない',
+    async run({ browser, check }) {
+      const URL0 = 'https://harutonatu.github.io/game-no1/games/amai/';
+      const { ctx, page } = await openG(browser, 'AW30');
+      // share・canShare・clipboard を差し替える（mode：ok / abort / fail / throw / none）
+      const stub = (mode, can, clip) => page.evaluate(([mode, can, clip]) => {
+        window.__sh = [];
+        const def = (o, k, v) => Object.defineProperty(o, k, { value: v, configurable: true, writable: true });
+        if (mode === 'none') def(navigator, 'share', undefined);
+        else def(navigator, 'share', (d) => {
+          const f = d && d.files ? [...d.files].map((x) => ({ name: x.name, type: x.type, size: x.size })) : null;
+          window.__sh.push({ title: d.title, text: d.text, url: d.url, files: f });
+          if (d && d.files && d.files[0]) window.__file = d.files[0];
+          if (mode === 'throw') throw new TypeError('x');
+          if (mode === 'abort') return Promise.reject(new DOMException('a', 'AbortError'));
+          if (mode === 'fail') return Promise.reject(new DOMException('n', 'NotAllowedError'));
+          return Promise.resolve();
+        });
+        if (can === 'none') def(navigator, 'canShare', undefined);
+        else def(navigator, 'canShare', (d) => can === 'yes' && !!(d && d.files && d.files.length));
+        if (clip === 'ok') def(navigator, 'clipboard', { writeText: (t) => { window.__sh.push({ clip: t }); return Promise.resolve(); } });
+        else if (clip === 'ng') def(navigator, 'clipboard', { writeText: () => Promise.reject(new Error('ng')) });
+        else if (clip === 'none') def(navigator, 'clipboard', undefined);
+      }, [mode, can, clip]);
+      const toCard = async (undo) => {
+        await gotoG(page, { 'amai.save': null, 'amai.best': '3', 'amai.book': null, 'amai.clean': null });
+        if (undo) { const sol = await solutionOf(page); await settleG(page); await pressCol(page, sol[0]); await skipG(page); await page.click('#undoBtn'); await wait(page, 100); }
+        const { s } = await solveToClear(page);
+        await wait(page, 700);   // 押せない時間（400ms）と、PNG を作る間
+        return s;
+      };
+      const note = () => page.evaluate(() => { const n = document.querySelector('#card .share-note'); return n ? { t: n.textContent, url: n.querySelector('.url')?.textContent || '' } : null; });
+      const share = async () => { await page.click('#card [data-cmd="share"]'); await wait(page, 150); return page.evaluate(() => window.__sh); };
+      // (a) 画像を送れる
+      const s = await toCard(false);
+      check(`クリアのカードに「ともだちに おくる」（${(await overlayInfo(page)).cmds.join(',')}）`, s.overlay === 'clear' && (await overlayInfo(page)).cmds.includes('share'), null);
+      await stub('ok', 'yes', 'keep');
+      const a = await share();
+      const a0 = a[0] || {};
+      check(`share に文「${a0.text}」（${s.level}めん クリア！・もどしなし・ずかん ${s.book}/100）・URL（${a0.url}）・PNG（${J(a0.files)}）`, a.length === 1 && a0.text.includes(`${s.level}めん クリア！`) && a0.text.includes('もどしなし') && a0.text.includes(`ずかん ${s.book}/100`) && a0.url === URL0 && Array.isArray(a0.files) && a0.files.length === 1 && a0.files[0].type === 'image/png' && /\.png$/.test(a0.files[0].name) && a0.files[0].size > 200, a);
+      const png = await page.evaluate(async () => { try { const b = await createImageBitmap(window.__file); return { w: b.width, h: b.height }; } catch (e) { return { err: String(e) }; } });
+      check(`PNG は読める画像で、ドットを拡大している（${J(png)}。一番小さい絵でも 1 マス 4px 以上）`, png.w >= 200 && png.h >= 100, png);
+      const n1 = await note();
+      check(`送れたら吹き出しは出ない（${J(n1)}）・カードはそのまま`, !!n1 && n1.t === '' && (await gs(page)).overlay === 'clear', { n1, png });
+      // (b) canShare が false・無い：文と URL だけ
+      for (const can of ['no', 'none']) {
+        await stub('ok', can, 'keep');
+        const b = await share();
+        check(`canShare ${can}：画像なしで文と URL（${J(b)}）`, b.length === 1 && !b[0].files && b[0].url === URL0 && b[0].text.includes('クリア！'), b);
+      }
+      // (c) やめた・失敗・投げる
+      await stub('abort', 'yes', 'keep'); await share();
+      check(`やめた（AbortError）：吹き出しを出さない（${J(await note())}）`, (await note()).t === '' && (await gs(page)).overlay === 'clear', null);
+      for (const mode of ['fail', 'throw']) {
+        await stub(mode, 'yes', 'keep'); await share();
+        const n = await note();
+        check(`失敗（${mode}）：落ちずに あどれすの吹き出し（${n.t.slice(0, 30)}…・${n.url}）`, /おくれなかった|コピーできなかった/.test(n.t) && n.url === URL0 && (await gs(page)).overlay === 'clear', n);
+        await page.click('#card .share-note .url'); await wait(page, 100);
+        const k = await note();
+        check(`吹き出しの あどれすを押しても閉じない（${mode}。長おしで選ぶ途中に消さない IB-60）`, k.url === URL0, k);
+        await page.evaluate(() => { const n = document.querySelector('#card .share-note'); n.dispatchEvent(new MouseEvent('click', { bubbles: true })); }); await wait(page, 100);
+        check(`吹き出しの ほかの所を押すと閉じる（${mode}）`, (await note()).t === '', null);
+      }
+      // (d) share が無い：コピー
+      await stub('none', 'none', 'ok');
+      const d = await share();
+      const btnT = () => page.evaluate(() => document.querySelector('#card [data-cmd="share"]')?.textContent.trim());
+      check(`share が無いと 文と URL をコピー（${J(d)}）・ボタン「${await btnT()}」・吹き出し「${(await note()).t}」`, d.length === 1 && d[0].clip === `${a0.text}\n${URL0}` && /コピーしたよ/.test(await btnT()) && /はりつけて/.test((await note()).t), d);
+      await wait(page, 3100);
+      check(`3 秒でボタンの文字が戻り、吹き出しが消える（${await btnT()}）`, (await btnT()) === 'ともだちに おくる' && (await note()).t === '', null);
+      for (const clip of ['ng', 'none']) {
+        await stub('none', 'none', clip); await share();
+        const n = await note();
+        check(`コピーできない（${clip}）：落ちずに あどれすの吹き出し（${n.t.slice(0, 20)}…）`, /コピーできなかった/.test(n.t) && n.url === URL0 && (await gs(page)).overlay === 'clear', n);
+      }
+      // (e) もどした面は「もどしなし」を書かない
+      await toCard(true);
+      await stub('ok', 'yes', 'keep');
+      const e = await share();
+      check(`1手もどした面の文に「もどしなし」が無い（${e[0] && e[0].text}）`, e.length === 1 && !e[0].text.includes('もどしなし') && e[0].text.includes('クリア！'), e);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'AW31', tier: 'full', title: 'あまいもの 小さい画面（SE 縦 320×568・SE 横）：面えらび（ベスト 37・150・16 桁）とクリアのカード（ともだちに おくる）が崩れない：見出しが 1 行・ボタン 44px 以上で届く・面の番号がはみ出さない・横スクロールなし',
+    async run({ browser, check }) {
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app')]) {
+        const { ctx, page } = await openG(browser, `AW31 ${v.label}`, { v });
+        for (const best of ['37', '150', '9007199254740990']) {
+          await gotoG(page, { 'amai.best': best, 'amai.save': null });
+          await page.click('#selectBtn'); await wait(page, 200);
+          const r = await page.evaluate(() => {
+            const h2 = document.querySelector('#card .bookhead h2'), cs = getComputedStyle(h2);
+            const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.3;
+            const btns = [...document.querySelectorAll('#card button')].map((b) => { const q = b.getBoundingClientRect(); return { w: q.width, h: q.height }; });
+            const over = [...document.querySelectorAll('#card ul.levels .no, #card ul.levels .lb')].filter((x) => { const a = x.getBoundingClientRect(), b = x.closest('button').getBoundingClientRect(); return a.right > b.right + 0.5 || a.left < b.left - 0.5 || a.bottom > b.bottom + 0.5; }).map((x) => x.textContent);
+            const close = document.querySelector('#card [data-cmd="close"]').getBoundingClientRect();
+            return { h2h: h2.getBoundingClientRect().height, lh, small: btns.filter((b) => b.w < 43.5 || b.h < 43.5).length, n: btns.length, over, hs: document.documentElement.scrollWidth > innerWidth, closeIn: close.top >= 0 && close.bottom <= innerHeight && close.right <= innerWidth };
+          });
+          check(`${v.label}・ベスト ${best}：面えらびの見出しが 1 行（${Math.round(r.h2h)}px）・ボタン ${r.n} 個が 44px 以上（小さい ${r.small}）・番号がはみ出さない（${J(r.over)}）・「とじる」が画面内・横スクロールなし`, r.h2h <= r.lh * 1.5 && r.small === 0 && r.over.length === 0 && r.closeIn && !r.hs, r);
+          await page.keyboard.press('Escape'); await wait(page, 150);
+        }
+        await gotoG(page, { 'amai.save': null, 'amai.best': '3' });
+        const { s } = await solveToClear(page);
+        await wait(page, 600);
+        const cp = await overlayProbe(page, v.safe);
+        check(`${v.label}：クリアのカード（ともだちに おくる 付き）の見出しが切れず、全ボタンに届き 44px 以上（${J(cp.btns.map((b) => b.cmd))}）`, s.overlay === 'clear' && overlayOk(cp) && cp.btns.some((b) => b.cmd === 'share'), cp);
+        const sw = await page.evaluate(() => { const b = document.querySelector('#card [data-cmd="share"]'); return { sw: b.scrollWidth, cw: b.clientWidth, sh: b.scrollHeight, ch: b.clientHeight }; });
+        check(`${v.label}：「ともだちに おくる」の文字がボタンに収まる（${J(sw)}）`, sw.sw <= sw.cw + 1 && sw.sh <= sw.ch + 1, sw);
+        await ctx.close();
+      }
     },
   },
 ];

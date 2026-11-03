@@ -27,7 +27,7 @@
 <script src="../../common/debug.js"></script>
 <style>
   /* 配置（契約 docs/ari-contract.md §3.1・§3.2）
-     縦：上から「← メニュー / 名前 / ？ ♪」・絵（上の数・巣）・案内 1 行・わく 5・箱の格子 4 列・下のボタン 4 つ。
+     縦：上から「← メニュー / 名前 / ？ ♪」・絵（上の数・巣）・案内 1 行・わく 5・箱の格子 4 列・下のボタン 5 つ。
      横（高さ 500px 以下）：上の帯は横いっぱい。その下の左に絵、右に 案内 1 行（あまった高さの下の端）・わく・格子・ボタン。
      箱・わく・ボタンの大きさは、ここの CSS 変数で決める（render.js は読むだけ）。
      奥の箱を何段見せるかは #grid の --backs（2 か 1）。 */
@@ -58,7 +58,7 @@
     --backs: 2;
     --grid-h: calc(var(--front-h) + var(--backs) * (var(--back-gap) + var(--back-h)) + var(--rest-h));
     --tool-h: 48px;
-    --tool-gap: 8px;
+    --tool-gap: 6px;
     --stack-w: 420px;          /* わく・格子・ボタンの列の幅の上限（大きい画面で間延びしない） */
     --row-gap: 6px;            /* わく・格子・ボタンの間 */
     --hint-h: 20px;            /* 案内 1 行（絵と わくの間。絵に重ねない） */
@@ -315,7 +315,7 @@
 
   canvas.fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 15; }
 
-  /* 下のボタン 4 つ */
+  /* 下のボタン 5 つ（「めん」は 2026-11-03。字の長い「1手もどす」「やりなおし」を広く、ほかは 44 以上） */
   .tools {
     grid-area: tools;
     justify-self: center;
@@ -323,7 +323,7 @@
     width: min(100%, var(--stack-w));
     height: var(--tool-h);
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.35fr) minmax(44px, 1fr) minmax(44px, 1fr) minmax(44px, 0.85fr);
     column-gap: var(--tool-gap);
     touch-action: manipulation;
   }
@@ -371,7 +371,7 @@
       --side: 12px;
       --slot-h: 52px; --slot-gap: 6px;
       --col-gap: 8px; --front-h: 52px; --back-h: 24px; --back-gap: 2px; --rest-h: 12px; --backs: 1;
-      --tool-h: 44px; --tool-gap: 8px;
+      --tool-h: 44px; --tool-gap: 4px;
       --stack-w: 264px;
     }
     .app { max-width: none; }
@@ -383,7 +383,7 @@
       column-gap: 12px;
     }
     .tools { align-self: start; }
-    .tools .cta { font-size: 12px; }
+    .tools .cta { font-size: 11px; padding: 0 1px; }   /* ボタン 5 つを幅 264 に入れる（「やりなおし」が 11px で入る） */
     .hint { --hint-h: 16px; align-self: end; font-size: 12px; }
   }
 
@@ -488,8 +488,8 @@
   .card .btns button:active { filter: brightness(1.2); }
   .card button[aria-disabled="true"] { opacity: 0.5; }
 
-  /* ずかん：カードの中を縦にスクロール。「とじる」はカードの上に固定 */
-  #card[data-kind="book"] {
+  /* ずかん・面えらび：カードの中を縦にスクロール。「とじる」はカードの上に固定 */
+  #card[data-kind="book"], #card[data-kind="select"] {
     width: min(720px, 100%);
     max-height: 100%;
     margin: 0 auto;
@@ -531,7 +531,6 @@
   .card ul.book li canvas { display: block; width: 100%; max-width: 64px; aspect-ratio: 4 / 3; height: auto; object-fit: contain; image-rendering: pixelated; }
   .card ul.book .nm { font: 12px/1.25 var(--font-text); color: var(--ink); word-break: keep-all; overflow-wrap: anywhere; text-align: center; }
   .card ul.book li[data-got="0"] .nm { color: var(--muted); }
-  .card ul.book .star { margin-left: 2px; color: #ffd84d; font-size: 11px; }
   .card ul.book .cnt { font: 700 12px/1.2 var(--font-text); color: #ffd84d; }
   .card ul.book .season { position: absolute; top: 2px; left: 2px; padding: 0 3px; border-radius: 5px; font: 700 12px/1.3 var(--font-text); color: #1b1f2e; background: #f4ead2; }
   .card ul.book .season[data-season="haru"] { background: #ffc6dc; }
@@ -542,6 +541,52 @@
   @media (max-width: 359px) { .card ul.book { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
   @media (min-width: 500px) { .card ul.book { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
   @media (min-width: 700px) { .card ul.book { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
+
+  /* 花輪：1手もどし なしで クリアした面・絵の印（面えらびとずかん。2026-11-03）。
+     色だけに頼らない「輪」の形：緑の葉の輪に、桃色の花の点を重ねる（絵文字は使わない） */
+  .wreath {
+    position: absolute; top: 2px; right: 2px; z-index: 1;
+    box-sizing: border-box; width: 18px; height: 18px;
+    border-radius: 50%; border: 3px solid #4f9a45;
+    box-shadow: 0 0 0 1px rgba(13, 17, 29, 0.85);
+    pointer-events: none;
+  }
+  .wreath::after {
+    content: ""; position: absolute; inset: -3px;
+    border-radius: 50%; border: 3px dotted #ffb3d1;
+  }
+
+  /* 面えらび：1〜100 面を番号と小さな絵で。選べない面は「？」（押せない）。ベスト＋1 が 101 面より先なら上に「つづき」 */
+  .card p.selnote { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); text-align: left; overflow-wrap: anywhere; }
+  .card p.selnote .best { color: var(--ink); }
+  .card ul.levels { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .card ul.levels li { position: relative; min-width: 0; }
+  .card ul.levels li.more { grid-column: 1 / -1; }
+  .card ul.levels button {
+    position: relative; box-sizing: border-box; width: 100%; min-width: 44px; min-height: 64px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    padding: 4px 2px; border-radius: 10px; border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.05); color: var(--ink);
+    font: 700 13px/1.2 var(--font-text); touch-action: manipulation;
+  }
+  .card ul.levels button:active:not(:disabled) { filter: brightness(1.3); }
+  .card ul.levels button canvas { display: block; width: 48px; max-width: 100%; height: 36px; object-fit: contain; image-rendering: pixelated; }
+  .card ul.levels button .q { display: block; height: 36px; font: 700 22px/36px var(--font-display); color: var(--muted); }
+  .card ul.levels button .no { display: block; max-width: 100%; overflow-wrap: anywhere; word-break: break-all; }
+  .card ul.levels li[data-open="0"] button { background: transparent; border-style: dashed; color: var(--muted); }
+  .card ul.levels li[data-current="1"] button { border: 2px solid var(--accent); }
+  .card ul.levels li.more button { flex-direction: row; gap: 8px; min-height: 48px; padding: 6px 10px; background: var(--bg); }
+  .card ul.levels li.more .lb { flex: 0 0 auto; color: var(--accent); }
+  .card ul.levels li.more .no { font-size: 15px; }
+  @media (min-width: 500px) { .card ul.levels { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+  @media (min-width: 700px) { .card ul.levels { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
+
+  /* ともだちに おくる（クリアのカード。いろびんと同じ形の吹き出し） */
+  .card .btns { position: relative; }
+  .card .btns button.share { background: transparent; }
+  .card p.share-note { position: absolute; left: 0; right: 0; bottom: 100%; box-sizing: border-box; max-width: 100%; margin: 0 0 4px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 15px; line-height: 1.45; color: var(--ink); text-align: left; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; z-index: 2; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
+  .card p.share-note:empty { visibility: hidden; pointer-events: none; }   /* 空のときは見えないだけ（aria-live の読み上げのため display:none にしない） */
+  .card p.share-note .url { display: block; overflow-wrap: anywhere; word-break: normal; -webkit-user-select: text; user-select: text; }
 
   /* 背の低い縦（SE など） */
   @media (orientation: portrait) and (max-height: 600px) {
@@ -563,8 +608,9 @@
     .card .btns { gap: 8px; }
     .card .btns button { flex: 1 1 0; min-height: 44px; }
     #card[data-kind="help"] .btns button { flex: 1 1 100%; }
+    .card .btns button.share { padding: 2px 6px; white-space: normal; font-size: 14px; line-height: 1.15; word-break: keep-all; }   /* 「ともだちに おくる」を 2 行で 44 の高さに入れる */
     #card[data-kind="help"] { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "title title" "sample rules" "btns btns"; align-items: center; column-gap: 12px; }
-    #card[data-kind="book"] { width: 100%; }
+    #card[data-kind="book"], #card[data-kind="select"] { width: 100%; }
     .card .bookhead { padding: 4px 12px; }
   }
 
@@ -609,6 +655,7 @@
       <button class="cta" id="restartBtn" type="button" data-cmd="restart" disabled>やりなおし</button>
       <button class="cta" id="fastBtn" type="button" data-cmd="fast" aria-pressed="false">はやく</button>
       <button class="cta" id="bookBtn" type="button" data-cmd="book">ずかん</button>
+      <button class="cta" id="selectBtn" type="button" data-cmd="select" aria-label="めんを えらぶ">めん</button>
     </div>
   </section>
 </div>
