@@ -939,7 +939,7 @@
   // あまいものあつめ：amai.best（クリアした一番大きい面）が安全な整数で 1 以上のときだけ「N めん クリア」。
   // amai.book（{"v":1,"got":{絵の id:回数}}）の回数が 1〜9999 の整数の絵が 1 枚以上あれば「・ずかん M」を足す。壊れた book は 0 枚。
   // M は AMAI_IDS（games/amai/logic.js の PICTURE_ORDER の id と同じ並び。テスト AW16 が一致を確かめる）にある絵だけ数える。
-  // 3〜48 面を描き直す前の古い id（sakura・ichigo …）は amai.book に残っていても数えない（ずかんの「M / 48」と同じ数にする）
+  // 3〜48 面を描き直す前の古い id（sakura・ichigo …）は amai.book に残っていても数えない（ずかんの「M / 100」と同じ数にする。49〜100 面の 52 枚は 2026-11-03 に足した）
   const AMAI_IDS = [
     "ringo", "sakuranbo", "nekoyukiyamaoyatsu", "usagidaidokoronemuru", "inuumibeoyatsu", "usagikouennemuru", "kumaumibebooru",
     "nekodaidokorooyatsu", "inuyukiyamanemuru", "usagiyukiyamabooru", "nekoyukiyamabooru", "inukouennemuru", "nekokouenbooru",
@@ -947,8 +947,17 @@
     "kumadaidokoronemuru", "nekodaidokorobooru", "kumakouenoyatsu", "inukouenbooru", "nekoumibeoyatsu", "usagiumibenemuru",
     "inudaidokorobooru", "inuyukiyamaoyatsu", "nekoumibenemuru", "kumadaidokorobooru", "nekodaidokoronemuru", "nekokouenoyatsu",
     "kumaumibenemuru", "kumakouenbooru", "inudaidokorooyatsu", "nekoumibebooru", "inuumibenemuru", "kumadaidokorooyatsu",
-    "usagiumibebooru", "usagiyukiyamaoyatsu", "inudaidokoronemuru", "kumayukiyamabooru", "usagidaidokorooyatsu", "kumayukiyamanemuru",
-    "usagiumibeoyatsu", "nekokouennemuru", "inukouenoyatsu", "usagidaidokorobooru", "kumaumibeoyatsu"
+    "usagiumibebooru", "usagiyukiyamaoyatsu", "inudaidokoronemuru", "kumayukiyamabooru", "usagidaidokorooyatsu",
+    "kumayukiyamanemuru", "usagiumibeoyatsu", "nekokouennemuru", "inukouenoyatsu", "usagidaidokorobooru", "kumaumibeoyatsu",
+    "kumamorioyatsu", "usagikouenoekaki", "nekomorinemuru", "pandakouenoyatsu", "inumorinemuru", "pandadaidokorooyatsu",
+    "nekokouenoekaki", "inumoribooru", "inudaidokorooekaki", "nekomoribooru", "kumaumibeoekaki", "pandakouenoekaki",
+    "inumorioyatsu", "usagimorinemuru", "pandayukiyamaoekaki", "pandakouenbooru", "kumayukiyamaoekaki", "pandaumibeoekaki",
+    "usagiyukiyamaoekaki", "pandaumibenemuru", "kumadaidokorooekaki", "pandadaidokoronemuru", "pandamorinemuru",
+    "pandaumibeoyatsu", "nekomorioyatsu", "usagiumibeoekaki", "kumamoribooru", "nekoumibeoekaki", "usagimorioyatsu",
+    "pandamorioekaki", "pandayukiyamanemuru", "inumorioekaki", "kumamorinemuru", "usagimorioekaki", "pandadaidokorooekaki",
+    "pandakouennemuru", "usagimoribooru", "nekoyukiyamaoekaki", "pandaumibebooru", "kumakouenoekaki", "pandayukiyamabooru",
+    "usagidaidokorooekaki", "inuumibeoekaki", "pandamoribooru", "kumamorioekaki", "pandayukiyamaoyatsu", "nekomorioekaki",
+    "pandadaidokorobooru", "inukouenoekaki", "pandamorioyatsu", "inuyukiyamaoekaki", "nekodaidokorooekaki"
   ];
   function amaiBest() {
     try {

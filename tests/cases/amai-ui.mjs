@@ -351,7 +351,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW3', tier: 'smoke', title: 'あまいもの データ：2 回押して何はこびか進め再読み込みすると同じ局面（t・left・わく・列・絵）、49 面（くり返し）でも同じ、壊れた amai.save・amai.best・amai.book でも落ちない、ほかのゲームの保存キーを変えない',
+    id: 'AW3', tier: 'smoke', title: 'あまいもの データ：2 回押して何はこびか進め再読み込みすると同じ局面（t・left・わく・列・絵）、101 面（くり返し）でも同じ、壊れた amai.save・amai.best・amai.book でも落ちない、ほかのゲームの保存キーを変えない',
     async run({ browser, check, root }) {
       const others = { 'blockpuzzle.best': '777', 'tile2048.best': '888', 'hashi.best': '55', 'zenmai.progress': '{"stars":{"z01":3}}', 'pikatto.bestSolo': '321', 'kiritori.best': '99', 'irobin.best': '4' };
       const { ctx, page } = await openG(browser, 'AW3', { v: SMOKE_V(), extra: others });
@@ -378,14 +378,14 @@ export const tests = [
       const changed = Object.entries(others).filter(([k, v]) => after[k] !== v).map(([k]) => k);
       const extraKeys = Object.keys(after).filter((k) => !(k in others) && !k.startsWith('amai.') && k !== 'blockpuzzle.sound');
       check(`ほかのゲームの保存キーは変わらず、新しいキーは amai.* だけ（変化 ${changed.join(',') || 'なし'}・余分 ${extraKeys.join(',') || 'なし'}）`, changed.length === 0 && extraKeys.length === 0, { changed, extraKeys });
-      // 49 面（くり返し）。ずかんに 48 枚そろえてから（空のずかんだと 3 枚目からの 0 回の絵が反転せずに先に出る。約束 §2.7）
+      // 101 面（くり返し。49〜100 面は 2026-11-03 に足した絵）。ずかんに 100 枚そろえてから（空のずかんだと 3 枚目からの 0 回の絵が反転せずに先に出る。約束 §2.7）
       await page.evaluate(() => { const L = window.AmaiLogic; localStorage.setItem(L.SAVE_KEY_BOOK, JSON.stringify({ v: 1, got: Object.fromEntries(L.PICTURE_ORDER.map((p) => [p.id, 1])) })); });
-      await setLevel(page, 49);
+      await setLevel(page, 101);
       const sol49 = await solutionOf(page);
       await settleG(page); await pressCol(page, sol49[0]); await page.evaluate(() => window.AmaiGame.tick(2)); await settleG(page); await skipG(page);
       const a49 = await gs(page), a49l = await lg(page);
-      check(`49 面はくり返しの面（repeat ${a49l.repeat}・mirror ${a49l.mirror}・presses ${a49.presses}）`, a49.level === 49 && a49l.repeat === true && a49l.mirror === true && a49.presses === 1, { level: a49.level, repeat: a49l.repeat, mirror: a49l.mirror });
-      await same('49 面（くり返し）', a49, a49l, (b) => b.repeat === true && b.mirror === true && b.picture === a49l.picture);
+      check(`101 面はくり返しの面（repeat ${a49l.repeat}・mirror ${a49l.mirror}・presses ${a49.presses}）`, a49.level === 101 && a49l.repeat === true && a49l.mirror === true && a49.presses === 1, { level: a49.level, repeat: a49l.repeat, mirror: a49l.mirror });
+      await same('101 面（くり返し）', a49, a49l, (b) => b.repeat === true && b.mirror === true && b.picture === a49l.picture);
       // 壊れた amai.save（使えない形は 1 面から。形が正しく絵の id だけ知らない保存は、その面の最初か 1 面）
       const BAD_SAVE = ['{not json', '', 'null', '[]', '{"v":2,"level":3,"pic":"ringo","mirror":false,"rep":false,"presses":[],"t":0}',
         '{"v":1,"level":0,"pic":"ringo","mirror":false,"rep":false,"presses":[],"t":0}', '{"v":1,"level":-2,"pic":"ringo","mirror":false,"rep":false,"presses":[],"t":0}',
@@ -405,7 +405,7 @@ export const tests = [
       }
       check(`壊れた amai.save（${BAD_SAVE.length} 通り）でも落ちず、面の最初（または 1 面）から始まる`, bad.length === 0, bad);
       // 描き直す前の古い絵の id（計画書 amai-redraw.md §7.1）：途中の保存の絵が古い id でも落ちず、同じ面の番号で新しい絵の面を最初から。
-      // ずかんの古い id は消さないが「M / 48」に数えない
+      // ずかんの古い id は消さないが「M / 100」に数えない
       const PO = loadLogic(root).PICTURE_ORDER;
       const oldBook = J({ v: 1, got: { kinoko: 4, sakura: 2, kanransha: 1, [PO[0].id]: 1 } });
       const oldRows = [];
@@ -903,7 +903,7 @@ export const tests = [
       const info = swInfo(root);
       const dir = path.join(root, 'games/amai');
       const actual = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => fs.statSync(path.join(dir, f)).isFile()) : [];
-      const required = ['index.html', 'pictures-a.js', 'pictures-b.js', 'logic.js', 'render.js', 'input.js', 'main.js'];
+      const required = ['index.html', 'pictures-a.js', 'pictures-b.js', 'pictures-c.js', 'logic.js', 'render.js', 'input.js', 'main.js'];
       const want = ['./games/amai/', ...required.map((f) => `./games/amai/${f}`), ...actual.map((f) => `./games/amai/${f}`)];
       const uniq = [...new Set(want)];
       const missing = uniq.filter((f) => !info.files.includes(f));
@@ -925,8 +925,8 @@ export const tests = [
       await page.goto(AM, { timeout: 10000 }); await sleep(500);
       const libs = await page.evaluate(() => ({ L: typeof window.AmaiLogic?.step, R: typeof window.AmaiRender?.create, I: typeof window.AmaiInput?.attach, P: typeof window.AmaiPictures?.add, Y: typeof window.YubiSfx?.create, G: typeof window.AmaiGame?.getState }));
       check('オフラインで開き、AmaiLogic・AmaiRender・AmaiInput・AmaiPictures・YubiSfx・AmaiGame が使える', Object.values(libs).every((x) => x === 'function'), libs);
-      const js = ['pictures-a.js', 'pictures-b.js', 'logic.js', 'render.js', 'input.js', 'main.js', 'common/sfx.js'].map((f) => ({ f, hit: resp.find((r) => r.f.endsWith(f)) }));
-      check('pictures-a.js・pictures-b.js・logic.js・render.js・input.js・main.js・sfx.js を Service Worker から 200 で読んだ', js.every((x) => x.hit && x.hit.sw && x.hit.status === 200), { js, resp });
+      const js = ['pictures-a.js', 'pictures-b.js', 'pictures-c.js', 'logic.js', 'render.js', 'input.js', 'main.js', 'common/sfx.js'].map((f) => ({ f, hit: resp.find((r) => r.f.endsWith(f)) }));
+      check('pictures-a.js・pictures-b.js・pictures-c.js・logic.js・render.js・input.js・main.js・sfx.js を Service Worker から 200 で読んだ', js.every((x) => x.hit && x.hit.sw && x.hit.status === 200), { js, resp });
       if (libs.G === 'function') {
         const sol = await page.evaluate(() => window.AmaiGame.solution());
         await page.evaluate((m) => { for (const c of m.slice(0, 2)) { window.AmaiGame.settle(); window.AmaiGame.press(c); window.AmaiGame.skip(); } }, sol);
@@ -989,7 +989,7 @@ export const tests = [
       await page.goto(BASE); await wait(page, 200);
       const cb = await card();
       check(`ずかんに 2 枚なら「3 めん クリア」に「ずかん 2」が付く（${cb && cb.bestAll}）`, cb && /3 めん クリア/.test(cb.bestAll) && /ずかん\s*2/.test(cb.bestAll), cb);
-      // 描き直す前の古い id（sakura・kinoko …）は amai.book に残っていても数えない（ずかんの「M / 48」と同じ。計画書 amai-redraw.md §7.1）
+      // 描き直す前の古い id（sakura・kinoko …）は amai.book に残っていても数えない（ずかんの「M / 100」と同じ。計画書 amai-redraw.md §7.1）
       const menuSrc = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
       const mIds = (() => { const m = /const AMAI_IDS = \[([\s\S]*?)\];/.exec(menuSrc); return m ? [...m[1].matchAll(/"([a-z]+)"/g)].map((x) => x[1]) : null; })();
       check(`メニューの AMAI_IDS（${mIds && mIds.length} 枚）が logic.js の PICTURE_ORDER の id と同じ並び`, !!mIds && J(mIds) === J(LG.PICTURE_ORDER.map((p) => p.id)), mIds);
@@ -1019,7 +1019,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW17', tier: 'full', title: 'あまいもの ずかん：クリアした絵は色つきの小さな絵と名前と回数、まだの絵は「？？？」、上に「M / 48」・季節の札・48 枚がスクロールで全部見えて「とじる」がいつも押せる。開いている間 t は進まず、閉じると続き',
+    id: 'AW17', tier: 'full', title: 'あまいもの ずかん：クリアした絵は色つきの小さな絵と名前と回数、まだの絵は「？？？」、上に「M / 100」・季節の札・100 枚がスクロールで全部見えて「とじる」がいつも押せる。開いている間 t は進まず、閉じると続き',
     async run({ browser, check, root }) {
       const LG = loadLogic(root);
       const order = LG.PICTURE_ORDER, total = order.length;

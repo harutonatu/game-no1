@@ -1,4 +1,4 @@
-// あまいものあつめ：25〜48 面の絵（場面）。地図は docs/plans/amai-redraw/<id>.txt から build.js で書き出す（手で直さない）。1 マス＝1 粒で描いた場面の絵。文字の地図の決まりは docs/ari-contract.md §2.6。
+// あまいものあつめ：25〜48 面の絵（場面）。地図は docs/plans/amai-redraw/<id>.txt・amai-more/<id>.txt から build.js で書き出す（手で直さない）。1 マス＝1 粒で描いた場面の絵。文字の地図の決まりは docs/ari-contract.md §2.6。
 // AmaiPictures は、先に読んだ方のファイル（pictures-a.js / pictures-b.js）が作り、あとのファイルはそれに足す。
 (function (root, factory) {
   var P = factory(root && root.AmaiPictures);

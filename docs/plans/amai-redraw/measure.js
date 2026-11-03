@@ -1,13 +1,14 @@
 // 難しさと面を作る速さを測る台本（計画書 docs/plans/amai-redraw.md §8・考え方は amai-rework.md §10〜§13）。
 // 使い方：node measure.js <面 from> <面 to> <回数> [つまみの JSON] > 出力.json
 //   つまみの JSON：{"OVER":{...},"ANY_RATE":{...},"KSET":{...},"REPEAT_K":{...},"CARRY_TIERS":{...},"GEN_OPT":{...}}（logic.js の既定に上書き）
-//   49 面から先は、1〜48 面をクリアしたずかん（全部 1 回）から始め、面ごとにずかんへ足していく（ふつうに遊んだ人の順）。
+//   くり返しの面（BASE_PICTURES＋1 面から。今は 101 面）は、1〜BASE_PICTURES 面をクリアしたずかん（全部 1 回）から始め、面ごとにずかんへ足していく（ふつうに遊んだ人の順）。
 //   遊び方：でたらめ7割＝ふちの色の箱を選ぶのが 3 割（あとはでたらめ）／ゆるい＝8 割／完全でたらめ＝0 割（1・2 面だけ 200 回）。
 //   2〜7 はこびに 1 回押す（tests の loosePlay と同じ）。1手もどしは使わない。1 面の秒＝ゆるいでクリアした回のはこびの中央 × TICK_MS。
 const path = require('path');
 const root = path.resolve(__dirname, '../../..');
 require(path.join(root, 'games/amai/pictures-a.js'));
 require(path.join(root, 'games/amai/pictures-b.js'));
+require(path.join(root, 'games/amai/pictures-c.js'));
 const L = require(process.env.LOGIC || path.join(root, 'games/amai/logic.js'));   // LOGIC＝試しに書き換えた logic.js（測るだけ）
 const [from, to, runs, knobs] = [+process.argv[2], +process.argv[3], +process.argv[4], process.argv[5] ? JSON.parse(process.argv[5]) : {}];
 for (const [k, v] of Object.entries(knobs)) {
@@ -39,14 +40,15 @@ function play(c, seed, pGood) {
   }
   return { won: false, ticks, presses, guard: true };
 }
-// ずかん：1〜48 面はクリア済み（1 回）。49 面からは前の面の絵を足していく
-let book = JSON.stringify({ v: 1, got: Object.fromEntries(L.PICTURE_ORDER.slice(0, 48).map((p) => [p.id, 1])) });
+// ずかん：1〜BASE 面はクリア済み（1 回）。BASE＋1 面からは前の面の絵を足していく
+const BASE = L.BASE_PICTURES;
+let book = JSON.stringify({ v: 1, got: Object.fromEntries(L.PICTURE_ORDER.slice(0, BASE).map((p) => [p.id, 1])) });
 const picks = {};
-for (let lv = 49; lv <= Math.max(to, 49); lv++) { const pk = L.pickPicture(lv, book); picks[lv] = pk; book = L.addToBook(book, pk.id); }
+for (let lv = BASE + 1; lv <= Math.max(to, BASE + 1); lv++) { const pk = L.pickPicture(lv, book); picks[lv] = pk; book = L.addToBook(book, pk.id); }
 L.createLevel(48, null); L.createLevel(30, null);   // 暖め
 const out = [];
 for (let lv = from; lv <= to; lv++) {
-  const pk = lv > 48 ? picks[lv] : L.pickPicture(lv, null);
+  const pk = lv > BASE ? picks[lv] : L.pickPicture(lv, null);
   const t0 = cpu(); const c = L.createLevel(lv, pk); const gen = ms(t0);
   const t1 = cpu(); const rp = L.replay(lv, pk, [], 0); const rep = ms(t1);
   // 不変：箱の持ち玉の合計＝角砂糖の数
