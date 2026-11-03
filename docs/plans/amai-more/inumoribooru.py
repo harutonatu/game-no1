@@ -106,7 +106,7 @@ fill(ell(56, 43, 9, 1.2), 'K')
 def kinoko(cx, cy, r):
     st = rect(cx - r // 2, cy, cx + r // 2, cy + r)
     shape(st, 'W'); fill({(x, y) for x, y in st if (x + 1, y) not in st} - edge(st), 'S')
-    cap = ell(cx, cy + 0.5, r * 1.4, r * 1.1) - rect(0, cy + 1, W, H)
+    cap = ell(cx, cy + 0.5, r * 1.5, r * 1.6) - rect(0, cy + 1, W, H)
     fill(cap, 'R'); fill({(x, y) for x, y in cap if (x - 2, y) not in cap or (x, y - 2) not in cap}, 'P')
     for dx, dy in ((-r // 2, -r // 3), (r // 2, -r // 2)):
         put(cx + dx, cy + dy, 'W'); put(cx + dx + 1, cy + dy, 'W')
@@ -127,8 +127,11 @@ fill({(34, 43), (36, 43)}, 'K')
 for pts in ([(26, 26), (30, 28), (23, 33), (19, 34), (18, 31)], [(28, 30), (32, 32), (26, 38), (22, 38), (22, 35)]):
     lg = poly(pts); shape(lg, 'W'); fill({(x, y) for x, y in lg if (x, y + 1) not in lg} - edge(lg), 'S')
 fill({(19, 33), (23, 37)}, 'K')                                                                 # 指
-col = ell(27, 21, 2.3, 6.5, 30) & (body - edge(body)); fill(col, 'R'); fill({(x, y) for x, y in col if (x + 1, y) not in col}, 'K')   # 首輪
-fill(ell(25, 26, 1.4, 1.4), 'Y'); fill(edge(ell(25, 26, 1.4, 1.4)), 'K')                         # すず
+neck = poly([(17, 18), (28, 15), (34, 25), (25, 31)])
+shape(neck, 'W'); fill({(x, y) for x, y in neck if (x, y + 2) not in neck} - edge(neck), 'S')
+col = (line(20, 27, 31, 19, 1) | line(20, 28, 31, 20, 1)) & neck
+fill(col, 'R'); fill(({(x, y + 1) for x, y in col} | {(x, y - 1) for x, y in col}) & neck - col, 'K'); fill(edge(neck), 'K')
+fill(ell(25, 25, 1.4, 1.4), 'Y'); fill(edge(ell(25, 25, 1.4, 1.4)), 'K')                         # すず
 head = ell(20, 15, 9.5, 8.5)
 snout = ell(11, 16, 5.5, 3.6, -15)
 shape(head | snout, 'W'); fill({(x, y) for x, y in head | snout if (x, y + 2) not in head | snout} - edge(head | snout), 'S')

@@ -105,7 +105,7 @@ fill(edge(crown) - {(x, 0) for x in range(W)}, 'K')
 def kinoko(cx, cy, r):
     st = rect(cx - r // 2, cy, cx + r // 2, cy + r)
     shape(st, 'W'); fill({(x, y) for x, y in st if (x + 1, y) not in st} - edge(st), 'S')
-    cap = ell(cx, cy, r * 1.4, r * 0.9) - rect(0, cy + 1, W, H)
+    cap = ell(cx, cy + 0.5, r * 1.5, r * 1.6) - rect(0, cy + 1, W, H)
     fill(cap, 'R'); fill({(x, y) for x, y in cap if (x - 2, y) not in cap or (x, y - 2) not in cap}, 'P')
     for dx, dy in ((-r // 2, -r // 3), (r // 2, -r // 2)):
         put(cx + dx, cy + dy, 'W'); put(cx + dx + 1, cy + dy, 'W')
@@ -142,4 +142,4 @@ z(36, 17, 4); z(42, 12, 5); z(50, 6, 6)
 fill(ell(58, 46, 7, 1.1), 'K')
 kinoko(57, 41, 4); kinoko(62, 44, 3)
 
-finish('inumorinemuru')
+finish('inumorinemuru', globals().get('HOLE', 'W'))

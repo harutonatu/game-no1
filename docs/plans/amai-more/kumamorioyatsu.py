@@ -102,7 +102,7 @@ fill(ell(7, 45, 8, 1.3), 'K')                                                   
 def kinoko(cx, cy, r):
     st = rect(cx - r // 2, cy, cx + r // 2, cy + r)
     shape(st, 'W'); fill({(x, y) for x, y in st if (x + 1, y) not in st} - edge(st), 'S')
-    cap = ell(cx, cy, r * 1.4, r * 0.9) - rect(0, cy + 1, W, H)
+    cap = ell(cx, cy + 0.5, r * 1.5, r * 1.6) - rect(0, cy + 1, W, H)
     fill(cap, 'R'); fill({(x, y) for x, y in cap if (x - 2, y) not in cap or (x, y - 2) not in cap}, 'P')
     for dx, dy in ((-r // 2, -r // 3), (r // 2, -r // 2), (0, -r * 2 // 3 + 1)):
         put(cx + dx, cy + dy, 'W'); put(cx + dx + 1, cy + dy, 'W')
@@ -151,4 +151,4 @@ paw = ell(49, 29, 3, 2.6); shape(paw, 'C'); fill({(48, 28), (49, 28)}, 'O')
 for x, y in ((31, 1), (60, 2), (20, 26), (57, 34)):
     fill({(x, y - 1), (x - 1, y), (x, y), (x + 1, y), (x, y + 1)}, 'Y')
 
-finish('kumamorioyatsu')
+finish('kumamorioyatsu', globals().get('HOLE', 'W'))
