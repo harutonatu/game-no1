@@ -1666,8 +1666,8 @@ export const tests = [
         await wait(page, 600);
         const cp = await overlayProbe(page, v.safe);
         check(`${v.label}：クリアのカード（ともだちに おくる 付き）の見出しが切れず、全ボタンに届き 44px 以上（${J(cp.btns.map((b) => b.cmd))}）`, s.overlay === 'clear' && overlayOk(cp) && cp.btns.some((b) => b.cmd === 'share'), cp);
-        const cta = await page.evaluate(() => [...document.querySelectorAll('.tools .cta')].map((b) => ({ id: b.id, sw: b.scrollWidth, cw: b.clientWidth })));
-        check(`${v.label}：下のボタン（${cta.length} 個）の字がはみ出さない（E-1）`, cta.length >= 5 && cta.every((b) => b.sw <= b.cw), cta);
+        const cta = await page.evaluate(() => [...document.querySelectorAll('.tools .cta')].map((b) => ({ id: b.id, sw: b.scrollWidth, cw: b.clientWidth, fs: parseFloat(getComputedStyle(b).fontSize), w: b.getBoundingClientRect().width, h: b.getBoundingClientRect().height })));
+        check(`${v.label}：下のボタン（${cta.length} 個）の字がはみ出さず 12px 以上・44px 以上（E-1）`, cta.length >= 5 && cta.every((b) => b.sw <= b.cw && b.fs >= 12 && b.w >= 43.5 && b.h >= 43.5), cta);
         const sw = await page.evaluate(() => { const b = document.querySelector('#card [data-cmd="share"]'); return { sw: b.scrollWidth, cw: b.clientWidth, sh: b.scrollHeight, ch: b.clientHeight }; });
         check(`${v.label}：「ともだちに おくる」の文字がボタンに収まる（${J(sw)}）`, sw.sw <= sw.cw + 1 && sw.sh <= sw.ch + 1, sw);
         await ctx.close();

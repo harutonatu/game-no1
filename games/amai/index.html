@@ -354,7 +354,8 @@
     .head { column-gap: 3px; }
     a#back { padding: 0 6px; font-size: 14px; }
     .head-tools { gap: 2px; }
-    .tools .cta { font-size: 11px; padding: 0 1px; }   /* 「やりなおし」が幅 320 で はみ出さない（E-1） */
+    :root { --tool-gap: 4px; }
+    .tools .cta { font-size: 12px; padding: 0; }   /* 字は 12px 以上の決まり。すき間 4・padding 0 で 幅 320 でもはみ出さない（E-1） */
   }
   /* 少し広い画面：字を大きく */
   @media (min-width: 370px) {
@@ -372,7 +373,7 @@
       --side: 12px;
       --slot-h: 52px; --slot-gap: 6px;
       --col-gap: 8px; --front-h: 52px; --back-h: 24px; --back-gap: 2px; --rest-h: 12px; --backs: 1;
-      --tool-h: 44px; --tool-gap: 4px;
+      --tool-h: 44px; --tool-gap: 2px;
       --stack-w: 264px;
     }
     .app { max-width: none; }
@@ -383,8 +384,8 @@
       grid-template-areas: "pic hint" "pic slots" "pic ." "pic grid" "pic ." "pic tools";
       column-gap: 12px;
     }
-    .tools { align-self: start; }
-    .tools .cta { font-size: 11px; padding: 0 1px; }   /* ボタン 5 つを幅 264 に入れる（「やりなおし」が 11px で入る） */
+    .tools { align-self: start; grid-template-columns: 60px 64px 44px 44px 44px; }
+    .tools .cta { font-size: 12px; padding: 0; }   /* 字は 12px 以上の決まり。ボタン 5 つを幅 264 に入れる（すき間 2・padding 0） */
     .hint { --hint-h: 16px; align-self: end; font-size: 12px; }
   }
 
