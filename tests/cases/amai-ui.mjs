@@ -1392,4 +1392,42 @@ export const tests = [
       await ctx.close();
     },
   },
+  {
+    id: 'AW27', tier: 'full', title: 'あまいもの 小さい画面（SE 縦 320×568）：①13 面などの長い案内が切れない（幅・折り返したときは高さも）②ずかんの名前が言葉の途中で折り返されない（各 span が 1 行）③48 枚そろっても見出し「ずかん」が 1 行',
+    async run({ browser, check }) {
+      const { ctx, page } = await openG(browser, 'AW27 案内', { v: SMOKE_V() });
+      for (const lv of [3, 13, 40]) {
+        await page.goto(AM); await wait(page, 300);
+        await page.evaluate((lv) => window.AmaiGame.setLevel(lv), lv);
+        await wait(page, 500);
+        const pr = await page.evaluate(() => {
+          const g = window.AmaiGame.getState();
+          const f = g.cols.map((c, i) => ({ i, color: c[0] ? c[0].color : null })).find((x) => x.color !== null && !g.edge.includes(x.color));
+          if (!f) return null;
+          window.AmaiGame.press(f.i);
+          return f;
+        });
+        await wait(page, 1200);
+        const h = await page.evaluate(() => { const e = document.querySelector('#hint'); return { t: e.textContent, wrap: e.dataset.wrap || '', fw: e.scrollWidth <= e.clientWidth + 1, fh: e.scrollHeight <= e.clientHeight + 1, w: e.clientWidth }; });
+        check(`${lv} 面の案内「${h.t}」が切れない（折り返し ${h.wrap || 'なし'}・幅 ${h.w}px）`, !!pr && /はこべるよ/.test(h.t) && h.fw && h.fh, { pr, ...h });
+      }
+      // ずかん（48 枚そろえる）
+      const ids = await page.evaluate(() => window.AmaiLogic.PICTURE_ORDER.map((x) => x.id));
+      const got = {}; ids.forEach((id, i) => { got[id] = 1 + (i % 3); });
+      await seed(page, { 'amai.help': '1', 'amai.book': J({ v: 1, got }) });
+      await page.goto(AM); await wait(page, 300);
+      await page.click('#bookBtn'); await wait(page, 300);
+      const bk = await page.evaluate(() => {
+        const h2 = document.querySelector('.bookhead h2');
+        const lh = parseFloat(getComputedStyle(h2).lineHeight) || (parseFloat(getComputedStyle(h2).fontSize) * 1.3);
+        const spans = [...document.querySelectorAll('ul.book .nm .w')];
+        const bad = spans.filter((s) => s.getBoundingClientRect().height > parseFloat(getComputedStyle(s).fontSize) * 1.25 * 1.5);
+        const cols = getComputedStyle(document.querySelector('ul.book')).gridTemplateColumns.split(' ').length;
+        return { h2h: h2.getBoundingClientRect().height, lh, h2w: h2.getBoundingClientRect().width, spans: spans.length, bad: bad.map((s) => s.textContent), cols, hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+      });
+      check(`ずかんの名前（${bk.spans} 語）が言葉の途中で折り返されない（崩れた ${J(bk.bad)}）・3 列（${bk.cols}）`, bk.spans >= 48 && bk.bad.length === 0 && bk.cols === 3, bk);
+      check(`48 枚そろっても見出し「ずかん」が 1 行（高さ ${Math.round(bk.h2h)}px・幅 ${Math.round(bk.h2w)}px）・横スクロールなし`, bk.h2h <= bk.lh * 1.5 && bk.h2w > 40 && !bk.hscroll, bk);
+      await ctx.close();
+    },
+  },
 ];

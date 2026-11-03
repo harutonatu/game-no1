@@ -306,6 +306,8 @@
     pointer-events: none;
     transition: opacity 0.3s;
   }
+  /* 11px でも 1 行に入らない長い文言は、2 行に折り返す（箱の高さは同じ。2 行で --hint-h に収まる） */
+  .hint[data-wrap="1"] { white-space: normal; font-size: 10px; line-height: calc(var(--hint-h) / 2); }
   .hint:empty { opacity: 0; }
   .hint[data-fade="1"] { opacity: 0.6; }
   .hint[data-soft="1"] { color: var(--muted); opacity: 0.85; }
@@ -510,9 +512,9 @@
     background: var(--panel);
     box-shadow: 0 1px 0 var(--line);
   }
-  .card .bookhead h2 { flex: 1 1 auto; font-size: 20px; text-align: left; }
-  .card .bookhead .got { flex: 0 0 auto; margin: 0; font-size: 13px; color: var(--muted); white-space: nowrap; }
-  .card .bookhead .got .rest { margin-left: 6px; font-size: 12px; }
+  .card .bookhead h2 { flex: 1 0 auto; white-space: nowrap; font-size: 20px; text-align: left; }
+  .card .bookhead .got { flex: 0 1 auto; margin: 0; font-size: 13px; color: var(--muted); }
+  .card .bookhead .got .rest { display: inline-block; margin-left: 6px; font-size: 12px; }
   .card .bookhead button {
     flex: 0 0 auto;
     min-width: 76px;
@@ -536,6 +538,8 @@
   .card ul.book .season[data-season="natsu"] { background: #9fe0ff; }
   .card ul.book .season[data-season="aki"] { background: #ffc58a; }
   .card ul.book .season[data-season="fuyu"] { background: #e8eefc; }
+  .card ul.book .nm .w { white-space: nowrap; }
+  @media (max-width: 359px) { .card ul.book { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
   @media (min-width: 500px) { .card ul.book { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
   @media (min-width: 700px) { .card ul.book { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
 

@@ -175,10 +175,15 @@
   // 案内は絵と わくの間に 1 行（高さ固定）。長い文言は字を 12・11px に縮めて収める。少したったら薄くする（文字は残す）
   function fitHint() {
     el.hint.style.fontSize = "";
+    delete el.hint.dataset.wrap;
     if (!el.hint.textContent) return;
     for (const px of [12, 11]) {
-      if (el.hint.scrollWidth <= el.hint.clientWidth + 1) break;
+      if (el.hint.scrollWidth <= el.hint.clientWidth + 1) return;
       el.hint.style.fontSize = px + "px";
+    }
+    if (el.hint.scrollWidth > el.hint.clientWidth + 1 && el.hint.clientHeight >= 20) {   // 11px でも入らない：2 行に折り返す（字は CSS の 10px）
+      el.hint.style.fontSize = "";
+      el.hint.dataset.wrap = "1";
     }
   }
   function setHint(text, keep, warn) {
@@ -725,7 +730,12 @@
       li.dataset.id = String(id);
       li.dataset.got = n > 0 ? "1" : "0";
       if (p) li.appendChild(pictureCanvas(p, 64, { mono: n === 0, marks: false }));
-      const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = n > 0 && p ? p.name : "？？？";
+      const nm = document.createElement("span"); nm.className = "nm"; const nmText = n > 0 && p ? String(p.name) : "？？？";
+      nmText.split(/(\s+)/).forEach((part) => {   // 名前は言葉ごと（空白で区切る）に折り返す。言葉の途中では切らない
+        if (part === "") return;
+        if (/^\s+$/.test(part)) { nm.appendChild(document.createTextNode(part)); return; }
+        const w = document.createElement("span"); w.className = "w"; w.textContent = part; nm.appendChild(w);
+      });
       if (n > 0 && p && isClean(id)) {   // 1 回でも 1手もどし なしで クリアした絵
         const star = document.createElement("span"); star.className = "star"; star.textContent = "★"; star.setAttribute("aria-hidden", "true");
         const sr = document.createElement("span"); sr.className = "sr"; sr.textContent = "（1手もどし なし）";

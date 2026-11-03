@@ -230,7 +230,7 @@
     } catch (e) { return null; }
   }
 
-  // 文字の地図 → { id, name, season, W, H, cells }。決まり（§2.6 の 1・2・4・5・6、角砂糖 700 以下）を守らない絵は null。
+  // 文字の地図 → { id, name, season, W, H, cells }。決まり（§2.6 の 1・2・4・5・6、角砂糖 2800 以下（MAX_SUGAR））を守らない絵は null。
   // 段の範囲（決まり 3 の色の数と角砂糖の数）は絵だけでは決まらないので、ここでは見ない（テスト AL2 が PICTURE_ORDER の段で見る）
   function parsePicture(def, mirror) {
     try {
