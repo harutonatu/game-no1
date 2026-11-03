@@ -833,8 +833,9 @@ full（smoke に加えて）：
 | MA18 | ふたの箱の色を DOM に書く | AW12・AW20 |
 | MA19 | `pickPicture` が足した絵より先にくり返しを選ぶ | AL13 |
 | MA20 | くり返しで左右反転しない | AL13 |
+| MA3（補足） | 実装の MA3「ちがう色の角砂糖も運ぶ」は見逃し：`findTarget` の列 `a` はその色のマスだけで、マスは運ぶと -1 になるだけなので `cells[i] === color` と `cells[i] >= 0` が同じ動き（同値の変異。origin/master でも見逃し。2026-11-03 確認） | ― |
 | MA30 | `validateClean` が重複・壊れた id を捨てない | AL14 |
-| MA32 | `validateClean` が古い絵の id（`PICTURE_ORDER` に無い id）を捨てる | AL14・AL17・AW3 |
+| MA32 | `validateClean` が古い絵の id（`PICTURE_ORDER` に無い id）を捨てる | AL14・AL17 |
 | MA33 | `bookCount` が古い id も数える | AL9・AL17・AW3 |
 | MA34 | メニューのずかんの数が古い id も数える | AW16 |
 
