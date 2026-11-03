@@ -79,7 +79,7 @@ def wobble_ell(cx, cy, rx, ry, seed=0):   # もこもこの葉（楕円を い�
 
 # こうえんで ねこが おえかきを する：しばふに おいた スケッチブックに クレヨンで さかなを かく ねこ（絵の半分）。場所の物は 木 と スケッチブック の 2 つ。
 # 地面（しばふ。奥へ すぼまる すじ と 小さな花）y 33..47
-FY = 33
+FY = 30
 for y in range(FY, H):
     for x in range(W):
         u = (x - 32) * 10 / (y - FY + 10)
@@ -87,16 +87,17 @@ for y in range(FY, H):
 fill({(x, FY) for x in range(W)}, 'K')
 for fx, fy in ((3, 40), (9, 46), (61, 36), (44, 35)):
     fill({(fx - 1, fy), (fx + 1, fy), (fx, fy - 1), (fx, fy + 1)}, 'P'); put(fx, fy, 'Y')
-# 木（左おく）
-trunk = poly([(4, 12), (9, 12), (9, 31), (12, 35), (1, 35), (4, 31)])
+# 木（右おく。スケッチブックの うしろ）
+trunk = poly([(53, 12), (58, 12), (58, 31), (61, 35), (50, 35), (53, 31)])
 shape(trunk, 'C'); fill({(x, y) for x, y in trunk if (x - 1, y) not in trunk} - edge(trunk), 'O')
-fill(line(6, 18, 6, 21) | line(7, 25, 7, 28), 'K')
-crown = ell(7, 6, 7.5, 6.5) | ell(1, 11, 4.5, 4) | ell(13, 10, 4.5, 4)
+fill(line(55, 17, 55, 20) | line(56, 24, 56, 27), 'K')
+crown = ell(55, 7, 9, 7.5) | ell(47, 11, 5, 4.5) | ell(62, 12, 4.5, 4.5)
 fill(crown, 'G')
 fill({(x, y) for x, y in crown if (x - 2, y - 2) not in crown and (x - 1, y - 1) in crown}, 'Y')
 fill({(x, y) for x, y in crown if (x * 5 + y * 3) % 11 == 0}, 'Y')
 fill(edge(crown), 'K')
-fill(ell(7, 35, 6, 1.1), 'K')
+fill(ell(56, 35, 6, 1.1), 'K')
+cl = ell(40, 4, 5, 2) | ell(43, 2.5, 3.5, 2.3) | ell(4, 6, 4, 1.6) | ell(7, 5, 3, 2); fill(cl, 'W'); fill({(x, y) for x, y in cl if (x, y + 1) not in cl}, 'S')  # くも
 # スケッチブック（右の しばふの上。ななめに おく）
 fill(ell(49, 46, 15, 1.2), 'K')
 book = poly([(36, 30), (61, 28), (64, 45), (33, 46)])
@@ -115,9 +116,9 @@ for (x, y), c in (((30, 44), 'R'), ((33, 46), 'Y'), ((26, 46), 'B')):
     fill(line(x, y, x + 3, y - 1), c); fill({(x + 3, y), (x + 4, y - 1)}, 'K')
 # ねこ（すわって 右むき。オレンジの しまもよう・しろい むね）
 fill(ell(24, 44, 13, 1.3), 'K')
-tail = poly([(14, 40), (8, 38), (5, 33), (7, 31), (10, 35), (15, 37)])
-shape(tail, 'O'); fill({(6, 32), (7, 34), (9, 36)}, 'C')
-body = ell(24, 34, 10.5, 10)
+tail = (ell(11, 33, 6, 8) - ell(12, 33, 3.2, 5.5)) & rect(0, 25, 13, 42)
+shape(tail, 'O'); fill({(6, 30), (5, 33), (6, 36), (8, 27)}, 'C')
+body = ell(24, 34, 11.5, 10)
 shape(body, 'O')
 fill({(x, y) for x, y in body if (x - 2, y) not in body or (x, y - 2) not in body} - edge(body), 'Y')
 for sx in (15, 18): fill(line(sx, 30, sx + 1, 36) & (body - edge(body)), 'C')
@@ -127,7 +128,7 @@ for fx in (19, 30):
 earL = poly([(14, 10), (15, 1), (21, 7)]); earR = poly([(28, 6), (35, 0), (36, 10)])
 for e in (earL, earR):
     shape(e, 'O'); fill({(x, y) for x, y in e if (x, y - 2) in e and (x - 1, y) in e and (x + 1, y) in e} - edge(e), 'P')
-head = ell(25, 15, 11.5, 9)
+head = ell(25, 14.5, 12.5, 9.5)
 shape(head, 'O')
 fill({(x, y) for x, y in head if (x - 2, y) not in head or (x, y - 2) not in head} - edge(head), 'Y')
 fill(line(23, 7, 23, 10) | line(26, 6, 26, 9) | line(29, 7, 29, 9), 'C')                        # 頭の しま

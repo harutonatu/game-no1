@@ -205,7 +205,7 @@ def critter(sp, hx, hy, bx, by, hand=None, hand2=None, eyes='open', mouth='smile
         fill(ell(hx + 4, hy - 3, 3, 3), 'C')
         fill(rect(hx + 13, hy + 1, hx + 15, hy + 2) | {(hx + 14, hy + 3)}, 'K'); put(hx + 13, hy + 1, 'W')
     # 目
-    if sp == 'inu': eyes_at = ((hx - 4, hy - 3, 1.2), (hx + 4, hy - 2, 1.3))
+    if sp == 'inu': eyes_at = ((hx - 2, hy - 3, 1.2), (hx + 4, hy - 2, 1.3))
     else: eyes_at = ((hx - 4, hy - 1, 1.3), (hx + 5, hy - 2, 1.4))
     for ex, ey, r in eyes_at:
         if eyes == 'open':
@@ -215,21 +215,25 @@ def critter(sp, hx, hy, bx, by, hand=None, hand2=None, eyes='open', mouth='smile
     # 口
     mx, my = (hx + 4, hy + 6) if sp != 'inu' else (hx + 9, hy + 6)
     if sp == 'neko': mx, my = hx + 3, hy + 5
-    if sp == 'neko' and mouth == 'smile': put(mx, my - 1, 'K'); my += 1
-    if mouth == 'smile':
+    if sp == 'neko' and mouth == 'smile':
+        fill({(mx, my - 1), (mx - 1, my), (mx + 1, my), (mx - 2, my), (mx + 2, my)}, 'K'); put(mx, my, 'W')
+    elif mouth == 'smile':
         fill({(mx - 2, my), (mx - 1, my + 1), (mx, my), (mx + 1, my + 1), (mx + 2, my)}, 'K')
     elif mouth == 'open':
         fill(rect(mx - 1, my, mx + 1, my + 1), 'R'); fill({(mx, my + 1)}, 'P')
         fill(edge(rect(mx - 2, my - 1, mx + 2, my + 2)), 'K')
     elif mouth == 'tongue':
         fill(line(mx - 4, my, mx + 4, my), 'K'); fill(rect(mx - 3, my + 1, mx - 1, my + 2), 'P')
+    if sp == 'inu':                                                     # たれ耳（手前）
+        ef = ell(hx - 8, hy + 1, 3.4, 7, 15); shape(ef, 'C'); fill({(x, y) for x, y in ef if (x - 1, y) not in ef} - edge(ef), 'O')
     # ほっぺ
     if sp != 'inu': fill(ell(hx - 6, hy + 3.5, 1.8, 1), 'P'); fill(ell(hx + 9, hy + 2.5, 1, 1), 'P')
-    else: fill(rect(hx - 3, hy + 2, hx - 1, hy + 2), 'P')
+    else: fill(rect(hx - 2, hy + 2, hx, hy + 2), 'P')
     # 手前の うで
     if hand:
         a = cap(bx + 4, by - 5, hand[0], hand[1], 2.6)
-        if sp == 'panda': shape(a, 'K')
+        if sp == 'panda':
+            shape(a, 'K'); fill({(x, y) for x, y in a if (x - 2, y - 1) not in a and (x + 1, y + 1) in a and (x, y) not in edge(a)} | {(x, y) for x, y in a if (x - 1, y - 2) not in a and (x + 1, y + 1) in a and (x, y) not in edge(a)}, 'B')
         else: shape(a, base, sh=sh, d=1)
         p = ell(hand[0], hand[1], 2.6, 2.4)
         shape(p, 'K' if sp == 'panda' else base)

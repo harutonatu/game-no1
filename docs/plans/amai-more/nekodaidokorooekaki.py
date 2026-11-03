@@ -215,8 +215,9 @@ def critter(sp, hx, hy, bx, by, hand=None, hand2=None, eyes='open', mouth='smile
     # 口
     mx, my = (hx + 4, hy + 6) if sp != 'inu' else (hx + 9, hy + 6)
     if sp == 'neko': mx, my = hx + 3, hy + 5
-    if sp == 'neko' and mouth == 'smile': put(mx, my - 1, 'K'); my += 1
-    if mouth == 'smile':
+    if sp == 'neko' and mouth == 'smile':
+        fill({(mx, my - 1), (mx - 1, my), (mx + 1, my), (mx - 2, my), (mx + 2, my)}, 'K'); put(mx, my, 'W')
+    elif mouth == 'smile':
         fill({(mx - 2, my), (mx - 1, my + 1), (mx, my), (mx + 1, my + 1), (mx + 2, my)}, 'K')
     elif mouth == 'open':
         fill(rect(mx - 1, my, mx + 1, my + 1), 'R'); fill({(mx, my + 1)}, 'P')
@@ -247,13 +248,13 @@ for vx in (-60, -28, 4, 36, 68, 100, 132):
     fill(line(32 + (vx - 32) // 3, FY, vx, 47), 'O')
 fill({(x, FY) for x in range(W)}, 'K')
 # まど（左上。外は 夕やけと くも）
-win = rect(0, 0, 18, 18)
-fill(win, 'S'); fill({(x, y) for x, y in win if y >= 12}, 'P')
+win = rect(0, 0, 15, 16)
+fill(win, 'S'); fill({(x, y) for x, y in win if y >= 11}, 'P')
 fill(ell(6, 5, 3, 1.4) | ell(9, 4, 2.4, 1.8), 'W')
-fill(ell(14, 13, 2.5, 2.5), 'O')
-fill(rect(9, 0, 9, 18) | rect(0, 9, 18, 9), 'C')
+fill(ell(12, 12, 2.2, 2.2), 'O')
+fill(rect(8, 0, 8, 16) | rect(0, 8, 15, 8), 'C')
 fill(edge(win), 'K')
-fill(rect(0, 19, 20, 20), 'W'); fill({(x, 20) for x in range(21)} | {(20, 19)}, 'K')
+fill(rect(0, 17, 17, 18), 'W'); fill({(x, 18) for x in range(18)} | {(17, 17)}, 'K')
 # テーブル（右・ななめ。テーブルかけ）
 ttop = poly([(36, 27), (60, 27), (64, 31), (38, 31)])
 fill(ttop, lambda x, y: 'W' if (x // 3 + y // 2) % 2 else 'S')
@@ -280,4 +281,8 @@ for i, c in enumerate('BGP'):
 fill(ell(20, 46, 14, 1.3), 'O')
 critter('neko', 21, 15, 20, 33, hand=(35, 19), hand2=(10, 36), mouth='smile')
 fill(cap(36, 18, 43, 15, .8), 'R'); fill(edge(cap(36, 18, 43, 15, .8)), 'K'); put(43, 15, 'R')
+# かべの タイル（まど台の下から 床まで）
+for y in range(22, FY):
+    for x in range(W):
+        if g[y][x] == '.': g[y][x] = 'S' if x % 4 == 0 or y % 4 == 0 else 'W'
 finish('nekodaidokorooekaki', 'W')
