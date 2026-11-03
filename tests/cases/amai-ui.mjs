@@ -378,7 +378,8 @@ export const tests = [
       const changed = Object.entries(others).filter(([k, v]) => after[k] !== v).map(([k]) => k);
       const extraKeys = Object.keys(after).filter((k) => !(k in others) && !k.startsWith('amai.') && k !== 'blockpuzzle.sound');
       check(`ほかのゲームの保存キーは変わらず、新しいキーは amai.* だけ（変化 ${changed.join(',') || 'なし'}・余分 ${extraKeys.join(',') || 'なし'}）`, changed.length === 0 && extraKeys.length === 0, { changed, extraKeys });
-      // 49 面（くり返し）
+      // 49 面（くり返し）。ずかんに 48 枚そろえてから（空のずかんだと 3 枚目からの 0 回の絵が反転せずに先に出る。約束 §2.7）
+      await page.evaluate(() => { const L = window.AmaiLogic; localStorage.setItem(L.SAVE_KEY_BOOK, JSON.stringify({ v: 1, got: Object.fromEntries(L.PICTURE_ORDER.map((p) => [p.id, 1])) })); });
       await setLevel(page, 49);
       const sol49 = await solutionOf(page);
       await settleG(page); await pressCol(page, sol49[0]); await page.evaluate(() => window.AmaiGame.tick(2)); await settleG(page); await skipG(page);

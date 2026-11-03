@@ -177,8 +177,10 @@ export const tests = [
         if (!ok) bad.push({ want: r, got: p });
       }
       check('1〜48 面の境界（1・2・4・5・8・9・12・13・18・19・24・25・30・31・36・37・48）が表どおり', bad.length === 0, bad);
-      // 49 面から：くり返し（ずかんが空なら 9 枚目＝M の段）。段の値 +（k 8–25・pull +2・多い方 +1）
-      const p49 = L.paramsFor(49, L.pickPicture(49, null));
+      // 49 面から：くり返し（ずかんに 48 枚そろっていれば 9 枚目＝M の段）。段の値 +（k は REPEAT_K・pull +2・多い方 +1）
+      // （ずかんが空なら、3 枚目からの 0 回の絵が反転せずに先に出る。§2.7。2026-11-03 に変えた）
+      const all48 = L.validateBook(J({ v: 1, got: Object.fromEntries(L.PICTURE_ORDER.map((p) => [p.id, 1])) }));
+      const p49 = L.paramsFor(49, L.pickPicture(49, all48));
       check('49 面（くり返し・9 枚目 M）：k は REPEAT_K の幅・pull 4・lids 2・ices 1・反転', p49.repeat === true && p49.mirror === true && p49.tier === 'M' && p49.kmin === L.REPEAT_K.kmin && p49.kmax === L.REPEAT_K.kmax && p49.pull === 4 && p49.lids === 2 && p49.ices === 1 && p49.picture === L.PICTURE_ORDER[8].id, p49);
       const pX = L.paramsFor(1000, { id: L.PICTURE_ORDER[47].id, mirror: true, repeat: true });
       check('1000 面（くり返し・XXL の絵）：pull 14・lids 5・ices 4', pX.tier === 'XXL' && pX.pull === 14 && pX.lids === 5 && pX.ices === 4 && pX.kmin === L.REPEAT_K.kmin && pX.kmax === L.REPEAT_K.kmax, pX);
@@ -754,6 +756,11 @@ export const tests = [
       check('くり返しは回数の一番少ない絵（同じなら並びの前）', pm.id === PO[20].id && pm.repeat === true, pm);
       const g2 = Object.fromEntries(PO.map((p) => [p.id, 3]));
       g2[PO[3].id] = 1;   // 4 枚目（9 枚目より前）は くり返しに入らない
+      // 絵を描き直して id が替わった人（ずかんに新しい絵が 0 回）：3〜48 枚目の 0 回の絵を、反転せずに先に出す（計画書 amai-redraw.md §8.2）
+      const g0 = Object.fromEntries(PO.map((p) => [p.id, 2]));
+      g0[PO[1].id] = 0; g0[PO[5].id] = 0; g0[PO[30].id] = 0;   // 2 枚目（やさしい面だけの絵）は先に出さない
+      const p0 = L.pickPicture(55, L.validateBook(J({ v: 1, got: g0 })));
+      check('ずかんに 0 回の絵（3 枚目から）があれば、その一番前を反転せずに先に出す（くり返しでない）', p0.id === PO[5].id && p0.mirror === false && p0.repeat === false, p0);
       check('9 枚目より前の絵は くり返しに入らない', L.pickPicture(70, L.validateBook(J({ v: 1, got: g2 }))).id === PO[8].id, L.pickPicture(70, L.validateBook(J({ v: 1, got: g2 }))));
       check('壊れた book・文字の book でも例外を出さない', (() => { try { return [null, '{', 5, { got: null }, { got: { ringo: 'x' } }, J({ v: 1, got: g })].every((b) => PO.some((p) => p.id === L.pickPicture(80, b).id)); } catch (e) { return false; } })(), null);
       check('文字の book（保存の生の値）も読める', L.pickPicture(60, J({ v: 1, got: g })).id === PO[20].id, null);
@@ -938,10 +945,13 @@ export const tests = [
         const pk = L.pickPicture(5, L.validateBook(J({ v: 1, got: { kinoko: 3 } })));
         check('pickPicture：古い id がずかんにあっても 5 面は新しい絵', pk.id === PO[4].id && pk.mirror === false && pk.repeat === false, pk);
       });
-      // 49 面から：古い id だけのずかんなら、くり返しは 9 枚目の新しい絵から（古い id は数えない）
+      // 49 面から：古い id だけのずかん（描き直す前にくり返しまで進んだ人）なら、新しい絵を 3 枚目から順に、反転せずに出す（古い id は数えない。§2.7・計画書 amai-redraw.md §8.2）
       const oldBook = J({ v: 1, got: Object.fromEntries(OLD.map((id) => [id, 5])) });
       const p49 = L.pickPicture(49, oldBook);
-      check('49 面から：古い id の回数は、くり返しの選び方に入らない（9 枚目の新しい絵）', p49.id === PO[8].id && p49.repeat === true, p49);
+      check('49 面から：古い id だけのずかんなら、新しい 3 枚目の絵を反転せずに出す（くり返しでない）', p49.id === PO[2].id && p49.repeat === false && p49.mirror === false, p49);
+      const ob2 = L.addToBook(L.addToBook(oldBook, PO[2].id), PO[3].id);
+      const p50 = L.pickPicture(50, ob2);
+      check('49 面から：新しい絵を見たら、次の 0 回の新しい絵（5 枚目）', p50.id === PO[4].id && p50.repeat === false && p50.mirror === false, p50);
       // ずかん（amai.book）：古い id は消さずに残すが、数えない
       const raw = J({ v: 1, got: { ringo: 2, sakura: 4, kinoko: 9, [PO[2].id]: 1, kanransha: 1 } });
       const vb = L.validateBook(raw);

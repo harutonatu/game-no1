@@ -57,6 +57,7 @@
   const SOLVE_NODES = 15;   // 解ける押し順の探索で開く局面の上限は「箱の数＋この余り」（1 回の tryBuild ごと・600 まで）
   const BASE_PICTURES = 48;
   const REPEAT_FROM = 9;
+  const FRESH_FROM = 3;   // 49 面からの「ずかんにまだ無い絵を先に」を探し始める絵の番号（§2.7）
   const SAVE_V = 1;
   const BOOK_V = 1;
   const BOOK_MAX = 9999;
@@ -656,7 +657,10 @@
       const lv = normLevel(level);
       if (lv <= BASE_PICTURES && lv <= PICTURE_ORDER.length) return Object.freeze({ id: PICTURE_ORDER[lv - 1].id, mirror: false, repeat: false });
       const b = bookOf(book);
-      for (let i = BASE_PICTURES; i < PICTURE_ORDER.length; i++) {
+      // ずかんにまだ無い絵（0 回）を、反転せずに先に出す。3 枚目から（1・2 枚目はやさしい面だけの絵）。
+      // 3〜48 枚目も入れるのは、絵を描き直して id が替わったとき（2026-11-02）、くり返しに入っている人が新しい絵を
+      // 反転のくり返しで初めて見ないようにするため（計画書 docs/plans/amai-redraw.md §8.2）。足した 49 枚目からも同じ
+      for (let i = FRESH_FROM - 1; i < PICTURE_ORDER.length; i++) {
         if (gotOf(b, PICTURE_ORDER[i].id) === 0) return Object.freeze({ id: PICTURE_ORDER[i].id, mirror: false, repeat: false });
       }
       let best = -1, bestN = Infinity;
