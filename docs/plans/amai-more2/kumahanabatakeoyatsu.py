@@ -562,8 +562,8 @@ def flake(x, y, c='W'):
 
 # おどる 主役：立って かた足を 上げ、うでを ひろげる。gy＝ささえる足の 下。
 # lift＝上げる足の 先（x, y）。arms＝（奥の手, 手前の手）。
-def dancer(kind, cx, gy, lift, arms, stand=None, eyes='open', mouth='open', look=1, ear=1.0, earang=12, tilt=0):
-    by = gy - 6
+def dancer(kind, cx, gy, lift, arms, stand=None, eyes='open', mouth='open', look=1, ear=1.0, earang=12, tilt=0, rise=6):
+    by = gy - rise
     stand = stand or (cx - 3, gy - 1)
     legS = line(cx - 3, by - 6, stand[0], stand[1] - 1, 6.4)
     legL = line(cx + 4, by - 6, lift[0], lift[1], 6.2)

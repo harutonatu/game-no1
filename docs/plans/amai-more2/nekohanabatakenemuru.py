@@ -712,13 +712,16 @@ def cake(cx, by, w=6):
 
 # ---- この絵 ----
 # はなばたけで ねこが ねむる：花の中で まるくなって ねむる ねこ（絵の半分）。場所の物は ひまわり と ちょうちょ の 2 つ。
-GY = 22
-bg_flower(GY, top=8, path=(0, 0, 0))
+GY = 20
+bg_flower(GY, top=9, path=(0, 0, 0))
 sunflower(56, 11, 4, by=36)
 butterfly(40, 10, 'P', 'Y')
 def T(pts):   # ねこの 部品を 右下へ ずらす
     return [(x + DX, y + DY) for (x, y) in pts]
-DX, DY = 4, 14
+DX, DY = 4, 11
+patch = ell(31 + DX, 24 + DY, 22, 10.5) - rect(0, 0, 63, GY + 2)
+fill(patch, 'G')
+fill(cells(patch, lambda x, y: (x * 5 + y * 3) % 7 == 0), 'Y')            # くさの 光
 fill(ell(30 + DX, 31.5 + DY, 19, 1.4), 'K')                                                     # 地面の かげ
 body = ell(30 + DX, 23 + DY, 14, 7.5)
 shape(body, 'O')
@@ -747,6 +750,5 @@ fill(set(T([(8, 25), (9, 25), (21, 25), (22, 25)])), 'P')
 fill(edge(head) - body, 'K')
 fill(line(5 + DX, 26 + DY, 10 + DX, 25 + DY) | line(5 + DX, 28 + DY, 10 + DX, 27 + DY), 'K')
 # 手前の 花（ねこの まわりに 少し）
-tulip(4, 47, 'R', 8); tulip(46, 47, 'Y', 7); tulip(52, 47, 'P', 9)
-zz(6, 18, 3); zz(10, 12, 4); zz(16, 5, 5)
+zz(22, 16, 3, 'K'); zz(26, 10, 4, 'K'); zz(31, 3, 5, 'K')
 finish('nekohanabatakenemuru', 'G')
