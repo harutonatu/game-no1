@@ -1,4 +1,4 @@
-// あまいものあつめ：1〜24 面の絵（りんご・さくらんぼ＋3〜24 面の場面）。地図は docs/plans/amai-redraw/<id>.txt・amai-more/<id>.txt から build.js で書き出す（手で直さない）。1 マス＝1 粒で描いた場面の絵。文字の地図の決まりは docs/ari-contract.md §2.6。
+// あまいものあつめ：1〜24 面の絵（りんご・さくらんぼ＋3〜24 面の場面）。地図は docs/plans/amai-redraw/<id>.txt・amai-more/<id>.txt・amai-more2/<id>.txt から build.js で書き出す（手で直さない）。1 マス＝1 粒で描いた場面の絵。文字の地図の決まりは docs/ari-contract.md §2.6。
 // AmaiPictures は、先に読んだ方のファイル（pictures-a.js / pictures-b.js）が作り、あとのファイルはそれに足す。
 (function (root, factory) {
   var P = factory(root && root.AmaiPictures);
@@ -18,7 +18,7 @@
   }
 
   AmaiPictures.add([
-    // 1 りんご（S 段。15×15・R C G P。**割っていない絵**（1・2 面に出るので元の大きさのまま。3〜100 面の 98 枚は 1 マス＝1 粒で描いた場面）。ちゃいろでふちどり。ピンクの光・葉の筋）
+    // 1 りんご（S 段。15×15・R C G P。**割っていない絵**（1・2 面に出るので元の大きさのまま。3〜150 面の 148 枚は 1 マス＝1 粒で描いた場面）。ちゃいろでふちどり。ピンクの光・葉の筋）
     { id: "ringo", name: "りんご", season: "", map: [
       ".......CC...GG.",
       "........C.GGCGG",

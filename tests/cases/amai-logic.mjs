@@ -2,8 +2,8 @@
 //   契約は docs/ari-contract.md（§1 決まり・§2 面の作り方・§4 保存・§5.2 色と印・§6.2 API・§7.2 AL の項目）。
 //   局面は契約 §4.1 の形を手で組み（mk）、validateState を通して使う。ロジックの中身には触れず、公開された関数の結果だけを確かめる。
 //   無いときに合格にしない：logic.js が無い・AmaiLogic を公開していなければ例外で不合格にする。
-//   絵：本物の絵（pictures-a.js・pictures-b.js・pictures-c.js）の検査は AL2 だけ（無ければ AL2 は不合格）。
-//       生成を確かめる項目（AL6・AL8・AL11・AL12・AL13）は、本物の 100 枚がそろっていればそれを使い、
+//   絵：本物の絵（pictures-a.js・pictures-b.js・pictures-c.js・pictures-d.js）の検査は AL2 だけ（無ければ AL2 は不合格）。
+//       生成を確かめる項目（AL6・AL8・AL11・AL12・AL13）は、本物の 150 枚がそろっていればそれを使い、
 //       そろっていなければテストの中で作った仮の絵（段の決まりを守る自動の絵）を AmaiPictures に入れて使う（終わったら元に戻す）。
 //   単体でも流せる：node tests/cases/amai-logic.mjs [ID...]（最後の「単体で流す」を参照）
 import path from 'node:path';
@@ -81,8 +81,8 @@ function registry(defs) {
   reg.add(defs);
   return reg;
 }
-const hasReal = (L) => L.PICTURE_ORDER.slice(0, 100).every((p) => L.pictureById(p.id, false));
-// 本物の 100 枚がそろっていれば何もしない。そろっていなければ仮の絵を入れて fn を流し、元に戻す
+const hasReal = (L) => L.PICTURE_ORDER.slice(0, 150).every((p) => L.pictureById(p.id, false));
+// 本物の 150 枚がそろっていれば何もしない。そろっていなければ仮の絵を入れて fn を流し、元に戻す
 async function withPictures(L, fn) {
   if (hasReal(L)) return fn('本物');
   const prev = globalThis.AmaiPictures;
@@ -140,7 +140,7 @@ export const tests = [
     run({ check, root }) {
       const L = load(root);
       const K = { NAME: 'あまいものあつめ', SLOTS: 3, COLS: 4, TICK_MS: 120, FAST_MS: 60, MAX_W: 64, MAX_H: 48, MAX_SUGAR: 2800, MAX_COUNT: 99, MAX_PRESSES: 400, MAX_T: 5000,
-        GEN_TRIES: 20, GEN_WORK: 400000, BASE_PICTURES: 100, REPEAT_FROM: 9,
+        GEN_TRIES: 20, GEN_WORK: 400000, BASE_PICTURES: 150, REPEAT_FROM: 9,
         SAVE_KEY_SAVE: 'amai.save', SAVE_KEY_BEST: 'amai.best', SAVE_KEY_BOOK: 'amai.book', SAVE_KEY_HELP: 'amai.help', SAVE_KEY_FAST: 'amai.fast' };
       const kBad = Object.entries(K).filter(([k, v]) => L[k] !== v).map(([k, v]) => ({ k, want: v, got: L[k] }));
       check('定数が契約 §6.2 のとおり', kBad.length === 0, kBad);
@@ -158,7 +158,7 @@ export const tests = [
       check('文字・key・名前・hex・印・5×5 の点がすべてちがう', uniq((c) => c.letter) && uniq((c) => c.key) && uniq((c) => c.name) && uniq((c) => c.hex) && uniq((c) => c.mark) && uniq((c) => c.dots.join('/')), null);
       check('5×5 の点は 5 行 × 5 文字（# と . だけ）', C.every((c) => c.dots.length === 5 && c.dots.every((r) => /^[#.]{5}$/.test(r))), C.map((c) => c.dots));
       check('colorName', L.colorName(0) === 'あか' && L.colorName(9) === 'くろ' && L.colorName(10) === '' && L.colorName('x') === '', null);
-      // §2.1 の表（1〜100 面は PICTURE_ORDER の絵で。49〜100 面は 2026-11-03 に足した XXL）
+      // §2.1 の表（1〜150 面は PICTURE_ORDER の絵で。49〜100 面は 2026-11-03、101〜150 面は 2026-11-04 に足した XXL）
       // 箱の数の幅は TIERS の値。ただし段ごとの上書き KSET・くり返しの REPEAT_K があればそれ（logic.js が公開する表を読む。表の持ち主は logic.js）
       const KR = (tier) => (L.KSET && L.KSET[tier]) || [L.TIERS[tier].kmin, L.TIERS[tier].kmax];
       const T = (lv, tier, kmin, kmax, pull, lids, ices) => ({ lv, tier, kmin: KR(tier)[0], kmax: KR(tier)[1], pull: pull + ((L.PULL_ADD && L.PULL_ADD[tier]) || 0), lids, ices });   // pull は段の値＋PULL_ADD（2026-11-03 に L・XL・XXL を 0 にした）
@@ -167,7 +167,7 @@ export const tests = [
         T(5, 'M', 10, 25, 2, 0, 0), T(8, 'M', 10, 25, 2, 0, 0), T(9, 'M', 10, 25, 2, 1, 0), T(12, 'M', 10, 25, 2, 1, 0),
         T(13, 'L', 10, 30, 4, 1, 0), T(18, 'L', 10, 30, 4, 1, 0), T(19, 'L', 10, 30, 4, 2, 1), T(24, 'L', 10, 30, 4, 2, 1),
         T(25, 'XL', 10, 30, 8, 3, 1), T(30, 'XL', 10, 30, 8, 3, 1), T(31, 'XL', 10, 30, 8, 3, 2), T(36, 'XL', 10, 30, 8, 3, 2),
-        T(37, 'XXL', 10, 30, 12, 4, 3), T(48, 'XXL', 10, 30, 12, 4, 3), T(49, 'XXL', 10, 30, 12, 4, 3), T(100, 'XXL', 10, 30, 12, 4, 3),
+        T(37, 'XXL', 10, 30, 12, 4, 3), T(48, 'XXL', 10, 30, 12, 4, 3), T(49, 'XXL', 10, 30, 12, 4, 3), T(100, 'XXL', 10, 30, 12, 4, 3), T(101, 'XXL', 10, 30, 12, 4, 3), T(150, 'XXL', 10, 30, 12, 4, 3),
       ];
       const bad = [];
       for (const r of table) {
@@ -176,16 +176,16 @@ export const tests = [
         const ok = p && p.tier === r.tier && p.kmin === r.kmin && p.kmax === r.kmax && p.pull === r.pull && p.lids === r.lids && p.ices === r.ices && p.picture === L.PICTURE_ORDER[r.lv - 1].id && p.mirror === false && p.repeat === false;
         if (!ok) bad.push({ want: r, got: p });
       }
-      check('1〜100 面の境界（1・2・4・5・8・9・12・13・18・19・24・25・30・31・36・37・48・49・100）が表どおり', bad.length === 0, bad);
-      // 101 面から：くり返し（ずかんに 100 枚そろっていれば 9 枚目＝M の段）。段の値 +（k は REPEAT_K・pull +2・多い方 +1）
+      check('1〜150 面の境界（1・2・4・5・8・9・12・13・18・19・24・25・30・31・36・37・48・49・100・101・150）が表どおり', bad.length === 0, bad);
+      // 151 面から：くり返し（ずかんに 150 枚そろっていれば 9 枚目＝M の段）。段の値 +（k は REPEAT_K・pull +2・多い方 +1）
       // （ずかんが空なら、3 枚目からの 0 回の絵が反転せずに先に出る。§2.7。2026-11-03 に変えた）
       const all48 = L.validateBook(J({ v: 1, got: Object.fromEntries(L.PICTURE_ORDER.map((p) => [p.id, 1])) }));
-      const p49 = L.paramsFor(101, L.pickPicture(101, all48));
-      check('101 面（くり返し・9 枚目 M）：k は REPEAT_K の幅・pull 4・lids 2・ices 1・反転', p49.repeat === true && p49.mirror === true && p49.tier === 'M' && p49.kmin === L.REPEAT_K.kmin && p49.kmax === L.REPEAT_K.kmax && p49.pull === 4 && p49.lids === 2 && p49.ices === 1 && p49.picture === L.PICTURE_ORDER[8].id, p49);
+      const p49 = L.paramsFor(151, L.pickPicture(151, all48));
+      check('151 面（くり返し・9 枚目 M）：k は REPEAT_K の幅・pull 4・lids 2・ices 1・反転', p49.repeat === true && p49.mirror === true && p49.tier === 'M' && p49.kmin === L.REPEAT_K.kmin && p49.kmax === L.REPEAT_K.kmax && p49.pull === 4 && p49.lids === 2 && p49.ices === 1 && p49.picture === L.PICTURE_ORDER[8].id, p49);
       const pX = L.paramsFor(1000, { id: L.PICTURE_ORDER[47].id, mirror: true, repeat: true });
       check('1000 面（くり返し・XXL の絵）：pull 14・lids 5・ices 4', pX.tier === 'XXL' && pX.pull === 14 && pX.lids === 5 && pX.ices === 4 && pX.kmin === L.REPEAT_K.kmin && pX.kmax === L.REPEAT_K.kmax, pX);
-      const pA = L.paramsFor(110, { id: L.PICTURE_ORDER[30].id, mirror: false, repeat: false });
-      check('101 面から（足した絵の扱い・くり返しでない）：その絵の段の行・lids・ices は段の多い方', pA.tier === 'XL' && pA.kmin === KR('XL')[0] && pA.kmax === KR('XL')[1] && pA.pull === 8 + L.PULL_ADD.XL && pA.lids === 3 && pA.ices === 2 && pA.repeat === false, pA);
+      const pA = L.paramsFor(160, { id: L.PICTURE_ORDER[30].id, mirror: false, repeat: false });
+      check('151 面から（足した絵の扱い・くり返しでない）：その絵の段の行・lids・ices は段の多い方', pA.tier === 'XL' && pA.kmin === KR('XL')[0] && pA.kmax === KR('XL')[1] && pA.pull === 8 + L.PULL_ADD.XL && pA.lids === 3 && pA.ices === 2 && pA.repeat === false, pA);
       // 壊れた値は 1 面
       const one = J(L.paramsFor(1, null));
       const broken = [0, -3, NaN, Infinity, 'abc', null, undefined, {}, 1.7].map((v) => ({ v: String(v), same: J(L.paramsFor(v, null)) === one }));
@@ -194,20 +194,22 @@ export const tests = [
       check('LEVELS が配列', Array.isArray(L.LEVELS) && L.LEVELS.length > 0, L.LEVELS);
       // PICTURE_ORDER（§2.6 の表の段）
       const PO = L.PICTURE_ORDER;
-      const tiers = PO.slice(0, 100).map((p) => p.tier).join(',');
-      const wantT = [...Array(4).fill('S'), ...Array(8).fill('M'), ...Array(12).fill('L'), ...Array(12).fill('XL'), ...Array(64).fill('XXL')].join(',');
-      check('PICTURE_ORDER は 100 枚・段が 4/8/12/12/64・id は英小文字だけで重ならない', PO.length >= 100 && tiers === wantT && PO.every((p) => /^[a-z]+$/.test(p.id)) && new Set(PO.map((p) => p.id)).size === PO.length, PO);
+      const tiers = PO.slice(0, 150).map((p) => p.tier).join(',');
+      const wantT = [...Array(4).fill('S'), ...Array(8).fill('M'), ...Array(12).fill('L'), ...Array(12).fill('XL'), ...Array(114).fill('XXL')].join(',');
+      check('PICTURE_ORDER は 150 枚・段が 4/8/12/12/114・id は英小文字だけで重ならない', PO.length >= 150 && tiers === wantT && PO.every((p) => /^[a-z]+$/.test(p.id)) && new Set(PO.map((p) => p.id)).size === PO.length, PO);
       // 3〜48 面は場面の絵（計画書 docs/plans/amai-redraw.md §4。見本 3 枚は L・XL・XXL の最初の面）
       check('1 枚目 ringo・2 枚目 sakuranbo・3 枚目 nekoyukiyamaoyatsu・13 枚目 nekokouenbooru・25 枚目 usagiumibenemuru・37 枚目 kumadaidokorooyatsu・48 枚目 kumaumibeoyatsu',
         PO[0].id === 'ringo' && PO[1].id === 'sakuranbo' && PO[2].id === 'nekoyukiyamaoyatsu' && PO[12].id === 'nekokouenbooru' && PO[24].id === 'usagiumibenemuru' && PO[36].id === 'kumadaidokorooyatsu' && PO[47].id === 'kumaumibeoyatsu', PO.map((p) => p.id));
       // 49〜100 面は足した 52 枚（計画書 docs/plans/amai-more.md §2）
       check('49 枚目 kumamorioyatsu・100 枚目 nekodaidokorooekaki（49〜100 面は足した 52 枚）', PO[48].id === 'kumamorioyatsu' && PO[99].id === 'nekodaidokorooekaki', PO.slice(48).map((p) => p.id));
+      // 101〜150 面は足した 50 枚（計画書 docs/plans/amai-more2.md §1）
+      check('101 枚目 pandahanabatakebooru・150 枚目 nekohanabatakeoekaki（101〜150 面は足した 50 枚）', PO[100].id === 'pandahanabatakebooru' && PO[149].id === 'nekohanabatakeoekaki', PO.slice(100).map((p) => p.id));
       const OLD = ['sakura', 'ichigo', 'kinoko', 'suika', 'yukidaruma', 'momiji', 'kumatofuusen', 'kanransha'];
       check('描き直す前の古い id（sakura・ichigo …）は PICTURE_ORDER に無い', OLD.every((id) => !PO.some((p) => p.id === id)), OLD.filter((id) => PO.some((p) => p.id === id)));
     },
   },
   {
-    id: 'AL2', tier: 'smoke', node: true, title: 'あまいものあつめ：本物の絵（pictures-a.js・pictures-b.js・pictures-c.js、100 枚以上）が §2.6 の決まりを守る・PICTURE_ORDER の id がちょうど 1 回ずつ・季節・parsePicture が決まりを破った絵で null・Date を使わない',
+    id: 'AL2', tier: 'smoke', node: true, title: 'あまいものあつめ：本物の絵（pictures-a.js・pictures-b.js・pictures-c.js・pictures-d.js、150 枚以上）が §2.6 の決まりを守る・PICTURE_ORDER の id がちょうど 1 回ずつ・季節・parsePicture が決まりを破った絵で null・Date を使わない',
     run({ check, root }) {
       const L = load(root);
       // parsePicture の決まり（手作りの絵で）
@@ -237,25 +239,25 @@ export const tests = [
       check('決まりを破った絵は null（' + Object.keys(bads).join('・') + '）', notNull.length === 0, notNull);
       check('おかしな引数で null（null・文字・数）', L.parsePicture(null) === null && L.parsePicture('x') === null && L.parsePicture(3) === null, null);
       // Date を使わない（logic.js・pictures-*.js）
-      const files = ['logic.js', 'pictures-a.js', 'pictures-b.js', 'pictures-c.js'].map((f) => path.join(root, 'games/amai', f));
+      const files = ['logic.js', 'pictures-a.js', 'pictures-b.js', 'pictures-c.js', 'pictures-d.js'].map((f) => path.join(root, 'games/amai', f));
       const useDate = files.filter((f) => fs.existsSync(f) && /\bDate\b|Math\.random|localStorage/.test(fs.readFileSync(f, 'utf8'))).map((f) => path.basename(f));
       check('logic.js・pictures-*.js に Date・Math.random・localStorage が無い', useDate.length === 0, useDate);
       // 本物の絵
-      const missingFiles = ['pictures-a.js', 'pictures-b.js', 'pictures-c.js'].filter((f) => !fs.existsSync(path.join(root, 'games/amai', f)));
-      check('pictures-a.js・pictures-b.js・pictures-c.js がある', missingFiles.length === 0, missingFiles);
+      const missingFiles = ['pictures-a.js', 'pictures-b.js', 'pictures-c.js', 'pictures-d.js'].filter((f) => !fs.existsSync(path.join(root, 'games/amai', f)));
+      check('pictures-a.js・pictures-b.js・pictures-c.js・pictures-d.js がある', missingFiles.length === 0, missingFiles);
       const P = globalThis.AmaiPictures;
       check('AmaiPictures（add・byId）がある', !!P && typeof P.add === 'function' && !!P.byId, P ? Object.keys(P) : P);
       if (!P || missingFiles.length) return;
       const PO = L.PICTURE_ORDER;
       const defs = PO.map((p) => ({ p, d: typeof P.byId === 'function' ? P.byId(p.id) : P.byId[p.id] }));
       const missing = defs.filter((x) => !x.d).map((x) => x.p.id);
-      check('PICTURE_ORDER の絵がすべてある（100 枚以上）', PO.length >= 100 && missing.length === 0, missing);
-      // 3 つのファイルにちょうど 1 回ずつ（ファイルの文字から id を数える）
-      const src = ['pictures-a.js', 'pictures-b.js', 'pictures-c.js'].map((f) => fs.readFileSync(path.join(root, 'games/amai', f), 'utf8')).join('\n');
+      check('PICTURE_ORDER の絵がすべてある（150 枚以上）', PO.length >= 150 && missing.length === 0, missing);
+      // 4 つのファイルにちょうど 1 回ずつ（ファイルの文字から id を数える）
+      const src = ['pictures-a.js', 'pictures-b.js', 'pictures-c.js', 'pictures-d.js'].map((f) => fs.readFileSync(path.join(root, 'games/amai', f), 'utf8')).join('\n');
       const ids = [...src.matchAll(/\bid\s*:\s*["']([^"']+)["']/g)].map((m) => m[1]);
       const cnt = {}; for (const id of ids) cnt[id] = (cnt[id] || 0) + 1;
       const notOnce = PO.filter((p) => cnt[p.id] !== 1).map((p) => ({ id: p.id, n: cnt[p.id] || 0 }));
-      check('PICTURE_ORDER の id が 3 つのファイルにちょうど 1 回ずつ', notOnce.length === 0, notOnce);
+      check('PICTURE_ORDER の id が 4 つのファイルにちょうど 1 回ずつ', notOnce.length === 0, notOnce);
       const extra = Object.keys(cnt).filter((id) => !PO.some((p) => p.id === id));
       check('ファイルに PICTURE_ORDER に無い絵が無い', extra.length === 0, extra);
       const badPic = [];
@@ -284,13 +286,13 @@ export const tests = [
         check(`${lv} 面の絵（${pk.id}）は割っていない（32×24 以下）`, !!q && q.W <= 32 && q.H <= 24, q && { W: q.W, H: q.H });
       }
       check('すべての絵が決まりを守る（段の色の数・角砂糖の数・名前が重ならない ほか）', badPic.length === 0, badPic);
-      // 季節（計画書 amai-redraw.md §4・amai-more.md §2）：ゆきやま＝fuyu・うみべ＝natsu・ほか＝""
-      const wantSeason = (id) => (/yukiyama/.test(id) ? 'fuyu' : /umibe/.test(id) ? 'natsu' : '');
+      // 季節（計画書 amai-redraw.md §4・amai-more.md §2・amai-more2.md §1）：ゆきやま＝fuyu・うみべ＝natsu・はなばたけ＝haru・ほか＝""
+      const wantSeason = (id) => (/yukiyama/.test(id) ? 'fuyu' : /umibe/.test(id) ? 'natsu' : /hanabatake/.test(id) ? 'haru' : '');
       const badSeason = defs.filter(({ p, d }) => d && d.season !== wantSeason(p.id)).map(({ p, d }) => `${p.id}:${d.season}`);
-      check('季節は ゆきやまの絵＝fuyu・うみべの絵＝natsu・ほか＝""（なつ・ふゆ それぞれ 3 枚以上）', badSeason.length === 0 && season.natsu >= 3 && season.fuyu >= 3, { badSeason, season });
+      check('季節は ゆきやまの絵＝fuyu・うみべの絵＝natsu・はなばたけの絵＝haru・ほか＝""（はる・なつ・ふゆ それぞれ 3 枚以上）', badSeason.length === 0 && season.haru >= 3 && season.natsu >= 3 && season.fuyu >= 3, { badSeason, season });
       const need = ['nekokouenbooru', 'usagiumibenemuru', 'kumadaidokorooyatsu'];
       check('見本 3 枚（こうえんの ねこ・うみべの うさぎ・だいどころの くま）がある', need.every((id) => defs.some((x) => x.p.id === id && x.d)), need);
-      // 3〜100 面の絵は 1 マス＝1 粒で描いた場面（2×2 に割った地図でない）：2×2 のかたまりの区切りに合わない色の境目がある
+      // 3〜150 面の絵は 1 マス＝1 粒で描いた場面（2×2 に割った地図でない）：2×2 のかたまりの区切りに合わない色の境目がある
       const notSplit = [];
       for (const { p, d } of defs.slice(2)) {
         const q = d && L.parsePicture(d, false);
@@ -299,7 +301,7 @@ export const tests = [
         for (let y = 0; y < q.H; y++) for (let x = 1; x < q.W; x += 2) if (q.cells[y * q.W + x] !== q.cells[y * q.W + x - 1]) odd++;
         if (odd === 0) notSplit.push(p.id);
       }
-      check('3〜100 面の絵は 2×2 に割った地図でない（1 マス＝1 粒）', notSplit.length === 0, notSplit);
+      check('3〜150 面の絵は 2×2 に割った地図でない（1 マス＝1 粒）', notSplit.length === 0, notSplit);
     },
   },
   {
@@ -431,7 +433,7 @@ export const tests = [
         for (let lv = 1; lv <= 60; lv++) levels.push([lv, L.pickPicture(lv, null)]);
         levels.push([1000, L.pickPicture(1000, L.validateBook(book48))]);
         levels.push([77, L.pickPicture(77, L.validateBook(book48))]);   // 77 面は 49〜100 面に足した絵（ずかんに関係なく同じ）
-        levels.push([100, L.pickPicture(100, null)], [101, L.pickPicture(101, L.validateBook(book48))]);   // 足した最後の絵・くり返しの最初
+        levels.push([100, L.pickPicture(100, null)], [125, L.pickPicture(125, null)], [150, L.pickPicture(150, null)], [151, L.pickPicture(151, L.validateBook(book48))]);   // 足した絵（101〜150 面は 2026-11-04）・足した最後の絵・くり返しの最初
         const bad = [];
         let lidSeen = 0, iceSeen = 0;
         const fb = { 0: 0, 1: 0, 2: 0 };
@@ -460,7 +462,7 @@ export const tests = [
           lidSeen += lids; iceSeen += ices;
           if (why.length) bad.push({ lv, pic: pk.id, fallback: info.fallback, why });
         }
-        check('1〜60 面・77 面・100 面・101 面と 1000 面（くり返し）がすべて決まりを守る', bad.length === 0, bad);
+        check('1〜60 面・77 面・100 面・125 面・150 面・151 面と 1000 面（くり返し）がすべて決まりを守る', bad.length === 0, bad);
         check('ふた・こおりが どこかの面で出る（空振りでない）', lidSeen > 0 && iceSeen > 0, { lidSeen, iceSeen });
         check('予備 2 を使った面が無い（' + J(fb) + '）', fb[2] === 0, fb);
         // 予備 2：絵が読めないとき（絵の表を空にして作る）
@@ -473,9 +475,9 @@ export const tests = [
         const c13 = L.createLevel(13, null);
         check('info の形（level・seed・params・tries・work・fallback・solution）', c13.info.level === 13 && c13.info.seed === L.seedFor(13) && c13.info.params && Number.isInteger(c13.info.tries) && Number.isInteger(c13.info.work) && [0, 1, 2].includes(c13.info.fallback) && Array.isArray(c13.info.solution), c13.info);
         check('最初の局面：t 0・presses 0・わくは空・won false・left＝total', c13.state.t === 0 && c13.state.presses === 0 && c13.state.slots.every((x) => x === null) && c13.state.won === false && c13.state.left === c13.state.total, null);
-        // 101 面・102 面は、ずかんが空なら同じ絵（3 枚目）になる
-        const q101 = L.pickPicture(101, null), q102 = L.pickPicture(102, null);
-        check('面がちがえば箱の配り方がちがう（101 面と 102 面は同じ絵でもちがう）', q101.id === q102.id && J(L.createLevel(101, q101).state.cols) !== J(L.createLevel(102, q102).state.cols), { q101, q102 });
+        // 151 面・152 面は、ずかんが空なら同じ絵（3 枚目）になる
+        const q101 = L.pickPicture(151, null), q102 = L.pickPicture(152, null);
+        check('面がちがえば箱の配り方がちがう（151 面と 152 面は同じ絵でもちがう）', q101.id === q102.id && J(L.createLevel(151, q101).state.cols) !== J(L.createLevel(152, q102).state.cols), { q101, q102 });
       });
     },
   },
@@ -664,7 +666,7 @@ export const tests = [
     },
   },
   {
-    id: 'AL11', tier: 'full', node: true, solo: true, title: 'あまいものあつめ：性能（1〜60 面と 1000 面の生成の合計が Node で 3 秒以内・1〜112 面と 1000 面の 1 面 250ms 以内・一番大きい絵の面で解を最後まで再生して 150ms 以内）',
+    id: 'AL11', tier: 'full', node: true, solo: true, title: 'あまいものあつめ：性能（1〜60 面と 1000 面の生成の合計が Node で 3 秒以内・1〜162 面と 1000 面の 1 面 250ms 以内・一番大きい絵の面で解を最後まで再生して 150ms 以内）',
     async run({ check, root }) {
       const L = load(root);
       await withPictures(L, (kind) => {
@@ -681,8 +683,8 @@ export const tests = [
           per.push({ lv, ms: +cpuMs(cpuOf(a)).toFixed(2) });
         }
         const total = cpuMs(cpuOf(t0));
-        // 49〜100 面に足した絵（2026-11-03）と、くり返しの最初（101〜112 面）も 1 面ずつ測る（合計には入れない＝合計の基準は今までと同じ 61 面）
-        for (let lv = 61; lv <= 112; lv++) {
+        // 49〜150 面に足した絵（2026-11-03・2026-11-04）と、くり返しの最初（151〜162 面）も 1 面ずつ測る（合計には入れない＝合計の基準は今までと同じ 61 面）
+        for (let lv = 61; lv <= 162; lv++) {
           const pk = L.pickPicture(lv, lv > L.BASE_PICTURES ? book48 : null);
           const a = cpuOf();
           L.createLevel(lv, pk);
@@ -697,9 +699,9 @@ export const tests = [
         // （中央 16〜21ms・最大 160〜210ms）。基準を 100 → 250ms にゆるめた（実測の最大 210ms に余裕を足した値）。
         // 実機（iPhone SE 第2世代）で面の始めに止まらないかは試作で確かめる。
         check(`1 面の最大 ${worst.ms}ms（${worst.lv} 面）≦ 250ms`, worst.ms <= 250, per.filter((x) => x.ms > 100));
-        // 一番大きい絵の面（角砂糖が一番多い 37〜100 面。49〜100 面は 2026-11-03 に足した XXL）で解を最後まで再生
+        // 一番大きい絵の面（角砂糖が一番多い 37〜150 面。49〜150 面は 2026-11-03・2026-11-04 に足した XXL）で解を最後まで再生
         let big = null;
-        for (let lv = 37; lv <= 100; lv++) { const c = L.createLevel(lv, null); if (!big || c.state.total > big.state.total) big = c; }
+        for (let lv = 37; lv <= 150; lv++) { const c = L.createLevel(lv, null); if (!big || c.state.total > big.state.total) big = c; }
         const a = cpuOf();
         const pl = playSolution(L, big);
         const ms = cpuMs(cpuOf(a));
@@ -721,7 +723,7 @@ export const tests = [
         const first = [];
         const RUNS = 10;
         for (let lv = 1; lv <= L.BASE_PICTURES; lv++) {
-          // 1〜48 面は全部、2026-11-03 に足した 49〜100 面は 4 面ごと（49・53 … 97。全部だと約 50 秒かかるので）
+          // 1〜48 面は全部、足した 49〜150 面は 4 面ごと（49・53 … 149。全部だと約 100 秒かかるので）
           if (lv > 48 && (lv - 49) % 4 !== 0) continue;
           let c;
           try { c = L.createLevel(lv, null); } catch (e) { failedGen++; continue; }
@@ -751,49 +753,49 @@ export const tests = [
     },
   },
   {
-    id: 'AL13', tier: 'smoke', node: true, title: 'あまいものあつめ：絵の選び方 pickPicture（1〜100 面はずかんに関係なく同じ・101 面からくり返し・足した 101 枚目が先・壊れた book でも落ちない・ずかんが変わっても同じ pick なら同じ面）',
+    id: 'AL13', tier: 'smoke', node: true, title: 'あまいものあつめ：絵の選び方 pickPicture（1〜150 面はずかんに関係なく同じ・151 面からくり返し・足した 151 枚目が先・壊れた book でも落ちない・ずかんが変わっても同じ pick なら同じ面）',
     async run({ check, root }) {
       const L = load(root);
       const PO = L.PICTURE_ORDER;
       const all1 = L.validateBook(J({ v: 1, got: Object.fromEntries(PO.map((p) => [p.id, 1])) }));
       const same = [];
-      for (let lv = 1; lv <= 100; lv++) {
+      for (let lv = 1; lv <= 150; lv++) {
         const a = L.pickPicture(lv, null), b = L.pickPicture(lv, all1);
         if (!(a.id === PO[lv - 1].id && b.id === a.id && a.mirror === false && a.repeat === false && b.mirror === false)) same.push(lv);
       }
-      check('1〜100 面は PICTURE_ORDER の順・ずかんに関係なく同じ・反転なし', same.length === 0, same);
-      const p49 = L.pickPicture(101, all1);
-      check('100 枚そろっていれば 101 面は くり返し（9 枚目・反転）', p49.id === PO[8].id && p49.mirror === true && p49.repeat === true, p49);
+      check('1〜150 面は PICTURE_ORDER の順・ずかんに関係なく同じ・反転なし', same.length === 0, same);
+      const p49 = L.pickPicture(151, all1);
+      check('150 枚そろっていれば 151 面は くり返し（9 枚目・反転）', p49.id === PO[8].id && p49.mirror === true && p49.repeat === true, p49);
       const g = Object.fromEntries(PO.map((p) => [p.id, 2]));
       g[PO[20].id] = 1; g[PO[30].id] = 1;
-      const pm = L.pickPicture(110, L.validateBook(J({ v: 1, got: g })));
+      const pm = L.pickPicture(160, L.validateBook(J({ v: 1, got: g })));
       check('くり返しは回数の一番少ない絵（同じなら並びの前）', pm.id === PO[20].id && pm.repeat === true, pm);
       const g2 = Object.fromEntries(PO.map((p) => [p.id, 3]));
       g2[PO[3].id] = 1;   // 4 枚目（9 枚目より前）は くり返しに入らない
-      // 絵を描き直して id が替わった人（ずかんに新しい絵が 0 回）：3〜100 枚目の 0 回の絵を、反転せずに先に出す（計画書 amai-redraw.md §8.2）
+      // 絵を描き直して id が替わった人（ずかんに新しい絵が 0 回）：3〜150 枚目の 0 回の絵を、反転せずに先に出す（計画書 amai-redraw.md §8.2）
       const g0 = Object.fromEntries(PO.map((p) => [p.id, 2]));
       g0[PO[1].id] = 0; g0[PO[5].id] = 0; g0[PO[30].id] = 0;   // 2 枚目（やさしい面だけの絵）は先に出さない
-      const p0 = L.pickPicture(105, L.validateBook(J({ v: 1, got: g0 })));
+      const p0 = L.pickPicture(155, L.validateBook(J({ v: 1, got: g0 })));
       check('ずかんに 0 回の絵（3 枚目から）があれば、その一番前を反転せずに先に出す（くり返しでない）', p0.id === PO[5].id && p0.mirror === false && p0.repeat === false, p0);
-      check('9 枚目より前の絵は くり返しに入らない', L.pickPicture(120, L.validateBook(J({ v: 1, got: g2 }))).id === PO[8].id, L.pickPicture(120, L.validateBook(J({ v: 1, got: g2 }))));
+      check('9 枚目より前の絵は くり返しに入らない', L.pickPicture(170, L.validateBook(J({ v: 1, got: g2 }))).id === PO[8].id, L.pickPicture(170, L.validateBook(J({ v: 1, got: g2 }))));
       check('壊れた book・文字の book でも例外を出さない', (() => { try { return [null, '{', 5, { got: null }, { got: { ringo: 'x' } }, J({ v: 1, got: g })].every((b) => PO.some((p) => p.id === L.pickPicture(180, b).id)); } catch (e) { return false; } })(), null);
-      check('文字の book（保存の生の値）も読める', L.pickPicture(110, J({ v: 1, got: g })).id === PO[20].id, null);
-      // 101 枚目を足す（テストの中で足して、元に戻す）
+      check('文字の book（保存の生の値）も読める', L.pickPicture(160, J({ v: 1, got: g })).id === PO[20].id, null);
+      // 151 枚目を足す（テストの中で足して、元に戻す）
       const extra = Object.freeze({ id: 'tesutoe', tier: 'M' });
       PO.push(extra);
       try {
-        const p = L.pickPicture(101, all1);
-        check('足した 101 枚目がずかんに無ければ、くり返しより先（反転なし・くり返しでない）', p.id === 'tesutoe' && p.mirror === false && p.repeat === false, p);
+        const p = L.pickPicture(151, all1);
+        check('足した 151 枚目がずかんに無ければ、くり返しより先（反転なし・くり返しでない）', p.id === 'tesutoe' && p.mirror === false && p.repeat === false, p);
         const g3 = { ...Object.fromEntries(PO.map((q) => [q.id, 1])) };
-        const p2 = L.pickPicture(101, L.validateBook(J({ v: 1, got: g3 })));
+        const p2 = L.pickPicture(151, L.validateBook(J({ v: 1, got: g3 })));
         check('足した絵もずかんにあれば くり返し（9 枚目から）', p2.repeat === true && p2.id === PO[8].id, p2);
-        check('1〜100 面は足しても同じ', L.pickPicture(100, null).id === PO[99].id, null);
+        check('1〜150 面は足しても同じ', L.pickPicture(150, null).id === PO[149].id, null);
       } finally { PO.pop(); }
-      check('足した絵を戻した', PO.length === 100, PO.length);
+      check('足した絵を戻した', PO.length === 150, PO.length);
       await withPictures(L, () => {
         // くり返しの面は左右反転（cells が反転した絵）
-        const pk = L.pickPicture(101, all1);
-        const c = L.createLevel(101, pk);
+        const pk = L.pickPicture(151, all1);
+        const c = L.createLevel(151, pk);
         const pic = L.pictureById(pk.id, false);
         const mirrored = [];
         for (let y = 0; y < pic.H; y++) for (let x = 0; x < pic.W; x++) mirrored.push(pic.cells[y * pic.W + (pic.W - 1 - x)]);
@@ -801,7 +803,7 @@ export const tests = [
         check('くり返しの面は仕掛けが +1（params）', c.info.params.lids === L.TIERS[c.info.params.tier].lids + 1 && c.info.params.ices === L.TIERS[c.info.params.tier].ices + 1, c.info.params);
         // ずかんが変わっても、同じ level と pick なら同じ面
         const fixed = { id: PO[15].id, mirror: true, repeat: true };
-        check('同じ level と pick の createLevel は、ずかんが変わっても同じ面', J(L.createLevel(102, fixed)) === J(L.createLevel(102, fixed)), null);
+        check('同じ level と pick の createLevel は、ずかんが変わっても同じ面', J(L.createLevel(152, fixed)) === J(L.createLevel(152, fixed)), null);
       });
     },
   },
@@ -932,7 +934,7 @@ export const tests = [
     },
   },
   {
-    id: 'AL17', tier: 'smoke', node: true, title: 'あまいものあつめ：描き直す前の古い絵の id（計画書 amai-redraw.md §7.1）：途中の保存の絵が古い id でも落ちず同じ面の番号で新しい絵の面になる・ずかん／もどしなしの印の古い id は消さないが数えない・49〜100 面を足す前に 49 面より先へ進んだ人の保存とずかんでも落ちない',
+    id: 'AL17', tier: 'smoke', node: true, title: 'あまいものあつめ：描き直す前の古い絵の id（計画書 amai-redraw.md §7.1）：途中の保存の絵が古い id でも落ちず同じ面の番号で新しい絵の面になる・ずかん／もどしなしの印の古い id は消さないが数えない・49〜100 面を足す前に 49 面より先へ、101〜150 面を足す前に 101 面より先へ進んだ人の保存とずかんでも落ちない',
     async run({ check, root }) {
       const L = load(root);
       const PO = L.PICTURE_ORDER;
@@ -959,13 +961,13 @@ export const tests = [
         const pk = L.pickPicture(5, L.validateBook(J({ v: 1, got: { kinoko: 3 } })));
         check('pickPicture：古い id がずかんにあっても 5 面は新しい絵', pk.id === PO[4].id && pk.mirror === false && pk.repeat === false, pk);
       });
-      // 101 面から：古い id だけのずかん（描き直す前にくり返しまで進んだ人）なら、新しい絵を 3 枚目から順に、反転せずに出す（古い id は数えない。§2.7・計画書 amai-redraw.md §8.2）
+      // 151 面から：古い id だけのずかん（描き直す前にくり返しまで進んだ人）なら、新しい絵を 3 枚目から順に、反転せずに出す（古い id は数えない。§2.7・計画書 amai-redraw.md §8.2）
       const oldBook = J({ v: 1, got: Object.fromEntries(OLD.map((id) => [id, 5])) });
-      const p49 = L.pickPicture(101, oldBook);
-      check('101 面から：古い id だけのずかんなら、新しい 3 枚目の絵を反転せずに出す（くり返しでない）', p49.id === PO[2].id && p49.repeat === false && p49.mirror === false, p49);
+      const p49 = L.pickPicture(151, oldBook);
+      check('151 面から：古い id だけのずかんなら、新しい 3 枚目の絵を反転せずに出す（くり返しでない）', p49.id === PO[2].id && p49.repeat === false && p49.mirror === false, p49);
       const ob2 = L.addToBook(L.addToBook(oldBook, PO[2].id), PO[3].id);
-      const p50 = L.pickPicture(102, ob2);
-      check('101 面から：新しい絵を見たら、次の 0 回の新しい絵（5 枚目）', p50.id === PO[4].id && p50.repeat === false && p50.mirror === false, p50);
+      const p50 = L.pickPicture(152, ob2);
+      check('151 面から：新しい絵を見たら、次の 0 回の新しい絵（5 枚目）', p50.id === PO[4].id && p50.repeat === false && p50.mirror === false, p50);
       // ずかん（amai.book）：古い id は消さずに残すが、数えない
       const raw = J({ v: 1, got: { ringo: 2, sakura: 4, kinoko: 9, [PO[2].id]: 1, kanransha: 1 } });
       const vb = L.validateBook(raw);
@@ -997,26 +999,48 @@ export const tests = [
       });
       const n56 = L.pickPicture(56, book48);
       check('その人の次の面（56 面）は足した 56 枚目の絵（反転しない・くり返しでない）', n56.id === PO[55].id && n56.mirror === false && n56.repeat === false, n56);
-      const n101 = L.pickPicture(101, L.addToBook(book48, PO[55].id));
-      check('101 面からは、飛ばした足した絵（49 枚目〜）を反転せずに先に出す', n101.id === PO[48].id && n101.mirror === false && n101.repeat === false, n101);
+      const n101 = L.pickPicture(151, L.addToBook(book48, PO[55].id));
+      check('151 面からは、飛ばした足した絵（49 枚目〜）を反転せずに先に出す', n101.id === PO[48].id && n101.mirror === false && n101.repeat === false, n101);
       check('bookCount：1〜48 枚目のずかんは 48（足した絵の分は 0 のまま。消えない）', L.bookCount(book48) === 48, L.bookCount(book48));
       check('validateBest：ベスト 60 はそのまま読める', L.validateBest('60') === 60, L.validateBest('60'));
+      // 101〜150 面を足す前（くり返しが 101 面からだった頃）に 101 面より先まで進んだ人（計画書 docs/plans/amai-more2.md §3。2026-11-04）
+      // ずかんは 1〜100 枚目だけ。途中の保存は 105 面・9 枚目の反転のくり返し
+      const book100 = J({ v: 1, got: Object.fromEntries(PO.slice(0, 100).map((p) => [p.id, 2])) });
+      const sv105 = L.validateSave(J({ v: 1, level: 105, pic: PO[8].id, mirror: true, rep: true, presses: [[0, 1]], t: 3 }));
+      check('101 面より先の古い保存（105 面・くり返しの pick）も読める', !!sv105 && sv105.level === 105 && sv105.pick.repeat === true && sv105.pick.mirror === true, sv105);
+      await withPictures(L, () => {
+        let ok = false, detail = null;
+        try {
+          const c = L.createLevel(105, sv105.pick);
+          const r = L.replay(105, sv105.pick, sv105.presses, sv105.t);
+          ok = c.state.level === 105 && c.state.mirror === true && c.state.repeat === true && c.info.fallback !== 2 && !!r && !!r.state && r.state.level === 105;
+          detail = { mirror: c.state.mirror, fallback: c.info.fallback, replay: r && r.ok };
+        } catch (e) { detail = String(e); }
+        check('古い保存の pick（105 面・反転のくり返し）で面を作り・再生しても落ちない（面の番号を保つ）', ok, detail);
+      });
+      const n106 = L.pickPicture(106, book100);
+      check('その人の次の面（106 面）は足した 106 枚目の絵（反転しない・くり返しでない）', n106.id === PO[105].id && n106.mirror === false && n106.repeat === false, n106);
+      const n151 = L.pickPicture(151, L.addToBook(book100, PO[105].id));
+      check('151 面からは、飛ばした足した絵（101 枚目〜）を反転せずに先に出す', n151.id === PO[100].id && n151.mirror === false && n151.repeat === false, n151);
+      check('bookCount：1〜100 枚目のずかんは 100（足した絵の分は 0 のまま。消えない）', L.bookCount(book100) === 100, L.bookCount(book100));
+      check('validateBest：ベスト 120 はそのまま読める', L.validateBest('120') === 120, L.validateBest('120'));
     },
   },
   {
-    id: 'AL18', tier: 'smoke', node: true, title: 'あまいものあつめ：面えらびの範囲 levelChoices・canSelect（1〜ベスト＋1 面。一覧は 1〜100 面、ベスト＋1 が 101 面より先なら「つづき」を 1 つ。壊れたベストは 0 として 1 面だけ。16 桁で上限を超えない。例外を出さない）',
+    id: 'AL18', tier: 'smoke', node: true, title: 'あまいものあつめ：面えらびの範囲 levelChoices・canSelect（1〜ベスト＋1 面。一覧は 1〜150 面、ベスト＋1 が 151 面より先なら「つづき」を 1 つ。壊れたベストは 0 として 1 面だけ。16 桁で上限を超えない。例外を出さない）',
     async run({ check, root }) {
       const L = load(root);
       const M = Number.MAX_SAFE_INTEGER;
       const eq = (best, want) => { const r = L.levelChoices(best); return J(r) === J(want) ? true : r; };
-      for (const [best, want] of [[0, { top: 1, list: 100, open: 1, more: 0 }], ['5', { top: 6, list: 100, open: 6, more: 0 }], [5, { top: 6, list: 100, open: 6, more: 0 }], [99, { top: 100, list: 100, open: 100, more: 0 }], [100, { top: 101, list: 100, open: 100, more: 101 }], ['150', { top: 151, list: 100, open: 100, more: 151 }], [M - 1, { top: M, list: 100, open: 100, more: M }], [M, { top: M, list: 100, open: 100, more: M }]]) {
+      for (const [best, want] of [[0, { top: 1, list: 150, open: 1, more: 0 }], ['5', { top: 6, list: 150, open: 6, more: 0 }], [5, { top: 6, list: 150, open: 6, more: 0 }], [100, { top: 101, list: 150, open: 101, more: 0 }], [149, { top: 150, list: 150, open: 150, more: 0 }], [150, { top: 151, list: 150, open: 150, more: 151 }], ['200', { top: 201, list: 150, open: 150, more: 201 }], [M - 1, { top: M, list: 150, open: 150, more: M }], [M, { top: M, list: 150, open: 150, more: M }]]) {
         const r = eq(best, want);
         check(`levelChoices(${J(best)}) → ${J(want)}`, r === true, r);
       }
       const bads = [null, undefined, '', 'abc', '-1', -1, '1.5', 1.5, '{', NaN, Infinity, {}, [], '9'.repeat(30)];
-      check('壊れたベストは 0 として扱う（1 面だけ）・例外を出さない', bads.every((b) => { try { return J(L.levelChoices(b)) === J({ top: 1, list: 100, open: 1, more: 0 }); } catch (e) { return false; } }), bads.map((b) => { try { return L.levelChoices(b); } catch (e) { return String(e); } }));
+      check('壊れたベストは 0 として扱う（1 面だけ）・例外を出さない', bads.every((b) => { try { return J(L.levelChoices(b)) === J({ top: 1, list: 150, open: 1, more: 0 }); } catch (e) { return false; } }), bads.map((b) => { try { return L.levelChoices(b); } catch (e) { return String(e); } }));
       check('canSelect：ベスト 5 なら 1〜6 面だけ', [1, 2, 6].every((n) => L.canSelect(5, n) === true) && [0, 7, 100, -1, 1.5, '3', null, NaN].every((n) => L.canSelect(5, n) === false), null);
       check('canSelect：ベスト 150 なら 151 面まで・152 面は選べない', L.canSelect(150, 151) === true && L.canSelect(150, 100) === true && L.canSelect(150, 152) === false, null);
+      check('canSelect：ベスト 200 なら 201 面まで・202 面は選べない', L.canSelect(200, 201) === true && L.canSelect(200, 150) === true && L.canSelect(200, 202) === false, null);
       check('canSelect：壊れたベストでも 1 面は選べ、2 面は選べない', L.canSelect('x', 1) === true && L.canSelect('x', 2) === false && L.canSelect(undefined, 1) === true, null);
       check('canSelect：16 桁の上限の面', L.canSelect(M, M) === true && L.canSelect(M - 1, M) === true && L.canSelect(M - 2, M) === false, null);
     },

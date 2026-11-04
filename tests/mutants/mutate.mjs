@@ -494,10 +494,11 @@ const M = [
   ['MA30 あまいものあつめ：validateClean が重複・壊れた id を捨てない（見つける：AL14）', '保存データ互換', 'games/amai/logic.js', 'if (typeof id !== "string" || seen.has(id) || !ID_RE.test(id) || id.length > 64) continue;', 'if (typeof id !== "string") continue;'],
   ['MA32 あまいものあつめ：validateClean が古い絵の id（PICTURE_ORDER に無い id）を捨てる（見つける：AL14・AL17）', 'データ消失', 'games/amai/logic.js', 'if (typeof id !== "string" || seen.has(id) || !ID_RE.test(id) || id.length > 64) continue;', 'if (typeof id !== "string" || seen.has(id) || !ID_RE.test(id) || id.length > 64 || !PICTURE_ORDER.some((p) => p.id === id)) continue;'],
   ['MA33 あまいものあつめ：bookCount が PICTURE_ORDER に無い古い id も数える（見つける：AL9・AL17・AW3）', 'ルール', 'games/amai/logic.js', 'for (const p of PICTURE_ORDER) if (gotOf(b, p.id) > 0) n++;', 'for (const k of Object.keys(b.got)) if (gotOf(b, k) > 0) n++;'],
-  ['MA35 あまいものあつめ：101 面から（くり返し）、3〜100 枚目のずかんに無い絵を先に出さない（見つける：AL13・AL17）', 'ルール', 'games/amai/logic.js', 'for (let i = FRESH_FROM - 1; i < PICTURE_ORDER.length; i++) {', 'for (let i = BASE_PICTURES; i < PICTURE_ORDER.length; i++) {'],
+  ['MA35 あまいものあつめ：151 面から（くり返し）、3〜150 枚目のずかんに無い絵を先に出さない（見つける：AL13・AL17）', 'ルール', 'games/amai/logic.js', 'for (let i = FRESH_FROM - 1; i < PICTURE_ORDER.length; i++) {', 'for (let i = BASE_PICTURES; i < PICTURE_ORDER.length; i++) {'],
   ['MA34 あまいものあつめ：メニューのずかんの数が古い id も数える（見つける：AW16）', 'ルール', 'index.html', 'for (const k of AMAI_IDS) {', 'for (const k of Object.keys(b.got).slice(0, 5000)) {'],
   ['MA31 あまいものあつめ：logic.js を事前キャッシュから外す（見つける：AW14）', 'オフライン', 'sw.js', '  "./games/amai/logic.js",\n', ''],
-  ['MA36 あまいものあつめ：くり返しが 49 面から（足した 49〜100 面の絵が順に出ない。見つける：AL1・AL13・AL17）', 'ルール', 'games/amai/logic.js', 'const BASE_PICTURES = 100;', 'const BASE_PICTURES = 48;'],
+  ['MA36 あまいものあつめ：くり返しが 49 面から（足した 49〜150 面の絵が順に出ない。見つける：AL1・AL13・AL17）', 'ルール', 'games/amai/logic.js', 'const BASE_PICTURES = 150;', 'const BASE_PICTURES = 48;'],
+  ['MA46 あまいものあつめ：くり返しが 101 面から（足した 101〜150 面の絵が順に出ない。見つける：AL1・AL13・AL17・AL18）', 'ルール', 'games/amai/logic.js', 'const BASE_PICTURES = 150;', 'const BASE_PICTURES = 100;'],
   ['MA38 あまいものあつめ：面えらびでベスト＋2 面まで選べる（見つける：AL18・AW28）', 'ルール', 'games/amai/logic.js', 'const top = b < Number.MAX_SAFE_INTEGER ? b + 1 : Number.MAX_SAFE_INTEGER;', 'const top = b < Number.MAX_SAFE_INTEGER - 1 ? b + 2 : Number.MAX_SAFE_INTEGER;'],
   ['MA39 あまいものあつめ：面えらびで、途中まで押していても確かめずに始める（見つける：AW28）', '操作', 'games/amai/main.js', 'if (presses.length && phase !== "clear") {\n      selectTarget = n;', 'if (false) {\n      selectTarget = n;'],
   ['MA40 あまいものあつめ：前の面を選ぶとベストが下がる（見つける：AW28）', 'データ消失', 'games/amai/main.js', '    const pk = safeCall(() => L.pickPicture(n, readBook()), null);\n    setHint("えを つくっているよ");', '    best = n - 1; writeKey(KEY_BEST, String(best));\n    const pk = safeCall(() => L.pickPicture(n, readBook()), null);\n    setHint("えを つくっているよ");'],
@@ -507,6 +508,7 @@ const M = [
   ['MA44 あまいものあつめ：送るのをやめても失敗の吹き出しを出す（見つける：AW30）', '操作', 'games/amai/main.js', 'if (name === "AbortError" || myRun !== runId', 'if (myRun !== runId'],
   ['MA45 あまいものあつめ：面えらびの鍵つきの面が押せる見た目（disabled でない。見つける：AW28）', 'ルール', 'games/amai/main.js', '        btn.disabled = true;\n', ''],
   ['MA37 あまいものあつめ：pictures-c.js（49〜100 面の絵）を事前キャッシュから外す（見つける：AW14）', 'オフライン', 'sw.js', '  "./games/amai/pictures-c.js",\n', ''],
+  ['MA47 あまいものあつめ：pictures-d.js（101〜150 面の絵）を事前キャッシュから外す（見つける：AW14）', 'オフライン', 'sw.js', '  "./games/amai/pictures-d.js",\n', ''],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

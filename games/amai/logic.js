@@ -4,8 +4,8 @@
  * 担当A（ロジック）だけが編集する。
  *
  * UMD: ブラウザでは window.AmaiLogic、Node では module.exports と globalThis.AmaiLogic。
- * 絵は AmaiPictures（pictures-a.js・pictures-b.js・pictures-c.js が作る { add(list), byId }）から、使うときに読む。
- *   Node では ./pictures-a.js・./pictures-b.js・./pictures-c.js を require する（無ければ絵は空として扱う）。
+ * 絵は AmaiPictures（pictures-a.js・pictures-b.js・pictures-c.js・pictures-d.js が作る { add(list), byId }）から、使うときに読む。
+ *   Node では ./pictures-a.js・./pictures-b.js・./pictures-c.js・./pictures-d.js を require する（無ければ絵は空として扱う）。
  *   byId は関数（byId(id)）でも、id → 絵 の表（オブジェクト）でもよい。
  *
  * 中の作り：
@@ -59,9 +59,9 @@
   const KSET = { S: [25, 45], M: [12, 45], L: [80, 99], XL: [40, 80], XXL: [25, 50] };   // 段ごとの箱の数の幅の上書き。空なら TIERS の値
   const GEN_OPT = { shuffleCols: false, solveNodes: 15, genTries: 5, softenEvery: 1 };
   const SOLVE_NODES = 15;   // 解ける押し順の探索で開く局面の上限は「箱の数＋この余り」（1 回の tryBuild ごと・600 まで）
-  const BASE_PICTURES = 100;   // 1〜100 面は PICTURE_ORDER の順に 1 枚ずつ。101 面からくり返し（49〜100 面は 2026-11-03 に足した。計画書 docs/plans/amai-more.md）
+  const BASE_PICTURES = 150;   // 1〜150 面は PICTURE_ORDER の順に 1 枚ずつ。151 面からくり返し（49〜100 面は 2026-11-03、101〜150 面は 2026-11-04 に足した。計画書 docs/plans/amai-more.md・amai-more2.md）
   const REPEAT_FROM = 9;
-  const FRESH_FROM = 3;   // 101 面からの「ずかんにまだ無い絵を先に」を探し始める絵の番号（§2.7）
+  const FRESH_FROM = 3;   // 151 面からの「ずかんにまだ無い絵を先に」を探し始める絵の番号（§2.7）
   const SAVE_V = 1;
   const BOOK_V = 1;
   const BOOK_MAX = 9999;
@@ -89,7 +89,7 @@
   const LETTER = Object.freeze(Object.fromEntries(COLORS.map((c) => [c.letter, c.id])));
 
   // ---------------------------------------------------------------- 段と面の表（§2.1。仮）
-  // 段の値（101 面からは lids・ices にこの「多い方」を使う。くり返しは +1）
+  // 段の値（151 面からは lids・ices にこの「多い方」を使う。くり返しは +1）
   const TIERS = Object.freeze({
     S: Object.freeze({ tier: "S", colors: Object.freeze([3, 4]), sugar: Object.freeze([110, 720]), kmin: 60, kmax: 99, pull: 0, lids: 0, ices: 0 }),
     M: Object.freeze({ tier: "M", colors: Object.freeze([4, 5]), sugar: Object.freeze([800, 1200]), kmin: 40, kmax: 99, pull: 2, lids: 1, ices: 0 }),
@@ -97,7 +97,7 @@
     XL: Object.freeze({ tier: "XL", colors: Object.freeze([6, 8]), sugar: Object.freeze([1680, 2240]), kmin: 40, kmax: 99, pull: 8, lids: 3, ices: 2 }),
     XXL: Object.freeze({ tier: "XXL", colors: Object.freeze([8, 10]), sugar: Object.freeze([2080, 2800]), kmin: 40, kmax: 99, pull: 12, lids: 4, ices: 3 }),
   });
-  // 1〜100 面の仕掛けの数（面の番号で決める）
+  // 1〜150 面の仕掛けの数（面の番号で決める）
   const LEVELS = Object.freeze([
     { from: 1, to: 4, tier: "S", lids: 0, ices: 0 },
     { from: 5, to: 8, tier: "M", lids: 0, ices: 0 },
@@ -106,13 +106,13 @@
     { from: 19, to: 24, tier: "L", lids: 2, ices: 1 },
     { from: 25, to: 30, tier: "XL", lids: 3, ices: 1 },
     { from: 31, to: 36, tier: "XL", lids: 3, ices: 2 },
-    { from: 37, to: 100, tier: "XXL", lids: 4, ices: 3 },
+    { from: 37, to: 150, tier: "XXL", lids: 4, ices: 3 },
   ].map((r) => Object.freeze(r)));
   const REPEAT_K = { kmin: 12, kmax: 40 };
 
   // 絵の並び（§2.6 の表の順）。絵を足すときは最後に足す（並べかえない・途中に入れない）。
   // id はローマ字（かなを 1 字ずつ書く形。のばす音は母音を重ねる）・英小文字だけ。
-  // 配列そのものは凍結しない（テスト AL13 が 101 枚目を足して確かめるため）。中の項目は凍結。
+  // 配列そのものは凍結しない（テスト AL13 が 151 枚目を足して確かめるため）。中の項目は凍結。
   // 3〜48 面は 2026-11-02 に場面の絵へ描き直し、id も替えた（計画書 docs/plans/amai-redraw.md §7）。古い id（sakura・ichigo …）は
   // ここに無いので、途中の保存の絵が古い id なら main が同じ面の番号で新しい絵から始め、ずかん・もどしなしの印の古い id は残すが数えない。
   const PICTURE_ORDER = [
@@ -134,6 +134,16 @@
     ["usagimoribooru", "XXL"], ["nekoyukiyamaoekaki", "XXL"], ["pandaumibebooru", "XXL"], ["kumakouenoekaki", "XXL"], ["pandayukiyamabooru", "XXL"], ["usagidaidokorooekaki", "XXL"],
     ["inuumibeoekaki", "XXL"], ["pandamoribooru", "XXL"], ["kumamorioekaki", "XXL"], ["pandayukiyamaoyatsu", "XXL"], ["nekomorioekaki", "XXL"], ["pandadaidokorobooru", "XXL"],
     ["inukouenoekaki", "XXL"], ["pandamorioyatsu", "XXL"], ["inuyukiyamaoekaki", "XXL"], ["nekodaidokorooekaki", "XXL"],
+    // 101〜150 面（2026-11-04 に足した 50 枚。はなばたけ・おどる。計画書 docs/plans/amai-more2.md §1）
+    ["pandahanabatakebooru", "XXL"], ["nekokouenodoru", "XXL"], ["pandahanabatakeoyatsu", "XXL"], ["pandamoriodoru", "XXL"], ["kumadaidokoroodoru", "XXL"], ["usagihanabatakebooru", "XXL"],
+    ["inukouenodoru", "XXL"], ["usagihanabatakenemuru", "XXL"], ["kumahanabatakebooru", "XXL"], ["inudaidokoroodoru", "XXL"], ["kumahanabatakeodoru", "XXL"], ["nekohanabatakenemuru", "XXL"],
+    ["pandahanabatakeodoru", "XXL"], ["nekoumibeodoru", "XXL"], ["usagihanabatakeoekaki", "XXL"], ["kumaumibeodoru", "XXL"], ["pandadaidokoroodoru", "XXL"], ["usagidaidokoroodoru", "XXL"],
+    ["nekohanabatakebooru", "XXL"], ["inuhanabatakenemuru", "XXL"], ["inumoriodoru", "XXL"], ["usagikouenodoru", "XXL"], ["inuhanabatakebooru", "XXL"], ["nekodaidokoroodoru", "XXL"],
+    ["kumakouenodoru", "XXL"], ["pandahanabatakenemuru", "XXL"], ["nekohanabatakeodoru", "XXL"], ["kumahanabatakenemuru", "XXL"], ["usagiumibeodoru", "XXL"], ["pandahanabatakeoekaki", "XXL"],
+    ["nekomoriodoru", "XXL"], ["pandayukiyamaodoru", "XXL"], ["inuumibeodoru", "XXL"], ["usagihanabatakeodoru", "XXL"], ["inuyukiyamaodoru", "XXL"], ["inuhanabatakeodoru", "XXL"],
+    ["usagiyukiyamaodoru", "XXL"], ["inuhanabatakeoekaki", "XXL"], ["pandaumibeodoru", "XXL"], ["kumahanabatakeoekaki", "XXL"], ["pandakouenodoru", "XXL"], ["kumamoriodoru", "XXL"],
+    ["inuhanabatakeoyatsu", "XXL"], ["nekohanabatakeoyatsu", "XXL"], ["kumayukiyamaodoru", "XXL"], ["usagihanabatakeoyatsu", "XXL"], ["nekoyukiyamaodoru", "XXL"], ["kumahanabatakeoyatsu", "XXL"],
+    ["usagimoriodoru", "XXL"], ["nekohanabatakeoekaki", "XXL"],
   ].map(([id, tier]) => Object.freeze({ id, tier }));
 
   // 予備 2 の絵（§2.2 の 8.。りんご。絵が読めないときもこれで遊べる）
@@ -223,7 +233,7 @@
 
   // Node では絵のファイルを読む（無ければ空）。ブラウザでは index.html が先に読んでいる
   if (typeof module !== "undefined" && module.exports && typeof require === "function") {
-    for (const f of ["./pictures-a.js", "./pictures-b.js", "./pictures-c.js"]) {
+    for (const f of ["./pictures-a.js", "./pictures-b.js", "./pictures-c.js", "./pictures-d.js"]) {
       try {
         const m = require(f);
         if (!root.AmaiPictures && m && typeof m.add === "function") root.AmaiPictures = m;
@@ -673,8 +683,8 @@
       const b = bookOf(book);
       // ずかんにまだ無い絵（0 回）を、反転せずに先に出す。3 枚目から（1・2 枚目はやさしい面だけの絵）。
       // 3〜48 枚目も入れるのは、絵を描き直して id が替わったとき（2026-11-02）、くり返しに入っている人が新しい絵を
-      // 反転のくり返しで初めて見ないようにするため（計画書 docs/plans/amai-redraw.md §8.2）。足した 49〜100 枚目も同じ
-      // （ベスト 49 以上だった人は、49 面〜今の面の手前の新しい絵を、101 面から反転せずに先に見る）
+      // 反転のくり返しで初めて見ないようにするため（計画書 docs/plans/amai-redraw.md §8.2）。足した 49〜150 枚目も同じ
+      // （ベスト 49 以上・101 以上だった人は、飛ばした新しい絵を、151 面から反転せずに先に見る）
       for (let i = FRESH_FROM - 1; i < PICTURE_ORDER.length; i++) {
         if (gotOf(b, PICTURE_ORDER[i].id) === 0) return Object.freeze({ id: PICTURE_ORDER[i].id, mirror: false, repeat: false });
       }
@@ -1141,7 +1151,7 @@
   }
 
   // 面えらび（2026-11-03。計画書 docs/plans/amai-select.md §1）：選べるのは 1〜ベスト＋1 面。
-  // 一覧に並べるのは 1〜100 面（BASE_PICTURES。絵が 1 枚ずつ決まっている面）。ベスト＋1 が 101 面より先なら、
+  // 一覧に並べるのは 1〜150 面（BASE_PICTURES。絵が 1 枚ずつ決まっている面）。ベスト＋1 が 151 面より先なら、
   // その 1 面だけを「つづき」として別に出す（一覧を長くしない）。壊れたベストは 0（1 面だけ選べる）。例外を出さない
   function levelChoices(best) {
     const b = validateBest(best);

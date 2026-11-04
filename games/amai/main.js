@@ -801,8 +801,8 @@
   }
 
   // ===== 面えらび（計画書 docs/plans/amai-select.md §1。契約 §3.5） =====
-  // 選べるのは 1〜ベスト＋1 面（L.levelChoices）。一覧は 1〜100 面（その先は鍵つき）。ベスト＋1 が 101 面より先なら「つづき」を 1 つ
-  const choices = () => safeCall(() => L.levelChoices(best), null) || { top: 1, list: Math.min(100, ORDER.length || 1), open: 1, more: 0 };
+  // 選べるのは 1〜ベスト＋1 面（L.levelChoices）。一覧は 1〜150 面（その先は鍵つき）。ベスト＋1 が 151 面より先なら「つづき」を 1 つ
+  const choices = () => safeCall(() => L.levelChoices(best), null) || { top: 1, list: Math.min(150, ORDER.length || 1), open: 1, more: 0 };
   function showSelect() {
     if (overlay !== null) return;
     flush();
