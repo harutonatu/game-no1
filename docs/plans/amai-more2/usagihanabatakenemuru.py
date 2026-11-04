@@ -748,7 +748,7 @@ def bg_forest_open(gy=33, top=6, trunks=(2, 13), canopy_x=(-3, 22)):
 # ---- この絵 ----
 # はなばたけで うさぎが ねむる：花の中で うさぎが よこに なって ぐっすり ねむる（Zzz）。場所の物は ひまわり と ちょうちょ（耳に とまる）。
 GY = 20
-bg_flower(GY, top=7, clouds=((30, 3, 1.0),), path=None, seed=3)
+bg_flower(GY, top=8, clouds=((30, 2, 1.0),), path=None, seed=3)
 sunflower(57, 44, 16, 4)
 # うさぎ（よこに ねて、左に あたま）。すこし 下へ
 OY = 4
@@ -758,11 +758,11 @@ tail = ell(51, 33 + OY, 3, 2.8)
 body = ell(37, 33 + OY, 14, 8)
 foot = ell(46, 39.5 + OY, 6, 2)
 head = ell(19, 32 + OY, 9.5, 8)
-earB = ell(31, 22 + OY, 3, 9, 70); earF = ell(29, 25.5 + OY, 3.2, 10, 76)
+earB = ell(28, 21 + OY, 3, 9, 50); earF = ell(29, 25.5 + OY, 3.2, 10, 76)
 WS(tail); WS(body); WS(foot)
 fill(cells(foot, lambda x, y: x > 48 and y == 40 + OY) | {(42, 39 + OY), (42, 40 + OY)}, 'P')
 fill(edge(foot), 'K')
-shape(earB, 'W', sh='S'); fill(ell(31.5, 22.2 + OY, 1.2, 6.5, 70) - edge(earB), 'P')
+shape(earB, 'W', sh='S'); fill(ell(28.3, 21.2 + OY, 1.2, 6.5, 50) - edge(earB), 'P')
 WS(head)
 shape(earF, 'W', sh='S'); fill(ell(29.5, 25.6 + OY, 1.3, 7, 76) - edge(earF), 'P')
 paw = ell(21, 39 + OY, 3.5, 1.8); WS(paw)
@@ -776,6 +776,6 @@ for i, fx in enumerate((4, 9, 27, 33, 39)):
     cup = {(fx - 1, fy - 2), (fx + 1, fy - 2), (fx - 1, fy - 1), (fx, fy - 1), (fx + 1, fy - 1), (fx, fy)}
     fill(cup, c); fill(edge(cup) & cells(cup, lambda x, y: x == fx + 1), 'O' if c == 'Y' else 'C')
     fill(line(fx, fy + 1, fx, 47), 'K')
-butterfly(33, 24, 'Y', 'O')
+butterfly(36, 17, 'Y', 'O')
 zzz(4, 16, 'B')
 finish('usagihanabatakenemuru', 'W')

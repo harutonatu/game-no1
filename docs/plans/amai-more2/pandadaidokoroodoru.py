@@ -489,8 +489,8 @@ def face(kind, hx, hy, look=1, eyes='open', mouth='smile'):
             fill(ell(ex + (-0.4 if ang < 0 else 0.4), hy - 10.5, 1.1, 4.4, ang) - edge(e), 'P')
     elif kind == 'neko':
         for (ex, d) in ((hx - 6, -1), (hx + 6, 1)):
-            e = poly([(ex - 4, hy - 4), (ex + d * 1.5, hy - 12), (ex + 4, hy - 4)]); blob(e, kind)
-            fill(poly([(ex - 1.8, hy - 5), (ex + d * 1.2, hy - 9.5), (ex + 1.8, hy - 5)]), 'P')
+            e = poly([(ex - 4.5, hy - 3), (ex + d * 2, hy - 13.5), (ex + 4.5, hy - 3)]); blob(e, kind)
+            fill(poly([(ex - 2, hy - 5), (ex + d * 1.6, hy - 11), (ex + 2, hy - 5)]), 'P')
     elif kind in ('kuma', 'panda'):
         for ex in (hx - 7.5, hx + 7.5):
             e = ell(ex, hy - 7, 3.8, 3.8); blob(e, kind, dark=True)
