@@ -1525,7 +1525,7 @@ export const tests = [
       const m1 = await marks();
       check(`面えらび：花輪は 2・5 面だけ（${J(m1.sel.map((x) => x.lv))}）・読み上げに「1手もどし なし」・ずかんに無い 21 面と鍵つきの 51 面には付けない`, J(m1.sel.map((x) => x.lv)) === J([2, 5]) && m1.sel.every((x) => x.w && x.c && x.label.includes('1手もどし なし')), m1.sel);
       const ws = await page.evaluate(() => { const w = document.querySelector('#card ul.levels li[data-clean="1"] .wreath'); const r = w && w.getBoundingClientRect(); return r ? Math.round(r.width) : 0; });
-      check(`面えらびの花輪が 24px 以上（${ws}px）（E-3）`, ws >= 24, ws);
+      check(`面えらびの花輪が 32px 以上（${ws}px）（E-3）`, ws >= 32, ws);
       await page.keyboard.press('Escape'); await wait(page, 150);
       await page.click('#bookBtn'); await wait(page, 150);
       const bn = await page.evaluate(() => { const n = document.querySelector('#card p.wnote'); return n ? n.textContent.trim() : null; });

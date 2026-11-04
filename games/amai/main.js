@@ -753,7 +753,46 @@
     }
   }
 
-  // ===== 花輪（1手もどし なしで クリアした印。面えらびとずかん。形は CSS の輪＝色だけに頼らない） =====
+  // ===== 花輪（1手もどし なしで クリアした印。面えらびとずかん。形は 20×20 マスのドット絵の輪＝色だけに頼らない） =====
+  // WREATH_ROWS の文字（p ピンク・y きいろ・w しろ・g 葉・l 明るい葉・o オレンジ）を、色の表で塗る。表を変えれば別の色の花輪（金など）を作れる
+  const WREATH_ROWS = [
+    "....................",
+    ".........ppp........",
+    ".......lppypp.......",
+    ".....glgpyyypgg.....",
+    "..yyylggppyppglwww..",
+    ".yyoyyg..ppp.lwwyww.",
+    ".yoooy........wyyyw.",
+    ".yyoyy........wwyww.",
+    "..yyy..........www..",
+    "..gl............gg..",
+    "..lg............gl..",
+    "..www..........yyy..",
+    ".wwyww........yyoyy.",
+    ".wyyyw........yoooy.",
+    ".wwywwg......lyyoyy.",
+    "..wwwglggppplggyyy..",
+    ".....lggppyppgl.....",
+    ".......lpyyyp.......",
+    "........ppypp.......",
+    ".........ppp........"
+  ];
+  const WREATH_PALETTE = { p: "#F29BC2", y: "#F2D13A", w: "#F5F2EA", g: "#3E9E4F", l: "#7DCB6B", o: "#F28C28" };
+  function wreathUri(palette) {
+    const paths = {};
+    WREATH_ROWS.forEach((row, y) => {
+      for (let x = 0; x < row.length;) {
+        const ch = row[x];
+        let e = x; while (e < row.length && row[e] === ch) e++;
+        if (palette[ch]) (paths[ch] = paths[ch] || []).push("M" + x + " " + y + "h" + (e - x) + "v1h-" + (e - x) + "z");
+        x = e;
+      }
+    });
+    let svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' shape-rendering='crispEdges'>";
+    for (const ch in paths) svg += "<path fill='" + palette[ch] + "' d='" + paths[ch].join("") + "'/>";
+    return 'url("data:image/svg+xml,' + encodeURIComponent(svg + "</svg>") + '")';
+  }
+  safeCall(() => document.documentElement.style.setProperty("--wreath-img", wreathUri(WREATH_PALETTE)));
   function wreath() {
     const w = document.createElement("span");
     w.className = "wreath";
