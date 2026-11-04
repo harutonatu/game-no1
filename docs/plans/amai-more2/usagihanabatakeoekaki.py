@@ -713,7 +713,7 @@ def cake(cx, by, w=6):
 # ---- この絵 ----
 # はなばたけで うさぎが おえかきを する：花の中に すわった うさぎが、イーゼルの紙に 花と ちょうを 描く。場所の物は ひまわり と ちょうちょ の 2 つ（＋イーゼル）。
 GY = 25
-bg_flower(GY, top=10, path=(0, 0, 0))
+bg_flower(GY, top=12, path=(0, 0, 0))
 sunflower(6, 14, 4, by=40)
 butterfly(41, 2, 'Y', 'R')
 easel(44, 10, 61, 25, 46, art_flower)

@@ -748,7 +748,7 @@ def bg_forest_open(gy=33, top=6, trunks=(2, 13), canopy_x=(-3, 22)):
 # ---- この絵 ----
 # はなばたけで うさぎが ボールで あそぶ：花の中に すわった うさぎが、小道を ころがってきた ボールを 手で とめる。場所の物は ひまわり と ちょうちょ。
 GY = 24
-bg_flower(GY, top=9, clouds=((44, 2, 0.9),), path=(54, 46, 16), seed=1)
+bg_flower(GY, top=10, clouds=((44, 2, 0.9),), path=(54, 46, 16), seed=1)
 sunflower(5, 45, 20, 4)
 butterfly(55, 13, 'B', 'P')
 shadow(26, 47, 14, 1.4, 'GKRPYWO', 'K', 1.0)
