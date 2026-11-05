@@ -666,7 +666,43 @@
   }
 
   // ===== 絵を小さな canvas に（遊び方・クリア・ずかん） =====
-  function pictureCanvas(p, size, opt) {
+  // 描いた絵は覚えておく（同じ絵・反転・影・大きさ・印を 2 回目に開いたときは、描き直さずに中身を写す）。上限を超えたら古いものから捨てる
+  const PIC_CACHE_MAX = 240;
+  const picCache = new Map();
+  // 絵（id と左右反転で 1 つに決まる cells の配列）ごとの番号。同じ絵なら同じ番号、反転した絵は別の番号
+  const picSerial = new WeakMap();
+  let picSerialN = 0;
+  function serialOf(p) {
+    const c = p && p.cells;
+    if (!c || typeof c !== "object") return 0;
+    if (!picSerial.has(c)) picSerial.set(c, ++picSerialN);
+    return picSerial.get(c);
+  }
+  const PAINT_BATCH = 12;   // IntersectionObserver が無いとき、1 コマに描く枚数
+  function paintCanvas(cv, p, cell, opt) {
+    try {
+      const ctx = cv.getContext("2d");
+      if (!ctx || typeof R.drawPicture !== "function") return;
+      const o = opt || {};
+      const key = [serialOf(p), cell, o.mono ? 1 : 0, o.marks === false ? 0 : 1, cv.width, cv.height].join("|");
+      const hit = serialOf(p) ? picCache.get(key) : null;
+      if (hit) { ctx.drawImage(hit, 0, 0); picCache.delete(key); picCache.set(key, hit); return; }   // 使ったものを一番新しくする
+      R.drawPicture(ctx, p, Object.assign({ cell }, o));
+      if (serialOf(p)) {
+        const copy = document.createElement("canvas");
+        copy.width = cv.width; copy.height = cv.height;
+        const cc = copy.getContext("2d");
+        if (cc) {
+          cc.drawImage(cv, 0, 0);
+          picCache.set(key, copy);
+          while (picCache.size > PIC_CACHE_MAX) picCache.delete(picCache.keys().next().value);
+        }
+      }
+    } catch (e) { /* 絵が描けなくても続ける */ }
+  }
+  // defer: true のときは、大きさだけ決めた空の canvas を返す（絵は paintLazy が見えてきた順に描く。大きさは描いても変わらないのでレイアウトが動かない）
+  const lazyJobs = new WeakMap();
+  function pictureCanvas(p, size, opt, defer) {
     const cv = document.createElement("canvas");
     cv.setAttribute("aria-hidden", "true");
     const W = Math.max(1, Number(p && p.W) || 1), H = Math.max(1, Number(p && p.H) || 1);
@@ -676,8 +712,45 @@
     cv.height = H * cell;
     cv.style.width = Math.round((W * cell) / dpr) + "px";
     cv.style.height = Math.round((H * cell) / dpr) + "px";
-    try { const ctx = cv.getContext("2d"); if (ctx && typeof R.drawPicture === "function") R.drawPicture(ctx, p, Object.assign({ cell }, opt || {})); } catch (e) { /* 絵が描けなくても続ける */ }
+    if (defer) { cv.dataset.lazy = "1"; lazyJobs.set(cv, () => paintCanvas(cv, p, cell, opt)); }
+    else paintCanvas(cv, p, cell, opt);
     return cv;
+  }
+  let lazyObs = null, lazyToken = 0;
+  function runLazy(cv) {
+    const job = lazyJobs.get(cv);
+    if (!job) return;
+    lazyJobs.delete(cv);
+    job();
+    cv.dataset.lazy = "0";
+  }
+  // 一覧の空の canvas を、見えてきた順（1 画面ぶん先まで）に描く。IntersectionObserver が無いときは 12 枚ずつ requestAnimationFrame で
+  function paintLazy(list) {
+    if (lazyObs) { lazyObs.disconnect(); lazyObs = null; }
+    const token = ++lazyToken;
+    const cvs = [...list.querySelectorAll('canvas[data-lazy="1"]')];
+    if (!cvs.length) return;
+    if (typeof IntersectionObserver === "function") {
+      try {
+        const obs = new IntersectionObserver((entries) => {
+          for (const e of entries) {
+            if (!e.isIntersecting) continue;
+            obs.unobserve(e.target);
+            runLazy(e.target);
+          }
+        }, { rootMargin: `${Math.max(200, window.innerHeight || 600)}px 0px` });
+        lazyObs = obs;
+        cvs.forEach((c) => obs.observe(c));
+        return;
+      } catch (e) { /* 下の分けて描くへ */ }
+    }
+    let i = 0;
+    const step = () => {
+      if (token !== lazyToken) return;
+      for (let k = 0; k < PAINT_BATCH && i < cvs.length; k++, i++) if (cvs[i].isConnected) runLazy(cvs[i]);
+      if (i < cvs.length) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }
 
   // ===== 遊び方 =====
@@ -735,7 +808,7 @@
       const li = document.createElement("li");
       li.dataset.id = String(id);
       li.dataset.got = n > 0 ? "1" : "0";
-      if (p) li.appendChild(pictureCanvas(p, 64, { mono: n === 0, marks: false }));
+      if (p) li.appendChild(pictureCanvas(p, 64, { mono: n === 0, marks: false }, true));
       const nm = document.createElement("span"); nm.className = "nm"; const nmText = n > 0 && p ? String(p.name) : "？？？";
       nmText.split(/(\s+)/).forEach((part) => {   // 名前は言葉ごと（空白で区切る）に折り返す。言葉の途中では切らない
         if (part === "") return;
@@ -751,6 +824,7 @@
       if (season) { const s = document.createElement("span"); s.className = "season"; s.dataset.season = p.season; s.textContent = season; li.appendChild(s); }
       ul.appendChild(li);
     }
+    paintLazy(ul);
   }
 
   // ===== 花輪（1手もどし なしで クリアした印。面えらびとずかん。形は 20×20 マスのドット絵の輪＝色だけに頼らない） =====
@@ -837,7 +911,7 @@
         const pk = safeCall(() => L.pickPicture(n, book), null);
         const p = pk ? safeCall(() => L.pictureById(pk.id, false), null) : null;
         const got = !!(p && book.got && Number.isSafeInteger(book.got[p.id]) && book.got[p.id] > 0);
-        if (p) { const cv = pictureCanvas(p, 48, { mono: !got, marks: false }); cv.style.width = ""; cv.style.height = ""; btn.appendChild(cv); }   // 大きさは CSS（48×36 に収める）
+        if (p) { const cv = pictureCanvas(p, 48, { mono: !got, marks: false }, true); cv.style.width = ""; cv.style.height = ""; btn.appendChild(cv); }   // 大きさは CSS（48×36 に収める）
         if (p && got && isClean(p.id)) { li.dataset.clean = "1"; btn.appendChild(wreath()); label += "（1手もどし なし）"; }
       } else if (!open) {
         const q = document.createElement("span"); q.className = "q"; q.textContent = "？"; q.setAttribute("aria-hidden", "true"); btn.appendChild(q);
@@ -856,6 +930,7 @@
     };
     if (ch.more) ul.appendChild(item(ch.more, { more: true }));
     for (let n = 1; n <= ch.list; n++) ul.appendChild(item(n));
+    paintLazy(ul);
     // いまの面（無ければ選べる一番先）が見えるように、カードの中だけをスクロールする
     const cur = ul.querySelector('li[data-current="1"]') || ul.querySelector(`li[data-level="${ch.open}"]`);
     if (cur) {
