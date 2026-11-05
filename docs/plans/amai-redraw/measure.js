@@ -52,10 +52,13 @@ for (let lv = from; lv <= to; lv++) {
   const pk = lv > BASE ? picks[lv] : L.pickPicture(lv, null);
   const t0 = cpu(); const c = L.createLevel(lv, pk); const gen = ms(t0);
   const t1 = cpu(); const rp = L.replay(lv, pk, [], 0); const rep = ms(t1);
+  // ちょうせん（わく 2 つ。1〜BASE 面だけ）の面を作る時間（2026-11-05 に足した。amai-bg.md §6）
+  let cgen = null, cfb = null;
+  if (lv <= BASE) { const t2 = cpu(); const cc = L.createLevel(lv, pk, { challenge: true }); cgen = +ms(t2).toFixed(2); cfb = cc.info.fallback; }
   // 不変：箱の持ち玉の合計＝角砂糖の数
   let sum = 0; for (const col of c.state.cols) for (const b of col) sum += b.count;
   const row = { lv, pic: pk.id, mirror: pk.mirror, repeat: pk.repeat, tier: c.info.params.tier, total: c.state.total, boxes: c.state.cols.flat().length, fb: c.info.fallback, tries: c.info.tries,
-    gen: +gen.toFixed(2), rep: +rep.toFixed(2), repOk: rp.ok, sumOk: sum === c.state.total, rand7: 0, loose: 0, ticks: [], full: null };
+    gen: +gen.toFixed(2), rep: +rep.toFixed(2), cgen, cfb, repOk: rp.ok, sumOk: sum === c.state.total, rand7: 0, loose: 0, ticks: [], full: null };
   for (let k = 0; k < runs; k++) {
     if (play(c, lv * 7919 + k * 31 + 1, 0.3).won) row.rand7++;
     const r = play(c, lv * 131 + k, 0.8);

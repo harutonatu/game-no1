@@ -146,7 +146,8 @@ export const tests = [
       check('定数が契約 §6.2 のとおり', kBad.length === 0, kBad);
       // 手直し（2026-10-30）：絵を 2×2 に割って 64×48・角砂糖 2800 まで（2026-11-05 に背景を足すため 3072＝64×48 まで）、はこびの間隔を 500→120ms にした。
       // ANY_RATE（①を使う箱の割合）は段ごとの表。M 0.5（2026-11-03）・XL・XXL 0.25、ほかは 1（OVER が 1 の段では使われない）
-      check('ANY_RATE（①を使う箱の割合）が表どおり（S・L・くり返し 1、M 0.5、XL・XXL 0.25）', J(L.ANY_RATE) === J({ S: 1, M: 0.5, L: 1, XL: 0.25, XXL: 0.25, repeat: 1 }), L.ANY_RATE);
+      // 2026-11-05（背景をうめた 148 枚。計画書 amai-bg.md §6）：S 1 → 0.5・M 0.5 → 0.3
+      check('ANY_RATE（①を使う箱の割合）が表どおり（S 0.5、M 0.3、L・くり返し 1、XL・XXL 0.25）', J(L.ANY_RATE) === J({ S: 0.5, M: 0.3, L: 1, XL: 0.25, XXL: 0.25, repeat: 1 }), L.ANY_RATE);
       check('はこびの間隔：ふだん 120ms・はやおくり 60ms（1 つの箱から 1 秒に約 8 匹）', L.TICK_MS === 120 && L.FAST_MS === 60 && L.FAST_MS * 2 === L.TICK_MS, { t: L.TICK_MS, f: L.FAST_MS });
       const C = L.COLORS;
       check('COLORS は 12 色で id が 0〜11・凍結（2026-11-05 に D こいみどり・V むらさき を足した）', Array.isArray(C) && C.length === 12 && C.every((c, i) => c.id === i) && Object.isFrozen(C) && C.every((c) => Object.isFrozen(c)), C);

@@ -719,11 +719,12 @@ export const tests = [
     id: 'AW10', tier: 'full', title: 'あまいもの キーボード：1〜4 で押せる・矢印でフォーカス・Enter で押す・U／Backspace で戻る・F で はやく・Z で ずかん・? で遊び方・M で音・R で確認・Esc で閉じる。カードが開いているとき数字キーで押せない',
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'AW10', { opts: { touch: false } });
-      await setLevel(page, 13);
+      // 14 面（2026-11-05 に 13 → 14。背景をうめた絵で 13 面の 4 列目の手前が 1 個の箱になり、押すとすぐ運ばれてわくから消えるため）
+      await setLevel(page, 14);
       const key = async (k) => { await page.keyboard.press(k); await wait(page, 60); };
       const col = () => page.evaluate(() => { const a = document.activeElement; return a && a.classList.contains('box') ? Number(a.dataset.col) : null; });
       const s0 = await gs(page);
-      check(`13 面：4 つの列すべてに箱がある（${s0.cols.map((c) => c.length).join(',')}）`, s0.cols.every((c) => c.length > 0), s0.cols.map((c) => c.length));
+      check(`14 面：4 つの列すべてに箱がある（${s0.cols.map((c) => c.length).join(',')}）`, s0.cols.every((c) => c.length > 0), s0.cols.map((c) => c.length));
       await key('1');
       const k1 = await gs(page);
       check(`1 キーで 1 列目の手前の箱が一番左のわくへ（presses ${k1.presses}・わく 0 の id ${k1.slots[0] && k1.slots[0].id}／期待 ${s0.cols[0][0].id}）`, k1.presses === 1 && k1.slots[0] && k1.slots[0].id === s0.cols[0][0].id, k1.slots);
@@ -1314,7 +1315,8 @@ export const tests = [
     id: 'AW25', tier: 'full', title: 'あまいもの 待っているのが分かる：ふちに無い色の箱をわくに入れると、ありんこが 0 匹でも .slot に data-wait="1"・「まってる」の札が出て、#hint に いま運べる色の名前（data-warn="1"）、今すぐ運べる手前の箱に data-ready="1" が付く（data-ready は いま運べる色の箱と一致する）',
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'AW25');
-      await page.evaluate(() => window.AmaiGame.setLevel(3));
+      // 12 面（2026-11-05 に 3 → 12。背景をうめた絵では 3 面の手前の箱がみな ふちに出ている色になったため。ふちに無い色の手前の箱がある面）
+      await page.evaluate(() => window.AmaiGame.setLevel(12));
       await wait(page, 300);
       const edge0 = await page.evaluate(() => window.AmaiGame.edgeColors());
       check(`edgeColors() が 今ふちに出ている色を返す（${JSON.stringify(edge0)}）`, Array.isArray(edge0) && edge0.length > 0, edge0);
@@ -1393,10 +1395,11 @@ export const tests = [
     },
   },
   {
-    id: 'AW27', tier: 'full', title: 'あまいもの 小さい画面（SE 縦 320×568）：①13 面などの長い案内が切れない（幅・折り返したときは高さも）②ずかんの名前が言葉の途中で折り返されない（各 span が 1 行）③48 枚そろっても見出し「ずかん」が 1 行',
+    id: 'AW27', tier: 'full', title: 'あまいもの 小さい画面（SE 縦 320×568）：①12・18・41 面などの長い案内が切れない（幅・折り返したときは高さも）②ずかんの名前が言葉の途中で折り返されない（各 span が 1 行）③48 枚そろっても見出し「ずかん」が 1 行',
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'AW27 案内', { v: SMOKE_V() });
-      for (const lv of [3, 13, 40]) {
+      // 12・18・41 面（2026-11-05 に 3・13・40 から。背景をうめた絵で、ふちに無い色の手前の箱がある M・L・XXL の面）
+      for (const lv of [12, 18, 41]) {
         await page.goto(AM); await wait(page, 300);
         await page.evaluate((lv) => window.AmaiGame.setLevel(lv), lv);
         await wait(page, 500);

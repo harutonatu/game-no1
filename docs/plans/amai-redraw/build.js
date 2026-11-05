@@ -1,6 +1,7 @@
 // 使い方：node docs/plans/amai-redraw/build.js
 // 計画書 docs/plans/amai-redraw.md §4 の表（3〜48 面）・docs/plans/amai-more.md §2 の表（49〜100 面）・docs/plans/amai-more2.md §1 の表（101〜150 面）（面・段・id・場面・季節）と
-// <id>.txt（文字の地図。1 マス＝1 粒。3〜48 面は amai-redraw/、49〜100 面は amai-more/、101〜150 面は amai-more2/）から、
+// <id>.txt（文字の地図。1 マス＝1 粒。2026-11-05 から 3〜150 面とも背景を角砂糖でうめた docs/plans/amai-bg/out/<id>.txt を読む。
+// 元の絵（3〜48 面は amai-redraw/、49〜100 面は amai-more/、101〜150 面は amai-more2/）は bg.py の入力として残す。計画書 docs/plans/amai-bg.md）から、
 // games/amai/pictures-a.js（りんご・さくらんぼ＋3〜24 面）・pictures-b.js（25〜48 面）・pictures-c.js（49〜100 面）・pictures-d.js（101〜150 面）を書き出す（手で写さない）。
 // りんご・さくらんぼは今の pictures-a.js から文字のまま写す。ファイルの頭の仕組み（UMD・AmaiPictures.add）も今のまま。
 // 書き出す前に、全部の絵を logic.js の parsePicture と段の決まり（大きさ 64×48 以下・角砂糖と色の数）で確かめ、1 枚でも外れたら何も書かない。
@@ -19,10 +20,12 @@ const PLAN_MORE = path.join(ROOT, "docs/plans/amai-more.md");
 const DIR_MORE = path.join(ROOT, "docs/plans/amai-more");
 const PLAN_MORE2 = path.join(ROOT, "docs/plans/amai-more2.md");
 const DIR_MORE2 = path.join(ROOT, "docs/plans/amai-more2");
+const DIR_BG = path.join(ROOT, "docs/plans/amai-bg/out");   // 背景をうめた 148 枚（3〜150 面。amai-bg.md §4）
 const L = require(path.join(ROOT, "games/amai/logic.js"));
 
 // 段ごとの決まり（計画書 §4）：角砂糖の下限・上限、色の数の下限・上限
-const RANGE = { S: [476, 692, 3, 4], M: [856, 1128, 4, 5], L: [1264, 1600, 5, 7], XL: [1688, 2240, 6, 8], XXL: [2096, 2576, 8, 10] };
+// 2026-11-05：背景をうめた 148 枚に合わせた（amai-bg/out/counts.md。約束 §2.1 の TIERS と同じ幅）
+const RANGE = { S: [800, 1000, 4, 5], M: [1200, 1480, 5, 7], L: [2280, 3072, 7, 10], XL: [2860, 3072, 9, 11], XXL: [2400, 3072, 8, 12] };
 const SPLIT = 24;   // 24 面までを pictures-a.js、25 面からを pictures-b.js
 const SPLIT_C = 48;   // 49 面からを pictures-c.js
 const SPLIT_D = 100;   // 101 面からを pictures-d.js
@@ -53,7 +56,7 @@ for (const r of rows) {
   if (ids.has(r.id)) fail(`id が重なる：${r.id}`);
   if (names.has(r.name)) fail(`名前が重なる：${r.name}`);
   ids.add(r.id); names.add(r.name);
-  const file = path.join(r.dir, r.id + ".txt");
+  const file = path.join(DIR_BG, r.id + ".txt");
   if (!fs.existsSync(file)) fail(`地図が無い：${file}`);
   r.map = fs.readFileSync(file, "utf8").split("\n").map((s) => s.trimEnd()).filter((s) => s.length);
   const p = L.parsePicture({ id: r.id, name: r.name, season: r.season, map: r.map }, false);
@@ -96,7 +99,7 @@ function entry(r) {
 function file(first, body) {
   return [first, ...head, ...body, "  ]);", "", "  return AmaiPictures;", "});", ""].join("\n");
 }
-const NOTE = "地図は docs/plans/amai-redraw/<id>.txt・amai-more/<id>.txt・amai-more2/<id>.txt から build.js で書き出す（手で直さない）。1 マス＝1 粒で描いた場面の絵。文字の地図の決まりは docs/ari-contract.md §2.6。";
+const NOTE = "地図は docs/plans/amai-bg/out/<id>.txt（背景も角砂糖でうめた絵）から build.js で書き出す（手で直さない）。1 マス＝1 粒で描いた場面の絵。文字の地図の決まりは docs/ari-contract.md §2.6。";
 const a = file(`// あまいものあつめ：1〜24 面の絵（りんご・さくらんぼ＋3〜24 面の場面）。${NOTE}`,
   [...easy, ...rows.filter((r) => r.level <= SPLIT).flatMap(entry)]);
 const b = file(`// あまいものあつめ：25〜48 面の絵（場面）。${NOTE}`,

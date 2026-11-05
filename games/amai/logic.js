@@ -56,11 +56,13 @@
   const OVER = { S: 1.1, M: 1.25, L: 1, XL: 1, XXL: 1, repeat: 1 };
   // ANY_RATE：①（内側だけにある色の箱を最初から作る）を使う箱の割合（段ごと。1 なら全部の箱・0 なら使わない）。
   // 絵を 2 倍に割ってマスが 4 倍になり、①の「入／切」だけでは難しさが飛びすぎたので、途中の強さを作るために足した
-  const ANY_RATE = { S: 1, M: 0.5, L: 1, XL: 0.25, XXL: 0.25, repeat: 1 };   // OVER が 1 の段では使われない
+  // 2026-11-05（背景をうめた 148 枚で測り直し。計画書 docs/plans/amai-bg.md §6）：S 1 → 0.5・M 0.5 → 0.3（むずかしくなりすぎたので①を弱めた）
+  const ANY_RATE = { S: 0.5, M: 0.3, L: 1, XL: 0.25, XXL: 0.25, repeat: 1 };   // OVER が 1 の段では使われない
   // 2026-11-03（49〜100 面の 52 枚を足し、3 面から先を一段むずかしく。計画書 docs/plans/amai-more.md §4.1・§6）：
   // 箱を小さく（S 25–45・M 12–45・XL 40–80・XXL 25–50）、L は pull を 2 にした。1・2 面は箱の数を cap で決めるので KSET.S は効かない
   const PULL_ADD = { S: 0, M: 0, L: -2, XL: -8, XXL: -12, repeat: 0 };   // 段の pull に足す（XL・XXL は pull 0・L は 2。S は 1・2 面にも効くので 0 のまま）
-  const KSET = { S: [25, 45], M: [12, 45], L: [80, 99], XL: [40, 80], XXL: [25, 50] };   // 段ごとの箱の数の幅の上書き。空なら TIERS の値
+  // 2026-11-05（背景をうめた 148 枚。amai-bg.md §6）：XXL 25–50 → 50–99（箱を大きく。ゆるい 30 → 35%）
+  const KSET = { S: [25, 45], M: [12, 45], L: [80, 99], XL: [40, 80], XXL: [50, 99] };   // 段ごとの箱の数の幅の上書き。空なら TIERS の値
   const GEN_OPT = { shuffleCols: false, solveNodes: 15, genTries: 5, softenEvery: 1 };
   const SOLVE_NODES = 15;   // 解ける押し順の探索で開く局面の上限は「箱の数＋この余り」（1 回の tryBuild ごと・600 まで）
   const BASE_PICTURES = 150;   // 1〜150 面は PICTURE_ORDER の順に 1 枚ずつ。151 面からくり返し（49〜100 面は 2026-11-03、101〜150 面は 2026-11-04 に足した。計画書 docs/plans/amai-more.md・amai-more2.md）
@@ -99,11 +101,12 @@
   // ---------------------------------------------------------------- 段と面の表（§2.1。仮）
   // 段の値（151 面からは lids・ices にこの「多い方」を使う。くり返しは +1）
   const TIERS = Object.freeze({
-    S: Object.freeze({ tier: "S", colors: Object.freeze([3, 4]), sugar: Object.freeze([110, 720]), kmin: 60, kmax: 99, pull: 0, lids: 0, ices: 0 }),
-    M: Object.freeze({ tier: "M", colors: Object.freeze([4, 5]), sugar: Object.freeze([800, 1200]), kmin: 40, kmax: 99, pull: 2, lids: 1, ices: 0 }),
-    L: Object.freeze({ tier: "L", colors: Object.freeze([5, 7]), sugar: Object.freeze([1200, 1680]), kmin: 40, kmax: 99, pull: 4, lids: 2, ices: 1 }),
-    XL: Object.freeze({ tier: "XL", colors: Object.freeze([6, 8]), sugar: Object.freeze([1680, 2240]), kmin: 40, kmax: 99, pull: 8, lids: 3, ices: 2 }),
-    XXL: Object.freeze({ tier: "XXL", colors: Object.freeze([8, 10]), sugar: Object.freeze([2080, 2800]), kmin: 40, kmax: 99, pull: 12, lids: 4, ices: 3 }),
+    // 色の数・角砂糖の範囲は 2026-11-05 に背景をうめた 148 枚に合わせた（計画書 docs/plans/amai-bg.md §6）。kmin〜ices は前のまま
+    S: Object.freeze({ tier: "S", colors: Object.freeze([3, 5]), sugar: Object.freeze([110, 1000]), kmin: 60, kmax: 99, pull: 0, lids: 0, ices: 0 }),
+    M: Object.freeze({ tier: "M", colors: Object.freeze([5, 7]), sugar: Object.freeze([1200, 1480]), kmin: 40, kmax: 99, pull: 2, lids: 1, ices: 0 }),
+    L: Object.freeze({ tier: "L", colors: Object.freeze([7, 10]), sugar: Object.freeze([2280, 3072]), kmin: 40, kmax: 99, pull: 4, lids: 2, ices: 1 }),
+    XL: Object.freeze({ tier: "XL", colors: Object.freeze([9, 11]), sugar: Object.freeze([2860, 3072]), kmin: 40, kmax: 99, pull: 8, lids: 3, ices: 2 }),
+    XXL: Object.freeze({ tier: "XXL", colors: Object.freeze([8, 12]), sugar: Object.freeze([2400, 3072]), kmin: 40, kmax: 99, pull: 12, lids: 4, ices: 3 }),
   });
   // 1〜150 面の仕掛けの数（面の番号で決める）
   const LEVELS = Object.freeze([
