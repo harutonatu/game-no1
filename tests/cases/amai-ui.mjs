@@ -1805,11 +1805,21 @@ export const tests = [
       check(`面えらびに金の花輪の説明の行（${J(gn)}）`, !!gn && gn.gold && /ちょうせん クリア/.test(gn.t), gn);
       await pickLv(5);
       const oc = await overlayInfo(page);
-      check(`クリアした 5 面を押すと［ふつうで あそぶ］［ちょうせん］［やめる］のカード（${oc.text}）・途中なら「とちゅうは きえるよ」`, oc.cmds.includes('playNormal') && oc.cmds.includes('playChal') && oc.cmds.includes('close') && /5 めんを あそぶ/.test(oc.text) && /わくが 2つ/.test(oc.text) && /とちゅうは きえる/.test(oc.text), oc);
+      check(`クリアした 5 面を押すと［ふつうで あそぶ］［ちょうせん］［やめる］のカード（${oc.text}）・途中なら「とちゅうは きえるよ」`, oc.cmds.includes('playNormal') && oc.cmds.includes('playChal') && oc.cmds.includes('close') && /5 めんを あそぶ/.test(oc.text) && /わくが 2つ/.test(oc.text) && /とちゅうは きえる/.test(oc.text) && /ほぞんは ないよ/.test(oc.text) && /ふつうの とちゅうは のこる/.test(oc.text), oc);
       const btnH = await page.evaluate(() => [...document.querySelectorAll('#card [data-cmd="playNormal"], #card [data-cmd="playChal"]')].map((b) => Math.round(b.getBoundingClientRect().height)));
       check(`2 つのボタンが 44px 以上（${J(btnH)}）`, btnH.length === 2 && btnH.every((h) => h >= 44), btnH);
       await clickCmd(page, 'close'); await wait(page, 150);
       check('「やめる」で面えらびの一覧に戻る', (await gs(page)).overlay === 'select', null);
+      // F-5：1・2 面は ちょうせんの選びが出ない（3 面から）
+      for (const lv of [1, 2, 3]) {
+        await pickLv(lv);
+        const oc12 = await overlayInfo(page);
+        const hasChal = oc12.cmds.includes('playChal');
+        check(`${lv} 面を押すと［ちょうせん］は ${lv >= 3 ? '出る' : '出ない'}（${J(oc12.cmds)}）`, hasChal === (lv >= 3), oc12);
+        if (oc12.cmds.includes('close')) { await clickCmd(page, 'close'); await wait(page, 150); }
+        else { await page.click('#selectBtn'); await wait(page, 150); }
+        if ((await gs(page)).overlay !== 'select') { await page.click('#selectBtn'); await wait(page, 150); }
+      }
       await page.keyboard.press('Escape'); await wait(page, 150);
       // ちょうせんで始める
       await page.click('#selectBtn'); await wait(page, 150);
@@ -1817,7 +1827,7 @@ export const tests = [
       await clickCmd(page, 'playChal'); await wait(page, 300);
       const c0 = await gs(page);
       const u0 = await undoInfo(page);
-      check(`ちょうせんの 5 面（${c0.level}・challenge ${c0.challenge}）：わく 2 つ（state ${c0.slotCount}・見えている .slot ${await visSlots()}）・もどし のこり 3（${c0.chalUndo}）・ボタンに「のこり3」（${u0.text}）・押した数 0 なので押せない`, c0.level === 5 && c0.challenge === true && c0.slotCount === 2 && (await visSlots()) === 2 && c0.chalUndo === 3 && /のこり3/.test(u0.text) && u0.dis && c0.overlay === null, { c0, u0 });
+      check(`ちょうせんの 5 面（${c0.level}・challenge ${c0.challenge}）：わく 2 つ（state ${c0.slotCount}・見えている .slot ${await visSlots()}）・もどし のこり 3（${c0.chalUndo}）・ボタンに「あと3かい」（${u0.text}）・押した数 0 なので押せない`, c0.level === 5 && c0.challenge === true && c0.slotCount === 2 && (await visSlots()) === 2 && c0.chalUndo === 3 && /あと3かい/.test(u0.text) && u0.dis && c0.overlay === null, { c0, u0 });
       const tag = await page.evaluate(() => { const t = document.querySelector('.hud .chaltag'); return t ? getComputedStyle(t).display !== 'none' : false; });
       check(`上の行に「ちょうせん」の札が出る（${tag}）`, tag, null);
       check(`ちょうせんを始めても途中の保存（amai.save）は ふつうの 11 面のまま`, (await stored(page, 'amai.save')) === save0, await stored(page, 'amai.save'));
@@ -1834,7 +1844,7 @@ export const tests = [
       const u4 = await undoInfo(page);
       await page.keyboard.press('u'); await wait(page, 150);
       const g5 = await gs(page);
-      check(`押す→もどすを 3 回（${J(counts)}）で のこり 0・4 回目は押した数 1 でも押せない（disabled ${u4.dis}・${u4.text}・キーの U でも戻らない ${g5.presses}）`, J(counts) === J([[0, 2], [0, 1], [0, 0]]) && g4.presses === 1 && g4.chalUndo === 0 && u4.dis && /のこり0/.test(u4.text) && g5.presses === 1 && !g4.canUndo, { counts, g4, u4, g5 });
+      check(`押す→もどすを 3 回（${J(counts)}）で のこり 0・4 回目は押した数 1 でも押せない（disabled ${u4.dis}・${u4.text}・キーの U でも戻らない ${g5.presses}）`, J(counts) === J([[0, 2], [0, 1], [0, 0]]) && g4.presses === 1 && g4.chalUndo === 0 && u4.dis && /あと0かい/.test(u4.text) && g5.presses === 1 && !g4.canUndo, { counts, g4, u4, g5 });
       check('ちょうせんの間は押しても amai.save を書かない', (await stored(page, 'amai.save')) === save0, await stored(page, 'amai.save'));
       // やりなおしで 3 に戻る
       await page.click('#restartBtn'); await wait(page, 150);
@@ -1907,7 +1917,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW35', tier: 'full', title: 'あまいもの ちょうせんの小さい画面（SE 縦 320×568・SE 横）：わく 2 つ・「1手もどす のこり N」のボタン・「ちょうせん」の札・選ぶカード・クリアのカード・もどしを使い切った うごかせないのカード（やりなおしだけ）が崩れない（44px 以上・12px 以上・はみ出さない・横スクロールなし）',
+    id: 'AW35', tier: 'full', title: 'あまいもの ちょうせんの小さい画面（SE 縦 320×568・SE 横）：わく 2 つ・「1手もどす あとNかい」のボタン・「ちょうせん」の札・選ぶカード・クリアのカード・もどしを使い切った うごかせないのカード（やりなおしだけ）が崩れない（44px 以上・12px 以上・はみ出さない・横スクロールなし）',
     async run({ browser, check }) {
       const PO = await (async () => { const { ctx, page } = await openG(browser, 'AW35 絵'); const ids = await page.evaluate(() => window.AmaiLogic.PICTURE_ORDER.map((x) => x.id)); await ctx.close(); return ids; })();
       const got = {}; PO.slice(0, 40).forEach((id) => { got[id] = 1; });
@@ -1939,7 +1949,7 @@ export const tests = [
           };
         }, v.safe);
         check(`${v.label}：わく 2 つ（${J(lay.slots.map((s) => [Math.round(s.w), Math.round(s.h)]))}）が 44px 以上・画面内・格子と重ならない`, lay.slots.length === 2 && lay.slots.every((s) => s.w >= 43.5 && s.h >= 43.5) && lay.inside && !lay.overlapGrid, lay);
-        check(`${v.label}：「1手もどす のこり 2」（${lay.undo.text}）が 44px 以上でボタンに収まり、字が 12px 以上（${J(lay.fs)}）・「ちょうせん」の札が上の行に収まる・横スクロールなし`, /のこり2/.test(lay.undo.text) && lay.undo.w >= 43.5 && lay.undo.h >= 43.5 && lay.undo.sw <= lay.undo.cw + 1 && lay.undo.sh <= lay.undo.ch + 1 && lay.fs.every((f) => f >= 12) && lay.tagIn && !lay.hudOver && lay.toolsIn && !lay.hs, lay);
+        check(`${v.label}：「1手もどす あと2かい」（${lay.undo.text}）が 44px 以上でボタンに収まり、字が 12px 以上（${J(lay.fs)}）・「ちょうせん」の札が上の行に収まる・横スクロールなし`, /あと2かい/.test(lay.undo.text) && lay.undo.w >= 43.5 && lay.undo.h >= 43.5 && lay.undo.sw <= lay.undo.cw + 1 && lay.undo.sh <= lay.undo.ch + 1 && lay.fs.every((f) => f >= 12) && lay.tagIn && !lay.hudOver && lay.toolsIn && !lay.hs, lay);
         // もどしを使い切って うごかせない：やりなおしだけ
         for (let k = 0; k < 2; k++) { await settleG(page); await pressCol(page, sol[0]); await skipG(page); await page.click('#undoBtn'); await wait(page, 150); }
         const g0 = await gs(page);

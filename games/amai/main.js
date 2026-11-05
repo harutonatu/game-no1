@@ -263,8 +263,8 @@
     undoSig = sig;
     if (chal) {
       el.undoBtn.innerHTML = '<span class="ulab">1手もどす</span><span class="urest"></span>';
-      el.undoBtn.querySelector(".urest").textContent = `のこり ${chalUndo}`;
-      el.undoBtn.setAttribute("aria-label", `1手もどす のこり ${chalUndo}かい`);
+      el.undoBtn.querySelector(".urest").textContent = `あと${chalUndo}かい`;
+      el.undoBtn.setAttribute("aria-label", `1手もどす あと ${chalUndo}かい`);
       el.undoBtn.dataset.rest = String(chalUndo);
     } else {
       el.undoBtn.textContent = "1手もどす";
@@ -565,6 +565,7 @@
       const base = custom;
       clearLater(); runId += 1; cancelPending(); safeCall(() => render.finishAll());
       state = base; presses = []; customHist = []; stable = false;
+      if (chal) chalUndo = CHAL_UNDO;
       safeCall(() => render.build(state, picture));
       hud(); setPhase("play"); setHint("");
       if (safeCall(() => L.isStable(state), false)) { stable = true; afterStable(); }
@@ -704,7 +705,7 @@
       <h2 id="cardTitle">うごかせないよ</h2>
       <p>${why}${canU ? "1手もどして ためしてね。" : "やりなおして ためしてね。"}</p>
       <div class="btns">${canU ? `
-        <button class="cta primary half" type="button" data-cmd="undo">1手もどす${chal ? `（のこり ${chalUndo}）` : ""}</button>
+        <button class="cta primary half" type="button" data-cmd="undo">1手もどす${chal ? `（あと${chalUndo}かい）` : ""}</button>
         <button class="cta half" type="button" data-cmd="restart">やりなおし</button>` : `
         <button class="cta primary" type="button" data-cmd="restart">やりなおし</button>`}
       </div>`, {}, "stuck");
@@ -1024,7 +1025,7 @@
         <button class="cta primary" type="button" data-cmd="playNormal">ふつうで あそぶ</button>
         <button class="cta chal" type="button" data-cmd="playChal">ちょうせん</button>
         <button class="cta" type="button" data-cmd="close">やめる</button>
-      </div>`, { h: `${n} めんを あそぶ`, m: `ちょうせんは わくが 2つ・1手もどすは ${CHAL_UNDO}かいまで。クリアすると きんの わ`, w: "いまの めんの とちゅうは きえるよ" }, "confirm");
+      </div>`, { h: `${n} めんを あそぶ`, m: `ちょうせんは わくが 2つ・1手もどすは ${CHAL_UNDO}かいまで。クリアすると きんの わ。とちゅうの ほぞんは ないよ`, w: "ふつうで あそぶと いまの めんの とちゅうは きえるよ（ちょうせんなら ふつうの とちゅうは のこるよ）" }, "confirm");
       el.card.dataset.mode = "pick";
       return true;
     }
@@ -1045,7 +1046,7 @@
   }
   // ちょうせんで遊べる面：1〜150 面（絵が 1 枚ずつ決まっている面）で、その面の絵がずかんにある（＝クリアしたことがある）
   function canChallenge(n) {
-    if (!Number.isSafeInteger(n) || n < 1 || n > Math.min(Number(L.BASE_PICTURES) || 150, ORDER.length)) return false;
+    if (!Number.isSafeInteger(n) || n < 3 || n > Math.min(Number(L.BASE_PICTURES) || 150, ORDER.length)) return false;
     if (!safeCall(() => L.canSelect(best, n), false)) return false;
     const pk = safeCall(() => L.pickPicture(n, null), null);
     const book = readBook();
