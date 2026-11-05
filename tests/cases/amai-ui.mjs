@@ -1686,4 +1686,101 @@ export const tests = [
       await c2.close();
     },
   },
+  // ---------- v64：ずかん・面えらびを軽くする（課題 AM-19・AM-22。計画書 docs/plans/amai-perf.md） ----------
+  {
+    id: 'AW32', tier: 'full', title: 'あまいもの ずかん・面えらびの絵は見えてきた枚から描く：開いた直後は一部だけ（data-lazy）・空のわくは描いたあとと同じ大きさでレイアウトが動かない・スクロールすると最後のマスにも絵が入る・2 回目に開いても同じ絵',
+    async run({ browser, check, root }) {
+      const LG = loadLogic(root);
+      const got = {}; for (const p of LG.PICTURE_ORDER) got[p.id] = 1;
+      const v = custom(375, 667, null, 'iPhone 8 375×667');
+      const { ctx, page } = await openG(browser, 'AW32', { v, extra: { 'amai.book': J({ v: 1, got }), 'amai.best': '150' } });
+      // いま開いているカードの絵（canvas）の状態を読む
+      const probe = (sel) => page.evaluate((sel) => {
+        const card = document.querySelector('#card');
+        const cvs = [...card.querySelectorAll(`${sel} canvas`)];
+        const r = (e) => { const b = e.getBoundingClientRect(); return [Math.round(b.width * 10) / 10, Math.round(b.height * 10) / 10]; };
+        const lis = [...card.querySelectorAll(`${sel} > li`)];
+        return { n: cvs.length, painted: cvs.filter((c) => c.dataset.lazy === '0').length, unpainted: cvs.filter((c) => c.dataset.lazy === '1').length, sizes: cvs.map(r), lis: lis.map((e) => Math.round(e.getBoundingClientRect().height * 10) / 10) };
+      }, sel);
+      // 少しずつ下までスクロールする。IntersectionObserver は描画のコマごとに見えている所を調べるので、実時間で間を空ける（早送りの時計の中では間が 0 になり、途中の絵を飛ばしてしまう）
+      const scrollAll = async () => {
+        const h = await page.evaluate(() => {
+          const card = document.querySelector('#card');
+          const sc = [document.querySelector('#overlay'), card, ...card.querySelectorAll('*')].find((e) => e.scrollHeight > e.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(e).overflowY));
+          if (!sc) return 0;
+          sc.dataset.scAll = '1';
+          return sc.scrollHeight;
+        });
+        if (!h) return false;
+        // 一歩ごとに、いま画面に見えている絵が描かれるまで待つ（画面の描画が遅れている間に先へ進むと、途中の絵を飛ばしてしまう。人が止まって見るのと同じ）
+        const visibleUnpainted = () => page.evaluate(() => [...document.querySelectorAll('#card canvas[data-lazy="1"]')].filter((c) => { const r = c.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; }).length);
+        for (let y = 0; y <= h; y += 250) {
+          await page.evaluate((y) => { document.querySelector('[data-sc-all]').scrollTop = y; }, y);
+          for (let i = 0; i < 40; i++) { await sleep(50); if ((await visibleUnpainted()) === 0) break; }
+        }
+        await page.evaluate(() => { const e = document.querySelector('[data-sc-all]'); e.scrollTop = e.scrollHeight; delete e.dataset.scAll; });
+        return true;
+      };
+      // スクロールのあと、描き終わるまで待つ（IntersectionObserver の知らせは実際の描画のコマごとに来る。早送りの時計では進まないので、実時間で待つ）
+      const settleAll = async (sel) => { for (let i = 0; i < 40; i++) { await sleep(100); const q = await probe(sel); if (q.unpainted === 0) break; } };
+      const lastInk = (sel) => page.evaluate((sel) => {
+        const cvs = [...document.querySelectorAll(`#card ${sel} canvas`)], c = cvs[cvs.length - 1];
+        if (!c) return -1;
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        let k = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) k++;
+        return k;
+      }, sel);
+      for (const [name, btn, sel, total] of [['ずかん', '#bookBtn', 'ul.book', LG.PICTURE_ORDER.length], ['面えらび', '#selectBtn', 'ul.levels', 150]]) {
+        await page.click(btn); await wait(page, 100);
+        let a = await probe(sel);
+        for (let i = 0; i < 40 && a.painted < 1; i++) { await sleep(50); a = await probe(sel); }   // 最初の 1 枚が描かれるまで実時間で待つ（最大 2 秒）
+        const ahead = await page.evaluate((sel) => [...document.querySelectorAll(`#card ${sel} canvas`)].filter((c) => c.dataset.lazy === '0' && c.getBoundingClientRect().top > innerHeight).length, sel);
+        check(`${name}：開いた直後、見えている所より下にも描かれたマスがある（先読みが効いている。${ahead} 枚）`, ahead > 0, ahead);
+        check(`${name}：開いた直後は絵が ${a.n} 個のうち一部だけ描かれている（描いた ${a.painted}・まだ ${a.unpainted}）。最初の 1 枚は描かれている`, a.n === total && a.painted >= 1 && a.unpainted > 0 && a.painted < a.n, { n: a.n, painted: a.painted });
+        const d0 = await page.evaluate((sel) => { const c = document.querySelector(`#card ${sel} canvas[data-lazy="0"]`); return c ? c.toDataURL() : ''; }, sel);
+        check(`${name}：描いた絵が空でない（最初の 1 枚）`, d0.length > 500, d0.length);
+        const sc = await scrollAll(); await settleAll(sel);
+        const b = await probe(sel);
+        check(`${name}：下までスクロールすると全部（${b.n}）の絵が描かれる（まだ ${b.unpainted}）・最後のマスの絵に色が入る（${await lastInk(sel)} ドット）`, sc && b.painted === b.n && b.unpainted === 0 && (await lastInk(sel)) > 0, { b: [b.n, b.painted], sc });
+        const same = JSON.stringify(a.sizes) === JSON.stringify(b.sizes) && JSON.stringify(a.lis) === JSON.stringify(b.lis);
+        check(`${name}：空のわくは描いたあとと同じ大きさ（絵 ${b.n} 個・マス ${b.lis.length} 個）でレイアウトが動かない`, same, { sizesSame: JSON.stringify(a.sizes) === JSON.stringify(b.sizes), lisSame: JSON.stringify(a.lis) === JSON.stringify(b.lis) });
+        const lastUrl = await page.evaluate((sel) => { const c = [...document.querySelectorAll(`#card ${sel} canvas`)].pop(); return c.toDataURL(); }, sel);
+        await page.click('#card [data-cmd="close"]'); await wait(page, 200);
+        await page.click(btn); await wait(page, 100);
+        await scrollAll(); await settleAll(sel);
+        const lastUrl2 = await page.evaluate((sel) => { const c = [...document.querySelectorAll(`#card ${sel} canvas`)].pop(); return c.toDataURL(); }, sel);
+        const b2 = await probe(sel);
+        check(`${name}：閉じて開き直しても（覚えた絵を使い回して）全部描かれ、同じ絵になる`, b2.painted === b2.n && lastUrl === lastUrl2, { painted: b2.painted, n: b2.n });
+        await page.click('#card [data-cmd="close"]'); await wait(page, 200);
+      }
+      await ctx.close();
+    },
+  },
+  {
+    id: 'AW33', tier: 'full', title: 'あまいもの ずかん・面えらびを開く時間：CPU 6 倍遅く（iPhone SE 相当）・375×667 で、150 枚そろいのずかんと、ベスト 150 の面えらびを開いて 2 コマ描き終わるまでが 1.8 秒以内（v63 までは約 3〜5 秒。目標は 1 秒。性能は揺れるので余裕を持つ）。Chromium だけ',
+    async run({ browser, check, root }) {
+      if (!IS_CHROMIUM) { check('対象外（CDP の CPU 制限は Chromium だけ）', true); return; }
+      const LG = loadLogic(root);
+      const got = {}; for (const p of LG.PICTURE_ORDER) got[p.id] = 1;
+      const v = custom(375, 667, null, 'iPhone 8 375×667');
+      for (const [name, btn] of [['ずかん', '#bookBtn'], ['面えらび', '#selectBtn']]) {
+        const ms = [];
+        for (let i = 0; i < 3; i++) {
+          const { ctx, page } = await newPage(browser, v, `AW33 ${name} ${i}`);   // 実時間で測るので clock は使わない
+          await gotoG(page, { 'amai.book': J({ v: 1, got }), 'amai.best': '150' });
+          const cdp = await ctx.newCDPSession(page);
+          await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 });
+          ms.push(Math.round(await page.evaluate(async (btn) => {
+            const t0 = performance.now();
+            document.querySelector(btn).click();
+            await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+            return performance.now() - t0;
+          }, btn)));
+          await ctx.close();
+        }
+        const best = Math.min(...ms);
+        check(`${name}：CPU 6 倍遅くで開くのに ${ms.join('・')} ms（3 回のうち一番速い ${best} ms が 1800 ms 以内）`, best <= 1800, ms);
+      }
+    },
+  },
 ];
