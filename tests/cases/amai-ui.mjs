@@ -159,7 +159,7 @@ async function playOut(p, maxMs = 60000) {
   return gs(p);
 }
 // 「うごかせない」の局面（絵はそのままで、内側のマスだけ色 1 にして、わく全部（SLOTS 個）を色 1 の箱で埋める。色 1 は内側にしか無く、ふちに出ない）
-const makeStuckState = (p) => p.evaluate(() => {
+const makeStuckState = (p, opt) => p.evaluate((opt) => {
   const G = window.AmaiGame, s = G.logic();
   const { W, H } = s, cells = s.cells.slice();
   const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? -2 : s.cells[y * W + x]);
@@ -182,8 +182,8 @@ const makeStuckState = (p) => p.evaluate(() => {
   const cols = [[], [], [], []]; let left = outer, id = 100;
   while (left > 0) { const n = Math.min(left, 50); cols[id % 4].push({ id: id++, color: 0, count: n, lid: false, ice: 0 }); left -= n; }
   const ns = { ...s, cells, total: all.length, left: all.length, cols, slots, won: false };
-  return { ok: G.setState(ns) === true, why: 'setState が false を返した', inner: inner.length };
-});
+  return { ok: G.setState(ns, opt || undefined) === true, why: 'setState が false を返した', inner: inner.length };
+}, opt || null);
 // 自然に「うごかせない」になる押し方を、画面の中の AmaiLogic で探す（決まった乱数。見つからなければ null）
 const findNaturalStuck = (p) => p.evaluate(() => {
   const L = window.AmaiLogic, book = L.validateBook(null);
@@ -1780,6 +1780,189 @@ export const tests = [
         }
         const best = Math.min(...ms);
         check(`${name}：CPU 6 倍遅くで開くのに ${ms.join('・')} ms（3 回のうち一番速い ${best} ms が 1800 ms 以内）`, best <= 1800, ms);
+      }
+    },
+  },
+  // ---------- ちょうせんモード（2026-11-05。計画書 docs/plans/amai-challenge.md §1・契約 §3.5） ----------
+  {
+    id: 'AW34', tier: 'full', title: 'あまいもの ちょうせん：クリアした 1〜150 面を押すと［ふつうで あそぶ］［ちょうせん］のカード（まだの面はふつうだけ）。ちょうせんは わく 2 つ・1手もどすは 3 回で押せなくなり（ボタンに のこり）、やりなおしで 3 に戻る。途中の保存はしない（開き直すと ふつうの続き）。クリアで「ちょうせん クリア！」・amai.gold に入り、面えらびとずかんに金の花輪（ふつうの花輪より先）・ベストは変わらない・つぎの めんへ はふつうの次の面。ふつうで遊ぶ面の進み方は今までどおり。壊れた amai.gold でも落ちない',
+    async run({ browser, check }) {
+      const PO = await (async () => { const { ctx, page } = await openG(browser, 'AW34 絵'); const ids = await page.evaluate(() => window.AmaiLogic.PICTURE_ORDER.map((x) => x.id)); await ctx.close(); return ids; })();
+      const got = {}; PO.slice(0, 10).forEach((id) => { got[id] = 1; });
+      const save0 = J({ v: 1, level: 11, pic: PO[10], mirror: false, rep: false, presses: [[0, 0]], t: 3 });
+      const base = { 'amai.best': '10', 'amai.book': J({ v: 1, got }), 'amai.clean': J({ v: 1, ids: [PO[4], PO[6]] }), 'amai.gold': null, 'amai.save': save0 };
+      const { ctx, page } = await openG(browser, 'AW34', { extra: base });
+      const pickLv = async (n) => { await page.evaluate((n) => document.querySelector(`#card ul.levels button[data-level="${n}"]`)?.click(), n); await wait(page, 200); };
+      const visSlots = () => page.evaluate(() => [...document.querySelectorAll('#slots .slot')].filter((e) => !e.hidden && e.getBoundingClientRect().width > 0).length);
+      const undoInfo = () => page.evaluate(() => { const b = document.querySelector('#undoBtn'); return { dis: b.disabled, text: b.textContent.replace(/\s+/g, ''), label: b.getAttribute('aria-label') || '' }; });
+      const s0 = await gs(page);
+      check(`保存の続き（11 面・押した 1）から始まる（${s0.level}・${s0.presses}）・ちょうせんでない・わく 3`, s0.level === 11 && s0.presses === 1 && s0.challenge === false && s0.slotCount === 3, s0);
+      // まだクリアしていない面（11 面＝ベスト＋1）は ふつうだけ（今までの確かめ）
+      await page.click('#selectBtn'); await wait(page, 150);
+      const gotLis = await page.evaluate(() => [...document.querySelectorAll('#card ul.levels li[data-got="1"]')].map((l) => Number(l.dataset.level)));
+      check(`クリアしたことのある面に data-got（${J(gotLis)}）`, J(gotLis) === J([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), gotLis);
+      const gn = await page.evaluate(() => { const n = document.querySelector('#card p.gnote'); return n ? { t: n.textContent.trim(), gold: !!n.querySelector('.wreath.gold') } : null; });
+      check(`面えらびに金の花輪の説明の行（${J(gn)}）`, !!gn && gn.gold && /ちょうせん クリア/.test(gn.t), gn);
+      await pickLv(5);
+      const oc = await overlayInfo(page);
+      check(`クリアした 5 面を押すと［ふつうで あそぶ］［ちょうせん］［やめる］のカード（${oc.text}）・途中なら「とちゅうは きえるよ」`, oc.cmds.includes('playNormal') && oc.cmds.includes('playChal') && oc.cmds.includes('close') && /5 めんを あそぶ/.test(oc.text) && /わくが 2つ/.test(oc.text) && /とちゅうは きえる/.test(oc.text), oc);
+      const btnH = await page.evaluate(() => [...document.querySelectorAll('#card [data-cmd="playNormal"], #card [data-cmd="playChal"]')].map((b) => Math.round(b.getBoundingClientRect().height)));
+      check(`2 つのボタンが 44px 以上（${J(btnH)}）`, btnH.length === 2 && btnH.every((h) => h >= 44), btnH);
+      await clickCmd(page, 'close'); await wait(page, 150);
+      check('「やめる」で面えらびの一覧に戻る', (await gs(page)).overlay === 'select', null);
+      await page.keyboard.press('Escape'); await wait(page, 150);
+      // ちょうせんで始める
+      await page.click('#selectBtn'); await wait(page, 150);
+      await pickLv(5);
+      await clickCmd(page, 'playChal'); await wait(page, 300);
+      const c0 = await gs(page);
+      const u0 = await undoInfo(page);
+      check(`ちょうせんの 5 面（${c0.level}・challenge ${c0.challenge}）：わく 2 つ（state ${c0.slotCount}・見えている .slot ${await visSlots()}）・もどし のこり 3（${c0.chalUndo}）・ボタンに「のこり3」（${u0.text}）・押した数 0 なので押せない`, c0.level === 5 && c0.challenge === true && c0.slotCount === 2 && (await visSlots()) === 2 && c0.chalUndo === 3 && /のこり3/.test(u0.text) && u0.dis && c0.overlay === null, { c0, u0 });
+      const tag = await page.evaluate(() => { const t = document.querySelector('.hud .chaltag'); return t ? getComputedStyle(t).display !== 'none' : false; });
+      check(`上の行に「ちょうせん」の札が出る（${tag}）`, tag, null);
+      check(`ちょうせんを始めても途中の保存（amai.save）は ふつうの 11 面のまま`, (await stored(page, 'amai.save')) === save0, await stored(page, 'amai.save'));
+      // 1手もどすは 3 回まで
+      const sol = await solutionOf(page);
+      const counts = [];
+      for (let k = 0; k < 3; k++) {
+        await settleG(page); await pressCol(page, sol[0]); await skipG(page);
+        await page.click('#undoBtn'); await wait(page, 150);
+        const g = await gs(page); counts.push([g.presses, g.chalUndo]);
+      }
+      await settleG(page); await pressCol(page, sol[0]); await skipG(page);
+      const g4 = await gs(page);
+      const u4 = await undoInfo(page);
+      await page.keyboard.press('u'); await wait(page, 150);
+      const g5 = await gs(page);
+      check(`押す→もどすを 3 回（${J(counts)}）で のこり 0・4 回目は押した数 1 でも押せない（disabled ${u4.dis}・${u4.text}・キーの U でも戻らない ${g5.presses}）`, J(counts) === J([[0, 2], [0, 1], [0, 0]]) && g4.presses === 1 && g4.chalUndo === 0 && u4.dis && /のこり0/.test(u4.text) && g5.presses === 1 && !g4.canUndo, { counts, g4, u4, g5 });
+      check('ちょうせんの間は押しても amai.save を書かない', (await stored(page, 'amai.save')) === save0, await stored(page, 'amai.save'));
+      // やりなおしで 3 に戻る
+      await page.click('#restartBtn'); await wait(page, 150);
+      await clickCmd(page, 'restartYes'); await wait(page, 300);
+      const r0 = await gs(page);
+      check(`やりなおしで もどしが 3 に戻り（${r0.chalUndo}）、ちょうせんのまま（${r0.challenge}・わく ${r0.slotCount}）・押した数 0`, r0.chalUndo === 3 && r0.challenge === true && r0.slotCount === 2 && r0.presses === 0 && r0.level === 5, r0);
+      // 途中で開き直すと ふつうの続き
+      await settleG(page); await pressCol(page, sol[0]); await skipG(page);
+      await page.reload(); await wait(page, 300);
+      const rl = await gs(page);
+      check(`ちょうせんの途中で開き直すと ふつうの続き（${rl.level} 面・押した ${rl.presses}・challenge ${rl.challenge}・わく ${rl.slotCount}）`, rl.level === 11 && rl.presses === 1 && rl.challenge === false && rl.slotCount === 3, rl);
+      // ちょうせんでクリア
+      await page.click('#selectBtn'); await wait(page, 150);
+      await pickLv(5);
+      await clickCmd(page, 'playChal'); await wait(page, 300);
+      await page.evaluate(() => { window.__shared = null; navigator.share = (d) => { window.__shared = d; return Promise.resolve(); }; navigator.canShare = () => false; });
+      const { s: cl } = await solveToClear(page);
+      await wait(page, 600);
+      const cc = await overlayInfo(page);
+      const gold = JSON.parse((await stored(page, 'amai.gold')) || 'null');
+      const book = JSON.parse((await stored(page, 'amai.book')) || '{}');
+      check(`ちょうせんでクリア（${cl.overlay}）：カードに「ちょうせん クリア！」・「1手もどし なし！」は出さない（${cc.text}）`, cl.overlay === 'clear' && /5 めん クリア！/.test(cc.text) && /ちょうせん クリア！/.test(cc.text) && !/1手もどし なし！/.test(cc.text), cc);
+      check(`amai.gold に 5 面の絵（${J(gold)}）・ずかんの回数が 2（${book.got && book.got[PO[4]]}）・ベストは 10 のまま（${await stored(page, 'amai.best')}）・amai.clean は変えない・amai.save は 11 面のまま`, J(gold) === J({ v: 1, ids: [PO[4]] }) && book.got[PO[4]] === 2 && (await stored(page, 'amai.best')) === '10' && (await stored(page, 'amai.clean')) === base['amai.clean'] && (await stored(page, 'amai.save')) === save0, { gold, book });
+      await clickCmd(page, 'share'); await wait(page, 200);
+      const sh = await page.evaluate(() => window.__shared && window.__shared.text);
+      check(`ともだちに おくる の文に「ちょうせん」（${sh}）`, /5めん ちょうせん クリア！/.test(sh || ''), sh);
+      await page.evaluate(() => document.querySelector('.share-note')?.click());
+      // ずかん：金の花輪
+      await clickCmd(page, 'book'); await wait(page, 200);
+      const bk = await page.evaluate(() => [...document.querySelectorAll('#card ul.book li')].filter((l) => l.querySelector('.wreath')).map((l) => ({ id: l.dataset.id, gold: l.dataset.gold === '1', g: !!l.querySelector('.wreath.gold'), n: l.querySelectorAll('.wreath').length, sr: l.querySelector('.sr')?.textContent || '' })));
+      const bgn = await page.evaluate(() => !!document.querySelector('#card p.gnote .wreath.gold'));
+      check(`ずかん：5 面の絵は金の花輪だけ（花輪 1 つ・読み上げ「ちょうせん クリア」）、7 面の絵はふつうの花輪（${J(bk)}）・金の説明の行（${bgn}）`, bgn && J(bk) === J([{ id: PO[4], gold: true, g: true, n: 1, sr: '（ちょうせん クリア）' }, { id: PO[6], gold: false, g: false, n: 1, sr: '（1手もどし なし）' }]), bk);
+      await clickCmd(page, 'close'); await wait(page, 150);
+      // つぎの めんへ：ふつうの 6 面
+      await clickCmd(page, 'next'); await wait(page, 300);
+      const n6 = await gs(page);
+      check(`「つぎの めんへ」は ふつうの 6 面（${n6.level}・challenge ${n6.challenge}・わく ${n6.slotCount}・見えている .slot ${await visSlots()}）・ボタンは「1手もどす」だけ`, n6.level === 6 && n6.challenge === false && n6.slotCount === 3 && (await visSlots()) === 3 && (await undoInfo(page)).text === '1手もどす', n6);
+      // 面えらび：金の花輪が先
+      await page.click('#selectBtn'); await wait(page, 150);
+      const sl = await page.evaluate(() => [...document.querySelectorAll('#card ul.levels li')].filter((l) => l.querySelector('.wreath')).map((l) => ({ lv: Number(l.dataset.level), gold: l.dataset.gold === '1', clean: l.dataset.clean === '1', g: !!l.querySelector('.wreath.gold'), n: l.querySelectorAll('.wreath').length, label: l.querySelector('button').getAttribute('aria-label') })));
+      check(`面えらび：5 面は金の花輪（ふつうの花輪より先・1 つだけ・「ちょうせん クリア」）、7 面はふつうの花輪（${J(sl)}）`, sl.length === 2 && sl[0].lv === 5 && sl[0].gold && sl[0].g && !sl[0].clean && sl[0].n === 1 && /ちょうせん クリア/.test(sl[0].label) && sl[1].lv === 7 && sl[1].clean && !sl[1].g, sl);
+      // ふつうで あそぶ：今までどおりの進み方（ベストは変わらず、つぎは選んだ面の次）
+      await pickLv(3);
+      await clickCmd(page, 'playNormal'); await wait(page, 300);
+      const p3 = await gs(page);
+      check(`［ふつうで あそぶ］で 3 面のふつう（${p3.level}・challenge ${p3.challenge}・わく ${p3.slotCount}）・途中の保存は 3 面`, p3.level === 3 && !p3.challenge && p3.slotCount === 3 && JSON.parse(await stored(page, 'amai.save')).level === 3, p3);
+      const { s: c3 } = await solveToClear(page);
+      await wait(page, 600);
+      await clickCmd(page, 'next'); await wait(page, 300);
+      const n4 = await gs(page);
+      check(`ふつうの 3 面クリア（${c3.overlay}）でベストは 10 のまま・「つぎの めんへ」は 4 面のふつう（${n4.level}・${n4.challenge}）・amai.gold は変わらない`, c3.overlay === 'clear' && (await stored(page, 'amai.best')) === '10' && n4.level === 4 && !n4.challenge && J(JSON.parse(await stored(page, 'amai.gold'))) === J({ v: 1, ids: [PO[4]] }), n4);
+      // まだの面（ベスト＋1）は確かめのカードなしで ふつう（押した数 0）
+      await page.click('#selectBtn'); await wait(page, 150);
+      await pickLv(11);
+      const s11 = await gs(page);
+      check(`まだクリアしていない 11 面は ふつうだけ（カードなしで始まる。${s11.level}・${s11.overlay}・${s11.challenge}）`, s11.level === 11 && s11.overlay === null && !s11.challenge, s11);
+      // 壊れた amai.gold
+      for (const bad of ['{', '[1]', J({ v: 1, ids: 'x' }), J({ v: 1, ids: [null, 5, 'Bad', PO[8]] })]) {
+        await gotoG(page, { ...base, 'amai.gold': bad, 'amai.save': null });
+        await page.click('#selectBtn'); await wait(page, 150);
+        const a = await page.evaluate(() => ({ kind: document.querySelector('#card')?.dataset.kind, gold: [...document.querySelectorAll('#card ul.levels li[data-gold="1"]')].map((l) => Number(l.dataset.level)) }));
+        await page.keyboard.press('Escape'); await wait(page, 150);
+        await page.click('#bookBtn'); await wait(page, 150);
+        const b = await page.evaluate(() => ({ kind: document.querySelector('#card')?.dataset.kind, gold: [...document.querySelectorAll('#card ul.book li[data-gold="1"]')].map((l) => l.dataset.id) }));
+        await page.keyboard.press('Escape'); await wait(page, 150);
+        const want = bad.includes(PO[8]) ? [9] : [];
+        check(`壊れた amai.gold（${bad}）でも面えらび（${a.kind}）・ずかん（${b.kind}）が開き、金の花輪は読める id だけ（${J(a.gold)}・${J(b.gold)}）`, a.kind === 'select' && b.kind === 'book' && J(a.gold) === J(want) && b.gold.length === want.length, { a, b });
+      }
+      await ctx.close();
+    },
+  },
+  {
+    id: 'AW35', tier: 'full', title: 'あまいもの ちょうせんの小さい画面（SE 縦 320×568・SE 横）：わく 2 つ・「1手もどす のこり N」のボタン・「ちょうせん」の札・選ぶカード・クリアのカード・もどしを使い切った うごかせないのカード（やりなおしだけ）が崩れない（44px 以上・12px 以上・はみ出さない・横スクロールなし）',
+    async run({ browser, check }) {
+      const PO = await (async () => { const { ctx, page } = await openG(browser, 'AW35 絵'); const ids = await page.evaluate(() => window.AmaiLogic.PICTURE_ORDER.map((x) => x.id)); await ctx.close(); return ids; })();
+      const got = {}; PO.slice(0, 40).forEach((id) => { got[id] = 1; });
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app')]) {
+        const extra = { 'amai.best': '40', 'amai.book': J({ v: 1, got }), 'amai.save': null };
+        const { ctx, page } = await openG(browser, `AW35 ${v.label}`, { v, extra });
+        await page.click('#selectBtn'); await wait(page, 150);
+        await page.evaluate(() => document.querySelector('#card ul.levels button[data-level="37"]')?.click()); await wait(page, 200);
+        const pc = await overlayProbe(page, v.safe);
+        const mn = await page.evaluate(() => { const n = document.querySelector('#card p.modenote'); return n ? { sw: n.scrollWidth, cw: n.clientWidth, fs: parseFloat(getComputedStyle(n).fontSize) } : null; });
+        check(`${v.label}：選ぶカード（${J(pc.btns.map((b) => b.cmd))}）の見出しが切れず、全ボタンに届き 44px 以上・説明の字が 12px 以上ではみ出さない`, overlayOk(pc) && pc.btns.some((b) => b.cmd === 'playChal') && !!mn && mn.fs >= 12 && mn.sw <= mn.cw + 1, { pc, mn });
+        await clickCmd(page, 'playChal'); await wait(page, 300);
+        const sol = await solutionOf(page);
+        await settleG(page); await pressCol(page, sol[0]); await skipG(page);
+        await page.click('#undoBtn'); await wait(page, 150);
+        const lay = await page.evaluate((safe) => {
+          const [t, r, b, l] = safe || [0, 0, 0, 0];
+          const R = (e) => e.getBoundingClientRect();
+          const slots = [...document.querySelectorAll('#slots .slot')].filter((e) => !e.hidden).map((e) => { const q = R(e); return { w: q.width, h: q.height, l: q.left, r: q.right, t: q.top, b: q.bottom }; });
+          const grid = R(document.querySelector('#grid')), pic = R(document.querySelector('#picBox')), tools = R(document.querySelector('#tools'));
+          const u = document.querySelector('#undoBtn'), uq = R(u);
+          const hud = document.querySelector('.hud'), tag = document.querySelector('.hud .chaltag'), tq = R(tag), hq = R(hud);
+          const fsAll = [u.querySelector('.ulab'), u.querySelector('.urest'), tag].map((e) => parseFloat(getComputedStyle(e).fontSize));
+          return {
+            slots, overlapGrid: slots.some((s) => s.b > grid.top + 0.5), inside: slots.every((s) => s.l >= l - 0.5 && s.r <= innerWidth - r + 0.5 && s.t >= t - 0.5),
+            undo: { w: uq.width, h: uq.height, sw: u.scrollWidth, cw: u.clientWidth, sh: u.scrollHeight, ch: u.clientHeight, text: u.textContent.replace(/\s+/g, '') },
+            tagIn: tq.left >= hq.left - 0.5 && tq.right <= hq.right + 0.5 && tq.width > 0, hudOver: hud.scrollWidth > hud.clientWidth + 1, fs: fsAll,
+            toolsIn: tools.bottom <= innerHeight - b + 0.5, picIn: pic.top >= 0, hs: document.documentElement.scrollWidth > innerWidth,
+          };
+        }, v.safe);
+        check(`${v.label}：わく 2 つ（${J(lay.slots.map((s) => [Math.round(s.w), Math.round(s.h)]))}）が 44px 以上・画面内・格子と重ならない`, lay.slots.length === 2 && lay.slots.every((s) => s.w >= 43.5 && s.h >= 43.5) && lay.inside && !lay.overlapGrid, lay);
+        check(`${v.label}：「1手もどす のこり 2」（${lay.undo.text}）が 44px 以上でボタンに収まり、字が 12px 以上（${J(lay.fs)}）・「ちょうせん」の札が上の行に収まる・横スクロールなし`, /のこり2/.test(lay.undo.text) && lay.undo.w >= 43.5 && lay.undo.h >= 43.5 && lay.undo.sw <= lay.undo.cw + 1 && lay.undo.sh <= lay.undo.ch + 1 && lay.fs.every((f) => f >= 12) && lay.tagIn && !lay.hudOver && lay.toolsIn && !lay.hs, lay);
+        // もどしを使い切って うごかせない：やりなおしだけ
+        for (let k = 0; k < 2; k++) { await settleG(page); await pressCol(page, sol[0]); await skipG(page); await page.click('#undoBtn'); await wait(page, 150); }
+        const g0 = await gs(page);
+        check(`${v.label}：もどしを 3 回使い切った（のこり ${g0.chalUndo}・わく ${g0.slotCount}）・ボタンは押せない`, g0.chalUndo === 0 && g0.slotCount === 2 && (await page.evaluate(() => document.querySelector('#undoBtn').disabled)), g0);
+        // うごかせないのカード：ちょうせんで もどし 0 なら［やりなおし］だけ（わく 2 つを待つ箱で埋めた局面を setState で入れる）
+        const ms = await makeStuckState(page, { challenge: true, undo: 0 });
+        for (let i = 0; i < 30 && (await gs(page)).overlay !== 'stuck'; i++) { await skipG(page); await wait(page, 100); }
+        const gs0 = await gs(page);
+        const sp = await overlayProbe(page, v.safe);
+        const oi = await overlayInfo(page);
+        const hint = await hintText(page);
+        check(`${v.label}：もどし 0 の うごかせないカード（${oi.text}）は［やりなおし］だけ・44px 以上で届く・案内は「やりなおし」（${hint}）`, ms.ok && gs0.overlay === 'stuck' && gs0.slotCount === 2 && gs0.challenge && overlayOk(sp) && J(oi.cmds) === J(['restart']) && /やりなおして/.test(oi.text) && /やりなおし/.test(hint || ''), { ms, sp, oi, hint });
+        // もとの ちょうせんの面へ（setState の局面のやりなおしは、入れた局面に戻るだけなので、開き直して面えらびから選び直す）
+        await gotoG(page, extra);
+        await page.click('#selectBtn'); await wait(page, 150);
+        await page.evaluate(() => document.querySelector('#card ul.levels button[data-level="37"]')?.click()); await wait(page, 200);
+        await clickCmd(page, 'playChal'); await wait(page, 300);
+        const { s } = await solveToClear(page);
+        await wait(page, 600);
+        const cp = await overlayProbe(page, v.safe);
+        const gl = await page.evaluate(() => { const g = document.querySelector('#card p.clean.gold'); return g ? { sw: g.scrollWidth, cw: g.clientWidth, fs: parseFloat(getComputedStyle(g).fontSize) } : null; });
+        check(`${v.label}：ちょうせんのクリアのカード（${J(cp.btns.map((b) => b.cmd))}）が崩れず、「ちょうせん クリア！」がはみ出さない（${J(gl)}）`, s.overlay === 'clear' && overlayOk(cp) && !!gl && gl.fs >= 12 && gl.sw <= gl.cw + 1, { cp, gl });
+        await ctx.close();
       }
     },
   },

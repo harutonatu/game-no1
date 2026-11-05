@@ -1362,7 +1362,8 @@
       if (ok && !hiddenNow) safeCall(() => render.resume());
       return ok;
     },
-    setState(s) {
+    // opt.challenge：ちょうせんの見た目で入れる（テスト用。もどしの のこりは opt.undo、無ければ CHAL_UNDO）。記録は書かない（custom）
+    setState(s, opt) {
       const st = safeCall(() => L.validateState(s), null);
       if (!st) return false;
       if (overlay !== null) hideOverlay();
@@ -1371,9 +1372,9 @@
       cancelPending();
       safeCall(() => render.finishAll());
       custom = st;
-      chal = false;
-      chalUndo = CHAL_UNDO;
-      el.playView.dataset.mode = "normal";
+      chal = !!(opt && opt.challenge === true);
+      chalUndo = chal && Number.isSafeInteger(opt.undo) && opt.undo >= 0 && opt.undo <= CHAL_UNDO ? opt.undo : CHAL_UNDO;
+      el.playView.dataset.mode = chal ? "chal" : "normal";
       customHist = [];
       presses = [];
       noUndo = null;
