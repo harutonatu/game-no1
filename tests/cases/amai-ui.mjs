@@ -1790,9 +1790,9 @@ export const tests = [
   {
     id: 'AW34', tier: 'full', title: 'あまいもの ちょうせん：クリアした 1〜150 面を押すと［ふつうで あそぶ］［ちょうせん］のカード（まだの面はふつうだけ）。ちょうせんは わく 2 つ・1手もどすは 3 回で押せなくなり（ボタンに のこり）、やりなおしで 3 に戻る。途中の保存はしない（開き直すと ふつうの続き）。クリアで「ちょうせん クリア！」・amai.gold に入り、面えらびとずかんに金の花輪（ふつうの花輪より先）・ベストは変わらない・つぎの めんへ はふつうの次の面。ふつうで遊ぶ面の進み方は今までどおり。壊れた amai.gold でも落ちない',
     async run({ browser, check }) {
-      const PO = await (async () => { const { ctx, page } = await openG(browser, 'AW34 絵'); const ids = await page.evaluate(() => window.AmaiLogic.PICTURE_ORDER.map((x) => x.id)); await ctx.close(); return ids; })();
+      // 途中の保存は、ページの AmaiLogic.makeSave で今の絵の目印（picSig。課題 AM-18）つきで作る（目印が無いと 3 面からは最初から始まる）
+      const { PO, save0 } = await (async () => { const { ctx, page } = await openG(browser, 'AW34 絵'); const r = await page.evaluate(() => { const L = window.AmaiLogic; const ids = L.PICTURE_ORDER.map((x) => x.id); return { PO: ids, save0: L.makeSave(11, { id: ids[10], mirror: false, repeat: false }, [[0, 0]], 3) }; }); await ctx.close(); return r; })();
       const got = {}; PO.slice(0, 10).forEach((id) => { got[id] = 1; });
-      const save0 = J({ v: 1, level: 11, pic: PO[10], mirror: false, rep: false, presses: [[0, 0]], t: 3 });
       const base = { 'amai.best': '10', 'amai.book': J({ v: 1, got }), 'amai.clean': J({ v: 1, ids: [PO[4], PO[6]] }), 'amai.gold': null, 'amai.save': save0 };
       const { ctx, page } = await openG(browser, 'AW34', { extra: base });
       const pickLv = async (n) => { await page.evaluate((n) => document.querySelector(`#card ul.levels button[data-level="${n}"]`)?.click(), n); await wait(page, 200); };
