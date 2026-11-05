@@ -145,7 +145,7 @@ fill({(x, y) for x, y in ell(39, 45, 12, 1.3) if get(x, y) in 'WS'}, 'K')
 tail = line(46, 42, 54, 40, 1) | line(54, 40, 57, 35, 1) | line(57, 35, 56, 31, 1)
 shape(tail, 'O')
 fill({(50, 41), (55, 37), (57, 33)}, 'C')
-body = ell(39, 34, 8.5, 9)
+body = ell(39, 33, 8.5, 10.5)   # 頭と 3 マス以上 重ねて 首を 太く
 shape(body, 'O', sh='C', hi='Y', d=2)
 fill(ell(37.5, 35, 4, 6), 'W')                                         # おなか
 for k in range(3):                                                     # しま

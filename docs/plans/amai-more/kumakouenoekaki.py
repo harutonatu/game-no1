@@ -111,7 +111,7 @@ def lit(m, base, sh, hi):
     fill(edge(m), 'K')
 earL = ell(9, 5, 3.8, 3.8); earR = ell(27, 5, 3.8, 3.8)
 head = ell(18, 14, 10.5, 9)
-body = ell(18, 33, 11, 11)
+body = ell(18, 32, 11, 12.5)   # 頭と 3 マス以上 重ねて 首を 太く
 armL = ell(7, 33, 3.5, 6, 15)
 armR = poly([(25, 26), (36, 36), (33, 39), (22, 31)])
 footL = ell(10, 43, 5, 3.4); footR = ell(26, 43, 5, 3.4)

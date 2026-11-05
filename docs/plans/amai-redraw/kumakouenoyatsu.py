@@ -97,7 +97,7 @@ fill({(x, y) for x, y in ell(31, 44, 12, 1.2) if (x + y) % 2 == 0}, 'K')
 earL = ell(23, 5.5, 4.2, 4.2); earR = ell(42, 6, 4.2, 4.2)
 shape(earL, 'C'); fill(ell(23, 6, 2.2, 2.2), 'P')
 shape(earR, 'C'); fill(ell(42, 6.5, 2.2, 2.2), 'P')
-body = ell(31, 33.5, 12, 9)
+body = ell(31, 31.5, 11.5, 9.5)   # 頭と 3 マス以上 重ねて 首を 太く
 shape(body, 'C', sh='K', hi='O')
 belly = ell(33, 34, 6.5, 6.5)
 fill(belly, 'O'); fill({(x, y) for x, y in belly if (x - 1, y - 1) not in belly}, 'Y')

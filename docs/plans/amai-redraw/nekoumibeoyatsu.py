@@ -92,7 +92,7 @@ fill({(x, y) for x, y in ell(28, 43, 13, 1.6)} , 'O'); fill({(x, y) for x, y in 
 tail = line(16, 41, 9, 39, 1.2) | line(9, 39, 7, 34, 1.1)
 shape(tail, 'O', sh='C', d=1)
 fill({(9, 38), (8, 36), (12, 40)}, 'C')
-body = ell(26, 33, 10.5, 9.5)
+body = ell(25.5, 31.5, 10, 11) | ell(35, 22.5, 5, 4)   # 頭と 3 マス以上 重ねて 首を 太く
 shape(body, 'O', sh='C', hi='Y')
 chest = ell(28, 31, 5, 7)
 fill(chest, 'W')

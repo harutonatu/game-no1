@@ -124,7 +124,7 @@ fill(rect(55, 1, 55, 12) | rect(49, 7, 62, 7), 'W')                     # まど
 fill(edge(win), 'K')
 # ---- くま（すわって、テーブルに あたまを のせて ねむる）
 fill({(x, y) for x, y in ell(16, 46, 12, 1) if get(x, y) in 'YO'}, 'O')
-body = ell(17, 34.5, 11, 9.5)
+body = ell(18.5, 35, 10, 9) | ell(21, 27, 8, 6)   # かた（頭を 体に 重ねて つなぐ）
 shape(body, 'C', hi='O', d=1)
 for cx, cy in ((9, 44), (21, 44.5)):
     f = ell(cx, cy, 4.3, 2.6)

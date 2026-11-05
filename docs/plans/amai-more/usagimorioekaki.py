@@ -162,7 +162,7 @@ earB = ell(29, 13, 2.8, 8, -22); earF = ell(36, 12, 3, 8.3, 6)
 for e, cx, cy, a in ((earB, 29, 13, -22), (earF, 36, 12, 6)):
     fill(e, WS(e)); fill(ell(cx, cy + .3, 1.3, 6, a), 'P'); fill(edge(e), 'K')
 foot = ell(10, 42, 5, 2.4, 10); fill(foot, 'W'); fill(edge(foot), 'K'); fill({(7, 42), (8, 42), (8, 41)}, 'P')
-body = ell(23, 37.5, 13, 7)
+body = ell(23, 37.5, 13, 7) | ell(33, 34, 7, 5.5)   # むね（頭と 3 マス以上 重ねて 首を 太く）
 fill(body, WS(body)); fill(edge(body), 'K')
 tail = ell(10, 34, 2.8, 2.6); fill(tail, 'W'); fill(edge(tail), 'K')
 head = ell(36, 26, 9, 7.5)

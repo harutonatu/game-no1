@@ -118,7 +118,7 @@ for (x, y), c in (((30, 44), 'R'), ((33, 46), 'Y'), ((26, 46), 'B')):
 fill(ell(24, 44, 13, 1.3), 'K')
 tail = (ell(11, 33, 6, 8) - ell(12, 33, 3.2, 5.5)) & rect(0, 25, 13, 42)
 shape(tail, 'O'); fill({(6, 30), (5, 33), (6, 36), (8, 27)}, 'C')
-body = ell(24, 34, 11.5, 10)
+body = ell(24, 32, 11.5, 12)   # 頭と 3 マス以上 重ねて 首を 太く
 shape(body, 'O')
 fill({(x, y) for x, y in body if (x - 2, y) not in body or (x, y - 2) not in body} - edge(body), 'Y')
 for sx in (15, 18): fill(line(sx, 30, sx + 1, 36) & (body - edge(body)), 'C')
