@@ -47,7 +47,7 @@
   const HINT_CARRY = "ありんこが はこんでるよ";   // 待っているだけのとき（押せる箱が無い・わくが いっぱい）に うすく出す
   const HINT_OPEN = "ふたが あいたよ";
   const HINT_THAW = "こおりが とけたよ";
-  const MARK_WORD = { circle: "まる", triangle: "さんかく", star: "ほし", diamond: "ひしがた", plus: "じゅうじ", cross: "ばつ", heart: "ハート", bars: "よこせん", ring: "わ", stripes: "たてせん" };
+  const MARK_WORD = { circle: "まる", triangle: "さんかく", star: "ほし", diamond: "ひしがた", plus: "じゅうじ", cross: "ばつ", heart: "ハート", bars: "よこせん", ring: "わ", stripes: "たてせん", moon: "つき", drop: "しずく" };
   const SEASON_WORD = { haru: "はる", natsu: "なつ", aki: "あき", fuyu: "ふゆ" };
 
   const now = () => performance.now();

@@ -309,11 +309,11 @@ AmaiPictures.add([
 ]);
 ```
   （この見本は 10×10・角砂糖 74 個：R 66・G 5・C 3、色 3。閉じた空き 0。企画担当が Node で数えた。1 面の絵にしてよい）
-- 文字：`.`＝空き。色は §5.2 の表の文字（`R` あか・`O` オレンジ・`Y` きいろ・`G` みどり・`S` みずいろ・`B` あお・`P` ピンク・`C` ちゃいろ・`W` しろ・`K` くろ）。
+- 文字：`.`＝空き。色は §5.2 の表の文字（`R` あか・`O` オレンジ・`Y` きいろ・`G` みどり・`S` みずいろ・`B` あお・`P` ピンク・`C` ちゃいろ・`W` しろ・`K` くろ・`D` こいみどり・`V` むらさき）。`D`・`V` は 2026-11-05 に背景を落ち着かせるため足した（ユーザー「色を2つ足してください」→「こいみどりとむらさき」。計画書 docs/plans/amai-bg.md §3.1）。
 - 絵の決まり（テスト AL2 が全部確かめる）：
   1. 横 `W` ≤ 64、縦 `H` ≤ 48（手直し前は 32×24）。どの行も同じ長さ。上下左右のはしの行・列のどれかに角砂糖がある（むだな空きの行を作らない）。
-  2. 使う文字は上の 11 個だけ。
-  3. 色の数と角砂糖の数が、その絵の段（§2.1）の範囲に入る。角砂糖は全部で 2800 個以下（手直し前は 700）。
+  2. 使う文字は上の 13 個だけ（`.` と 12 色）。
+  3. 色の数と角砂糖の数が、その絵の段（§2.1）の範囲に入る。角砂糖は全部で 3072 個以下（＝64×48。2026-11-05 に 2800 から上げた。手直し前は 700）。
   4. 各色 3 個以上（1〜2 個だけの色は箱が小さすぎる）。
   5. **閉じた空きがない**（外へ出られない `.` を作らない）。
   6. `id`（英小文字）と `name`（ひらがな・カタカナ）が、ほかの絵と重ならない。`season` は `""`（季節でない）・`"haru"`・`"natsu"`・`"aki"`・`"fuyu"` のどれか（ずかんの札だけに使う。**日付で出し分けない**）。
@@ -345,7 +345,7 @@ AmaiPictures.add([
 | XXL（49–100。2026-11-03 に足した） | 49 もりで くまが おやつを たべる（`kumamorioyatsu`）・50 こうえんで うさぎが おえかきを する（`usagikouenoekaki`）・51 もりで ねこが ねむる（`nekomorinemuru`）・52 こうえんで ぱんだが おやつを たべる（`pandakouenoyatsu`）・53 もりで いぬが ねむる（`inumorinemuru`）・54 だいどころで ぱんだが おやつを たべる（`pandadaidokorooyatsu`）・55 こうえんで ねこが おえかきを する（`nekokouenoekaki`）・56 もりで いぬが ボールで あそぶ（`inumoribooru`）・57 だいどころで いぬが おえかきを する（`inudaidokorooekaki`）・58 もりで ねこが ボールで あそぶ（`nekomoribooru`）・59 **夏** うみべで くまが おえかきを する（`kumaumibeoekaki`）・60 こうえんで ぱんだが おえかきを する（`pandakouenoekaki`）・61 もりで いぬが おやつを たべる（`inumorioyatsu`）・62 もりで うさぎが ねむる（`usagimorinemuru`）・63 **冬** ゆきやまで ぱんだが おえかきを する（`pandayukiyamaoekaki`）・64 こうえんで ぱんだが ボールで あそぶ（`pandakouenbooru`）・65 **冬** ゆきやまで くまが おえかきを する（`kumayukiyamaoekaki`）・66 **夏** うみべで ぱんだが おえかきを する（`pandaumibeoekaki`）・67 **冬** ゆきやまで うさぎが おえかきを する（`usagiyukiyamaoekaki`）・68 **夏** うみべで ぱんだが ねむる（`pandaumibenemuru`）・69 だいどころで くまが おえかきを する（`kumadaidokorooekaki`）・70 だいどころで ぱんだが ねむる（`pandadaidokoronemuru`）・71 もりで ぱんだが ねむる（`pandamorinemuru`）・72 **夏** うみべで ぱんだが おやつを たべる（`pandaumibeoyatsu`）・73 もりで ねこが おやつを たべる（`nekomorioyatsu`）・74 **夏** うみべで うさぎが おえかきを する（`usagiumibeoekaki`）・75 もりで くまが ボールで あそぶ（`kumamoribooru`）・76 **夏** うみべで ねこが おえかきを する（`nekoumibeoekaki`）・77 もりで うさぎが おやつを たべる（`usagimorioyatsu`）・78 もりで ぱんだが おえかきを する（`pandamorioekaki`）・79 **冬** ゆきやまで ぱんだが ねむる（`pandayukiyamanemuru`）・80 もりで いぬが おえかきを する（`inumorioekaki`）・81 もりで くまが ねむる（`kumamorinemuru`）・82 もりで うさぎが おえかきを する（`usagimorioekaki`）・83 だいどころで ぱんだが おえかきを する（`pandadaidokorooekaki`）・84 こうえんで ぱんだが ねむる（`pandakouennemuru`）・85 もりで うさぎが ボールで あそぶ（`usagimoribooru`）・86 **冬** ゆきやまで ねこが おえかきを する（`nekoyukiyamaoekaki`）・87 **夏** うみべで ぱんだが ボールで あそぶ（`pandaumibebooru`）・88 こうえんで くまが おえかきを する（`kumakouenoekaki`）・89 **冬** ゆきやまで ぱんだが ボールで あそぶ（`pandayukiyamabooru`）・90 だいどころで うさぎが おえかきを する（`usagidaidokorooekaki`）・91 **夏** うみべで いぬが おえかきを する（`inuumibeoekaki`）・92 もりで ぱんだが ボールで あそぶ（`pandamoribooru`）・93 もりで くまが おえかきを する（`kumamorioekaki`）・94 **冬** ゆきやまで ぱんだが おやつを たべる（`pandayukiyamaoyatsu`）・95 もりで ねこが おえかきを する（`nekomorioekaki`）・96 だいどころで ぱんだが ボールで あそぶ（`pandadaidokorobooru`）・97 こうえんで いぬが おえかきを する（`inukouenoekaki`）・98 もりで ぱんだが おやつを たべる（`pandamorioyatsu`）・99 **冬** ゆきやまで いぬが おえかきを する（`inuyukiyamaoekaki`）・100 だいどころで ねこが おえかきを する（`nekodaidokorooekaki`） |
 | XXL（101–150。2026-11-04 に足した） | 101 **春** はなばたけで ぱんだが ボールで あそぶ（`pandahanabatakebooru`）・102 こうえんで ねこが おどる（`nekokouenodoru`）・103 **春** はなばたけで ぱんだが おやつを たべる（`pandahanabatakeoyatsu`）・104 もりで ぱんだが おどる（`pandamoriodoru`）・105 だいどころで くまが おどる（`kumadaidokoroodoru`）・106 **春** はなばたけで うさぎが ボールで あそぶ（`usagihanabatakebooru`）・107 こうえんで いぬが おどる（`inukouenodoru`）・108 **春** はなばたけで うさぎが ねむる（`usagihanabatakenemuru`）・109 **春** はなばたけで くまが ボールで あそぶ（`kumahanabatakebooru`）・110 だいどころで いぬが おどる（`inudaidokoroodoru`）・111 **春** はなばたけで くまが おどる（`kumahanabatakeodoru`）・112 **春** はなばたけで ねこが ねむる（`nekohanabatakenemuru`）・113 **春** はなばたけで ぱんだが おどる（`pandahanabatakeodoru`）・114 **夏** うみべで ねこが おどる（`nekoumibeodoru`）・115 **春** はなばたけで うさぎが おえかきを する（`usagihanabatakeoekaki`）・116 **夏** うみべで くまが おどる（`kumaumibeodoru`）・117 だいどころで ぱんだが おどる（`pandadaidokoroodoru`）・118 だいどころで うさぎが おどる（`usagidaidokoroodoru`）・119 **春** はなばたけで ねこが ボールで あそぶ（`nekohanabatakebooru`）・120 **春** はなばたけで いぬが ねむる（`inuhanabatakenemuru`）・121 もりで いぬが おどる（`inumoriodoru`）・122 こうえんで うさぎが おどる（`usagikouenodoru`）・123 **春** はなばたけで いぬが ボールで あそぶ（`inuhanabatakebooru`）・124 だいどころで ねこが おどる（`nekodaidokoroodoru`）・125 こうえんで くまが おどる（`kumakouenodoru`）・126 **春** はなばたけで ぱんだが ねむる（`pandahanabatakenemuru`）・127 **春** はなばたけで ねこが おどる（`nekohanabatakeodoru`）・128 **春** はなばたけで くまが ねむる（`kumahanabatakenemuru`）・129 **夏** うみべで うさぎが おどる（`usagiumibeodoru`）・130 **春** はなばたけで ぱんだが おえかきを する（`pandahanabatakeoekaki`）・131 もりで ねこが おどる（`nekomoriodoru`）・132 **冬** ゆきやまで ぱんだが おどる（`pandayukiyamaodoru`）・133 **夏** うみべで いぬが おどる（`inuumibeodoru`）・134 **春** はなばたけで うさぎが おどる（`usagihanabatakeodoru`）・135 **冬** ゆきやまで いぬが おどる（`inuyukiyamaodoru`）・136 **春** はなばたけで いぬが おどる（`inuhanabatakeodoru`）・137 **冬** ゆきやまで うさぎが おどる（`usagiyukiyamaodoru`）・138 **春** はなばたけで いぬが おえかきを する（`inuhanabatakeoekaki`）・139 **夏** うみべで ぱんだが おどる（`pandaumibeodoru`）・140 **春** はなばたけで くまが おえかきを する（`kumahanabatakeoekaki`）・141 こうえんで ぱんだが おどる（`pandakouenodoru`）・142 もりで くまが おどる（`kumamoriodoru`）・143 **春** はなばたけで いぬが おやつを たべる（`inuhanabatakeoyatsu`）・144 **春** はなばたけで ねこが おやつを たべる（`nekohanabatakeoyatsu`）・145 **冬** ゆきやまで くまが おどる（`kumayukiyamaodoru`）・146 **春** はなばたけで うさぎが おやつを たべる（`usagihanabatakeoyatsu`）・147 **冬** ゆきやまで ねこが おどる（`nekoyukiyamaodoru`）・148 **春** はなばたけで くまが おやつを たべる（`kumahanabatakeoyatsu`）・149 もりで うさぎが おどる（`usagimoriodoru`）・150 **春** はなばたけで ねこが おえかきを する（`nekohanabatakeoekaki`） |
 
-- **大きさと角砂糖の決まり**：大きさ **W ≤ 64・H ≤ 48**、角砂糖 **2800 以下**。3〜150 面の絵は 1 マス＝1 粒で描いた地図をそのまま使う（ゲーム側で割る処理は無い）。段ごとの角砂糖の範囲：S 476〜692／M 856〜1128／L 1264〜1600／XL 1688〜2240／XXL 2096〜2576。**1・2 面に出る絵（`PICTURE_ORDER` の 1・2 番目）は元の大きさ（15×15）のまま**。（描き直す前の 46 枚は、32×24 以下で描いた地図を縦横 2 倍に割って 1 マスを 2×2 にしていた）
+- **大きさと角砂糖の決まり**：大きさ **W ≤ 64・H ≤ 48**、角砂糖 **3072 以下**（2026-11-05 に 2800 から上げた。64×48 をすべて埋めた数）。3〜150 面の絵は 1 マス＝1 粒で描いた地図をそのまま使う（ゲーム側で割る処理は無い）。段ごとの角砂糖の範囲：S 476〜692／M 856〜1128／L 1264〜1600／XL 1688〜2240／XXL 2096〜2576。**1・2 面に出る絵（`PICTURE_ORDER` の 1・2 番目）は元の大きさ（15×15）のまま**。（描き直す前の 46 枚は、32×24 以下で描いた地図を縦横 2 倍に割って 1 マスを 2×2 にしていた）
 - 数：季節の絵 73 枚（春 はなばたけ 25・夏 うみべ 25・冬 ゆきやま 23）、季節でない絵 77 枚（101〜150 面の 50 枚は 春 25・夏 5・冬 5・季節でない 15。49〜100 面の 52 枚は 夏 8・冬 8・季節でない 36。1〜48 面は 夏 12・冬 10・季節でない 26）。（描き直す前は 春 5・夏 7・秋 6・冬 5 の 23 枚。さくら・すいか・もみじ・ゆきだるま などは無くなった）
 - **古い id の扱い**（描き直す前の 46 枚の id：`sakura`・`ichigo`・`kinoko` … `kanransha`。遊んでいる人のデータを壊さない。計画書 amai-redraw.md §7.1）：
   - 途中の面の保存（`amai.save`）の絵が古い id：`validateSave` は形が正しければ読む。main は `PICTURE_ORDER` に無い絵なので **同じ面の番号のまま**、`pickPicture` で選び直した新しい絵の面を最初から始める（押した手は捨てる。古い絵の盤面は作れないため）。`createLevel`・`paramsFor`・`replay` に古い id の pick を渡しても、その面の新しい絵に置きかえる（落ちない）。
@@ -751,10 +751,13 @@ const AMAI = {
 | 7 | C | `brown` | ちゃいろ | `#8B5A33` | `bars`（よこせん） | `.....` `#####` `.....` `#####` `.....` |
 | 8 | W | `white` | しろ | `#F5F2EA` | `ring`（わ） | `.###.` `#...#` `#...#` `#...#` `.###.` |
 | 9 | K | `black` | くろ | `#2B2B33` | `stripes`（たてせん） | `.#.#.` `.#.#.` `.#.#.` `.#.#.` `.#.#.` |
+| 10 | D | `darkgreen` | こいみどり | `#1F5E35` | `moon`（つき。三日月） | `.###.` `##...` `##...` `##...` `.###.` |
+| 11 | V | `purple` | むらさき | `#8A5CC8` | `drop`（しずく） | `..#..` `.###.` `#####` `#####` `.###.` |
 
 - `COLORS = [{ id, letter, key, name, hex, mark, dots }]`（凍結）。hex・印・文字・名前はどれも重ならない（AL1）。
 - 角砂糖の印は上の 5×5 の点。箱の印は同じ形を大きく図形で描く（文字のフォントに頼らない）。印の色は、地の色と明るさの差が分かる濃い色か白。
 - 赤・緑・茶は色覚によって見分けにくい（推測）ので、印の形を大きく変えてある（まる・ひしがた・よこせん）。
+- **12 色（2026-11-05）**：`D` こいみどり・`V` むらさき を足した。ユーザーの答え「こいみどりとむらさき (Recommended)」（説明：新しい色にも色覚のための印を付ける）なので、箱の印（SVG の `MARK_D.moon`・`MARK_D.drop`、どちらも白い印）と読み上げ（`MARK_WORD`：つき・しずく）も足した。5×5 の点は、ほかのどの印とも 3 点以上ちがう（AL21）。似た色の見分け（Machado 2009 の色覚の模擬・Lab の色差 ΔE と明るさの比で計算）：G–D は明るさの比 2.3（どの色覚でも ΔE 25 以上）・P–V は 2.1〜2.4（ΔE 43 以上）で明るさで分かる。B–V は明るさがほぼ同じ（1.1〜1.3）で、1 型色覚の模擬では ΔE 7.6 と近いので、**印（ばつ／しずく）で見分ける**。D–K（ボタンの上）は明るさの比 1.8（ΔE 26〜43）。D–C は 1 型色覚の模擬で ΔE 7.1 と近いが、もとからある R–C（3.5）より離れていて、印（つき／よこせん）で見分ける。段ごとの色の数・角砂糖の範囲（§2.1）はまだ変えていない（背景を入れたあとで測って決める）。
 
 ---
 
@@ -786,7 +789,7 @@ const AMAI = {
 ```js
 AmaiLogic = {
   NAME: "あまいものあつめ", SLOTS: 3, CHAL_SLOTS: 2, CHAL_UNDO: 3, COLS: 4,   // CHAL_*：ちょうせん（2026-11-05。§2.9） TICK_MS: 120, FAST_MS: 60,
-  MAX_W: 64, MAX_H: 48, MAX_SUGAR: 2800, MAX_COUNT: 99, MAX_PRESSES: 400, MAX_T: 5000,
+  MAX_W: 64, MAX_H: 48, MAX_SUGAR: 3072, MAX_COUNT: 99, MAX_PRESSES: 400, MAX_T: 5000,
   GEN_TRIES: 20, GEN_WORK: 400000, BASE_PICTURES: 150, REPEAT_FROM: 9,   // 1〜150 面は PICTURE_ORDER の順。151 面からくり返し（2026-11-04。前は 100）
   EASY_BOXES: 5,                                                   // 1〜2 面の箱の数の上限（内部の定数。外へ出ているかはコードが正）
   GEN_OPT: { shuffleCols: false, solveNodes: 15, genTries: 5, softenEvery: 1 },

@@ -22,7 +22,7 @@ function load(root) {
   return L;
 }
 const J = (x) => JSON.stringify(x);
-const LET = { R: 0, O: 1, Y: 2, G: 3, S: 4, B: 5, P: 6, C: 7, W: 8, K: 9 };
+const LET = { R: 0, O: 1, Y: 2, G: 3, S: 4, B: 5, P: 6, C: 7, W: 8, K: 9, D: 10, V: 11 };
 
 // ---- 局面を手で組む（§4.1 の形）。map は文字の地図、cols は [[箱, …] ×4]、箱は { c: 色, n: 数, lid, ice } ----
 let NID = 1000;
@@ -136,28 +136,29 @@ function loosePlay(L, created, seed) {
 
 export const tests = [
   {
-    id: 'AL1', tier: 'smoke', node: true, title: 'あまいものあつめ：定数・COLORS（10 色。文字・hex・印・名前・5×5 の点がすべてちがう）・NAME・paramsFor が §2.1 の表どおり（境界・壊れた値）',
+    id: 'AL1', tier: 'smoke', node: true, title: 'あまいものあつめ：定数・COLORS（12 色。文字・hex・印・名前・5×5 の点がすべてちがう）・NAME・paramsFor が §2.1 の表どおり（境界・壊れた値）',
     run({ check, root }) {
       const L = load(root);
-      const K = { NAME: 'あまいものあつめ', SLOTS: 3, COLS: 4, TICK_MS: 120, FAST_MS: 60, MAX_W: 64, MAX_H: 48, MAX_SUGAR: 2800, MAX_COUNT: 99, MAX_PRESSES: 400, MAX_T: 5000,
+      const K = { NAME: 'あまいものあつめ', SLOTS: 3, COLS: 4, TICK_MS: 120, FAST_MS: 60, MAX_W: 64, MAX_H: 48, MAX_SUGAR: 3072, MAX_COUNT: 99, MAX_PRESSES: 400, MAX_T: 5000,
         GEN_TRIES: 20, GEN_WORK: 400000, BASE_PICTURES: 150, REPEAT_FROM: 9,
         SAVE_KEY_SAVE: 'amai.save', SAVE_KEY_BEST: 'amai.best', SAVE_KEY_BOOK: 'amai.book', SAVE_KEY_HELP: 'amai.help', SAVE_KEY_FAST: 'amai.fast' };
       const kBad = Object.entries(K).filter(([k, v]) => L[k] !== v).map(([k, v]) => ({ k, want: v, got: L[k] }));
       check('定数が契約 §6.2 のとおり', kBad.length === 0, kBad);
-      // 手直し（2026-10-30）：絵を 2×2 に割って 64×48・角砂糖 2800 まで、はこびの間隔を 500→120ms にした。
+      // 手直し（2026-10-30）：絵を 2×2 に割って 64×48・角砂糖 2800 まで（2026-11-05 に背景を足すため 3072＝64×48 まで）、はこびの間隔を 500→120ms にした。
       // ANY_RATE（①を使う箱の割合）は段ごとの表。M 0.5（2026-11-03）・XL・XXL 0.25、ほかは 1（OVER が 1 の段では使われない）
       check('ANY_RATE（①を使う箱の割合）が表どおり（S・L・くり返し 1、M 0.5、XL・XXL 0.25）', J(L.ANY_RATE) === J({ S: 1, M: 0.5, L: 1, XL: 0.25, XXL: 0.25, repeat: 1 }), L.ANY_RATE);
       check('はこびの間隔：ふだん 120ms・はやおくり 60ms（1 つの箱から 1 秒に約 8 匹）', L.TICK_MS === 120 && L.FAST_MS === 60 && L.FAST_MS * 2 === L.TICK_MS, { t: L.TICK_MS, f: L.FAST_MS });
       const C = L.COLORS;
-      check('COLORS は 10 色で id が 0〜9・凍結', Array.isArray(C) && C.length === 10 && C.every((c, i) => c.id === i) && Object.isFrozen(C) && C.every((c) => Object.isFrozen(c)), C);
+      check('COLORS は 12 色で id が 0〜11・凍結（2026-11-05 に D こいみどり・V むらさき を足した）', Array.isArray(C) && C.length === 12 && C.every((c, i) => c.id === i) && Object.isFrozen(C) && C.every((c) => Object.isFrozen(c)), C);
       const want = [['R', 'red', 'あか', '#E23B3B', 'circle'], ['O', 'orange', 'オレンジ', '#F28C28', 'triangle'], ['Y', 'yellow', 'きいろ', '#F2D13A', 'star'], ['G', 'green', 'みどり', '#3E9E4F', 'diamond'],
         ['S', 'sky', 'みずいろ', '#78C6EE', 'plus'], ['B', 'blue', 'あお', '#2E5BC9', 'cross'], ['P', 'pink', 'ピンク', '#F29BC2', 'heart'], ['C', 'brown', 'ちゃいろ', '#8B5A33', 'bars'],
-        ['W', 'white', 'しろ', '#F5F2EA', 'ring'], ['K', 'black', 'くろ', '#2B2B33', 'stripes']];
+        ['W', 'white', 'しろ', '#F5F2EA', 'ring'], ['K', 'black', 'くろ', '#2B2B33', 'stripes'],
+        ['D', 'darkgreen', 'こいみどり', '#1F5E35', 'moon'], ['V', 'purple', 'むらさき', '#8A5CC8', 'drop']];
       check('文字・key・名前・hex・印が §5.2 の表どおり', C.every((c, i) => J([c.letter, c.key, c.name, c.hex, c.mark]) === J(want[i])), C.map((c) => [c.letter, c.key, c.name, c.hex, c.mark]));
       const uniq = (f) => new Set(C.map(f)).size === C.length;
       check('文字・key・名前・hex・印・5×5 の点がすべてちがう', uniq((c) => c.letter) && uniq((c) => c.key) && uniq((c) => c.name) && uniq((c) => c.hex) && uniq((c) => c.mark) && uniq((c) => c.dots.join('/')), null);
       check('5×5 の点は 5 行 × 5 文字（# と . だけ）', C.every((c) => c.dots.length === 5 && c.dots.every((r) => /^[#.]{5}$/.test(r))), C.map((c) => c.dots));
-      check('colorName', L.colorName(0) === 'あか' && L.colorName(9) === 'くろ' && L.colorName(10) === '' && L.colorName('x') === '', null);
+      check('colorName', L.colorName(0) === 'あか' && L.colorName(9) === 'くろ' && L.colorName(10) === 'こいみどり' && L.colorName(11) === 'むらさき' && L.colorName(12) === '' && L.colorName('x') === '', null);
       // §2.1 の表（1〜150 面は PICTURE_ORDER の絵で。49〜100 面は 2026-11-03、101〜150 面は 2026-11-04 に足した XXL）
       // 箱の数の幅は TIERS の値。ただし段ごとの上書き KSET・くり返しの REPEAT_K があればそれ（logic.js が公開する表を読む。表の持ち主は logic.js）
       const KR = (tier) => (L.KSET && L.KSET[tier]) || [L.TIERS[tier].kmin, L.TIERS[tier].kmax];
@@ -226,7 +227,7 @@ export const tests = [
         '右の列が空き': { ...ok, map: ['RR.', 'RR.', 'RR.'] },
         '横 65': { ...ok, map: ['R'.repeat(65), 'R'.repeat(65), 'R'.repeat(65)] },
         '縦 49': { ...ok, map: Array(49).fill('RRR') },
-        '角砂糖 2801 個以上': { ...ok, map: Array(48).fill('R'.repeat(59)) },
+        // 角砂糖の上限は 2026-11-05 に 3072（＝64×48）へ上げたので、大きさの決まりの中では超えられない（64×48 を埋めた絵が読めることは AL21）
         'id が英小文字でない': { ...ok, id: 'Ringo1' },
         'name が空': { ...ok, name: '' },
         'name に漢字': { ...ok, name: '林檎' },
@@ -1124,6 +1125,43 @@ export const tests = [
         // 実測（2026-11-05・クラウド）：最大 約 40〜60ms・中央 約 16ms。iPhone SE で重すぎない目安 150ms
         check(`ちょうせんの 1 面の生成 最大 ${worst.ms}ms（${worst.lv} 面）・中央 ${ms[Math.floor(ms.length / 2)]}ms ≦ 150ms`, worst.ms <= 150, per.filter((x) => x.ms > 60));
       });
+    },
+  },
+  {
+    id: 'AL21', tier: 'smoke', node: true, title: 'あまいものあつめ：12 色（2026-11-05 に足した D こいみどり・V むらさき）：parsePicture が D・V を読む（3 個未満は null）・角砂糖 3072（64×48）まで読めて 3073 は読めない・validateState が色 10・11 を受け付け 12・-2 は null（マス・箱・わく）・D・V の局面を解いて won・5×5 の印が形でほかと見分けられる',
+    run({ check, root }) {
+      const L = load(root);
+      const base = { id: 'test', name: 'てすと', season: '' };
+      const p = L.parsePicture({ ...base, map: ['DDDD', 'DVVD', 'DVVD', 'DDDD'] }, false);
+      check('D・V の絵が読める（cells に 10・11）', !!p && p.cells[0] === 10 && p.cells[5] === 11, p);
+      check('V が 2 個だけの絵は null（各色 3 個以上）', L.parsePicture({ ...base, map: ['DDDD', 'DVVD', 'DDDD'] }, false) === null, null);
+      const full = (w, h) => Array.from({ length: h }, (_, y) => (y === 0 ? 'VVV' + 'D'.repeat(w - 3) : 'D'.repeat(w)));
+      const big = L.parsePicture({ ...base, map: full(64, 48) }, false);
+      check(`64×48 をすべて埋めた絵（角砂糖 ${64 * 48}）が読める（MAX_SUGAR ${L.MAX_SUGAR}）`, !!big && big.cells.length === 3072 && L.MAX_SUGAR === 3072, big && big.cells.length);
+      check('64×49（MAX_H を超える）は null', L.parsePicture({ ...base, map: full(64, 49) }, false) === null, null);
+      // validateState：色の番号の範囲（マス・手前の箱・わく）
+      const st = (o) => ({ level: 7, W: 3, H: 1, picture: 'test', mirror: false, repeat: false, cells: [10, 10, 10], total: 3, left: 3,
+        cols: [[{ id: 1, color: 10, count: 3, lid: false, ice: 0 }], [], [], []], slots: [null, null, null], t: 0, presses: 0, won: false, ...o });
+      check('色 10（D）の局面は受け付ける', L.validateState(st({})) !== null, null);
+      check('色 11（V）の局面は受け付ける', L.validateState(st({ cells: [11, 11, 11], cols: [[{ id: 1, color: 11, count: 3, lid: false, ice: 0 }], [], [], []] })) !== null, null);
+      const bad = {
+        'マスの色 12': st({ cells: [10, 12, 10] }), 'マスの色 -2': st({ cells: [10, -2, 10] }), 'マスの色 10.5': st({ cells: [10, 10.5, 10] }),
+        '箱の色 12': st({ cols: [[{ id: 1, color: 12, count: 3, lid: false, ice: 0 }], [], [], []] }),
+        'わくの色 12': st({ cols: [[], [], [], []], slots: [{ id: 1, color: 12, count: 3 }, null, null] }),
+      };
+      const pass = Object.entries(bad).filter(([, v]) => L.validateState(v) !== null).map(([k]) => k);
+      check('壊れた色の番号（12・-2・10.5。マス・箱・わく）は null', pass.length === 0, pass);
+      check('colorName(12)・colorName(-1) は空', L.colorName(12) === '' && L.colorName(-1) === '', null);
+      // D・V の局面を押して運び切ると won
+      let s = mk(L, ['DDDDD', 'DVVVD', 'DDDDD'], { cols: [[{ c: LET.D, n: 12 }], [{ c: LET.V, n: 3 }], [], []] });
+      let r = L.press(s, 0); s = r.state || s; r = L.press(s, 1); s = r.state || s;
+      for (let i = 0; i < 200 && !s.won; i++) s = L.step(s).state || s;
+      check(`D・V の局面を運び切ると won（のこり ${s.left}）`, s.won === true && s.left === 0, { left: s.left, slots: s.slots });
+      // 5×5 の印：新しい 2 つは、ほかの 10 個の形と 3 点以上ちがう（似た形で取り違えない）
+      const C = L.COLORS, diff = (a, b) => { let n = 0; for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) if (a[y][x] !== b[y][x]) n++; return n; };
+      const near = [];
+      for (const k of [10, 11]) for (let j = 0; j < C.length; j++) if (j !== k && diff(C[k].dots, C[j].dots) < 3) near.push(`${C[k].letter}-${C[j].letter}:${diff(C[k].dots, C[j].dots)}`);
+      check('D・V の 5×5 の印は、ほかのどの印とも 3 点以上ちがう', near.length === 0, near);
     },
   },
 ];

@@ -519,6 +519,10 @@ const M = [
   ['MA54 あまいものあつめ：ずかんで金の花輪を出さない（ふつうの花輪になる。見つける：AW34）', 'ルール', 'games/amai/main.js', 'const gold = !!(n > 0 && p && isGold(id));', 'const gold = false;'],
   ['MA55 あまいものあつめ：まだクリアしていない面でも ちょうせんを選べる（見つける：AW34）', 'ルール', 'games/amai/main.js', 'return !!(pk && book.got && Number.isSafeInteger(book.got[pk.id]) && book.got[pk.id] > 0);', 'return !!pk;'],
   ['MA56 あまいものあつめ：面えらびで金の花輪を出さない（見つける：AW34）', 'ルール', 'games/amai/main.js', 'if (p && got && isGold(p.id)) {', 'if (false) {'],
+  // 12 色（2026-11-05 に D こいみどり・V むらさき を足した。計画書 docs/plans/amai-bg.md §4）
+  ['MA57 あまいものあつめ：validateState が色の番号 12 も通す（見つける：AL21）', '保存データ互換', 'games/amai/logic.js', 'if (!isInt(v) || v < -1 || v >= COLORS.length) return null;', 'if (!isInt(v) || v < -1 || v > COLORS.length) return null;'],
+  ['MA58 あまいものあつめ：角砂糖の上限が 2800 のまま（背景を足した 64×48 の絵が読めない。見つける：AL1・AL21）', 'ルール', 'games/amai/logic.js', 'const MAX_SUGAR = 3072;', 'const MAX_SUGAR = 2800;'],
+  ['MA59 あまいものあつめ：こいみどりの箱の読み上げに印（つき）が無い（見つける：AW36）', 'アクセシビリティ', 'games/amai/render.js', 'stripes: "たてせん", moon: "つき", drop: "しずく" });', 'stripes: "たてせん" });'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

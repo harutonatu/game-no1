@@ -38,7 +38,7 @@
   const FAST_MS = 60;
   const MAX_W = 64;
   const MAX_H = 48;
-  const MAX_SUGAR = 2800;
+  const MAX_SUGAR = 3072;   // 64×48 をすべて埋めた数（2026-11-05 に 2800 から上げた。背景を足すため。計画書 docs/plans/amai-bg.md §4）
   const MAX_COUNT = 99;
   const MAX_PRESSES = 400;
   const MAX_T = 5000;
@@ -90,6 +90,9 @@
     [7, "C", "brown", "ちゃいろ", "#8B5A33", "bars", [".....", "#####", ".....", "#####", "....."]],
     [8, "W", "white", "しろ", "#F5F2EA", "ring", [".###.", "#...#", "#...#", "#...#", ".###."]],
     [9, "K", "black", "くろ", "#2B2B33", "stripes", [".#.#.", ".#.#.", ".#.#.", ".#.#.", ".#.#."]],
+    // 2026-11-05 に足した 2 色（背景を落ち着かせるため。ユーザー「色を2つ足してください」→「こいみどりとむらさき」。計画書 docs/plans/amai-bg.md §3.1）
+    [10, "D", "darkgreen", "こいみどり", "#1F5E35", "moon", [".###.", "##...", "##...", "##...", ".###."]],
+    [11, "V", "purple", "むらさき", "#8A5CC8", "drop", ["..#..", ".###.", "#####", "#####", ".###."]],
   ].map(([id, letter, key, name, hex, mark, dots]) => Object.freeze({ id, letter, key, name, hex, mark, dots: Object.freeze(dots) })));
   const LETTER = Object.freeze(Object.fromEntries(COLORS.map((c) => [c.letter, c.id])));
 
@@ -257,7 +260,7 @@
     } catch (e) { return null; }
   }
 
-  // 文字の地図 → { id, name, season, W, H, cells }。決まり（§2.6 の 1・2・4・5・6、角砂糖 2800 以下（MAX_SUGAR））を守らない絵は null。
+  // 文字の地図 → { id, name, season, W, H, cells }。決まり（§2.6 の 1・2・4・5・6、角砂糖 3072 以下（MAX_SUGAR））を守らない絵は null。
   // 段の範囲（決まり 3 の色の数と角砂糖の数）は絵だけでは決まらないので、ここでは見ない（テスト AL2 が PICTURE_ORDER の段で見る）
   function parsePicture(def, mirror) {
     try {

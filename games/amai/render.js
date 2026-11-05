@@ -43,9 +43,11 @@
     { id: 6, letter: "P", key: "pink", name: "ピンク", hex: "#F29BC2", mark: "heart", dots: [".#.#.", "#####", "#####", ".###.", "..#.."] },
     { id: 7, letter: "C", key: "brown", name: "ちゃいろ", hex: "#8B5A33", mark: "bars", dots: [".....", "#####", ".....", "#####", "....."] },
     { id: 8, letter: "W", key: "white", name: "しろ", hex: "#F5F2EA", mark: "ring", dots: [".###.", "#...#", "#...#", "#...#", ".###."] },
-    { id: 9, letter: "K", key: "black", name: "くろ", hex: "#2B2B33", mark: "stripes", dots: [".#.#.", ".#.#.", ".#.#.", ".#.#.", ".#.#."] }
+    { id: 9, letter: "K", key: "black", name: "くろ", hex: "#2B2B33", mark: "stripes", dots: [".#.#.", ".#.#.", ".#.#.", ".#.#.", ".#.#."] },
+    { id: 10, letter: "D", key: "darkgreen", name: "こいみどり", hex: "#1F5E35", mark: "moon", dots: [".###.", "##...", "##...", "##...", ".###."] },
+    { id: 11, letter: "V", key: "purple", name: "むらさき", hex: "#8A5CC8", mark: "drop", dots: ["..#..", ".###.", "#####", "#####", ".###."] }
   ];
-  const MARK_WORD = Object.freeze({ circle: "まる", triangle: "さんかく", star: "ほし", diamond: "ひしがた", plus: "じゅうじ", cross: "ばつ", heart: "ハート", bars: "よこせん", ring: "わ", stripes: "たてせん" });
+  const MARK_WORD = Object.freeze({ circle: "まる", triangle: "さんかく", star: "ほし", diamond: "ひしがた", plus: "じゅうじ", cross: "ばつ", heart: "ハート", bars: "よこせん", ring: "わ", stripes: "たてせん", moon: "つき", drop: "しずく" });
 
   function logic() { return root.AmaiLogic || null; }
   function colorList() {
@@ -98,7 +100,9 @@
     heart: "M12 21s-8.5-5.1-8.5-11.2C3.5 6.7 5.8 4.6 8.4 4.6c1.6 0 2.9.8 3.6 2.1.7-1.3 2-2.1 3.6-2.1 2.6 0 4.9 2.1 4.9 5.2C20.5 15.9 12 21 12 21z",
     bars: "M3 6h18v4.4H3zM3 13.6h18V18H3z",
     ring: "M3.4 12a8.6 8.6 0 1 0 17.2 0a8.6 8.6 0 1 0-17.2 0zM7.8 12a4.2 4.2 0 1 1 8.4 0a4.2 4.2 0 1 1-8.4 0z",
-    stripes: "M6 3h4.4v18H6zM13.6 3H18v18h-4.4z"
+    stripes: "M6 3h4.4v18H6zM13.6 3H18v18h-4.4z",
+    moon: "M16.5 2.5A10 10 0 1 0 16.5 21.5A12 12 0 0 1 16.5 2.5z",
+    drop: "M12 2.4C12 2.4 4.8 10.6 4.8 15a7.2 7.2 0 0 0 14.4 0C19.2 10.6 12 2.4 12 2.4z"
   });
   function markSvg(mark, ink, cls) {
     const d = MARK_D[mark] || MARK_D.circle;

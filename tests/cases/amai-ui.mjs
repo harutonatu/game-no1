@@ -825,7 +825,7 @@ export const tests = [
       const LG = loadLogic(root);
       const { ctx, page } = await openG(browser, 'AW12');
       const colors = LG.COLORS;
-      check(`COLORS が 10 色で、印がすべてちがう（${colors.map((c) => c.mark).join(',')}）`, colors.length === 10 && new Set(colors.map((c) => c.mark)).size === 10, colors.map((c) => c.mark));
+      check(`COLORS が 12 色で、印がすべてちがう（${colors.map((c) => c.mark).join(',')}）`, colors.length === 12 && new Set(colors.map((c) => c.mark)).size === 12, colors.map((c) => c.mark));
       const seen = new Map(), bad = [];
       let boxes = 0;
       for (const lv of [1, 13, 25, 37, 48]) {
@@ -1974,6 +1974,58 @@ export const tests = [
         check(`${v.label}：ちょうせんのクリアのカード（${J(cp.btns.map((b) => b.cmd))}）が崩れず、「ちょうせん クリア！」がはみ出さない（${J(gl)}）`, s.overlay === 'clear' && overlayOk(cp) && !!gl && gl.fs >= 12 && gl.sw <= gl.cw + 1, { cp, gl });
         await ctx.close();
       }
+    },
+  },
+  {
+    id: 'AW36', tier: 'smoke', title: 'あまいもの 12 色（2026-11-05 に足した こいみどり D・むらさき V）：setState で D・V の絵と箱を入れると、手前・奥・わくの箱に印（つき・しずく）の SVG が描かれ、aria-label・わくの説明に色の名前と印、絵の canvas に D・V の色が出る。押して運ぶと減る',
+    async run({ browser, check, root }) {
+      const LG = loadLogic(root);
+      const D = LG.COLORS.findIndex((c) => c.letter === 'D'), V = LG.COLORS.findIndex((c) => c.letter === 'V');
+      check(`COLORS に D（${D}）・V（${V}）がある`, D === 10 && V === 11 && LG.COLORS[D].mark === 'moon' && LG.COLORS[V].mark === 'drop', LG.COLORS.slice(10));
+      const { ctx, page } = await openG(browser, 'AW36', { v: SMOKE_V() });
+      // 5×3 の絵：まわりが D（12 個）、まん中が V（3 個）。箱：1 列目 手前 D4・奥 V3、2 列目 D4、わく D4
+      const map = ['DDDDD', 'DVVVD', 'DDDDD'];
+      const put = await page.evaluate(({ map, D, V }) => {
+        const G = window.AmaiGame, W = map[0].length, H = map.length;
+        const cells = map.join('').split('').map((ch) => (ch === 'D' ? D : V));
+        const s = { level: 7, W, H, picture: 'test', mirror: false, repeat: false, cells, total: cells.length, left: cells.length,
+          cols: [[{ id: 1, color: D, count: 4, lid: false, ice: 0 }, { id: 2, color: V, count: 3, lid: false, ice: 0 }], [{ id: 3, color: D, count: 4, lid: false, ice: 0 }], [], []],
+          slots: [{ id: 4, color: D, count: 4 }, null, null], t: 0, presses: 0, won: false };
+        return G.setState(s) === true;
+      }, { map, D, V });
+      check('D・V の局面を setState で入れられる（validateState が色 10・11 を受け付ける）', put, null);
+      await skipG(page); await wait(page, 150);
+      const dom = await page.evaluate(() => {
+        const one = (e) => { const sv = e.querySelector('svg.bmark'); const pa = sv && sv.querySelector('path'); return { color: e.dataset.color, mark: e.dataset.mark, svg: sv ? sv.dataset.mark : null, d: pa ? pa.getAttribute('d') : '', fill: pa ? pa.getAttribute('fill') : '', label: e.getAttribute('aria-label') || '', w: sv ? sv.getBoundingClientRect().width : 0 }; };
+        return {
+          front: [...document.querySelectorAll('#grid .box.front')].filter((e) => !e.closest('[hidden]') && e.dataset.color !== '').map(one),
+          back: [...document.querySelectorAll('#grid .box.back')].filter((e) => !e.closest('[hidden]') && e.dataset.color !== '').map(one),
+          slot: (() => { const e = document.querySelector('#slots .slot[data-slot="0"]'); const b = e && e.querySelector('.sbox, .box'); return { color: e ? e.dataset.color : '', sr: e?.querySelector('.sr')?.textContent.trim() ?? '', svg: b?.querySelector('svg.bmark')?.dataset.mark ?? null }; })(),
+        };
+      });
+      const MD = await page.evaluate(() => window.AmaiRender && window.AmaiRender.MARK_D);
+      const fD = dom.front.find((x) => x.color === String(D)), bV = dom.back.find((x) => x.color === String(V));
+      check(`手前の D の箱：印 moon の SVG（白い印・幅 ${fD && Math.round(fD.w)}px）・aria-label「${fD && fD.label}」に「こいみどり（つき）」`, !!fD && fD.mark === 'moon' && fD.svg === 'moon' && fD.d === MD.moon && fD.fill === '#ffffff' && fD.w > 4 && fD.label.includes('こいみどり（つき）'), dom.front);
+      check(`奥の V の箱：印 drop の SVG（白い印）`, !!bV && bV.mark === 'drop' && bV.svg === 'drop' && bV.d === MD.drop && bV.fill === '#ffffff', dom.back);
+      check(`わくの D の箱：data-color ${dom.slot.color}・印 ${dom.slot.svg}・説明「${dom.slot.sr}」に こいみどり`, dom.slot.color === String(D) && dom.slot.svg === 'moon' && dom.slot.sr.includes('こいみどり'), dom.slot);
+      check('印の形（moon・drop）は ほかの 10 色の形と重ならない', MD && MD.moon && MD.drop && Object.entries(MD).filter(([k]) => k !== 'moon').every(([, d]) => d !== MD.moon) && Object.entries(MD).filter(([k]) => k !== 'drop').every(([, d]) => d !== MD.drop), Object.keys(MD || {}));
+      // 絵の canvas に D と V の色（陰影がつくので近い色）が出る
+      const px = await page.evaluate(({ D, V }) => {
+        const c = document.getElementById('pic'), L = window.AmaiLogic;
+        const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+        const want = [hex(L.COLORS[D].hex), hex(L.COLORS[V].hex)];
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        const near = [0, 0];
+        for (let i = 0; i < d.length; i += 4) want.forEach((w, k) => { if (Math.abs(d[i] - w[0]) + Math.abs(d[i + 1] - w[1]) + Math.abs(d[i + 2] - w[2]) < 60) near[k]++; });
+        return { near, w: c.width, h: c.height };
+      }, { D, V });
+      check(`絵の canvas（${px.w}×${px.h}）に こいみどり（${px.near[0]} 点）・むらさき（${px.near[1]} 点）が描かれる`, px.near[0] > 20 && px.near[1] > 5, px);
+      // 押して運ぶ：わくの D が減っていく（ふちの D を運べる）
+      const left0 = (await gs(page)).left;
+      await page.evaluate(() => window.AmaiGame.tick(6)); await skipG(page);
+      const s1 = await gs(page);
+      check(`はこぶと角砂糖が減る（${left0} → ${s1.left}）`, s1.left < left0, { left0, left1: s1.left });
+      await ctx.close();
     },
   },
 ];
