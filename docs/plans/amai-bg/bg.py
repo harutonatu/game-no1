@@ -5,7 +5,9 @@
 #   1. 地平線（空と地面の境）を、絵の中の地面の帯（草・砂・床・雪の色が多い行）から見つける。無ければ下から 1/3。
 #   2. 空（地平線より上）と地面（下）を、場所ごとの「地の色」と「模様」（雲・遠くの山や木立・太陽・草・花・砂の粒・板・タイル・雪の粒）でうめる。
 #   3. 元の角砂糖のふちどり（K）のすぐ外の 1 マスは、模様を置かず地の色にする（主役が埋もれないように）。
-#   4. 色はなるべく絵がもう使っている色。無い色は 2 色まで足し、それ以上は地の色に置きかえる。
+#   4. 色は 12 色（R O Y G S B P C W K と、足した D こいみどり・V むらさき）。D と V は背景を落ち着かせる色として
+#      いつでも使う（遠くの木立・丘・森のかげ・草のかげ＝D、雲のかげ・花・遠くの山のかげ＝V）。
+#      そのほかの色は、絵がもう使っている色だけ（無ければ代わりの色）。
 #   5. 乱数は入力の中身から作った種つき（同じ入力からは毎回同じ出力）。
 import sys, math, random, hashlib
 
@@ -47,11 +49,12 @@ def main():
     added = []
 
     def col(c, fallback):
-        """絵にある色はそのまま。無い色は 2 色まで足す。それ以上は fallback。"""
-        if c in used or c in added:
+        """絵にある色と D・V はそのまま。それ以外の無い色は fallback。"""
+        if c in used:
             return c
-        if len(added) < 2:
-            added.append(c)
+        if c in "DV":
+            if c not in added:
+                added.append(c)
             return c
         return fallback
 
@@ -135,9 +138,10 @@ def main():
             for x in range(int(cx - w) - 1, int(cx + w) + 2):
                 if any(((x - px) / rx) ** 2 + ((y - py) / ry) ** 2 <= 1 for px, py, rx, ry in parts):
                     cells[(x, y)] = c
-        # 雲の下のはしに うすいかげ（1 行）
+        # 雲の下のはしに 夕方の かげ（下の行の まん中あたりに、まばらに。線にならないように）
         for (x, y) in list(cells):
-            if (x, y + 1) not in cells and shade and shade != c and rnd.random() < 0.6:
+            if ((x, y + 1) not in cells and (x - 1, y) in cells and (x + 1, y) in cells and (x, y - 1) in cells
+                    and shade and shade != c and rnd.random() < 0.35):
                 cells[(x, y)] = shade
         return cells
 
@@ -190,12 +194,12 @@ def main():
                     break
 
     def hills(c, height, bumps, base_row):
-        # 地平線の上の、遠くの丘（地面の続き）。丘は地の色の帯なので、K のすぐ外のマスもこの色にする
+        # 地平線の上の、遠くの丘。K のすぐ外のマスは地の色のまま（ふちどりが暗い丘に溶けないように）
         ph = rnd.random() * 6.28
         for x in range(W):
             h = height * (0.6 + 0.4 * math.sin(x * bumps + ph))
             for y in range(max(0, int(base_row - h)), base_row):
-                if dot[y][x] and not big[y][x]:
+                if free(x, y):
                     out[y][x] = c
                     big[y][x] = True
                     hill[y][x] = True
@@ -216,42 +220,54 @@ def main():
             x += w - 3
 
     W_ = col("W", sky_base)
+    D, V = col("D", None), col("V", None)
     if place in ("kouen", "umibe", "hanabatake"):
         sun(col("Y", sky_base), col("O", col("Y", sky_base)))
     hill = [[False] * W for _ in range(H)]
     if place == "kouen":
-        hills(col("G", gnd_base), 6, 0.22, hz)  # 遠くの丘
-        trees(W // 8, hz - 5, hz - 2, (2.5, 4), col("G", gnd_base), col("Y", None), col("C", None), 0.6)  # 遠くの木立
-        clouds(W_, sky_base if sky_base != "S" else None, 110)
+        hills(D, 6, 0.22, hz)  # 遠くの丘（こいみどり）
+        trees(W // 8, hz - 5, hz - 2, (2.5, 4), D, col("G", D), col("C", None), 0.6)  # 遠くの木立（こいみどりに みどりの光）
+        clouds(W_, V, 110)  # 雲の下に むらさきの かげ
     if place == "hanabatake":
-        hills(col("G", gnd_base), 3, 0.18, hz)
-        clouds(W_, None, 110)
+        hills(D, 4, 0.18, hz)
+        clouds(W_, V, 110)
     if place == "umibe":
-        clouds(W_, None, 110)
+        clouds(W_, V, 110)
     if place == "yukiyama":
-        peaks(W_, col("S", sky_base) if sky_base != "S" else col("B", W_), col("B", None), hz)
-        clouds(W_, None, 160)
+        peaks(W_, col("S", sky_base), V, hz)  # 遠くの雪山：雪 W・かげ S、下の岩肌は かげ側が むらさき
+        clouds(W_, V, 160)
         for y in range(sky_bottom):  # ふる雪
             for x in range(W):
                 if rnd.random() < 0.03:
                     paint(x, y, W_)
     if place == "mori":
-        # 遠くの木立がならぶ森：木（みどりの葉・きいろの木もれ日・ちゃいろの幹）を地平線の少し上から
-        hills(col("G", gnd_base), 7, 0.3, hz)  # 森の奥の地面
-        trees(W // 4, hz - 6, hz - 2, (3, 5.5), col("G", sky_base), col("Y", None), col("C", None), 0.5)
-        clouds(W_, None, 160)
+        # 森：奥の地面と木立は こいみどり、葉の光は みどり・きいろ、幹は ちゃいろ
+        hills(D, 7, 0.3, hz)
+        trees(W // 4, hz - 6, hz - 2, (3, 5.5), D, col("G", D), col("C", None), 0.5)
+        clouds(W_, V, 160)
     if place == "daidokoro":
-        # かべのタイル（しろに みずいろの目地）。床の上 2 行は はば木（ちゃいろ）
+        # かべ：上は しろいタイル（みずいろの目地、ところどころに小さな花の模様）、
+        #       腰の高さから下は 板（だいだいに ちゃいろの継ぎ目、上に ちゃいろの見切り）
         grout = col("S", sky_base)
-        for y in range(hz):
+        wain = max(0, hz - max(6, hz // 4))  # 腰板の上のはし
+        for y in range(wain):
             for x in range(W):
                 if (y % 5 == 4) or ((x + (y // 5 % 2) * 3) % 6 == 5):
                     paint(x, y, grout)
-        base_c = col("C", None)
-        for y in (hz - 2, hz - 1):
+        for ty in range(0, wain, 5):  # タイルの小さな模様（3 枚に 1 枚）
+            for tx in range(0, W, 6):
+                ox = tx - (ty // 5 % 2) * 3
+                if (tx // 6 + ty // 5) % 3 == 0:
+                    cx, cy = ox + 2, ty + 1
+                    for dx, dy in ((0, 0), (-1, 0), (1, 0), (0, 1)):
+                        paint(cx + dx, cy + dy, V if (dx, dy) != (0, 0) else col("Y", V))
+        board, seam2 = col("O", col("C", sky_base)), col("C", None)
+        for y in range(wain, hz):
             for x in range(W):
-                if y >= 0:
-                    paint(x, y, base_c)
+                if y == wain:
+                    paint(x, y, seam2 or board)
+                else:
+                    paint(x, y, seam2 if (seam2 and x % 4 == 3) else board)
     if place == "umibe":
         # 海の波：みずいろの波の線と、しろい波がしら
         for y in range(sea_top, hz):
@@ -287,20 +303,26 @@ def main():
         for x in range(W):
             r = rnd.random()
             if place == "kouen":
-                if r < 0.04:  # 草の葉（きいろみどりの ^）
-                    c = col("Y", gnd_base); paint(x, y, c); paint(x - 1, y + 1, c); paint(x + 1, y + 1, c)
-                elif r < 0.05:  # 小さな花
+                if r < 0.05:  # 草のかげ（こいみどりの ^）
+                    paint(x, y, D); paint(x - 1, y + 1, D); paint(x + 1, y + 1, D)
+                elif r < 0.065:
+                    paint(x, y, col("Y", D))  # 日の当たる草
+                elif r < 0.075:  # 小さな花
                     c = col("P", col("W", gnd_base)); paint(x, y, c)
                     paint(x - 1, y, c); paint(x + 1, y, c); paint(x, y - 1, c); paint(x, y + 1, c); paint(x, y, col("Y", c))
             elif place == "hanabatake":
-                if r < 0.13:
-                    paint(x, y, rnd.choice([col("P", gnd_base), col("R", gnd_base), col("Y", gnd_base), col("W", gnd_base)]))
+                if r < 0.06:
+                    paint(x, y, D)  # 草のかげ
+                elif r < 0.17:
+                    paint(x, y, rnd.choice([col("P", V), col("R", V), col("Y", V), col("W", V), V]))
             elif place == "mori":
-                if r < 0.035:
+                if r < 0.08:
+                    paint(x, y, D)  # 森のかげ
+                elif r < 0.10:
                     paint(x, y, col("Y", gnd_base))  # 木もれ日
-                elif r < 0.05:
+                elif r < 0.115:
                     paint(x, y, col("O", gnd_base))  # 落ち葉
-                elif r < 0.054:  # きのこ
+                elif r < 0.119:  # きのこ
                     paint(x, y, col("R", gnd_base)); paint(x - 1, y, col("R", gnd_base)); paint(x + 1, y, col("R", gnd_base))
                     paint(x, y + 1, col("W", gnd_base))
             elif place == "umibe":
@@ -311,7 +333,9 @@ def main():
             elif place == "yukiyama":
                 if r < 0.06:
                     paint(x, y, col("S", gnd_base))  # 雪のかげの粒
-                elif r < 0.075:  # ふきだまりの線
+                elif r < 0.064:
+                    paint(x, y, V)  # 夕方の雪のかげ
+                elif r < 0.079:  # ふきだまりの線
                     for i in range(3):
                         paint(x + i, y, col("S", gnd_base))
             elif place == "daidokoro":
@@ -336,7 +360,7 @@ def main():
             if dot[y][x] and c not in used and cnt[c] < 3:
                 out[y][x] = gnd_base if y >= hz else sky_base
     open(dst, "w", encoding="utf-8").write("\n".join("".join(r) for r in out) + "\n")
-    print(f"地平線 {hz} 行目（海 {sea_top}）  足した色 {''.join(added) or 'なし'}")
+    print(f"地平線 {hz} 行目（海 {sea_top}）  使った足し色 {''.join(added) or 'なし'}")
 
 
 if __name__ == "__main__":
