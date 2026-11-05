@@ -488,7 +488,7 @@ const M = [
   ['MA24 あまいものあつめ：recordBest が低い面でもベストを上書きする（見つける：AL9）', 'データ消失', 'games/amai/logic.js', 'const improved = cl > prev;', 'const improved = true;'],
   ['MA25 あまいものあつめ：演出中にずかんを開くとクリアのカードが消える（見つける：AW21）', '操作', 'games/amai/main.js', '      flush();\n      if (overlay !== null) return;   // 待っていた続きがクリア・うごかせないのカードを出した：その上に重ねない\n      safeCall(() => render.pause());\n    }\n    const book', '      flush();\n      safeCall(() => render.pause());\n    }\n    const book'],
   ['MA26 あまいものあつめ：演出中に遊び方を開くとクリアのカードが消える（見つける：AW21）', '操作', 'games/amai/main.js', '    flush();\n    if (overlay !== null) return;   // 待っていた続きがクリア・うごかせないのカードを出した：その上に重ねない\n    safeCall(() => render.pause());\n    showCard(`\n      <h2 id="cardTitle">あそびかた', '    flush();\n    safeCall(() => render.pause());\n    showCard(`\n      <h2 id="cardTitle">あそびかた'],
-  ['MA27 あまいものあつめ：1手もどしを使ったのに「もどしなし」を書く（見つける：AW23）', 'ルール', 'games/amai/main.js', 'const clean = !custom && !restored && noUndo === true;', 'const clean = !custom && !restored;'],
+  ['MA27 あまいものあつめ：1手もどしを使ったのに「もどしなし」を書く（見つける：AW23）', 'ルール', 'games/amai/main.js', 'const clean = !custom && !chal && !restored && noUndo === true;', 'const clean = !custom && !chal && !restored;'],
   ['MA28 あまいものあつめ：クリアしても amai.clean に書かない（見つける：AW23）', 'データ', 'games/amai/main.js', 'if (typeof rc === "string") writeKey(KEY_CLEAN, rc);', ''],
   ['MA29 あまいものあつめ：カードの間もプレイ画面を inert にしない（見つける：AW24）', 'アクセシビリティ', 'games/amai/main.js', 'el.playView.setAttribute("inert", "");', ''],
   ['MA30 あまいものあつめ：validateClean が重複・壊れた id を捨てない（見つける：AL14）', '保存データ互換', 'games/amai/logic.js', 'if (typeof id !== "string" || seen.has(id) || !ID_RE.test(id) || id.length > 64) continue;', 'if (typeof id !== "string") continue;'],
@@ -502,13 +502,23 @@ const M = [
   ['MA38 あまいものあつめ：面えらびでベスト＋2 面まで選べる（見つける：AL18・AW28）', 'ルール', 'games/amai/logic.js', 'const top = b < Number.MAX_SAFE_INTEGER ? b + 1 : Number.MAX_SAFE_INTEGER;', 'const top = b < Number.MAX_SAFE_INTEGER - 1 ? b + 2 : Number.MAX_SAFE_INTEGER;'],
   ['MA39 あまいものあつめ：面えらびで、途中まで押していても確かめずに始める（見つける：AW28）', '操作', 'games/amai/main.js', 'if (presses.length && phase !== "clear") {\n      selectTarget = n;', 'if (false) {\n      selectTarget = n;'],
   ['MA40 あまいものあつめ：前の面を選ぶとベストが下がる（見つける：AW28）', 'データ消失', 'games/amai/main.js', '    const pk = safeCall(() => L.pickPicture(n, readBook()), null);\n    setHint("えを つくっているよ");', '    best = n - 1; writeKey(KEY_BEST, String(best));\n    const pk = safeCall(() => L.pickPicture(n, readBook()), null);\n    setHint("えを つくっているよ");'],
-  ['MA41 あまいものあつめ：ずかんのクリアした絵すべてに花輪（見つける：AW29）', 'ルール', 'games/amai/main.js', 'const clean = n > 0 && p && isClean(id);', 'const clean = n > 0 && p;'],
+  ['MA41 あまいものあつめ：ずかんのクリアした絵すべてに花輪（見つける：AW29）', 'ルール', 'games/amai/main.js', 'const clean = !gold && !!(n > 0 && p && isClean(id));', 'const clean = !gold && !!(n > 0 && p);'],
   ['MA42 あまいものあつめ：面えらびで、ずかんに無い絵の面にも花輪（見つける：AW29）', 'ルール', 'games/amai/main.js', 'if (p && got && isClean(p.id)) {', 'if (p && isClean(p.id)) {'],
   ['MA43 あまいものあつめ：canShare を見ずに画像を付けて送る（見つける：AW30）', '操作', 'games/amai/main.js', 'if (c.file && typeof navigator.canShare === "function" && safeCall(() => navigator.canShare({ files: [c.file] }), false) === true) data.files = [c.file];', 'if (c.file) data.files = [c.file];'],
   ['MA44 あまいものあつめ：送るのをやめても失敗の吹き出しを出す（見つける：AW30）', '操作', 'games/amai/main.js', 'if (name === "AbortError" || myRun !== runId', 'if (myRun !== runId'],
   ['MA45 あまいものあつめ：面えらびの鍵つきの面が押せる見た目（disabled でない。見つける：AW28）', 'ルール', 'games/amai/main.js', '        btn.disabled = true;\n', ''],
   ['MA37 あまいものあつめ：pictures-c.js（49〜100 面の絵）を事前キャッシュから外す（見つける：AW14）', 'オフライン', 'sw.js', '  "./games/amai/pictures-c.js",\n', ''],
   ['MA47 あまいものあつめ：pictures-d.js（101〜150 面の絵）を事前キャッシュから外す（見つける：AW14）', 'オフライン', 'sw.js', '  "./games/amai/pictures-d.js",\n', ''],
+  // ちょうせんモード（2026-11-05。計画書 docs/plans/amai-challenge.md）
+  ['MA48 あまいものあつめ：ちょうせんの面でも わくが 3 つ（見つける：AL19・AL20・AW34）', 'ルール', 'games/amai/logic.js', 'slots: new Array(nslots === CHAL_SLOTS ? CHAL_SLOTS : SLOTS).fill(null)', 'slots: new Array(SLOTS).fill(null)'],
+  ['MA49 あまいものあつめ：ちょうせんで 1手もどすの のこりが減らない（見つける：AW34）', 'お助け', 'games/amai/main.js', 'if (chal) chalUndo = Math.max(0, chalUndo - 1);', ''],
+  ['MA50 あまいものあつめ：ちょうせんで のこり 0 でも 1手もどせる（見つける：AW34・AW35）', 'お助け', 'games/amai/main.js', 'const undoLeft = () => !chal || chalUndo > 0;', 'const undoLeft = () => true;'],
+  ['MA51 あまいものあつめ：ちょうせんの やりなおしで もどしの回数が戻らない（見つける：AW34）', 'お助け', 'games/amai/main.js', '    chal = ch;\n    chalUndo = CHAL_UNDO;', '    chalUndo = ch && chal && n === level ? chalUndo : CHAL_UNDO;\n    chal = ch;'],
+  ['MA52 あまいものあつめ：ちょうせんの途中も amai.save に書く（見つける：AW34）', 'データ消失', 'games/amai/main.js', 'if (custom || chal || !state || state.won) return;', 'if (custom || !state || state.won) return;'],
+  ['MA53 あまいものあつめ：ちょうせんでクリアしても amai.gold に書かない（見つける：AW34）', 'データ', 'games/amai/main.js', 'if (typeof rg === "string") writeKey(KEY_GOLD, rg);', ''],
+  ['MA54 あまいものあつめ：ずかんで金の花輪を出さない（ふつうの花輪になる。見つける：AW34）', 'ルール', 'games/amai/main.js', 'const gold = !!(n > 0 && p && isGold(id));', 'const gold = false;'],
+  ['MA55 あまいものあつめ：まだクリアしていない面でも ちょうせんを選べる（見つける：AW34）', 'ルール', 'games/amai/main.js', 'return !!(pk && book.got && Number.isSafeInteger(book.got[pk.id]) && book.got[pk.id] > 0);', 'return !!pk;'],
+  ['MA56 あまいものあつめ：面えらびで金の花輪を出さない（見つける：AW34）', 'ルール', 'games/amai/main.js', 'if (p && got && isGold(p.id)) {', 'if (false) {'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

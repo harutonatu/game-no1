@@ -112,6 +112,10 @@
   - **ともだちに おくる**はクリアのカードのボタン。文・URL・クリアした絵の PNG。
   - 保存のキーは増やしていない。
 
+### 0.9 ちょうせんモード（2026-11-05）。ユーザーの言葉と答え（そのまま）
+- ユーザーの言葉：「難易度を上げる取り組みがしたい。案を出して」。PM の案 A「ちょうせんモード：わく 2 つ・1手もどすは 3 回まで・クリアで金の花輪。選んだ人だけ」への答え：「おすすめで（両方） (Recommended)」。
+- 細かい決めは計画書 docs/plans/amai-challenge.md §1（PM）。この約束では §2.9（面）・§3.4（DOM）・§3.5（カード）・§3.6（進行・テスト用 API）・§4.3（`amai.gold`）・§6.2（API）・§7（テスト AL19・AL20・AW34・AW35、変異 MA48〜MA56）に書き写した。
+
 ## 1. ねらいと遊び方の決まり（ロジックの正）
 
 ### 1.1 ねらい（遊びの核は 1 つ）
@@ -369,6 +373,12 @@ AmaiPictures.add([
 - 日付は使わない（季節の絵も、面の順に出るだけ）。
 - くり返しの面の「絵 と もよう を交互」（ユーザー決定。docs/plans/amai-pictures-100.md）は本体の公開の後の版で入れる。本体では上の 1〜3 のまま。保存に `pick` が残るので、後から並べ方を変えても途中の面は変わらない。
 
+### 2.9 ちょうせんの面（2026-11-05。計画書 docs/plans/amai-challenge.md §1）
+- `createLevel(level, pick, { challenge: true })` は**わく 2 つ**（`CHAL_SLOTS = 2`。局面の `slots` の長さが 2）の面を作る。作り方は ふつう と同じ（同じ種・同じ手順・同じ `paramsFor`）で、配った局面の わくだけを 2 つにして、§2.3 の確かめ（`verify`・`solveSearch`）を**わく 2 つの局面で**通す。通らない配りは ふつう と同じく配り直し、予備 1（S の順・引き寄せなし。1 箱ずつ運び切るので わく 1 つでも通る）・予備 2 に落ちる。opt が無い・`{}`・`challenge` が `true` でないときは ふつう（わく 3 つ）で、ふつうの面は ちょうせんを足す前と同じ。
+- わくの数は局面の `slots` の長さで決まる（`step` は `slots.length` だけ回す。`validateState` は長さ 3 か 2 だけを受け付ける。1 つ・4 つは null）。`replay(level, pick, presses, t, { challenge: true })` で ちょうせんの面を再生する。
+- 測った値（2026-11-05・クラウドの Node）：ちょうせんの 1〜150 面は**すべて ふつうの作り**（予備に落ちない）で、わく 2 つで解ける。箱の並びが ふつう と同じ面は 147 面（ちがう 3 面は 1 回目の配りが わく 2 つで通らず、配り直した）。生成の時間は 1 面 最大 約 40〜60ms・中央 約 16ms（ふつうは 最大 約 39ms・中央 約 17ms）。基準は 1 面 150ms 以内（AL20）。
+- 1手もどすの回数（`CHAL_UNDO = 3`）は logic の定数で、数えるのは main（§3.6）。
+
 ### 2.8 試算の結果
 #### 2.8.0 50 枚を足した後（101〜150 面。2026-11-04。計画書 docs/plans/amai-more2.md §4。Node）
 - つまみは変えていない（§2.8.1 の値のまま）。測り方は §2.8.1 と同じ（各面 40 回・101〜162 面。151 面からは 1〜150 面をクリアしたずかんから）。結果：`docs/plans/amai-more2/result-base.md`。
@@ -531,9 +541,14 @@ S 36 秒（3・4 面）・M 51 秒・L 81 秒・XL 116 秒・XXL 130 秒・く�
 | `#selectBtn` | 面えらびのカード（`#card[data-kind="select"]`）を開く（遊びは止まる。2026-11-03） |
 | `#card ul.levels li[data-level][data-open="1"/"0"][data-current][data-clean] > button[data-cmd="level"][data-level]` | 面えらびの 1 面。`data-open="0"` は鍵つき（`disabled`・「？」）。`li.more` は「つづき」。花輪は `.wreath`（`aria-hidden`。読み上げはボタンの `aria-label` に「（1手もどし なし）」） |
 | `#card ul.book li[data-clean="1"] .wreath` | ずかんの花輪（2026-11-03。前は名前の横の「★」） |
+| `#card ul.levels li[data-got="1"]`・`li[data-gold="1"] .wreath.gold`・`#card ul.book li[data-gold="1"] .wreath.gold` | （2026-11-05）`data-got`＝クリアしたことのある面（ちょうせんも選べる）。金の花輪（ちょうせんで クリア）。金がある面・絵には ふつうの花輪（`data-clean`）を付けない（金を先に。花輪は 1 つ）。読み上げは面えらびが `aria-label`「（ちょうせん クリア）」、ずかんが `.sr`「（ちょうせん クリア）」 |
+| `#card p.wnote.gnote` | 面えらびとずかんの、金の花輪の説明の行（`.wreath.inline.gold`＋「きんの わ ＝ ちょうせん クリア」。面えらびは「（クリアした めんで あそべるよ）」も） |
+| `#playView[data-mode="chal"/"normal"]`・`.hud .chaltag` | ちょうせんの間は `data-mode="chal"` で、上の行に札「ちょうせん」（`.chaltag`。ふだんは出さない） |
+| `#slots[data-n="2"/"3"]`・`.slot[hidden]` | わくの数（局面の `slots` の長さ）。ちょうせんは 3 つ目の `.slot` を `hidden` にし、2 つを ふつう と同じ大きさで まん中に寄せる（`#slots` の幅 ＝ (3 つの幅 × 2 − すき間) ÷ 3） |
+| `#undoBtn[data-rest] .ulab`・`.urest` | ちょうせんの間だけ、2 行目に「あとNかい」（12px。F-1：盤の上の「のこり ○ こ」と言葉を分ける）。`aria-label`「1手もどす あと N かい」。のこり 0 なら `disabled` |
 | `#hint` | 1 行の案内（絵に重ねず、絵の箱とわくの間。2026-10-28 に「2 行分の高さ」から 1 行に変更）。高さ固定（縦 20px・横向き 16px・iPad 28px）で、文言が変わっても配置が動かない |
 | `#overlay`・`#card` | 遊び方・ずかん・クリア・うごかせない・やりなおしの確認。**カードを開いている間は `#playView` に `inert`**（うしろの箱・わく・下のボタンに Tab・読み上げ・押すが届かない。`a#back`・？・♪ は `#playView` の外なので残り、メニューへ戻れる。ハシわたり HS-07 と同じ。閉じたら外す。決めた日 2026-10-28。AW24） |
-| `.overlay [data-cmd="next"/"menu"/"book"/"close"/"restartYes"/"undo"/"restart"/"level"/"selectYes"/"share"]` | つぎの めんへ・メニューへ・ずかん・とじる・やりなおす・1手もどす・やりなおし・面を選ぶ・（面えらびの確かめで）はじめる・ともだちに おくる |
+| `.overlay [data-cmd="next"/"menu"/"book"/"close"/"restartYes"/"undo"/"restart"/"level"/"selectYes"/"share"/"playNormal"/"playChal"]` | （`playNormal`・`playChal` は 2026-11-05。面えらびで ふつうで あそぶ・ちょうせん）つぎの めんへ・メニューへ・ずかん・とじる・やりなおす・1手もどす・やりなおし・面を選ぶ・（面えらびの確かめで）はじめる・ともだちに おくる |
 
 CSS の約束：既存のトークン（`--bg`・`--panel`・`--ink`・`--muted`・`--accent`）・フォント・safe-area・`[hidden] { display:none !important; }`・ダブルタップ拡大の抑止の作りは いろびんに準じる。文字は 12px 以上、本文 16px 以上、ひらがな中心。`prefers-reduced-motion: reduce` で CSS の動きを止める。
 
@@ -552,6 +567,12 @@ CSS の約束：既存のトークン（`--bg`・`--panel`・`--ink`・`--muted`
 - **やりなおしの確認**：「さいしょから やりなおす？」［やりなおす `restartYes`］［やめる `close`］。
 - **面えらび**（`#selectBtn`。2026-11-03）：上に「めんを えらぶ」と「とじる」（`close`。カードの上に固定）、その下に小さく「ここまで ベスト めん。あそんだ めんと、つぎの めんを えらべるよ」、さらにその下に**花輪の説明の行**（`p.wnote`：花輪の小さな絵 `.wreath.inline` ＋「＝ 1手もどし なしで クリア」。E-3。ずかんにも同じ行）。1〜150 面（2026-11-04 から。前は 1〜100 面）を番号と小さな絵（48×36。ずかんにある絵は色つき、まだの絵はかげ）で 4 列（500px 以上 6 列・700px 以上 8 列）。選べるのは 1〜ベスト＋1 面（`L.levelChoices(best)`）。その先は点線の枠に「？」で押せない（`disabled`）。いまの面は橙の枠（`aria-current`）と、左上の小さな文字「いま」（`.here`。色だけに頼らない。E-4。`aria-label` にも「（いま）」）で、開いたときにカードの中をそこまでスクロールする。ベスト＋1 が 151 面より先なら、一覧の上に横いっぱいの「つづき N めん」（16 桁でも折り返して収める）。花輪（下）。面を押すと：押した数 0 ならすぐその面の最初から（同じ面なら閉じるだけ）。押した数 1 以上なら確かめ「N めんを はじめる？」「いまの めんの とちゅうは きえるよ」［はじめる `selectYes`］［やめる `close`＝**面えらびの一覧に戻る**（E-5。一覧からもう一度 とじる／Esc で遊びに戻る）］。始めるときは「えを つくっているよ」を出して 1 フレーム後に作る（`goNext` と同じ）。`amai.best` は書かない（下げない）。`amai.save` は選んだ面になる。クリアの「つぎの めんへ」は選んだ面＋1。Esc・「とじる」で閉じる。演出の待ちがあれば先にクリア・うごかせないのカードを出し、その上に重ねない（ずかんと同じ）。
 - **花輪**（2026-11-03）：1手もどし なしでクリアしたことのある絵（`amai.clean`）の面・絵の右上に右上に大きな輪（`.wreath`、**34px**。2026-11-04 にユーザー「花輪に見えないね　もっとお花を大きくして」で作り直し。説明の行の中の見本は 26px）。20×20 マスのドット絵の SVG（`crispEdges`）：緑の葉の輪の上に、5 枚の花びら＋中心の花（5×5 マス）を 6 つ（ピンク・しろ・きいろ。ユーザーが案 B を選んだ）。絵は main.js の `wreathUri(色の表)` が作って CSS 変数 `--wreath-img` に入れる（色の表を変えれば別の色、例：ちょうせんモードの金の花輪を作れる）。絵文字は使わない。色だけに頼らない「輪」と花の形）。面えらびでは、選べて・ずかんにある絵の面だけ（鍵つき・ずかんに無い絵の面には付けない）。ずかんでは、名前が出ている絵だけ。`aria-hidden`、読み上げは面えらびが `aria-label`、ずかんが `.sr`「（1手もどし なし）」。
+- **ちょうせんモード**（2026-11-05。§0.9・計画書 amai-challenge.md §1）：
+  - **選ぶ所**：面えらびで、**クリアしたことのある面**（**3〜150 面**で、その面の絵がずかんにある。F-5：1・2 面は どう押してもクリアの保証が わく 3 の前提のため、ちょうせんは出さない。`li[data-got="1"]`）を押すと、カード「N めんを あそぶ」・小さな説明「ちょうせんは わくが 2つ・1手もどすは 3かいまで。クリアすると きんの わ。とちゅうの ほぞんは ないよ」（`p.modenote`。言葉で折り返す。F-2）・途中なら「ふつうで あそぶと いまの めんの とちゅうは きえるよ（ちょうせんなら ふつうの とちゅうは のこるよ）」（ちょうせんは `amai.save` を書かないので、閉じて開き直すと ふつうの続きが戻るのが事実）・［ふつうで あそぶ `playNormal`］［ちょうせん `playChal`（F-3：塗りではなく金のふちどり＝太い金の枠と金の文字。ふつうが主役）］［やめる `close`＝面えらびの一覧に戻る］（ボタン 44px 以上）。**まだクリアしていない面（ベスト＋1）・「つづき」は今までどおり ふつう だけ**（押した数 0 ならすぐ・1 以上なら「はじめる？」の確かめ）。［ふつうで あそぶ］は今までの選び方と同じ（同じ面・押した数 0・ちょうせんでない なら閉じるだけ）。
+  - **遊んでいる間**：わくは 2 つ（§2.9）。上の行に札「ちょうせん」。`#hint` のはじめに「ちょうせん！ わくは 2つ・1手もどすは 3かい」。「1手もどす」は 3 回まで（ボタンの 2 行目に「あと N かい」。使い切ったら `disabled`。キーの U・Backspace も効かない）。やりなおしは何度でも（やりなおすと のこりも 3 に戻る）。遊び方のカードの「わく（したの 3つの しかく）」は ちょうせんの間「2つ」。
+  - **うごかせない**：もどしが残っていれば今までどおり（ボタンに「1手もどす（のこり N）」）。**使い切っていたら**本文「…やりなおして ためしてね。」・ボタンは［やりなおし `restart`］だけ（押せないボタンを出さない）。`#hint` は「うごかせないよ。「やりなおし」を おしてね」。
+  - **クリアのカード**：見出しは今までどおり「N めん クリア！」。絵の名前の下に「ちょうせん クリア！」（`p.clean.gold`、金の花輪の小さな絵つき）。「1手もどし なし！」は出さない（ちょうせんでは `amai.clean` を書かない）。［つぎの めんへ］は**ふつうの** N＋1 面（`pickPicture` で選ぶ。ちょうせんは続けない）。ともだちに おくる の文は「あまいものあつめ N めん ちょうせん クリア！ ずかん M/150」。
+  - **金の花輪**：`amai.gold` にある絵の面・絵に、ふつうの花輪と同じ形（§3.5 の花輪）を金・きいろ・しろの色の表（`WREATH_GOLD`。葉も金）で塗った輪（`.wreath.gold`・CSS 変数 `--wreath-gold-img`）。面えらびとずかんで、**ふつうの花輪より金を先に**出す（1 つだけ）。説明の行（`p.wnote.gnote`）を ふつうの花輪の行の下に足した。
 - **ずかん**：`PICTURE_ORDER` の順に全部（最初は 48 枚。2026-11-03 から 100 枚、2026-11-04 から 150 枚）を 4 列（SE 縦。横向きと iPad は 6〜8 列）で並べ、カードの中を縦にスクロールする（「とじる」はカードの上に固定して、いつも押せる）。クリアした絵は色つきの小さな絵（印なし）と名前と「N かい」。季節の絵には小さな札（「はる」「なつ」「あき」「ふゆ」）。まだの絵は**うすい灰色のかげ（形だけ）**と「？？？」。上に「M / 48」（分母は `PICTURE_ORDER.length`）と、その右に「あと N まい」（そろったら「ぜんぶ そろったよ」）。**1手もどし なしでクリアしたことのある絵**（`amai.clean` に id がある絵。名前が出ている絵だけ）は、右上に**花輪**（`.wreath`・`li[data-clean="1"]`。2026-11-03 に「★」から置き換え。意味が同じなので面えらびとそろえた。`aria-hidden`、読み上げは `.sr`「（1手もどし なし）」）。ボタン「とじる」（`close`）。開いている間、遊びは止まる。小さな絵は開いたときに 1 回だけ描く。
 - `#hint` の文（例。**1 行に収める**。2026-10-28 に実装の文へ合わせた）：1・2 面のはじめ「はこを おすと、ありんこが はこぶよ」／わくが空で落ち着いた「てまえの はこを おしてね」／わくがいっぱいで押した「わくが いっぱいだよ」／列が空「その れつには もう はこが ないよ」／こおり「こおって いるよ。ほかを あと K かい おしてね」／待っている箱があって落ち着いた「○いろ（印）が ふちに でるのを まってるよ」／運んでいるだけで待つ「ありんこが はこんでるよ」（うすく）／ふたが開いた「ふたが あいたよ」／こおりがとけた「こおりが とけたよ」／うごかせない「うごかせないよ。『1手もどす』を おしてね」。
 - Esc でカードを閉じる（クリアのカードは閉じない＝つぎの めんへ を選ぶ。うごかせないのカードは閉じない＝どちらかを選ぶ）。
@@ -568,7 +589,8 @@ CSS の約束：既存のトークン（`--bg`・`--panel`・`--ink`・`--muted`
 - `visibilitychange`（hidden）：`render.pause()`・`data-phase="paused"`・保存。visible：もとに戻す。
 - **演出中にカードを開いたとき**（2026-10-28。AW21）：クリアの演出中（ありんこを待っている間）に？・ずかん・やりなおし（R）を押しても、`flush()`（待っていた続きを同期で進める）の**直後に**もう一度 `overlay` を見る。クリア／うごかせないのカードが出ていれば、その上に別のカードを重ねない（クリア／うごかせないのカードが残り、「つぎの めんへ」が押せる）。
 - **裏・bfcache から戻ったとき**（2026-10-28。AW22）：`pagehide` の `clearLater()` で待っていた見回り（押せない時間を外す・ありんこを待ってカードを出す）が消えるので、`pageshow`・表に戻ったときに `resumePending()` で**始め直す**。クリアの演出中に離れて戻っても、クリアのカードが出る。
-- **`setState` の局面（`custom`）では `amai.best`・`amai.book`・`amai.clean` を書かない**（テスト用の局面で記録を汚さない）。`amai.clean` は、`custom` でなく・途中から再開した面でなく・1手もどすを使っていない面のクリアでだけ書く。
+- **ちょうせん**（2026-11-05）：`startLevel(lv, pk, [], 0, { challenge: true })` で `createLevel(lv, pk, { challenge: true })`。`chal`（ちょうせん中）・`chalUndo`（もどしの のこり。面を始めるたび・やりなおしで `CHAL_UNDO`。F-4：`setState` の局面のやりなおし（`doRestart` の custom の道）でも戻す）。**途中の保存（`amai.save`）は書かない**（始めても・押しても・裏へ回っても・閉じても。閉じて開き直すと ふつう の続き。X-20 で見張る値も変わらない）。1手もどすは `replay(…, { challenge: true })`。クリアで `amai.gold`（`addGold`）と `amai.book`（`addToBook`。ずかんの回数を 1 増やす）だけを書き、`amai.best`・`amai.clean`・`amai.save` は書かない（ちょうせんはクリアしたことのある面だけなのでベストは変わらない）。
+- **`setState` の局面（`custom`）では `amai.best`・`amai.book`・`amai.clean`・`amai.gold` を書かない**（テスト用の局面で記録を汚さない）。`amai.clean` は、`custom` でなく・途中から再開した面でなく・1手もどすを使っていない面のクリアでだけ書く。
 - **テスト用の公開 API**：
 
 ```js
@@ -581,8 +603,10 @@ window.AmaiGame = Object.freeze({
   settle(),    // 落ち着くまで進める（最大 2000 はこび）
   solution(),  // 今の面の info.solution（面の最初からの押す列）。途中なら null
   skip(),      // render.finishAll()
-  setLevel(n), // n 面の最初から（保存も n 面・押した数 0）
-  setState(s), // logic の state の形をそのまま入れる（validateState で確かめ、だめなら false）。うごかせないの局面を作るため
+  setLevel(n, opt), // n 面の最初から（保存も n 面・押した数 0）。opt.challenge なら ちょうせん（クリアしたかは見ない。2026-11-05）
+  setState(s, opt), // logic の state の形をそのまま入れる（validateState で確かめ、だめなら false）。うごかせないの局面を作るため。
+                    // opt.challenge なら ちょうせんの見た目（もどしの のこりは opt.undo。2026-11-05）
+  // getState() には 2026-11-05 から challenge（ちょうせん中）・chalUndo（のこり。ふつうは null）・slotCount（わくの数）も入る。canUndo は のこり 0 なら false
   logic()      // logic の state の写し
 });
 ```
@@ -673,6 +697,7 @@ state = {
 |---|---|---|
 | `amai.best` | 数の文字 | クリアした一番大きい面。`validateBest`：安全な整数で 0 以上でなければ 0 |
 | `amai.book` | `{"v":1,"got":{"ringo":2,…}}` | ずかん。絵の id → クリアした回数（1〜9999。くり返しの面も 1 足す）。`PICTURE_ORDER` に無い id も捨てずに残す（データを消さない）。数えるとき（`bookCount`・ずかんの M）は `PICTURE_ORDER` にある絵だけ。`validateBook` は**壊れた項目だけ捨て、ほかは残す**（JSON 全体が壊れていれば空）。`addToBook(raw, id)` は書く直前に保存から読み直して 1 足す |
+| `amai.gold` | `{"v":1,"ids":["ringo",…]}` | ちょうせんでクリアしたことのある絵の id（2026-11-05。§0.9）。形・検査は `amai.clean` と同じ：`validateGold(raw) → { ids }`・`addGold(raw, id) → 文字`・`hasGold(raw, id) → 真偽`（壊れた値は空・壊れた id と重複は捨てる・`PICTURE_ORDER` に無い古い id は残す・`PICTURE_ORDER` に無い id は足さない・例外なし）。面えらびとずかんの金の花輪はこの印だけで決める。X-20 の stale の間は書かない（G3）。見張らない |
 | `amai.clean` | `{"v":1,"ids":["ringo",…]}` | 「1手もどし なし！」でクリアしたことのある絵の id（2026-10-28 追加。ユーザーの答え「入れる (Recommended)」）。`validateClean(raw) → { ids }`：JSON でない・形ちがい・`v` が 1 でない・`ids` が配列でないなら空。**壊れた id（英小文字でない・65 字以上）・文字でない要素・重複は捨てる**。`PICTURE_ORDER` に無い id（3〜48 面を描き直す前の古い id など）は**捨てずに残す**（2026-11-02 に変更。手直し前は捨てていた。データを消さない＝`amai.book` と同じ。§2.6 の古い id の扱い）。`addClean(raw, id) → 文字`（読み直して足す。`PICTURE_ORDER` に無い id は足さない）・`hasClean(raw, id) → 真偽`。壊れた値は空として扱い、例外を出さない。面えらびとずかんの花輪はこの印だけで決める（2026-11-03。キーは増やしていない）。X-20 の stale の間は書かない（G3）。見張らない（`amai.book` と同じ。書くたびに読み直して足す） |
 | `amai.help` | `"1"` | 遊び方を見た |
 | `amai.fast` | `"1"`／`"0"` | はやく |
@@ -760,7 +785,7 @@ const AMAI = {
 ### 6.2 ロジックの API（`games/amai/logic.js`、担当 A）
 ```js
 AmaiLogic = {
-  NAME: "あまいものあつめ", SLOTS: 3, COLS: 4, TICK_MS: 120, FAST_MS: 60,
+  NAME: "あまいものあつめ", SLOTS: 3, CHAL_SLOTS: 2, CHAL_UNDO: 3, COLS: 4,   // CHAL_*：ちょうせん（2026-11-05。§2.9） TICK_MS: 120, FAST_MS: 60,
   MAX_W: 64, MAX_H: 48, MAX_SUGAR: 2800, MAX_COUNT: 99, MAX_PRESSES: 400, MAX_T: 5000,
   GEN_TRIES: 20, GEN_WORK: 400000, BASE_PICTURES: 150, REPEAT_FROM: 9,   // 1〜150 面は PICTURE_ORDER の順。151 面からくり返し（2026-11-04。前は 100）
   EASY_BOXES: 5,                                                   // 1〜2 面の箱の数の上限（内部の定数。外へ出ているかはコードが正）
@@ -771,14 +796,14 @@ AmaiLogic = {
   KSET: { S: [25, 45], M: [12, 45], L: [80, 99], XL: [40, 80], XXL: [25, 50] }, REPEAT_K: { kmin: 12, kmax: 40 },   // 箱の数の幅の上書き（2026-11-03。§2.8.1）
   CARRY_TIERS: {},
   PICTURE_ORDER,                                                   // [{ id, tier }, …]。§2.6 の表の順。絵を足すときは最後に足す
-  SAVE_KEY_SAVE: "amai.save", SAVE_KEY_BEST: "amai.best", SAVE_KEY_BOOK: "amai.book", SAVE_KEY_HELP: "amai.help", SAVE_KEY_FAST: "amai.fast", SAVE_KEY_CLEAN: "amai.clean",
+  SAVE_KEY_SAVE: "amai.save", SAVE_KEY_BEST: "amai.best", SAVE_KEY_BOOK: "amai.book", SAVE_KEY_HELP: "amai.help", SAVE_KEY_FAST: "amai.fast", SAVE_KEY_CLEAN: "amai.clean", SAVE_KEY_GOLD: "amai.gold",
   COLORS, LEVELS,
 
   makeRng(seed), seedFor(level), paramsFor(level, pick),           // §2.1
   parsePicture(def, mirror) → { id, name, W, H, cells } | null,    // 決まり（§2.6）を守らない絵は null
   pickPicture(level, book) → { id, mirror, repeat },               // §2.7。日付を使わない
   pictureById(id, mirror) → { id, name, season, W, H, cells } | null,
-  createLevel(level, pick) → { state, info },                      // §2.2。決定的（同じ level と pick なら同じ面）
+  createLevel(level, pick, opt) → { state, info },                 // §2.2。決定的（同じ level と pick と opt なら同じ面）。opt.challenge で わく 2 つ（§2.9。info.challenge）
   press(state, col) → { state, outcome },
   //  outcome：{ kind: 'press', col, slot, id, color, count, opened: [{ col, id, color, count }], thawed: [id, …] }
   //         | { kind: 'invalid', reason: 'won'|'range'|'empty'|'frozen'|'full', col }   ← state はそのまま
@@ -788,11 +813,12 @@ AmaiLogic = {
   canPress(state, col) → null | reason,
   edgeCells(state, color?) → [cell, …],                            // 今のふちの角砂糖（テスト・ヒント用）
   hud(state) → { level, left, total, presses, carried },
-  replay(level, pick, presses, t) → { state, ok, applied },        // §4.2
+  replay(level, pick, presses, t, opt) → { state, ok, applied },   // §4.2。opt.challenge で ちょうせんの面を再生
   validateState(s) → state | null,                                 // setState 用
   validateSave(raw) → { level, pick, presses, t } | null, makeSave(level, pick, presses, t) → string,
   validateBest(raw), recordBest(prev, cleared), validateBook(raw) → { got }, addToBook(raw, id) → string, bookCount(raw) → number,
   validateClean(raw) → { ids }, addClean(raw, id) → string, hasClean(raw, id) → boolean,   // §4.3 amai.clean（2026-10-28）
+  validateGold(raw) → { ids }, addGold(raw, id) → string, hasGold(raw, id) → boolean,      // §4.3 amai.gold（2026-11-05。形は amai.clean と同じ）
   levelChoices(best) → { top, list, open, more },   // 面えらび（2026-11-03）：top＝選べる一番先（ベスト＋1、上限 MAX_SAFE_INTEGER）、list＝一覧の面の数（BASE_PICTURES と PICTURE_ORDER.length の小さい方＝150）、open＝一覧で選べる数、more＝top が list より先なら top（「つづき」）・でなければ 0。壊れたベストは 0。例外なし
   canSelect(best, level) → boolean,                 // 1 ≦ level ≦ top の整数（数だけ。"3" などの文字は false）
   validateFlag(raw), colorName(id)
@@ -847,6 +873,8 @@ AmaiLogic = {
 - AL13：絵の選び方 `pickPicture`。1〜150 面はずかんに関係なく同じ絵・反転なし。151 面からは、ずかんが 150 枚そろっていればくり返し（9 枚目からの、回数の一番少ない絵・反転・仕掛け +1）。`PICTURE_ORDER` に 151 枚目を足した（テストの中で足した）とき、それがまだずかんに無ければ、くり返しより先に選ばれる。3〜150 枚目でずかんに 0 回の絵も、反転せずにくり返しより先（2026-11-03）。壊れた book でも例外を出さない。同じ `level` と `pick` の `createLevel` は、ずかんが変わっても同じ面。
 - AL14：「1手もどし なし！」の印 `validateClean`・`addClean`・`hasClean`（壊れた値・形ちがい・重複・壊れた id を捨てる・`PICTURE_ORDER` に無い id は残す・足す・ある／ない・例外を出さない）。tier は smoke。
 - AL18：面えらびの範囲 `levelChoices`・`canSelect`（1〜ベスト＋1。一覧 150・「つづき」・壊れたベスト・16 桁・例外なし）。tier は smoke。
+- AL19（smoke・2026-11-05）：ちょうせん。`CHAL_SLOTS` 2・`CHAL_UNDO` 3・`createLevel(n, pick, { challenge: true })` の面が わく 2 つで、解を press・step で再生すると won（1・2・3・5・13・25・37・48・77・100・150 面）・決定的・絵と角砂糖は ふつうと同じ・ふつうの面は変わらない・`replay` の opt・わく 2 つの局面の `validateState`・`step`・`full`・`amai.gold` の検査。AL10 の壊れた局面は「わく 1 つ・4 つ」に（2 つは正しい局面になった）。
+- AL20（full・solo・2026-11-05）：ちょうせんの 1〜150 面がすべて予備に落ちずに わく 2 つで won、1 面の生成が 150ms 以内（測った最大・中央を出す）。
 - AL17：描き直す前の古い絵の id（§2.6）。古い id の保存も読める・古い id の pick で面を作ると同じ面の番号で新しい絵の面になる・ずかん／もどしなしの印の古い id は消さないが数えない。49〜100 面を足す前に 49 面より先へ進んでいた人（55 面のくり返しの保存・1〜48 枚目のずかん・ベスト 60）でも落ちず、次の面は足した絵、151 面から飛ばした絵が先（§2.6）。101〜150 面を足す前に 101 面より先へ進んでいた人（105 面のくり返しの保存・1〜100 枚目のずかん・ベスト 120）も同じ（2026-11-04）。tier は smoke。
 - AL3：ふち。手作りの小さな絵で：わくのはしはふち／上下左右が角砂糖ならふちでない／**ななめは数えない**／閉じた空きは外でない／運ぶと閉じた空きが外になり、その まわりがふちになる。
 - AL4：運ぶ。同じ色だけ・ふちだけ・巣に近い順（同じなら下・左）・1 はこびで 1 箱 1 個・左のわくから順（前の箱の結果が次に効く）・同じ色の 2 箱・数が減る・0 で消えてわくが空く・その色がふちにないと待つ（数が減らない）・`carries` の中身。
@@ -891,6 +919,8 @@ full（smoke に加えて）：
 - AW29（full）：花輪。`amai.clean` の絵の面にだけ、面えらびとずかんの両方で `.wreath`（読み上げ「1手もどし なし」）。ずかんに無い絵・鍵つきの面には付けない。もどさずにクリアするとその面に付く。壊れた `amai.clean`・`amai.book` でも落ちない。
 - AW30（full）：ともだちに おくる。`navigator.share` を差し替えて、文（N めん クリア！・もどしなし・ずかん M/150）・URL・PNG（読める画像。canShare が true のときだけ）を確かめる。canShare が無い・false は文と URL だけ。AbortError は何も出さない。失敗・例外は あどれすの吹き出し（あどれすを押しても閉じない・ほかを押すと閉じる）。share が無ければコピー（3 秒で戻る）、コピーできなければ吹き出し。もどした面の文に「もどしなし」が無い。
 - AW31（full）：SE 縦・SE 横で、面えらび（ベスト 37・150・16 桁）とクリアのカード（ともだちに おくる付き）が崩れない。
+- AW34（full・2026-11-05）：ちょうせん。クリアした面だけ選ぶカード（まだの面は ふつうだけ）・わく 2 つ（`.slot` が 2 つ見える）・札・もどし 3 回で押せなくなる（キーの U も）・やりなおしで 3 に戻る・途中の保存を書かない（開き直すと ふつうの続き）・クリアで「ちょうせん クリア！」・`amai.gold`・ずかんの回数 +1・ベスト／`amai.clean`／`amai.save` は変えない・共有の文・面えらびとずかんで金の花輪が先（1 つだけ）・つぎの めんへ は ふつうの次・［ふつうで あそぶ］の進み方は今までどおり・壊れた `amai.gold` でも落ちない。
+- AW35（full・2026-11-05）：SE 縦・SE 横で、選ぶカード・わく 2 つ・「1手もどす のこり N」・札・もどし 0 の うごかせないカード（やりなおしだけ）・ちょうせんのクリアのカードが崩れない（44px・12px・はみ出さない・横スクロールなし）。
 - AW24（full）：カードとフォーカス。カードを開いている間は `#playView` が `inert` で、Tab は `a#back`・？・♪・カードの中だけを回り、遊びの箱・わく・下のボタンに行かない。閉じたら `inert` が外れ、Tab で遊びの部品に戻る。
 
 ### 7.4 変異テスト（`tests/mutants/mutate.mjs`、接頭辞 MA。中身の仕組みを変えたときだけ、このゲームの分だけ流す）
@@ -934,6 +964,15 @@ full（smoke に加えて）：
 | MA43 | canShare を見ずに画像を付けて送る | AW30 |
 | MA44 | 送るのをやめても失敗の吹き出しを出す | AW30 |
 | MA45 | 面えらびの鍵つきの面が disabled でない | AW28 |
+| MA48 | ちょうせんの面でも わくが 3 つ（2026-11-05。以下 MA56 まで ちょうせん） | AL19・AL20・AW34 |
+| MA49 | ちょうせんで 1手もどすの のこりが減らない | AW34 |
+| MA50 | ちょうせんで のこり 0 でも 1手もどせる | AW34・AW35 |
+| MA51 | ちょうせんの やりなおしで もどしの回数が戻らない | AW34 |
+| MA52 | ちょうせんの途中も `amai.save` に書く | AW34 |
+| MA53 | ちょうせんでクリアしても `amai.gold` に書かない | AW34 |
+| MA54 | ずかんで金の花輪を出さない（ふつうの花輪になる。前の案「両方出す」は else if のため見た目が変わらない変異だったので差し替え） | AW34 |
+| MA55 | まだクリアしていない面でも ちょうせんを選べる | AW34 |
+| MA56 | 面えらびで金の花輪を出さない | AW34 |
 
 - 置換前の文字列は、実装が固まった後に F が実物から写す（A〜D は、置換の目印になる行を変に分けない。1 行で書いた式を選ぶ。T-15 の教訓）。
 

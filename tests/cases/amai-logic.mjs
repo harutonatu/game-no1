@@ -658,8 +658,9 @@ export const tests = [
       tryIt('replay（おかしな手）', () => { const r = L.replay(1, null, [[0, 'x'], null], 3); if (r.ok !== false) throw new Error('ok'); L.replay(1, null, 'x', 'y'); });
       check('例外を出さない（' + odd.length + ' 通りの引数 × 公開の関数）', thrown.length === 0, thrown.slice(0, 10));
       check('hud が局面の値をそのまま', J(L.hud(r2.state)) === J({ level: 7, left: r2.state.left, total: 8, presses: 1, carried: 8 - r2.state.left }), L.hud(r2.state));
-      check('validateState：壊れた局面は null（cells の長さ・left の食いちがい・列が 3 つ・わくが 4 つ・id の重なり・数 0）', [
-        { ...plain, cells: plain.cells.slice(1) }, { ...plain, left: 3 }, { ...plain, cols: plain.cols.slice(1) }, { ...plain, slots: plain.slots.slice(1) },
+      // わくは 3 つ（ふつう）か 2 つ（ちょうせん。2026-11-05）だけ。1 つ・4 つは壊れた局面
+      check('validateState：壊れた局面は null（cells の長さ・left の食いちがい・列が 3 つ・わくが 1 つ・4 つ・id の重なり・数 0）', [
+        { ...plain, cells: plain.cells.slice(1) }, { ...plain, left: 3 }, { ...plain, cols: plain.cols.slice(1) }, { ...plain, slots: plain.slots.slice(2) }, { ...plain, slots: [...plain.slots, null] },
         { ...plain, cols: [[{ id: 1, color: 0, count: 2, lid: false, ice: 0 }], [{ id: 1, color: 0, count: 2, lid: false, ice: 0 }], [], []] },
         { ...plain, slots: [{ id: 99, color: 0, count: 0 }, ...Array(L.SLOTS - 1).fill(null)] }, { ...plain, won: true },
       ].every((x) => L.validateState(x) === null), null);
@@ -1043,6 +1044,86 @@ export const tests = [
       check('canSelect：ベスト 200 なら 201 面まで・202 面は選べない', L.canSelect(200, 201) === true && L.canSelect(200, 150) === true && L.canSelect(200, 202) === false, null);
       check('canSelect：壊れたベストでも 1 面は選べ、2 面は選べない', L.canSelect('x', 1) === true && L.canSelect('x', 2) === false && L.canSelect(undefined, 1) === true, null);
       check('canSelect：16 桁の上限の面', L.canSelect(M, M) === true && L.canSelect(M - 1, M) === true && L.canSelect(M - 2, M) === false, null);
+    },
+  },
+  // ---------- ちょうせんモード（2026-11-05。計画書 docs/plans/amai-challenge.md §1・契約 §2.9） ----------
+  {
+    id: 'AL19', tier: 'smoke', node: true, title: 'あまいものあつめ：ちょうせん（わく 2 つ）の面：CHAL_SLOTS 2・CHAL_UNDO 3・createLevel(n, pick, { challenge: true }) はわく 2 つで、解を画面と同じ press・step で再生すると won（1・2・3・5・13・25・37・48・77・100・150 面）・決定的・ふつうの面は変わらない（わく 3・同じ面）・replay も challenge でわく 2・amai.gold の検査（validateGold・addGold・hasGold）',
+    async run({ check, root }) {
+      const L = load(root);
+      check('CHAL_SLOTS は 2・CHAL_UNDO は 3・SLOTS は 3・SAVE_KEY_GOLD は amai.gold', L.CHAL_SLOTS === 2 && L.CHAL_UNDO === 3 && L.SLOTS === 3 && L.SAVE_KEY_GOLD === 'amai.gold', { CHAL_SLOTS: L.CHAL_SLOTS, CHAL_UNDO: L.CHAL_UNDO, SLOTS: L.SLOTS, KEY: L.SAVE_KEY_GOLD });
+      await withPictures(L, (kind) => {
+        check(`絵：${kind}`, true, null);
+        const bad = [];
+        for (const lv of [1, 2, 3, 5, 13, 25, 37, 48, 77, 100, 150]) {
+          const c = L.createLevel(lv, null, { challenge: true });
+          const n = L.createLevel(lv, null);
+          const pl = playSolution(L, c);
+          if (c.state.slots.length !== 2 || c.state.slots.some((x) => x !== null)) bad.push({ lv, why: 'わくが 2 つの空きでない', slots: c.state.slots });
+          if (c.info.challenge !== true || n.info.challenge !== false) bad.push({ lv, why: 'info.challenge', c: c.info.challenge, n: n.info.challenge });
+          if (!pl.ok) bad.push({ lv, why: 'わく 2 つで解が通らない', bad: pl.bad });
+          if (pl.ok && pl.state.slots.length !== 2) bad.push({ lv, why: '再生のあいだにわくが 2 つでなくなった' });
+          if (n.state.slots.length !== 3) bad.push({ lv, why: 'ふつうの面のわくが 3 つでない' });
+          const c2 = L.createLevel(lv, null, { challenge: true });
+          if (J(c2.state) !== J(c.state) || J(c2.info.solution) !== J(c.info.solution)) bad.push({ lv, why: '決定的でない' });
+          if (c.state.picture !== n.state.picture || c.state.total !== n.state.total) bad.push({ lv, why: '絵がふつうとちがう' });
+          // 箱の持ち玉の合計＝角砂糖の数（色ごと）
+          if (J(Object.entries(sumByColor(c.state)).sort()) !== J(Object.entries(sugarByColor(c.state)).sort())) bad.push({ lv, why: '持ち玉の合計が角砂糖とちがう' });
+        }
+        check('わく 2 つの面が解を再生して won・決定的・絵と角砂糖は ふつうと同じ・ふつうはわく 3 つのまま', bad.length === 0, bad);
+        // ふつうの面は ちょうせんを足す前と同じ作り（opt を渡さない・{}・challenge が true でない値はふつう）
+        const same = [1, 13, 48, 100].every((lv) => J(L.createLevel(lv, null).state) === J(L.createLevel(lv, null, {}).state) && J(L.createLevel(lv, null).state) === J(L.createLevel(lv, null, { challenge: 'yes' }).state));
+        check('createLevel の opt が無い・{}・challenge が true でない（"yes"）ならふつうの面（わく 3）', same, null);
+        // replay：challenge ならわく 2 つの面で再生する
+        const c13 = L.createLevel(13, null, { challenge: true });
+        let st = settle(L, c13.state); const r1 = L.press(st, c13.info.solution[0]); st = settle(L, r1.state);
+        const rp = L.replay(13, null, [[0, c13.info.solution[0]]], st.t, { challenge: true });
+        check('replay(…, { challenge: true }) はわく 2 つの面で同じ局面になる', rp.ok && rp.state.slots.length === 2 && J(rp.state) === J(st), { ok: rp.ok, n: rp.state && rp.state.slots.length });
+        const rpN = L.replay(13, null, [], 0);
+        check('replay（opt なし）はわく 3 つ', rpN.ok && rpN.state.slots.length === 3, null);
+      });
+      // validateState：わく 2 つの局面を受け付け、step はわく 2 つのまま運ぶ
+      const s2 = L.validateState({ level: 7, W: 3, H: 1, picture: 'test', mirror: false, repeat: false, cells: [0, 0, 1], total: 3, left: 3, cols: [[], [], [], []], slots: [{ id: 1, color: 0, count: 2 }, { id: 2, color: 1, count: 1 }], t: 0, presses: 0, won: false });
+      const r2 = s2 && L.step(s2);
+      check('validateState がわく 2 つの局面を受け付け、step で 2 つのわくが運ぶ（わくは 2 つのまま）', !!s2 && r2.moved && r2.state.slots.length === 2 && r2.n === 2, r2 && { n: r2.n, slots: r2.state.slots });
+      const full2 = L.validateState({ level: 7, W: 3, H: 1, picture: 'test', mirror: false, repeat: false, cells: [0, 0, 1], total: 3, left: 3, cols: [[{ id: 3, color: 0, count: 1, lid: false, ice: 0 }], [], [], []], slots: [{ id: 1, color: 2, count: 1 }, { id: 2, color: 2, count: 1 }], t: 0, presses: 0, won: false });
+      check('わく 2 つが埋まれば press は full・isStuck は true', !!full2 && L.canPress(full2, 0) === 'full' && L.isStuck(full2) === true, full2 && { r: L.canPress(full2, 0), st: L.isStuck(full2) });
+      // amai.gold（形は amai.clean と同じ）
+      const PO = L.PICTURE_ORDER.map((x) => x.id);
+      const bads = [null, undefined, '', '{', '[1]', 5, J({ v: 2, ids: [PO[0]] }), J({ v: 1, ids: 'x' }), J({ v: 1 })];
+      check('壊れた amai.gold は空・例外を出さない', bads.every((b) => { try { return J(L.validateGold(b)) === J({ ids: [] }) && L.hasGold(b, PO[0]) === false; } catch (e) { return false; } }), null);
+      const g = L.validateGold(J({ v: 1, ids: [PO[0], PO[0], 'Bad', 5, 'x'.repeat(65), 'furuiid', PO[3]] }));
+      check('validateGold：重複・壊れた id を捨て、知らない（古い）id は残す', J(g.ids) === J([PO[0], 'furuiid', PO[3]]), g);
+      const a1 = L.addGold(null, PO[2]), a2 = L.addGold(a1, PO[2]), a3 = L.addGold(a2, 'nanika');
+      check('addGold：足す・同じ id は 1 回・PICTURE_ORDER に無い id は足さない・hasGold', J(JSON.parse(a3)) === J({ v: 1, ids: [PO[2]] }) && L.hasGold(a3, PO[2]) && !L.hasGold(a3, PO[1]), a3);
+      check('addGold は amai.clean と別（hasClean は gold の文字を読んでも同じ形）・壊れた元でも落ちない', typeof L.addGold('{', PO[1]) === 'string' && L.hasGold(L.addGold('{', PO[1]), PO[1]), null);
+    },
+  },
+  {
+    id: 'AL20', tier: 'full', node: true, solo: true, title: 'あまいものあつめ：ちょうせん（わく 2 つ）の 1〜150 面がすべて ふつうの作り（予備 1・2 に落ちない）で、解を再生して won。1 面の生成は 150ms 以内（iPhone SE で重すぎない目安）。ふつうの 1〜150 面はちょうせんを足しても同じ面',
+    async run({ check, root }) {
+      const L = load(root);
+      await withPictures(L, (kind) => {
+        check(`絵：${kind}`, true, null);
+        L.createLevel(48, null, { challenge: true }); L.createLevel(30, null, { challenge: true });   // JIT の暖め
+        const per = [], bad = [];
+        let same = 0;
+        for (let lv = 1; lv <= Math.min(L.BASE_PICTURES, L.PICTURE_ORDER.length); lv++) {
+          const a = cpuOf();
+          const c = L.createLevel(lv, null, { challenge: true });
+          per.push({ lv, ms: +cpuMs(cpuOf(a)).toFixed(2) });
+          const pl = playSolution(L, c);
+          if (c.info.fallback !== 0) bad.push({ lv, why: `予備 ${c.info.fallback} に落ちた`, tries: c.info.tries });
+          if (!pl.ok || c.state.slots.length !== 2) bad.push({ lv, why: 'わく 2 つで解けない', bad: pl.bad });
+          const n = L.createLevel(lv, null);
+          if (J(n.state.cols) === J(c.state.cols)) same++;
+        }
+        const ms = per.map((x) => x.ms).sort((a, b) => a - b);
+        const worst = per.reduce((m, x) => (x.ms > m.ms ? x : m), per[0]);
+        check(`ちょうせんの 1〜150 面がすべて ふつうの作り（予備に落ちない）でわく 2 つで won（箱の並びが ふつうと同じ面 ${same}）`, bad.length === 0, bad);
+        // 実測（2026-11-05・クラウド）：最大 約 40〜60ms・中央 約 16ms。iPhone SE で重すぎない目安 150ms
+        check(`ちょうせんの 1 面の生成 最大 ${worst.ms}ms（${worst.lv} 面）・中央 ${ms[Math.floor(ms.length / 2)]}ms ≦ 150ms`, worst.ms <= 150, per.filter((x) => x.ms > 60));
+      });
     },
   },
 ];

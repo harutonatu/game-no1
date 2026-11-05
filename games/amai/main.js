@@ -25,6 +25,8 @@
   const KEY_HELP = L.SAVE_KEY_HELP || "amai.help";
   const KEY_FAST = L.SAVE_KEY_FAST || "amai.fast";
   const KEY_CLEAN = L.SAVE_KEY_CLEAN || "amai.clean";   // 1手もどし なしで クリアした絵（logic.js の validateClean・addClean・hasClean）
+  const KEY_GOLD = L.SAVE_KEY_GOLD || "amai.gold";      // ちょうせんで クリアした絵（金の花輪。logic.js の validateGold・addGold・hasGold）
+  const CHAL_UNDO = Number.isSafeInteger(L.CHAL_UNDO) && L.CHAL_UNDO >= 0 ? L.CHAL_UNDO : 3;   // ちょうせんの 1手もどすの回数
   const TICK_MS = Number(L.TICK_MS) > 0 ? Number(L.TICK_MS) : 500;
   const FAST_MS = Number(L.FAST_MS) > 0 ? Number(L.FAST_MS) : 250;
   const CARD_LOCK_MS = 400;     // クリア・うごかせないのカードを出してから押せない時間
@@ -38,6 +40,8 @@
   const HINT_FIRST = "はこを おすと、ありんこが はこぶよ";
   const HINT_IDLE = "てまえの はこを おしてね";
   const HINT_STUCK = "うごかせないよ。「1手もどす」を おしてね";
+  const hintChal = () => `ちょうせん！ わくは 2つ・1手もどすは ${CHAL_UNDO}かい`;
+  const HINT_STUCK_RESTART = "うごかせないよ。「やりなおし」を おしてね";   // ちょうせんで 1手もどすを使い切ったとき
   const HINT_CALM = "「うごきを へらす」せってい なので、ありんこは でないよ。でも ちゃんと はこんでるよ";
   let calmTold = false;   // 動きを減らす設定の案内は、1 回だけ出す
   const HINT_CARRY = "ありんこが はこんでるよ";   // 待っているだけのとき（押せる箱が無い・わくが いっぱい）に うすく出す
@@ -158,6 +162,9 @@
   let confirmFrom = "play";     // やりなおし・面えらびの確認を開いた所（play | stuck | select）
   let selectTarget = 0;         // 面えらびの確認で「はじめる」を押したら始める面
   let hintFadeId = 0;
+  // ちょうせんモード（計画書 docs/plans/amai-challenge.md §1）：わく 2 つ・1手もどすは CHAL_UNDO 回まで。途中の保存はしない
+  let chal = false;             // いま ちょうせんで遊んでいる
+  let chalUndo = CHAL_UNDO;     // ちょうせんの 1手もどすの のこり（やりなおすと戻る）
   let noUndo = null;            // この面で 1手もどすを使っていない：true／使った：false／分からない（途中から再開・テストの局面）：null。保存しない
 
   // 1 はこびを回すのは、表に出ていて・古いページでなく・カードが無く・落ち着いていないときだけ（変異 MA14 の置換元。1 行の式のまま）
@@ -248,9 +255,28 @@
     el.pic.setAttribute("aria-label", `${nm ? nm + " の え。" : ""}のこり ${h.left} こ`);
     renderTools();
   }
+  let undoSig = "";
+  function renderUndoLabel() {
+    // ちょうせんの間は、ボタンに のこりの回数を 2 行目で出す（字は 12px 以上）
+    const sig = chal ? "c" + chalUndo : "n";
+    if (sig === undoSig) return;
+    undoSig = sig;
+    if (chal) {
+      el.undoBtn.innerHTML = '<span class="ulab">1手もどす</span><span class="urest"></span>';
+      el.undoBtn.querySelector(".urest").textContent = `あと${chalUndo}かい`;
+      el.undoBtn.setAttribute("aria-label", `1手もどす あと ${chalUndo}かい`);
+      el.undoBtn.dataset.rest = String(chalUndo);
+    } else {
+      el.undoBtn.textContent = "1手もどす";
+      el.undoBtn.removeAttribute("aria-label");
+      delete el.undoBtn.dataset.rest;
+    }
+  }
+  const undoLeft = () => !chal || chalUndo > 0;
   function renderTools() {
     const n = presses.length;
-    el.undoBtn.disabled = !(n > 0) || phase === "clear";
+    renderUndoLabel();
+    el.undoBtn.disabled = !(n > 0) || phase === "clear" || !undoLeft();
     el.restartBtn.disabled = !(n > 0) || phase === "clear";   // 押した数 0 なら押しても何も起きない（いろびん IB-13）
     // うごかせないとき：押して意味のある方を目立たせる
     const need = phase === "stuck";
@@ -259,7 +285,7 @@
     el.fastBtn.setAttribute("aria-pressed", String(!!fast));
   }
   function save() {
-    if (custom || !state || state.won) return;   // クリアした面は、onWon が次の面を書く
+    if (custom || chal || !state || state.won) return;   // クリアした面は、onWon が次の面を書く。ちょうせんの途中は保存しない（閉じたら ふつう の続きに戻る）
     safeCall(() => writeKey(KEY_SAVE, L.makeSave(level, pick, presses, state.t)), false);
   }
   // 押せる手前の箱（列の先頭）・こおりの残り・いま運べる色の名前の文
@@ -279,6 +305,7 @@
     // 運べる色を名前で出す（運べない箱を押すと ありんこが 1 匹も出ないため。ユーザー報告 2026-11-01「アリンコは出ません」）
     if (!boxes.length) {
       if (presses.length === 0 && level <= 2 && !custom) return HINT_FIRST;
+      if (presses.length === 0 && chal && !custom) return hintChal();
       const fronts = frontBoxes().filter((f) => !f.lid && iceRest(f) === 0);
       if (fronts.length && !fronts.every((f) => edge.includes(f.color))) {
         const txt = edgeText();
@@ -374,14 +401,15 @@
   function enterStuck() {
     if (!state || state.won || !stable || !isStuckNow() || overlay !== null) return;
     setPhase("stuck");
-    setHint(HINT_STUCK, true);
+    setHint(undoLeft() ? HINT_STUCK : HINT_STUCK_RESTART, true);
     sfx.play("stuck");
     showStuckCard();
   }
 
   // ===== 面を始める =====
   // pk：{ id, mirror, repeat }（無い・PICTURE_ORDER に無い絵なら pickPicture で選ぶ）。pr・t：保存の押した手と t（再開）
-  function startLevel(lv, pk, pr, t) {
+  // mode：{ challenge: true } なら ちょうせん（わく 2 つ・もどし CHAL_UNDO 回。途中から再開しない）
+  function startLevel(lv, pk, pr, t, mode) {
     clearLater();
     // 「うごきを へらす」設定ではありんこを描かない（契約 §3.8）。何も出ないので、1 回だけ理由を知らせる
     if (calm && !calmTold) { calmTold = true; later(() => setHint(HINT_CALM, true), 400); }
@@ -391,12 +419,13 @@
     const n = Number.isSafeInteger(lv) && lv >= 1 ? lv : 1;
     let pk2 = pk && typeof pk.id === "string" && inOrder(pk.id) ? { id: pk.id, mirror: !!pk.mirror, repeat: !!pk.repeat } : null;
     let created, st, prs = [];
+    const ch = !!(mode && mode.challenge === true);
     try {
       if (!pk2) pk2 = L.pickPicture(n, readBook());
-      created = L.createLevel(n, pk2);
+      created = ch ? L.createLevel(n, pk2, { challenge: true }) : L.createLevel(n, pk2);
       st = created && created.state;
       if (!st) throw new Error("面を作れませんでした");
-      if (Array.isArray(pr) && pr.length) {
+      if (!ch && Array.isArray(pr) && pr.length) {
         const rp = safeCall(() => L.replay(n, pk2, pr, t), null);
         if (rp && rp.ok && rp.state) { st = rp.state; prs = pr.map((m) => [m[0], m[1]]); }
       }
@@ -407,6 +436,9 @@
     }
     level = n;
     pick = pk2;
+    chal = ch;
+    chalUndo = CHAL_UNDO;
+    el.playView.dataset.mode = chal ? "chal" : "normal";
     info = created.info || null;
     // 絵がまだ無い面（予備 2 のりんごで作った面）は、作った局面の絵の名前を出す
     picture = safeCall(() => L.pictureById(pick.id, pick.mirror), null) || safeCall(() => L.pictureById(st.picture, st.mirror), null);
@@ -424,7 +456,7 @@
     setPhase("play");
     if (state.won) { onWon(true); return true; }   // 最後まで運んだ所で閉じていた：クリアから続ける
     save();
-    setHint(presses.length === 0 && level <= 2 ? HINT_FIRST : "");
+    setHint(chal ? hintChal() : presses.length === 0 && level <= 2 ? HINT_FIRST : "");
     if (safeCall(() => L.isStable(state), false)) { stable = true; afterStable(); }
     else softHint();
     kick();
@@ -480,7 +512,7 @@
   // ===== 1手もどす・やりなおし =====
   function undo() {
     if (overlay !== null || !state || state.won || phase === "clear") return false;
-    if (!presses.length) return false;
+    if (!presses.length || !undoLeft()) return false;
     cancelPending();   // 先に うごかせないの待ちを取りやめる（flush がその続きでカードを出さないように）
     flush();
     if (state.won || overlay !== null) return false;
@@ -489,12 +521,13 @@
     if (custom) st = customHist[customHist.length - 1] || null;
     else {
       const rest = presses.slice(0, -1);
-      const rp = safeCall(() => L.replay(level, pick, rest, last[0]), null);
+      const rp = safeCall(() => (chal ? L.replay(level, pick, rest, last[0], { challenge: true }) : L.replay(level, pick, rest, last[0])), null);
       st = rp && rp.ok && rp.state ? rp.state : null;
     }
     if (!st) { console.error("あまいものあつめ: 1手もどせませんでした"); return false; }
     presses.pop();
     if (custom) customHist.pop();
+    if (chal) chalUndo = Math.max(0, chalUndo - 1);
     if (noUndo === true) noUndo = false;
     state = st;
     stable = false;
@@ -532,13 +565,14 @@
       const base = custom;
       clearLater(); runId += 1; cancelPending(); safeCall(() => render.finishAll());
       state = base; presses = []; customHist = []; stable = false;
+      if (chal) chalUndo = CHAL_UNDO;
       safeCall(() => render.build(state, picture));
       hud(); setPhase("play"); setHint("");
       if (safeCall(() => L.isStable(state), false)) { stable = true; afterStable(); }
       kick();
       return;
     }
-    startLevel(level, pick, [], 0);
+    startLevel(level, pick, [], 0, chal ? { challenge: true } : null);   // ちょうせんの やりなおしは もどしの回数も戻る
     sfx.play("start");
   }
 
@@ -560,8 +594,20 @@
     const id = state.picture || pick.id;
     let count = 1, got = 0, nextPick = null, improved = false;
     const next = level < Number.MAX_SAFE_INTEGER ? level + 1 : level;
-    const clean = !custom && !restored && noUndo === true;
-    if (!custom) {
+    const clean = !custom && !chal && !restored && noUndo === true;
+    const gold = !custom && chal;
+    if (gold) {
+      // ちょうせんの クリア：amai.gold に入れ、ずかんの回数を 1 増やす。ベスト・amai.clean・途中の保存（amai.save）は書かない
+      // （ちょうせんは クリアしたことのある面だけなのでベストは変わらない。amai.save は ふつう の続きのまま）
+      const rg = safeCall(() => L.addGold(readKey(KEY_GOLD), id), null);
+      if (typeof rg === "string") writeKey(KEY_GOLD, rg);
+      const raw = safeCall(() => L.addToBook(readKey(KEY_BOOK), id), null);
+      if (typeof raw === "string") writeKey(KEY_BOOK, raw);
+      const book = safeCall(() => L.validateBook(raw), null) || readBook();
+      count = book && book.got && Number(book.got[id]) > 0 ? Number(book.got[id]) : 1;
+      got = safeCall(() => L.bookCount(raw), 0) || 0;
+      nextPick = safeCall(() => L.pickPicture(next, book), null);
+    } else if (!custom) {
       // テストの局面（setState）では amai.best・amai.book・amai.clean を書かない
       const r = safeCall(() => L.recordBest(best, level), null) || { best, improved: false };
       improved = !!r.improved;
@@ -581,7 +627,7 @@
     } else {
       got = bookCountNow();
     }
-    lastClear = { level, id, name: picture && picture.name ? picture.name : "", mirror: !!pick.mirror, repeat: !!pick.repeat, count, got, improved, next, nextPick, restored: !!restored, clean };
+    lastClear = { level, id, name: picture && picture.name ? picture.name : "", mirror: !!pick.mirror, repeat: !!pick.repeat, count, got, improved, next, nextPick, restored: !!restored, clean, gold };
     renderTools();
     setHint(`${level} めん クリア！`, true);
     sfx.play("clear");
@@ -599,7 +645,7 @@
     showCard(`
       <h2 id="cardTitle" data-f="h"></h2>
       <div class="clearpic"></div>
-      <p class="picname" data-f="n"></p>${c.clean ? '\n      <p class="clean" data-f="k"></p>' : ""}
+      <p class="picname" data-f="n"></p>${c.gold ? '\n      <p class="clean gold"><span class="wreath inline gold" aria-hidden="true"></span><span data-f="o"></span></p>' : c.clean ? '\n      <p class="clean" data-f="k"></p>' : ""}
       <p data-f="c"></p>
       <p class="count" data-f="g"></p>
       <div class="btns">
@@ -608,7 +654,7 @@
         <button class="cta half" type="button" data-cmd="book">ずかん</button>
         <button class="cta half" type="button" data-cmd="menu">メニューへ</button>
         <button class="cta share" type="button" data-cmd="share">ともだちに おくる</button>
-      </div>`, { h: `${c.level} めん クリア！`, n: c.name, k: "1手もどし なし！", c: countText, g: total ? `ずかん ${c.got} / ${total}` : "" }, "clear");
+      </div>`, { h: `${c.level} めん クリア！`, n: c.name, k: "1手もどし なし！", o: "ちょうせん クリア！", c: countText, g: total ? `ずかん ${c.got} / ${total}` : "" }, "clear");
     sharing = false;   // 送る画面の返事が来ない端末でも、次のカードでは押せるように戻す
     const box = el.card.querySelector(".clearpic");
     if (box && picture) box.appendChild(pictureCanvas(picture, 120, { mono: false, marks: false }));
@@ -653,12 +699,15 @@
       if (!(safeCall(() => L.edgeCells(state, b.color), []) || []).length) names.push(colorName(b.color));
     }
     const why = names.length ? `${names.join("と ")}は まだ ふちに ないよ。そとの いろを さきに はこぶと みちが あくよ。` : "わくが いっぱいだよ。";
+    // ちょうせんで 1手もどすを使い切ったら、やりなおしだけ（押せないボタンは出さない）
+    const canU = undoLeft();
     showCard(`
       <h2 id="cardTitle">うごかせないよ</h2>
-      <p>${why}1手もどして ためしてね。</p>
-      <div class="btns">
-        <button class="cta primary half" type="button" data-cmd="undo">1手もどす</button>
-        <button class="cta half" type="button" data-cmd="restart">やりなおし</button>
+      <p>${why}${canU ? "1手もどして ためしてね。" : "やりなおして ためしてね。"}</p>
+      <div class="btns">${canU ? `
+        <button class="cta primary half" type="button" data-cmd="undo">1手もどす${chal ? `（あと${chalUndo}かい）` : ""}</button>
+        <button class="cta half" type="button" data-cmd="restart">やりなおし</button>` : `
+        <button class="cta primary" type="button" data-cmd="restart">やりなおし</button>`}
       </div>`, {}, "stuck");
     cardShownAt = now();
     el.card.querySelectorAll(".btns button").forEach((btn) => btn.setAttribute("aria-disabled", "true"));
@@ -770,7 +819,7 @@
       <h2 id="cardTitle">あそびかた</h2>
       <div class="sample"></div>
       <ol class="rules">
-        <li>てまえの はこを おすと、<b>わく</b>（したの 3つの しかく）に はいって ありんこが でてくるよ。</li>
+        <li>てまえの はこを おすと、<b>わく</b>（したの ${chal ? 2 : 3}つの しかく）に はいって ありんこが でてくるよ。</li>
         <li>はこべるのは <b>おなじ いろ</b>で、<b>ふち</b>（えの そとがわ）に ある おさとうだけ。</li>
         <li><b>なかの いろ</b>は、そとの いろを さきに はこんで <b>みちを あけて</b> ね。</li>
         <li>うごけなくなったら<span style="white-space:nowrap">『1手もどす』</span>。なんども やりなおして いいよ。えを ぜんぶ はこぶと <b>ずかん</b>に はいるよ。</li>
@@ -798,6 +847,8 @@
     const got = bookCountNow();
     const rawClean = readKey(KEY_CLEAN);
     const isClean = (id) => typeof L.hasClean === "function" && !!safeCall(() => L.hasClean(rawClean, id), false);
+    const rawGold = readKey(KEY_GOLD);
+    const isGold = (id) => typeof L.hasGold === "function" && !!safeCall(() => L.hasGold(rawGold, id), false);
     showCard(`
       <div class="bookhead">
         <h2 id="cardTitle">ずかん</h2>
@@ -805,7 +856,8 @@
         <button class="primary" type="button" data-cmd="close">とじる</button>
       </div>
       <p class="selnote wnote"><span class="wreath inline" aria-hidden="true"></span><span data-f="w"></span></p>
-      <ul class="book"></ul>`, { w: "＝ 1手もどし なしで クリア", g: `${got} / ${ORDER.length}`, r: got < ORDER.length ? `あと ${ORDER.length - got} まい` : "ぜんぶ そろったよ" }, "book");
+      <p class="selnote wnote gnote"><span class="wreath inline gold" aria-hidden="true"></span><span data-f="o"></span></p>
+      <ul class="book"></ul>`, { w: "＝ 1手もどし なしで クリア", o: "きんの わ ＝ ちょうせん クリア", g: `${got} / ${ORDER.length}`, r: got < ORDER.length ? `あと ${ORDER.length - got} まい` : "ぜんぶ そろったよ" }, "book");
     const ul = el.card.querySelector("ul.book");
     if (!ul) return;
     for (const item of ORDER) {
@@ -822,10 +874,13 @@
         if (/^\s+$/.test(part)) { nm.appendChild(document.createTextNode(part)); return; }
         const w = document.createElement("span"); w.className = "w"; w.textContent = part; nm.appendChild(w);
       });
-      const clean = n > 0 && p && isClean(id);   // 1 回でも 1手もどし なしで クリアした絵：花輪（読み上げは .sr）
-      if (clean) { const sr = document.createElement("span"); sr.className = "sr"; sr.textContent = "（1手もどし なし）"; nm.appendChild(sr); }
+      // 花輪：ちょうせんで クリアした絵は金の花輪（ふつうの花輪より先）。1 回でも 1手もどし なしで クリアした絵は花輪（読み上げは .sr）
+      const gold = !!(n > 0 && p && isGold(id));
+      const clean = !gold && !!(n > 0 && p && isClean(id));
+      if (gold || clean) { const sr = document.createElement("span"); sr.className = "sr"; sr.textContent = gold ? "（ちょうせん クリア）" : "（1手もどし なし）"; nm.appendChild(sr); }
       li.appendChild(nm);
-      if (clean) { li.dataset.clean = "1"; li.appendChild(wreath()); }
+      if (gold) { li.dataset.gold = "1"; li.appendChild(wreath(true)); }
+      else if (clean) { li.dataset.clean = "1"; li.appendChild(wreath()); }
       if (n > 0) { const cnt = document.createElement("span"); cnt.className = "cnt"; cnt.textContent = `${n} かい`; li.appendChild(cnt); }
       const season = p && SEASON_WORD[p.season];
       if (season) { const s = document.createElement("span"); s.className = "season"; s.dataset.season = p.season; s.textContent = season; li.appendChild(s); }
@@ -873,10 +928,13 @@
     for (const ch in paths) svg += "<path fill='" + palette[ch] + "' d='" + paths[ch].join("") + "'/>";
     return 'url("data:image/svg+xml,' + encodeURIComponent(svg + "</svg>") + '")';
   }
+  // 金の花輪（ちょうせんで クリアした印）：同じ形を、金・きいろ・しろの表で塗る（葉も金に）
+  const WREATH_GOLD = { p: "#E0A526", y: "#F7E27A", w: "#FFF8E6", g: "#A8780F", l: "#E3BC3C", o: "#C27F0C" };
   safeCall(() => document.documentElement.style.setProperty("--wreath-img", wreathUri(WREATH_PALETTE)));
-  function wreath() {
+  safeCall(() => document.documentElement.style.setProperty("--wreath-gold-img", wreathUri(WREATH_GOLD)));
+  function wreath(gold) {
     const w = document.createElement("span");
-    w.className = "wreath";
+    w.className = gold ? "wreath gold" : "wreath";
     w.setAttribute("aria-hidden", "true");
     return w;
   }
@@ -893,6 +951,8 @@
     const book = readBook();
     const rawClean = readKey(KEY_CLEAN);
     const isClean = (id) => typeof L.hasClean === "function" && !!safeCall(() => L.hasClean(rawClean, id), false);
+    const rawGold = readKey(KEY_GOLD);
+    const isGold = (id) => typeof L.hasGold === "function" && !!safeCall(() => L.hasGold(rawGold, id), false);
     showCard(`
       <div class="bookhead">
         <h2 id="cardTitle">めんを えらぶ</h2>
@@ -900,7 +960,8 @@
       </div>
       <p class="selnote"><span class="best" data-f="g"></span><span data-f="n"></span></p>
       <p class="selnote wnote"><span class="wreath inline" aria-hidden="true"></span><span data-f="w"></span></p>
-      <ul class="levels"></ul>`, { g: best > 0 ? `ここまで ${best} めん。` : "", n: "あそんだ めんと、つぎの めんを えらべるよ", w: "＝ 1手もどし なしで クリア" }, "select");
+      <p class="selnote wnote gnote"><span class="wreath inline gold" aria-hidden="true"></span><span data-f="o"></span></p>
+      <ul class="levels"></ul>`, { g: best > 0 ? `ここまで ${best} めん。` : "", n: "あそんだ めんと、つぎの めんを えらべるよ", w: "＝ 1手もどし なしで クリア", o: "きんの わ ＝ ちょうせん クリア（クリアした めんで あそべるよ）" }, "select");
     const ul = el.card.querySelector("ul.levels");
     if (!ul) return;
     const item = (n, opt) => {
@@ -919,7 +980,9 @@
         const p = pk ? safeCall(() => L.pictureById(pk.id, false), null) : null;
         const got = !!(p && book.got && Number.isSafeInteger(book.got[p.id]) && book.got[p.id] > 0);
         if (p) { const cv = pictureCanvas(p, 48, { mono: !got, marks: false }, true); cv.style.width = ""; cv.style.height = ""; btn.appendChild(cv); }   // 大きさは CSS（48×36 に収める）
-        if (p && got && isClean(p.id)) { li.dataset.clean = "1"; btn.appendChild(wreath()); label += "（1手もどし なし）"; }
+        if (p && got) li.dataset.got = "1";   // クリアしたことのある面：ちょうせんも選べる
+        if (p && got && isGold(p.id)) { li.dataset.gold = "1"; btn.appendChild(wreath(true)); label += "（ちょうせん クリア）"; }   // 金を先に
+        else if (p && got && isClean(p.id)) { li.dataset.clean = "1"; btn.appendChild(wreath()); label += "（1手もどし なし）"; }
       } else if (!open) {
         const q = document.createElement("span"); q.className = "q"; q.textContent = "？"; q.setAttribute("aria-hidden", "true"); btn.appendChild(q);
         btn.disabled = true;
@@ -950,7 +1013,23 @@
   function chooseLevel(n) {
     if (overlay !== "select") return false;
     if (!safeCall(() => L.canSelect(best, n), false)) return false;
-    if (n === level && !presses.length && phase !== "clear" && !custom) { hideOverlay(); return true; }
+    // クリアしたことのある 1〜150 面は、ふつう か ちょうせん かを選ぶカード（途中なら「とちゅうは きえるよ」も）
+    if (canChallenge(n)) {
+      selectTarget = n;
+      confirmFrom = "select";
+      const mid = presses.length > 0 && phase !== "clear";
+      showCard(`
+      <h2 id="cardTitle" data-f="h"></h2>
+      <p class="modenote" data-f="m"></p>${mid ? '\n      <p data-f="w"></p>' : ""}
+      <div class="btns">
+        <button class="cta primary" type="button" data-cmd="playNormal">ふつうで あそぶ</button>
+        <button class="cta chal" type="button" data-cmd="playChal">ちょうせん</button>
+        <button class="cta" type="button" data-cmd="close">やめる</button>
+      </div>`, { h: `${n} めんを あそぶ`, m: `ちょうせんは わくが 2つ・1手もどすは ${CHAL_UNDO}かいまで。クリアすると きんの わ。とちゅうの ほぞんは ないよ`, w: "ふつうで あそぶと いまの めんの とちゅうは きえるよ（ちょうせんなら ふつうの とちゅうは のこるよ）" }, "confirm");
+      el.card.dataset.mode = "pick";
+      return true;
+    }
+    if (n === level && !presses.length && phase !== "clear" && !custom && !chal) { hideOverlay(); return true; }
     if (presses.length && phase !== "clear") {
       selectTarget = n;
       confirmFrom = "select";
@@ -965,15 +1044,26 @@
     }
     return startChosen(n);
   }
-  // 選んだ面を最初から始める。ベスト（amai.best）は下げない（書かない）。絵の作りは 1 フレーム後（goNext と同じ）
-  function startChosen(n) {
+  // ちょうせんで遊べる面：1〜150 面（絵が 1 枚ずつ決まっている面）で、その面の絵がずかんにある（＝クリアしたことがある）
+  function canChallenge(n) {
+    if (!Number.isSafeInteger(n) || n < 3 || n > Math.min(Number(L.BASE_PICTURES) || 150, ORDER.length)) return false;
     if (!safeCall(() => L.canSelect(best, n), false)) return false;
+    const pk = safeCall(() => L.pickPicture(n, null), null);
+    const book = readBook();
+    return !!(pk && book.got && Number.isSafeInteger(book.got[pk.id]) && book.got[pk.id] > 0);
+  }
+  // 選んだ面を最初から始める。ベスト（amai.best）は下げない（書かない）。絵の作りは 1 フレーム後（goNext と同じ）
+  // challenge：ちょうせんで始める（クリアしたことのある面だけ）
+  function startChosen(n, challenge) {
+    if (!safeCall(() => L.canSelect(best, n), false)) return false;
+    const ch = !!challenge && canChallenge(n);
+    if (challenge && !ch) return false;
     sfx.unlock();
     hideOverlay();
     const pk = safeCall(() => L.pickPicture(n, readBook()), null);
     setHint("えを つくっているよ");
     requestAnimationFrame(() => {
-      startLevel(n, pk, [], 0);
+      startLevel(n, pk, [], 0, ch ? { challenge: true } : null);
       sfx.play("start");
     });
     return true;
@@ -988,7 +1078,7 @@
   let sharing = false;
   function shareText(c) {
     const total = ORDER.length;
-    return `${NAME} ${c.level}めん クリア！${c.clean ? " もどしなし" : ""}${total ? ` ずかん ${c.got}/${total}` : ""}`;
+    return `${NAME} ${c.level}めん ${c.gold ? "ちょうせん " : ""}クリア！${c.clean ? " もどしなし" : ""}${total ? ` ずかん ${c.got}/${total}` : ""}`;
   }
   // クリアした絵の PNG（ドットをくっきり拡大・背景つき）。カードを出したときに作っておく（押したときに待たない。share は押した直後に呼ぶ）
   function prepareShareFile(c) {
@@ -1070,6 +1160,7 @@
     lazyToken++;
     el.card.innerHTML = html;
     el.card.dataset.kind = kind;
+    delete el.card.dataset.mode;
     el.overlay.dataset.kind = kind;
     el.card.scrollTop = 0;
     el.card.querySelectorAll("[data-f]").forEach((n) => { n.textContent = fields[n.dataset.f] ?? ""; });
@@ -1123,6 +1214,13 @@
     else if (cmd === "restartYes") doRestart();
     else if (cmd === "level") chooseLevel(Number(btn.dataset.level));
     else if (cmd === "selectYes") { if (overlay === "confirm" && confirmFrom === "select") startChosen(selectTarget); }
+    else if (cmd === "playNormal") {
+      if (overlay !== "confirm" || confirmFrom !== "select") return;
+      // 同じ面を ふつう で、押した数 0 のまま（ちょうせんでもない）なら閉じるだけ
+      if (selectTarget === level && !presses.length && phase !== "clear" && !custom && !chal) { hideOverlay(); return; }
+      startChosen(selectTarget);
+    }
+    else if (cmd === "playChal") { if (overlay === "confirm" && confirmFrom === "select") startChosen(selectTarget, true); }
     else if (cmd === "share") doShare();
     else if (cmd === "book") showBook("clear");
     else if (cmd === "undo") { if (overlay === "stuck" && presses.length) { hideOverlay(); undo(); } }
@@ -1236,7 +1334,8 @@
         slots: state ? clone(state.slots) : [], cols: state ? clone(state.cols) : [],
         overlay, busy: !!render.busy, paused: hiddenNow, stale, fast, calm,
         timers: timers.size, runId, ants: st && Number.isFinite(st.ants) ? st.ants : 0,
-        canUndo: presses.length > 0, book: bookCountNow(),
+        canUndo: presses.length > 0 && (!chal || chalUndo > 0), book: bookCountNow(),
+        challenge: chal, chalUndo: chal ? chalUndo : null, slotCount: state && Array.isArray(state.slots) ? state.slots.length : 0,
         picture: pick.id, mirror: !!pick.mirror, repeat: !!pick.repeat, custom: !!custom,
         pressList: clone(presses), hint: el.hint.textContent, edge: edgeColors(),
         stats: st ? clone(st) : null   // render.stats()（{ ants, frameMs, redraws }。テスト AW19 用）
@@ -1255,15 +1354,17 @@
       return info.solution.slice();
     },
     skip() { flush(); },
-    setLevel(n) {
+    // opt.challenge：ちょうせんで始める（テスト用。クリアしたことがあるかは見ない）
+    setLevel(n, opt) {
       const v = Number(n);
       if (!Number.isSafeInteger(v) || v < 1) return false;
       if (overlay !== null) hideOverlay();
-      const ok = startLevel(v, null, [], 0);
+      const ok = startLevel(v, null, [], 0, opt && opt.challenge === true ? { challenge: true } : null);
       if (ok && !hiddenNow) safeCall(() => render.resume());
       return ok;
     },
-    setState(s) {
+    // opt.challenge：ちょうせんの見た目で入れる（テスト用。もどしの のこりは opt.undo、無ければ CHAL_UNDO）。記録は書かない（custom）
+    setState(s, opt) {
       const st = safeCall(() => L.validateState(s), null);
       if (!st) return false;
       if (overlay !== null) hideOverlay();
@@ -1272,6 +1373,9 @@
       cancelPending();
       safeCall(() => render.finishAll());
       custom = st;
+      chal = !!(opt && opt.challenge === true);
+      chalUndo = chal && Number.isSafeInteger(opt.undo) && opt.undo >= 0 && opt.undo <= CHAL_UNDO ? opt.undo : CHAL_UNDO;
+      el.playView.dataset.mode = chal ? "chal" : "normal";
       customHist = [];
       presses = [];
       noUndo = null;
