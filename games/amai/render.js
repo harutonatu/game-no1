@@ -727,9 +727,16 @@
     function renderSlots(st) {
       const slots = Array.isArray(st.slots) ? st.slots : [];
       const ready = waitingColors(st);
+      // わくの数は局面の slots の長さ（ふつう 3・ちょうせん 2）。使わないわくは隠す（#slots[data-n] で並べ方を変える）
+      const nUse = Math.max(1, Math.min(SLOTS, slots.length || SLOTS));
+      const nStr = String(nUse);
+      if (slotsEl.dataset.n !== nStr) slotsEl.dataset.n = nStr;
       for (let i = 0; i < SLOTS; i++) {
         const el = slotEls[i];
         if (!el) continue;
+        const off = i >= nUse;
+        if (el.hidden !== off) { el.hidden = off; el._sig = null; }
+        if (off) continue;
         const b = slots[i] || null;
         const wait = b && !st.won && !ready.has(b.color) ? "1" : "0";
         const sig = b ? `${b.id}|${b.color}|${b.count}|${wait}` : "none";

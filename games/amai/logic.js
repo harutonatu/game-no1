@@ -22,6 +22,10 @@
 
   const NAME = "あまいものあつめ";
   const SLOTS = 3;
+  // ちょうせんモード（2026-11-05。計画書 docs/plans/amai-challenge.md §1）：わく 2 つ・1手もどすは 3 回まで。
+  // 選べるのはクリアしたことのある 1〜150 面だけ（main が決める）。面は ふつう と同じ作り方で、わく 2 つの局面で確かめる
+  const CHAL_SLOTS = 2;
+  const CHAL_UNDO = 3;
   const EASY_BOXES = 5;   // 1〜2 面の箱の数の上限（1・2 面の絵は割っていない＝元の大きさなので 5 のまま。わくは 3 なので §2.1 の「必ず入る」保証は弱まる）
   // 1 はこびで 1 箱が運ぶ角砂糖の数（段 0b の測定用。1 なら今までと同じ動き）。
   // CARRY_FROM 以上の面だけ CARRY_N 個運ぶ。持ち玉の合計＝角砂糖の数は変えない（アリの数は同じ。1 回で CARRY_N 匹が運ぶイメージ）。
@@ -72,6 +76,7 @@
   const SAVE_KEY_HELP = "amai.help";
   const SAVE_KEY_FAST = "amai.fast";
   const SAVE_KEY_CLEAN = "amai.clean";
+  const SAVE_KEY_GOLD = "amai.gold";   // ちょうせんでクリアした絵（金の花輪。形は amai.clean と同じ）
 
   // ---------------------------------------------------------------- 色と印（§5.2）
   const COLORS = Object.freeze([
@@ -496,7 +501,7 @@
         }
         ncols.push(nb);
       }
-      if (!Array.isArray(slots) || slots.length !== SLOTS) return null;
+      if (!Array.isArray(slots) || (slots.length !== SLOTS && slots.length !== CHAL_SLOTS)) return null;   // わく 3 つ（ふつう）か 2 つ（ちょうせん）
       const nslots = [];
       for (const bx of slots) {
         if (bx === null) { nslots.push(null); continue; }
@@ -593,7 +598,7 @@
     const carries = [];
     let n = 0;
     let left = s.left;
-    for (let k = 0; k < SLOTS; k++) {
+    for (let k = 0; k < slots.length; k++) {   // わくの数は局面の slots の長さ（ふつう 3・ちょうせん 2）
       const bx = slots[k];
       if (!bx) continue;
       const cap = Math.max(1, s.carry || (s.level >= CARRY_FROM ? CARRY_N : 1));
@@ -797,7 +802,7 @@
   }
 
   // P（押す順）→ 列に配る → 仕掛け → 最初の局面と解。rng が null なら round-robin・仕掛けなし
-  function layout(lv, pic, pk, P, rng, lids, ices, shuffleCols, carryN) {
+  function layout(lv, pic, pk, P, rng, lids, ices, shuffleCols, carryN, nslots) {
     const cols = [[], [], [], []];
     const colOf = [], posOf = [];
     for (let k = 0; k < P.length; k++) {
@@ -843,7 +848,7 @@
     const scols = cols.map((a) => a.map((k) => ({ id: nid++, color: P[k].color, count: P[k].count, lid: lid[k], ice: ice[k] })));
     const state = freezeState({
       level: lv, W: pic.W, H: pic.H, picture: pic.id, mirror: pk.mirror, repeat: pk.repeat,
-      cells: Array.from(pic.cells), total: 0, left: 0, cols: scols, slots: new Array(SLOTS).fill(null), t: 0, presses: 0, won: false, carry: carryN,
+      cells: Array.from(pic.cells), total: 0, left: 0, cols: scols, slots: new Array(nslots === CHAL_SLOTS ? CHAL_SLOTS : SLOTS).fill(null), t: 0, presses: 0, won: false, carry: carryN,
       ...(() => { let n = 0; for (const v of pic.cells) if (v >= 0) n++; return { total: n, left: n }; })(),
     });
     return { state, solution: colOf };
@@ -919,7 +924,7 @@
     return dfs(state0) ? path.slice() : null;
   }
 
-  function tryBuild(lv, pic, pk, prm, rng, work, pull, lids, ices, opt, noOver, soften) {
+  function tryBuild(lv, pic, pk, prm, rng, work, pull, lids, ices, opt, noOver, soften, nslots) {
     // 1・2 面は「どう押してもクリアできる」保証を守るため、①・②を使わない（§2.1）
     const easy = lv <= 2;
     // soften：配り直すたびに①の強さを半分に寄せる（解ける面が見つからない絵で、予備に落ちる前にやさしくする）
@@ -957,7 +962,7 @@
       const [bx] = P.splice(i, 1);
       P.splice(j, 0, bx);
     }
-    const built = layout(lv, pic, pk, P, rng, lids, ices, shuffleCols, (noOver ? 1 : (prm.carry || 1)));
+    const built = layout(lv, pic, pk, P, rng, lids, ices, shuffleCols, (noOver ? 1 : (prm.carry || 1)), nslots);
     let solution = built.solution;
     if (anyColor || over > 1 || shuffleCols) {
       // solveSearch は画面と同じ press・step で最後まで進めて won を見ているので、これ自体が §2.3 の確かめになる。
@@ -969,18 +974,21 @@
     return { state: built.state, solution };
   }
 
-  function fallback2(lv, work) {
+  function fallback2(lv, work, nslots) {
     const pic = parsePicture(FALLBACK_PICTURE, false);
     const chooser = (cands, R) => ({ color: cands[0], n: Math.min(R[cands[0]], FALLBACK_COUNT, MAX_COUNT) });
     const S = buildS(pic, chooser, work);
     if (!S) throw new Error("amai: 予備 2 の面が作れない");
     const pk = { id: pic.id, mirror: false, repeat: false };
-    const { state, solution } = layout(lv, pic, pk, S, null, 0, 0, false, 1);
+    const { state, solution } = layout(lv, pic, pk, S, null, 0, 0, false, 1, nslots);
     if (!verify(state, solution, lv, work)) throw new Error("amai: 予備 2 の面が確かめを通らない");
     return { state, solution };
   }
 
-  function createLevel(level, pick) {
+  // opt.challenge が true なら ちょうせん（わく 2 つ）の面。作り方は ふつう と同じ（同じ種・同じ手順）で、
+  // 配った局面のわくを 2 つにして確かめる（verify・solveSearch がわく 2 つで最後まで運べたものだけを返す）。
+  // 予備 1（S の順・引き寄せなし）は 1 箱ずつ運び切るので、わく 1 つでも必ず通る
+  function createLevel(level, pick, opt) {
     const lv = normLevel(level);
     const pk = normPick(lv, pick);
     const params = paramsFor(lv, pk);
@@ -988,30 +996,32 @@
     const rng = makeRng(seed);
     const work = { n: 0 };
     const pic = pictureById(pk.id, pk.mirror);
+    const chal = !!(opt && typeof opt === "object" && opt.challenge === true);
+    const ns = chal ? CHAL_SLOTS : SLOTS;
     let tries = 0;
     const done = (r, fallback) => ({
       state: r.state,
-      info: Object.freeze({ level: lv, seed, params, tries, work: work.n, fallback, solution: Object.freeze(r.solution.slice()) }),
+      info: Object.freeze({ level: lv, seed, params, tries, work: work.n, fallback, challenge: chal, solution: Object.freeze(r.solution.slice()) }),
     });
     if (pic) {
       while (tries < (GEN_OPT.genTries || GEN_TRIES) && work.n < GEN_WORK - FALLBACK_RESERVE) {
         tries++;
-        const r = tryBuild(lv, pic, pk, params, rng, work, params.pull, params.lids, params.ices, GEN_OPT, false, Math.floor((tries - 1) / GEN_OPT.softenEvery));
+        const r = tryBuild(lv, pic, pk, params, rng, work, params.pull, params.lids, params.ices, GEN_OPT, false, Math.floor((tries - 1) / GEN_OPT.softenEvery), ns);
         if (r) return done(r, 0);
       }
       // 予備 1 は今までの作り（R で上限・P＝S・列は P の順）に戻す。これだけは必ず通る
-      const r1 = tryBuild(lv, pic, pk, params, makeRng(seed ^ 0x5bd1e995), work, 0, 0, 0, { shuffleCols: false }, true);
+      const r1 = tryBuild(lv, pic, pk, params, makeRng(seed ^ 0x5bd1e995), work, 0, 0, 0, { shuffleCols: false }, true, 0, ns);
       if (r1) return done(r1, 1);
     }
-    return done(fallback2(lv, work), 2);
+    return done(fallback2(lv, work, ns), 2);
   }
 
   // ---------------------------------------------------------------- 再生（§4.2）
 
-  function replay(level, pick, presses, t) {
+  function replay(level, pick, presses, t, opt) {
     let s = null, applied = 0;
     try {
-      s = createLevel(level, pick).state;
+      s = createLevel(level, pick, opt).state;   // opt.challenge：ちょうせんの面（わく 2 つ）で再生する
       const list = Array.isArray(presses) ? presses : [];
       for (const m of list) {
         if (!Array.isArray(m) || !isInt(m[0]) || !isInt(m[1])) return { state: s, ok: false, applied };
@@ -1141,6 +1151,11 @@
     return validateClean(raw).ids.indexOf(id) >= 0;
   }
 
+  // ちょうせんでクリアした絵の印（amai.gold）：形・検査は amai.clean と同じ（壊れた値は空・壊れた id と重複は捨てる・古い id は残す）
+  function validateGold(raw) { return validateClean(raw); }
+  function addGold(raw, id) { return addClean(raw, id); }
+  function hasGold(raw, id) { return hasClean(raw, id); }
+
   function bookCount(raw) {
     try {
       const b = bookOf(raw);
@@ -1168,11 +1183,11 @@
   }
 
   const api = Object.freeze({
-    NAME, SLOTS, COLS, TICK_MS, FAST_MS, CARRY_N, CARRY_FROM,
+    NAME, SLOTS, CHAL_SLOTS, CHAL_UNDO, COLS, TICK_MS, FAST_MS, CARRY_N, CARRY_FROM,
     MAX_W, MAX_H, MAX_SUGAR, MAX_COUNT, MAX_PRESSES, MAX_T,
     GEN_TRIES, GEN_WORK, BASE_PICTURES, REPEAT_FROM, GEN_OPT, OVER, ANY_RATE, CARRY_TIERS, PULL_ADD, REPEAT_K, KSET,
     PICTURE_ORDER,
-    SAVE_KEY_SAVE, SAVE_KEY_BEST, SAVE_KEY_BOOK, SAVE_KEY_HELP, SAVE_KEY_FAST, SAVE_KEY_CLEAN,
+    SAVE_KEY_SAVE, SAVE_KEY_BEST, SAVE_KEY_BOOK, SAVE_KEY_HELP, SAVE_KEY_FAST, SAVE_KEY_CLEAN, SAVE_KEY_GOLD,
     COLORS, LEVELS, TIERS,
     makeRng, seedFor, paramsFor,
     parsePicture, pickPicture, pictureById,
@@ -1180,7 +1195,7 @@
     isStable, isStuck, canPress, edgeCells, hud,
     replay, validateState,
     validateSave, makeSave,
-    validateBest, recordBest, validateBook, addToBook, bookCount, validateClean, addClean, hasClean,
+    validateBest, recordBest, validateBook, addToBook, bookCount, validateClean, addClean, hasClean, validateGold, addGold, hasGold,
     levelChoices, canSelect,
     validateFlag, colorName,
   });
