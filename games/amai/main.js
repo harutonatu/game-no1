@@ -732,13 +732,20 @@
     if (!cvs.length) return;
     if (typeof IntersectionObserver === "function") {
       try {
+        // 一覧はスクロールするカードの中：root を そのスクロール枠にしないと rootMargin が効かない（見つからなければ画面全体のまま）
+        let root = null;
+        for (let n = list.parentElement; n && n !== document.body; n = n.parentElement) {
+          if (/auto|scroll/.test(getComputedStyle(n).overflowY)) { root = n; break; }
+        }
+        const opt = { rootMargin: `${Math.max(200, window.innerHeight || 600)}px 0px` };
+        if (root) opt.root = root;
         const obs = new IntersectionObserver((entries) => {
           for (const e of entries) {
             if (!e.isIntersecting) continue;
             obs.unobserve(e.target);
             runLazy(e.target);
           }
-        }, { rootMargin: `${Math.max(200, window.innerHeight || 600)}px 0px` });
+        }, opt);
         lazyObs = obs;
         cvs.forEach((c) => obs.observe(c));
         return;
@@ -1059,6 +1066,8 @@
     focusBack = keepFocus || document.activeElement;
     // カードの間は、うしろのプレイ画面を Tab・読み上げ・押す対象から外す（a#back・？・♪ はカードからも使えるので外さない。はし HS-07 と同じ）
     el.playView.setAttribute("inert", "");
+    if (lazyObs) { lazyObs.disconnect(); lazyObs = null; }
+    lazyToken++;
     el.card.innerHTML = html;
     el.card.dataset.kind = kind;
     el.overlay.dataset.kind = kind;
@@ -1073,6 +1082,8 @@
   function hideOverlay() {
     if (overlay === null && el.overlay.hidden) return;
     el.overlay.hidden = true;
+    if (lazyObs) { lazyObs.disconnect(); lazyObs = null; }
+    lazyToken++;
     el.card.innerHTML = "";
     el.card.dataset.kind = "";
     el.overlay.dataset.kind = "";

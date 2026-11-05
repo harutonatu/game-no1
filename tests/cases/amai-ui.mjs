@@ -1732,7 +1732,10 @@ export const tests = [
       }, sel);
       for (const [name, btn, sel, total] of [['ずかん', '#bookBtn', 'ul.book', LG.PICTURE_ORDER.length], ['面えらび', '#selectBtn', 'ul.levels', 150]]) {
         await page.click(btn); await wait(page, 100);
-        const a = await probe(sel);
+        let a = await probe(sel);
+        for (let i = 0; i < 40 && a.painted < 1; i++) { await sleep(50); a = await probe(sel); }   // 最初の 1 枚が描かれるまで実時間で待つ（最大 2 秒）
+        const ahead = await page.evaluate((sel) => [...document.querySelectorAll(`#card ${sel} canvas`)].filter((c) => c.dataset.lazy === '0' && c.getBoundingClientRect().top > innerHeight).length, sel);
+        check(`${name}：開いた直後、見えている所より下にも描かれたマスがある（先読みが効いている。${ahead} 枚）`, ahead > 0, ahead);
         check(`${name}：開いた直後は絵が ${a.n} 個のうち一部だけ描かれている（描いた ${a.painted}・まだ ${a.unpainted}）。最初の 1 枚は描かれている`, a.n === total && a.painted >= 1 && a.unpainted > 0 && a.painted < a.n, { n: a.n, painted: a.painted });
         const d0 = await page.evaluate((sel) => { const c = document.querySelector(`#card ${sel} canvas[data-lazy="0"]`); return c ? c.toDataURL() : ''; }, sel);
         check(`${name}：描いた絵が空でない（最初の 1 枚）`, d0.length > 500, d0.length);
