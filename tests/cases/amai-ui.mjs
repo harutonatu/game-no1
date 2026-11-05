@@ -1088,7 +1088,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW19', tier: 'full', title: 'あまいもの 性能：48 面（一番大きい絵）を はやくで 10 秒動かし、ありんこの数が 48 以下、絵の描き直しが消えたマスの数と同じくらい（全体を毎回描き直していない）、落ち着いた後は rAF が止まる',
+    id: 'AW19', tier: 'full', title: 'あまいもの 性能：48 面（大きい絵の面のひとつ）を はやくで 10 秒動かし、ありんこの数が 48 以下、絵の描き直しが消えたマスの数と同じくらい（全体を毎回描き直していない）、落ち着いた後は rAF が止まる',
     async run({ browser, check }) {
       const RAF = () => { window.__raf = 0; const r = window.requestAnimationFrame; window.requestAnimationFrame = function (f) { window.__raf++; return r.call(this, f); }; };
       const { ctx, page } = await openG(browser, 'AW19', { opts: { clock: false, initScript: RAF }, extra: { 'amai.fast': '1' } });
@@ -2028,6 +2028,42 @@ export const tests = [
       await page.evaluate(() => window.AmaiGame.tick(6)); await skipG(page);
       const s1 = await gs(page);
       check(`はこぶと角砂糖が減る（${left0} → ${s1.left}）`, s1.left < left0, { left0, left1: s1.left });
+      await ctx.close();
+    },
+  },
+  {
+    id: 'AW37', tier: 'smoke', title: 'あまいもの 途中の保存の絵の目印（picSig。課題 AM-18）：①目印が合う保存は開き直すと続きから ②目印が合わない保存は同じ面の最初から（押した数 0・t 0。保存は今の目印に直る）③目印の無い古い保存（v66 の形）は 5 面なら最初から・1 面は続きから ④壊れた picSig（数・長すぎる・形ちがい）でも落ちずに同じ面の最初から。ベスト・ずかん・花輪は変わらない',
+    async run({ browser, check }) {
+      const keep = { 'amai.best': '7', 'amai.book': J({ v: 1, got: { ringo: 2 } }), 'amai.clean': J({ v: 1, ids: ['ringo'] }), 'amai.gold': J({ v: 1, ids: ['ringo'] }) };
+      const { ctx, page } = await openG(browser, 'AW37', { v: SMOKE_V(), extra: keep });
+      const pressOnce = async () => { const sol = await solutionOf(page); await settleG(page); await pressCol(page, sol[0]); await page.evaluate(() => window.AmaiGame.tick(2)); await settleG(page); await skipG(page); };
+      const open = async (raw) => { await seed(page, { 'amai.help': '1', ...keep, 'amai.save': raw }); await page.goto(AM); await wait(page, 300); return page.evaluate(() => (window.AmaiGame ? window.AmaiGame.getState() : null)).catch(() => null); };
+      // 1 面で 1 回押した保存（ベスト 7 なので開くと 8 面。1 面にする）
+      await setLevel(page, 1); await pressOnce();
+      const save1 = JSON.parse(await stored(page, 'amai.save'));
+      // 5 面で 1 回押した保存
+      await setLevel(page, 5); await pressOnce();
+      const save5 = JSON.parse(await stored(page, 'amai.save'));
+      const sig5 = save5.picSig;
+      check(`保存に picSig（8 桁の 16 進。1 面 ${save1.picSig}・5 面 ${sig5}）と押した手`, /^[0-9a-f]{8}$/.test(sig5 || '') && /^[0-9a-f]{8}$/.test(save1.picSig || '') && save5.level === 5 && save5.presses.length === 1 && save1.level === 1 && save1.presses.length === 1, { save1, save5 });
+      const s1 = await open(J(save5));
+      check(`①目印が合う：5 面の続きから（level ${s1 && s1.level}・押した数 ${s1 && s1.presses}）`, !!s1 && s1.level === 5 && s1.presses === 1, s1);
+      const wrong = sig5 === '00000000' ? '11111111' : '00000000';
+      const s2 = await open(J({ ...save5, picSig: wrong }));
+      const re2 = JSON.parse((await stored(page, 'amai.save')) || '{}');
+      check(`②目印が合わない：5 面の最初から（押した数 ${s2 && s2.presses}・t ${s2 && s2.t}）・保存は今の目印（${re2.picSig}）・押した手なし`, !!s2 && s2.level === 5 && s2.presses === 0 && s2.t === 0 && s2.phase === 'play' && re2.level === 5 && re2.picSig === sig5 && re2.presses.length === 0, { s2, re2 });
+      const { picSig: _a, ...old5 } = save5, { picSig: _b, ...old1 } = save1;
+      const s3 = await open(J(old5));
+      const s3b = await open(J(old1));
+      check(`③目印の無い古い保存：5 面は最初から（押した数 ${s3 && s3.presses}）・1 面は続きから（押した数 ${s3b && s3b.presses}）`, !!s3 && s3.level === 5 && s3.presses === 0 && s3.t === 0 && !!s3b && s3b.level === 1 && s3b.presses === 1, { s3, s3b });
+      const bad = [];
+      for (const [k, v] of Object.entries({ '数': 12345678, '長すぎる': 'a'.repeat(50000), '形ちがい': 'XYZ', 'null': null, 'オブジェクト': { a: 1 } })) {
+        const s = await open(J({ ...save5, picSig: v }));
+        if (!(s && s.level === 5 && s.presses === 0 && s.t === 0 && s.phase === 'play')) bad.push(`${k}: ${J(s && { level: s.level, presses: s.presses, t: s.t, phase: s.phase })}`);
+      }
+      check('④壊れた picSig（5 通り）でも落ちず、5 面の最初から', bad.length === 0, bad);
+      const after = {}; for (const k of Object.keys(keep)) after[k] = await stored(page, k);
+      check('ベスト・ずかん・花輪（amai.best・amai.book・amai.clean・amai.gold）は変わらない', J(after) === J(keep), after);
       await ctx.close();
     },
   },

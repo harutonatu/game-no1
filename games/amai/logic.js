@@ -1057,6 +1057,39 @@
 
   // ---------------------------------------------------------------- 保存（§4.2・§4.3）
 
+  // 絵の目印（課題 AM-18。2026-11-05）：その面の絵の地図（W・H・cells。反転した面は反転した cells）と mirror の FNV-1a 32 bit を 8 桁の 16 進の文字にする。
+  // 途中の保存（amai.save の picSig）に書き、開くときに今の絵の目印と比べる。合わなければ押した手を使わずその面の最初から（§4.2）
+  const SIG_RE = /^[0-9a-f]{8}$/;
+  const sigCache = new Map();
+  function pictureSig(pick) {
+    try {
+      if (!pick || typeof pick !== "object" || typeof pick.id !== "string") return "";
+      const m = pick.mirror === true;
+      const pic = pictureById(pick.id, m);
+      if (!pic) return "";
+      const hit = sigCache.get(pic);
+      if (hit) return hit;
+      let h = 0x811c9dc5;
+      const mix = (v) => { h ^= v & 0xff; h = Math.imul(h, 0x01000193) >>> 0; };
+      mix(pic.W); mix(pic.H); mix(m ? 1 : 0);
+      for (let i = 0; i < pic.cells.length; i++) mix(pic.cells[i] + 1);
+      const sig = (h >>> 0).toString(16).padStart(8, "0");
+      sigCache.set(pic, sig);
+      return sig;
+    } catch (e) { return ""; }
+  }
+  // 保存（validateSave の結果）の押した手を今の盤で使ってよいか。目印が今の絵と同じなら true。
+  // 目印の無い古い保存（v66 まで）は合わないとみなす。ただし 1・2 面（りんご・さくらんぼ。絵が変わっていない）は目印が無くても true
+  function saveFits(sv) {
+    try {
+      if (!sv || typeof sv !== "object" || !isInt(sv.level) || sv.level < 1 || !sv.pick) return false;
+      const now = pictureSig(sv.pick);
+      if (now === "") return false;
+      if (typeof sv.sig === "string" && sv.sig !== "") return sv.sig === now;
+      return sv.level <= 2;
+    } catch (e) { return false; }
+  }
+
   function validateSave(raw) {
     try {
       if (typeof raw !== "string") return null;
@@ -1080,14 +1113,16 @@
         presses.push([pt, col]);
       }
       if (prev > o.t) return null;
-      return { level: o.level, pick: { id: o.pic, mirror: o.mirror, repeat: o.rep }, presses, t: o.t };
+      // picSig は無くてよい（v66 までの保存）。文字でない・形ちがい（8 桁の 16 進でない）なら目印なし（""）として扱い、保存は捨てない（面の番号を残す）
+      const sig = typeof o.picSig === "string" && SIG_RE.test(o.picSig) ? o.picSig : "";
+      return { level: o.level, pick: { id: o.pic, mirror: o.mirror, repeat: o.rep }, presses, t: o.t, sig };
     } catch (e) { return null; }
   }
 
   function makeSave(level, pick, presses, t) {
     const p = pick && typeof pick === "object" ? pick : {};
     const list = Array.isArray(presses) ? presses.slice(0, MAX_PRESSES).map((m) => (Array.isArray(m) ? [m[0], m[1]] : m)) : [];
-    return JSON.stringify({ v: SAVE_V, level: normLevel(level), pic: typeof p.id === "string" ? p.id : "", mirror: p.mirror === true, rep: p.repeat === true, presses: list, t: isInt(t) && t >= 0 ? t : 0 });
+    return JSON.stringify({ v: SAVE_V, level: normLevel(level), pic: typeof p.id === "string" ? p.id : "", mirror: p.mirror === true, rep: p.repeat === true, presses: list, t: isInt(t) && t >= 0 ? t : 0, picSig: pictureSig(p) });
   }
 
   function validateBest(raw) {
@@ -1200,7 +1235,7 @@
     createLevel, press, step,
     isStable, isStuck, canPress, edgeCells, hud,
     replay, validateState,
-    validateSave, makeSave,
+    validateSave, makeSave, pictureSig, saveFits,
     validateBest, recordBest, validateBook, addToBook, bookCount, validateClean, addClean, hasClean, validateGold, addGold, hasGold,
     levelChoices, canSelect,
     validateFlag, colorName,

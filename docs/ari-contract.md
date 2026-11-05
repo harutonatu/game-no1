@@ -601,7 +601,7 @@ CSS の約束：既存のトークン（`--bg`・`--panel`・`--ink`・`--muted`
 - Esc でカードを閉じる（クリアのカードは閉じない＝つぎの めんへ を選ぶ。うごかせないのカードは閉じない＝どちらかを選ぶ）。
 
 ### 3.6 進行（`main.js`）
-- 起動：`validateSave(localStorage['amai.save'])` → `replay(level, { id: pic, mirror, repeat: rep }, presses, t)`。ok でなければ同じ面の最初から。保存が無い・壊れているなら `validateBest(best) + 1` 面の最初から（絵は `pickPicture(level, book)`）。保存の `pic` が `PICTURE_ORDER` に無いときも、`pickPicture` で選び直してその面の最初から。初回は遊び方カード。`document.title` と `#gameTitle` を `AmaiLogic.NAME` にする。
+- 起動：`validateSave(localStorage['amai.save'])` → `saveFits(sv)` が true なら `replay(level, { id: pic, mirror, repeat: rep }, presses, t)`（false なら押した手を使わず同じ面の最初から。§4.2 の `picSig`）。ok でなければ同じ面の最初から。保存が無い・壊れているなら `validateBest(best) + 1` 面の最初から（絵は `pickPicture(level, book)`）。保存の `pic` が `PICTURE_ORDER` に無いときも、`pickPicture` で選び直してその面の最初から。初回は遊び方カード。`document.title` と `#gameTitle` を `AmaiLogic.NAME` にする。
 - **1 はこびの回し方**：rAF ごとに経った時間を足し、`TICK_MS`（はやくなら `FAST_MS`）を超えたら `step` を 1 回（1 フレームに最大 1 回。あまりは捨てる＝止まっていた間を早送りしない）。回すのは `running()` のときだけ：`const running = () => !hiddenNow && !stale && overlay === null && !stable;`（1 行の式で書く。変異 MA14 の置換元）。
 - `step` の結果を `render.carry(outcome, state)` に渡す（ありんこの絵を始める。待たない）。`moved:false` なら落ち着いた（`stable = true`）。押す・もどす・やりなおし で `stable = false`。
 - **押す**：手前の箱の click → `press(state, col)`。`invalid` なら `render.deny(col, reason)`・音 `deny`・`#hint`。`press` なら履歴（押した列と `t`）に積み、保存、`render.place(outcome)`（箱がわくへ飛ぶ 0.25 秒。音 `place`）。ふたが開いたら `open`、こおりがとけたら `thaw`。
@@ -707,10 +707,12 @@ state = {
 
 ### 4.2 `amai.save`（面の途中から続ける。Q12）
 ```js
-{ "v": 1, "level": 7, "pic": "kumaumibebooru", "mirror": false, "rep": false, "presses": [[0, 2], [0, 1], [12, 3], …], "t": 41 }
+{ "v": 1, "level": 7, "pic": "kumaumibebooru", "mirror": false, "rep": false, "presses": [[0, 2], [0, 1], [12, 3], …], "t": 41, "picSig": "3fa09c1e" }
 ```
 - `pic`・`mirror`・`rep`＝この面の絵（§2.7 の `pick`）。`presses`＝押した手の並び。`[押したときの t, 列の番号]`。
-- 読むとき：`validateSave(raw)`：JSON でない・`v` が 1 でない・`level` が 1 以上の安全な整数でない・`pic` が英小文字の文字でない・`mirror`・`rep` が true／false でない・`presses` が配列でない／長さが `MAX_PRESSES = 400` を超える／各要素が `[0 以上の整数, 0〜3 の整数]` でない／`t` が前の手より小さい（逆順）・`t` が `MAX_T = 5000` を超える・最後の `t` が保存の `t` より大きい → `null`。
+- `picSig`＝**絵の目印**（2026-11-05 に足した。課題 AM-18・計画書 docs/plans/amai-bg.md §8）。`pictureSig(pick)`：`pictureById(pick.id, pick.mirror)` の `W`・`H`・`mirror`（0／1）・`cells`（反転した面は反転した cells。各マス `値+1`）を FNV-1a 32 bit にかけた **8 桁の 16 進の文字**（絵が無ければ `""`）。`makeSave` が書く。保存の版 `v` は **1 のまま**（足した項目は無くてよい。v66 までの保存も読める）。
+- 開くとき（起動）：`saveFits(sv)` が true のときだけ押した手と `t` を再生する。false なら**同じ面・同じ絵の最初から**（押した数 0・`t` 0。ベスト・ずかん・花輪は変えない。始めた面を書き直すので保存も今の目印になる）。`saveFits`：保存の目印があれば今の絵の目印と同じなら true。**目印が無い**（v66 までの古い保存・壊れた目印）なら、1・2 面（りんご・さくらんぼ。絵が変わっていない）だけ true、3 面から false（2026-11-05 の版で 3〜150 面の絵が全部変わったため）。
+- 読むとき：`validateSave(raw) → { level, pick, presses, t, sig }`（`sig` は `picSig` が 8 桁の 16 進の文字ならそれ、無い・文字でない・形ちがい・長すぎるなら `""`。目印が壊れていても保存全体は捨てない＝面の番号は残る）：JSON でない・`v` が 1 でない・`level` が 1 以上の安全な整数でない・`pic` が英小文字の文字でない・`mirror`・`rep` が true／false でない・`presses` が配列でない／長さが `MAX_PRESSES = 400` を超える／各要素が `[0 以上の整数, 0〜3 の整数]` でない／`t` が前の手より小さい（逆順）・`t` が `MAX_T = 5000` を超える・最後の `t` が保存の `t` より大きい → `null`。
 - `replay(level, pick, presses, t)`：`createLevel(level, pick)` で面を作り、手の `t` まで 1 はこびずつ進めて押す、をくり返し、最後に `t` まで進める。途中で「手の `t` より前に落ち着いた」「押せない手」が出たら `ok:false`（そこまでの局面と `applied` を返す）。画面は `ok:false` なら同じ面の最初から。
 - いつ書くか：押した・もどした・やりなおした・クリアした とき、動いている間は 10 はこびごと、`visibilitychange`（hidden）・`pagehide`。
 - 再生の手間：1 面の `t` は角砂糖の数以下（動いた 1 はこびは必ず 1 個以上運ぶ）なので、最大 700 はこび。試算の 1 はこび 0.5µs から、再生は Node で 1ms 未満。
@@ -841,7 +843,7 @@ AmaiLogic = {
   hud(state) → { level, left, total, presses, carried },
   replay(level, pick, presses, t, opt) → { state, ok, applied },   // §4.2。opt.challenge で ちょうせんの面を再生
   validateState(s) → state | null,                                 // setState 用
-  validateSave(raw) → { level, pick, presses, t } | null, makeSave(level, pick, presses, t) → string,
+  validateSave(raw) → { level, pick, presses, t, sig } | null, makeSave(level, pick, presses, t) → string（picSig を含む）, pictureSig(pick) → 8 桁の 16 進 | "", saveFits(sv) → 真偽,
   validateBest(raw), recordBest(prev, cleared), validateBook(raw) → { got }, addToBook(raw, id) → string, bookCount(raw) → number,
   validateClean(raw) → { ids }, addClean(raw, id) → string, hasClean(raw, id) → boolean,   // §4.3 amai.clean（2026-10-28）
   validateGold(raw) → { ids }, addGold(raw, id) → string, hasGold(raw, id) → boolean,      // §4.3 amai.gold（2026-11-05。形は amai.clean と同じ）
@@ -901,6 +903,7 @@ AmaiLogic = {
 - AL18：面えらびの範囲 `levelChoices`・`canSelect`（1〜ベスト＋1。一覧 150・「つづき」・壊れたベスト・16 桁・例外なし）。tier は smoke。
 - AL19（smoke・2026-11-05）：ちょうせん。`CHAL_SLOTS` 2・`CHAL_UNDO` 3・`createLevel(n, pick, { challenge: true })` の面が わく 2 つで、解を press・step で再生すると won（1・2・3・5・13・25・37・48・77・100・150 面）・決定的・絵と角砂糖は ふつうと同じ・ふつうの面は変わらない・`replay` の opt・わく 2 つの局面の `validateState`・`step`・`full`・`amai.gold` の検査。AL10 の壊れた局面は「わく 1 つ・4 つ」に（2 つは正しい局面になった）。
 - AL20（full・solo・2026-11-05）：ちょうせんの 1〜150 面がすべて予備に落ちずに わく 2 つで won、1 面の生成が 150ms 以内（測った最大・中央を出す）。
+- AL22（smoke・2026-11-05。課題 AM-18）：途中の保存の絵の目印。`makeSave` が `picSig`（8 桁の 16 進）を書き `validateSave` が `sig` で返す・目印が合えば `saveFits` true・同じ id の地図を変えると false・反転の面は反転の目印（左右が同じ絵でも別）・目印の無い古い保存は 3 面から false／1・2 面は true・壊れた `picSig`（数・長すぎる・形ちがいなど 8 通り）でも保存は読めて false・例外なし・合う保存で `replay` が ok。
 - AL17：描き直す前の古い絵の id（§2.6）。古い id の保存も読める・古い id の pick で面を作ると同じ面の番号で新しい絵の面になる・ずかん／もどしなしの印の古い id は消さないが数えない。49〜100 面を足す前に 49 面より先へ進んでいた人（55 面のくり返しの保存・1〜48 枚目のずかん・ベスト 60）でも落ちず、次の面は足した絵、151 面から飛ばした絵が先（§2.6）。101〜150 面を足す前に 101 面より先へ進んでいた人（105 面のくり返しの保存・1〜100 枚目のずかん・ベスト 120）も同じ（2026-11-04）。tier は smoke。
 - AL3：ふち。手作りの小さな絵で：わくのはしはふち／上下左右が角砂糖ならふちでない／**ななめは数えない**／閉じた空きは外でない／運ぶと閉じた空きが外になり、その まわりがふちになる。
 - AL4：運ぶ。同じ色だけ・ふちだけ・巣に近い順（同じなら下・左）・1 はこびで 1 箱 1 個・左のわくから順（前の箱の結果が次に効く）・同じ色の 2 箱・数が減る・0 で消えてわくが空く・その色がふちにないと待つ（数が減らない）・`carries` の中身。
@@ -947,6 +950,7 @@ full（smoke に加えて）：
 - AW31（full）：SE 縦・SE 横で、面えらび（ベスト 37・150・16 桁）とクリアのカード（ともだちに おくる付き）が崩れない。
 - AW34（full・2026-11-05）：ちょうせん。クリアした面だけ選ぶカード（まだの面は ふつうだけ）・わく 2 つ（`.slot` が 2 つ見える）・札・もどし 3 回で押せなくなる（キーの U も）・やりなおしで 3 に戻る・途中の保存を書かない（開き直すと ふつうの続き）・クリアで「ちょうせん クリア！」・`amai.gold`・ずかんの回数 +1・ベスト／`amai.clean`／`amai.save` は変えない・共有の文・面えらびとずかんで金の花輪が先（1 つだけ）・つぎの めんへ は ふつうの次・［ふつうで あそぶ］の進み方は今までどおり・壊れた `amai.gold` でも落ちない。
 - AW35（full・2026-11-05）：SE 縦・SE 横で、選ぶカード・わく 2 つ・「1手もどす のこり N」・札・もどし 0 の うごかせないカード（やりなおしだけ）・ちょうせんのクリアのカードが崩れない（44px・12px・はみ出さない・横スクロールなし）。
+- AW37（smoke・2026-11-05。課題 AM-18）：開き直したときの絵の目印。①合う保存は続きから ②合わない保存は同じ面の最初から（押した数 0・t 0・保存は今の目印に直る）③目印の無い古い保存は 5 面なら最初から・1 面は続きから ④壊れた `picSig` 5 通りでも落ちずに最初から。ベスト・ずかん・花輪は変わらない。
 - AW24（full）：カードとフォーカス。カードを開いている間は `#playView` が `inert` で、Tab は `a#back`・？・♪・カードの中だけを回り、遊びの箱・わく・下のボタンに行かない。閉じたら `inert` が外れ、Tab で遊びの部品に戻る。
 
 ### 7.4 変異テスト（`tests/mutants/mutate.mjs`、接頭辞 MA。中身の仕組みを変えたときだけ、このゲームの分だけ流す）
@@ -999,6 +1003,10 @@ full（smoke に加えて）：
 | MA54 | ずかんで金の花輪を出さない（ふつうの花輪になる。前の案「両方出す」は else if のため見た目が変わらない変異だったので差し替え） | AW34 |
 | MA55 | まだクリアしていない面でも ちょうせんを選べる | AW34 |
 | MA56 | 面えらびで金の花輪を出さない | AW34 |
+| MA60 | 保存の絵の目印を比べない（2026-11-05。以下 MA63 まで課題 AM-18） | AL22・AW37 |
+| MA61 | 目印の無い古い保存を合うとみなす | AL22・AW37 |
+| MA62 | 画面が目印を見ずに続きから始める | AW37 |
+| MA63 | 絵の目印に反転を混ぜない | AL22 |
 
 - 置換前の文字列は、実装が固まった後に F が実物から写す（A〜D は、置換の目印になる行を変に分けない。1 行で書いた式を選ぶ。T-15 の教訓）。
 

@@ -523,6 +523,11 @@ const M = [
   ['MA57 あまいものあつめ：validateState が色の番号 12 も通す（見つける：AL21）', '保存データ互換', 'games/amai/logic.js', 'if (!isInt(v) || v < -1 || v >= COLORS.length) return null;', 'if (!isInt(v) || v < -1 || v > COLORS.length) return null;'],
   ['MA58 あまいものあつめ：角砂糖の上限が 2800 のまま（背景を足した 64×48 の絵が読めない。見つける：AL1・AL21）', 'ルール', 'games/amai/logic.js', 'const MAX_SUGAR = 3072;', 'const MAX_SUGAR = 2800;'],
   ['MA59 あまいものあつめ：こいみどりの箱の読み上げに印（つき）が無い（見つける：AW36）', 'アクセシビリティ', 'games/amai/render.js', 'stripes: "たてせん", moon: "つき", drop: "しずく" });', 'stripes: "たてせん" });'],
+  // 途中の保存の絵の目印（picSig。2026-11-05。課題 AM-18・計画書 docs/plans/amai-bg.md §8）
+  ['MA60 あまいものあつめ：保存の絵の目印を比べない（絵が変わっても押した手を当てはめる。見つける：AL22・AW37）', '保存データ互換', 'games/amai/logic.js', 'if (typeof sv.sig === "string" && sv.sig !== "") return sv.sig === now;', 'if (typeof sv.sig === "string" && sv.sig !== "") return true;'],
+  ['MA61 あまいものあつめ：目印の無い古い保存を合うとみなす（見つける：AL22・AW37）', '保存データ互換', 'games/amai/logic.js', 'return sv.level <= 2;\n', 'return true;\n'],
+  ['MA62 あまいものあつめ：画面が目印を見ずに続きから始める（見つける：AW37）', '保存データ互換', 'games/amai/main.js', 'const fits = known && !!safeCall(() => L.saveFits(sv), false);', 'const fits = known;'],
+  ['MA63 あまいものあつめ：絵の目印に反転を混ぜない（左右が同じ絵で反転の面と同じ目印。見つける：AL22）', '保存データ互換', 'games/amai/logic.js', 'mix(pic.W); mix(pic.H); mix(m ? 1 : 0);', 'mix(pic.W); mix(pic.H);'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

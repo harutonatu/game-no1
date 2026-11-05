@@ -593,7 +593,7 @@ export const tests = [
       check('validateSave：文字でない引数は null', L.validateSave(null) === null && L.validateSave(good) === null, null);
       check('validateSave：手 400 個・t 5000 は読める', L.validateSave(J({ ...good, presses: Array(400).fill([0, 0]), t: 5000 })) !== null, null);
       const ms = L.makeSave(7, { id: 'inuumibeoyatsu', mirror: false, repeat: false }, [[0, 2], [12, 3]], 41);
-      check('makeSave の形（v・level・pic・mirror・rep・presses・t）と往復', J(JSON.parse(ms)) === J({ v: 1, level: 7, pic: 'inuumibeoyatsu', mirror: false, rep: false, presses: [[0, 2], [12, 3]], t: 41 }) && L.validateSave(ms) !== null, ms);
+      check('makeSave の形（v・level・pic・mirror・rep・presses・t・picSig）と往復', (() => { const o = JSON.parse(ms); const { picSig, ...rest } = o; return J(rest) === J({ v: 1, level: 7, pic: 'inuumibeoyatsu', mirror: false, rep: false, presses: [[0, 2], [12, 3]], t: 41 }) && typeof picSig === 'string'; })() && L.validateSave(ms) !== null, ms);
       check('makeSave：くり返しの pick（mirror・rep が true）', (() => { const o = JSON.parse(L.makeSave(50, { id: 'usagikouennemuru', mirror: true, repeat: true }, [], 0)); return o.mirror === true && o.rep === true && o.pic === 'usagikouennemuru'; })(), null);
       // ずかん
       const raw = J({ v: 1, got: { ringo: 2, sakura: 'x', ichigo: 0, Kame: 3, momiji: 10000, nai: 4, suika: 1.5, inuumibeoyatsu: 9999 } });
@@ -653,6 +653,8 @@ export const tests = [
         tryIt('validateBest', () => L.validateBest(a));
         tryIt('recordBest', () => L.recordBest(a, a));
         tryIt('makeSave', () => L.makeSave(a, a, a, a));
+        tryIt('pictureSig', () => L.pictureSig(a));
+        tryIt('saveFits', () => L.saveFits(a));
         tryIt('colorName', () => L.colorName(a));
       }
       tryIt('press（列がおかしい）', () => { for (const c of odd) L.press(s, c); });
@@ -1125,6 +1127,70 @@ export const tests = [
         check(`ちょうせんの 1〜150 面がすべて ふつうの作り（予備に落ちない）でわく 2 つで won（箱の並びが ふつうと同じ面 ${same}）`, bad.length === 0, bad);
         // 実測（2026-11-05・クラウド）：最大 約 40〜60ms・中央 約 16ms。iPhone SE で重すぎない目安 150ms
         check(`ちょうせんの 1 面の生成 最大 ${worst.ms}ms（${worst.lv} 面）・中央 ${ms[Math.floor(ms.length / 2)]}ms ≦ 150ms`, worst.ms <= 150, per.filter((x) => x.ms > 60));
+      });
+    },
+  },
+  {
+    id: 'AL22', tier: 'smoke', node: true, title: 'あまいものあつめ：途中の保存の絵の目印（picSig。課題 AM-18）：makeSave が今の絵の目印（8 桁の 16 進）を書き、validateSave が読む。目印が合えば saveFits が true（続きから）・絵が変わると false（同じ面の最初から）・反転した面は反転の目印。目印の無い古い保存（v66 の形）は 3 面から false・1・2 面は true。壊れた picSig（数・長すぎる・形ちがい）でも保存は読めて false・例外なし',
+    async run({ check, root }) {
+      const L = load(root);
+      await withPictures(L, (kind) => {
+        const PO = L.PICTURE_ORDER;
+        const pk = { id: PO[4].id, mirror: false, repeat: false };
+        const sig = L.pictureSig(pk);
+        check(`絵：${kind}。pictureSig は 8 桁の 16 進（${sig}）・同じ絵なら同じ`, /^[0-9a-f]{8}$/.test(sig) && L.pictureSig({ ...pk }) === sig, sig);
+        const ms = L.makeSave(5, pk, [[0, 1], [3, 2]], 7);
+        const o = JSON.parse(ms), v = L.validateSave(ms);
+        check('makeSave が picSig を書き、validateSave が sig で返す', o.v === 1 && o.picSig === sig && v && v.sig === sig, { o, v });
+        check('①目印が合う保存は saveFits が true（続きから）', L.saveFits(v) === true, v);
+        // 反転（くり返しの面）
+        const pm = { id: PO[4].id, mirror: true, repeat: true };
+        const sigM = L.pictureSig(pm);
+        const a = L.pictureById(pk.id, false), b = L.pictureById(pk.id, true);
+        const asym = a && b && JSON.stringify(a.cells) !== JSON.stringify(b.cells);
+        check(`反転の面の目印は反転なしと違い（${sigM}・${sig}。左右が同じ絵でも mirror を混ぜる）、反転の保存は反転の目印で合う`, sigM !== sig && /^[0-9a-f]{8}$/.test(sigM)
+          && L.saveFits(L.validateSave(L.makeSave(155, pm, [], 0))) === true && L.saveFits({ ...L.validateSave(L.makeSave(155, pm, [], 0)), sig }) === false, { asym });
+        // ②絵が変わった：同じ id の地図を別の絵の地図にする
+        const prev = globalThis.AmaiPictures;
+        const raw = (id) => (typeof prev.byId === 'function' ? prev.byId(id) : prev.byId[id]);
+        const other = raw(PO[5].id);
+        globalThis.AmaiPictures = { byId: (id) => (id === pk.id ? { ...raw(id), map: other.map } : raw(id)) };
+        let changed;
+        try { changed = { sig: L.pictureSig(pk), fits: L.saveFits(L.validateSave(ms)) }; } finally { globalThis.AmaiPictures = prev; }
+        check(`②絵が変わると目印が変わり（${changed.sig}）、前の保存は saveFits が false（同じ面の最初から）`, changed.sig !== sig && changed.fits === false, changed);
+        // 左右が同じ絵でも、反転の面と反転なしの面の目印は違う（mirror を混ぜる）
+        globalThis.AmaiPictures = { byId: (id) => (id === pk.id ? { ...raw(id), map: ['RRRR', 'RGGR', 'RGGR', 'RRRR'] } : raw(id)) };
+        let sym;
+        try { sym = { n: L.pictureSig(pk), m: L.pictureSig(pm) }; } finally { globalThis.AmaiPictures = prev; }
+        check(`左右が同じ絵でも反転の目印は別（${sym.n}・${sym.m}）`, /^[0-9a-f]{8}$/.test(sym.n) && /^[0-9a-f]{8}$/.test(sym.m) && sym.n !== sym.m, sym);
+        check('元の絵に戻すと、また合う', L.saveFits(L.validateSave(ms)) === true, null);
+        // ③目印の無い古い保存（v66 の形）
+        const old = (lv, id) => J({ v: 1, level: lv, pic: id, mirror: false, rep: false, presses: [[0, 1]], t: 3 });
+        const oldRes = { lv5: L.saveFits(L.validateSave(old(5, PO[4].id))), lv3: L.saveFits(L.validateSave(old(3, PO[2].id))), lv1: L.saveFits(L.validateSave(old(1, PO[0].id))), lv2: L.saveFits(L.validateSave(old(2, PO[1].id))) };
+        check('③目印の無い古い保存：読めて、3 面・5 面は false（最初から）・1・2 面は true（続きから）', L.validateSave(old(5, PO[4].id)) !== null && oldRes.lv5 === false && oldRes.lv3 === false && oldRes.lv1 === true && oldRes.lv2 === true, oldRes);
+        // ④壊れた picSig
+        const good = JSON.parse(ms);
+        const broken = { '数': 12345678, '長すぎる': 'a'.repeat(100000), '大文字': sig.toUpperCase() === sig ? 'ZZZZZZZZ' : sig.toUpperCase(), '7 桁': sig.slice(1), 'オブジェクト': { x: 1 }, 'null': null, '配列': [sig], '空': '' };
+        const rows = [];
+        for (const [k, bad] of Object.entries(broken)) {
+          try {
+            const vv = L.validateSave(J({ ...good, picSig: bad }));
+            if (!vv || vv.sig !== '' || vv.level !== 5 || L.saveFits(vv) !== false) rows.push(`${k}: ${J(vv && { sig: vv.sig, level: vv.level })} fits ${vv && L.saveFits(vv)}`);
+          } catch (e) { rows.push(`${k}: 例外 ${e.message}`); }
+        }
+        check(`④壊れた picSig（${Object.keys(broken).length} 通り）でも保存は読めて（面の番号は残る）目印なし・saveFits は false・例外なし`, rows.length === 0, rows);
+        const thrown = [];
+        for (const a2 of [undefined, null, 0, 'x', [], {}, { id: 5 }, { id: 'nai' }, { level: 3, pick: null }, { level: 'x', pick: pk, sig }, Symbol('s')]) {
+          try { const s1 = L.pictureSig(a2), f1 = L.saveFits(a2); if (typeof s1 !== 'string' || f1 !== false) thrown.push(String(a2 && a2.toString ? J(a2) ?? 'sym' : a2) + ` ${s1} ${f1}`); } catch (e) { thrown.push('例外 ' + e.message); }
+        }
+        check('おかしな引数：pictureSig は文字（無い絵は ""）・saveFits は false・例外なし', thrown.length === 0, thrown);
+        // 続きから再生できる（合う保存の押した手で replay が ok）
+        const cr = L.createLevel(5, pk);
+        const col0 = cr.info.solution[0];
+        const ms2 = L.makeSave(5, pk, [[0, col0]], 2);
+        const v2 = L.validateSave(ms2);
+        const rp = L.saveFits(v2) ? L.replay(v2.level, v2.pick, v2.presses, v2.t) : null;
+        check('合う保存の押した手で replay が ok（押した数 1）', !!rp && rp.ok === true && rp.state.presses === 1, rp && { ok: rp.ok, applied: rp.applied });
       });
     },
   },
