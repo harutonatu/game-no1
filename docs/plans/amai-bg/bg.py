@@ -5,36 +5,30 @@
 #   1. 地平線（空と地面の境）を、絵の中の地面の帯（草・砂・床・雪の色が多い行）から見つける。無ければ下から 1/3。
 #   2. 空（地平線より上）と地面（下）を、場所ごとの「地の色」と「模様」（雲・遠くの山や木立・太陽・草・花・砂の粒・板・タイル・雪の粒）でうめる。
 #   3. 元の角砂糖のふちどり（K）のすぐ外の 1 マスは、模様を置かず地の色にする（主役が埋もれないように）。
+#   (絵ごとの地平線などの指定は overrides.json：{"<id>": {"hz": 行, "sea_top": 行, "nosun": true（絵にもう太陽がある）, "notrees": true（遠くの丘と木立が絵の物に重なる）}})
 #   4. 色は 12 色（R O Y G S B P C W K と、足した D こいみどり・V むらさき）。D と V は背景を落ち着かせる色として
 #      いつでも使う（遠くの木立・丘・森のかげ・草のかげ＝D、雲のかげ・花・遠くの山のかげ＝V）。
-#      そのほかの色は、絵がもう使っている色だけ（無ければ代わりの色）。
+#      そのほかの色は、絵がもう使っている色だけ（無ければ代わりの色）。ただし外の場所では、空の S（みずいろ）は
+#      絵に無くても足す（しろい空は「色がない所」に見えるため。PM 決定・計画書 §5）。
 #   5. 乱数は入力の中身から作った種つき（同じ入力からは毎回同じ出力）。
-import sys, math, random, hashlib
+import sys, os, json, math, random, hashlib
 
 PLACES = ("kouen", "umibe", "daidokoro", "yukiyama", "mori", "hanabatake")
 GROUND = {  # 地面の帯を見つける色
-    "kouen": "GYP", "umibe": "YO", "daidokoro": "YO", "yukiyama": "WS", "mori": "GYO", "hanabatake": "GYPR",
+    "kouen": "GYP", "umibe": "YO", "daidokoro": "YO", "yukiyama": "W", "mori": "G", "hanabatake": "GYPR",
 }
 
 
 def find_horizon(m, place):
-    """左右のはしの列で、そこから下がほぼ地面の色になる一番上の行。4 列の中央の値。"""
+    """行ごとに、地面の色が横はばの何割を占めるかを数え、上から 3 割より下で、3 行の平均が 35% 以上になる一番上の行。
+    無ければ下から 1/3。見つけ違う絵は overrides.json で指定する。"""
     H, W = len(m), len(m[0])
     gc = GROUND[place]
-    found = []
-    for x in (0, 1, W - 2, W - 1):
-        colv = [m[y][x] for y in range(H)]
-        for y in range(H // 4, H - 2):
-            if not all(c in gc for c in colv[y:y + 3]):
-                continue
-            rest = [c for c in colv[y:] if c not in ".K"]
-            if rest and sum(1 for c in rest if c in gc) / len(rest) >= 0.75:
-                found.append(y)
-                break
-    if not found:
-        return H - H // 3
-    found.sort()
-    return found[len(found) // 2]
+    sc = [sum(1 for c in r if c in gc) / W for r in m]
+    for y in range(int(H * 0.3), H - 2):
+        if sum(sc[y:y + 3]) / 3 >= 0.35:
+            return y
+    return H - H // 3
 
 
 def main():
@@ -44,6 +38,10 @@ def main():
     text = open(src, encoding="utf-8").read()
     m = [list(s.rstrip()) for s in text.split("\n") if s.strip()]
     H, W = len(m), len(m[0])
+    ov = {}
+    ovp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "overrides.json")
+    if os.path.exists(ovp):
+        ov = json.load(open(ovp, encoding="utf-8")).get(os.path.basename(src)[:-4], {})
     rnd = random.Random(int(hashlib.md5((place + text).encode()).hexdigest(), 16))
     used = {c for row in m for c in row if c != "."}
     added = []
@@ -52,13 +50,13 @@ def main():
         """絵にある色と D・V はそのまま。それ以外の無い色は fallback。"""
         if c in used:
             return c
-        if c in "DV":
+        if c in "DV" or (c == "S" and place != "daidokoro"):  # 外の場所は 空の S も足してよい（PM 決定 §5）
             if c not in added:
                 added.append(c)
             return c
         return fallback
 
-    hz = find_horizon(m, place)
+    hz = ov.get("hz", find_horizon(m, place))
     dot = [[m[y][x] == "." for x in range(W)] for y in range(H)]
     # K のすぐ外（8 近傍）は地の色だけ
     ring = [[False] * W for _ in range(H)]
@@ -88,19 +86,27 @@ def main():
         while r >= 0 and sum(1 for c in m[r] if c in "BS") / W >= 0.35:
             r -= 1
         sea_top = r + 1
-        if sea_top == hz:  # 海が描かれていなければ地平線の上 4 行を海に
+        if "B" not in used:  # あお が無い絵は海を描かない（空と同じ みずいろ になって見えないため。砂浜と空だけ）
+            sea_top = hz
+        elif "sea_top" in ov:
+            sea_top = ov["sea_top"]
+        elif sea_top == hz:  # 海が描かれていなければ地平線の上 4 行を海に
             sea_top = max(0, hz - 4)
 
     # ---- 地の色 ----
     if place == "daidokoro":
-        sky_base, gnd_base = col("W", "S"), col("Y", "O")
+        sky_base, gnd_base = col("W", "S"), col("Y", col("O", "C"))
+        # 主役が しろい（うさぎ・いぬ・ぱんだ）絵は、かべを みずいろのタイル（しろい目地）にして主役を浮かせる
+        white_hero = os.path.basename(src).startswith(("usagi", "inu", "panda")) and "S" in used
+        if white_hero:
+            sky_base = "S"
     elif place == "yukiyama":
         sky_base, gnd_base = col("S", "W"), col("W", "S")
     elif place == "umibe":
         sky_base, gnd_base = col("S", "W"), col("Y", "O")
     else:
         sky_base, gnd_base = col("S", "W"), col("G", "Y")
-    sea_base = col("B", "S") if place == "umibe" else None
+    sea_base = col("B", "S") if place == "umibe" and "B" in used else None
 
     for y in range(H):
         for x in range(W):
@@ -184,6 +190,8 @@ def main():
         return cells
 
     def trees(n, base_lo, base_hi, size, leaf, light, trunk, fit):
+        if ov.get("notrees"):  # 絵の物（太陽など）に重なる絵は 遠くの木立を描かない
+            return
         for _ in range(n):
             for _try in range(40):
                 rx = rnd.uniform(*size)
@@ -196,6 +204,8 @@ def main():
     def hills(c, height, bumps, base_row):
         # 地平線の上の、遠くの丘。K のすぐ外のマスは地の色のまま（ふちどりが暗い丘に溶けないように）
         ph = rnd.random() * 6.28
+        if ov.get("notrees"):  # 木立なしの絵は 遠くの丘も描かない
+            return
         for x in range(W):
             h = height * (0.6 + 0.4 * math.sin(x * bumps + ph))
             for y in range(max(0, int(base_row - h)), base_row):
@@ -216,13 +226,16 @@ def main():
                 for xx in range(int(cx - half), int(cx + half) + 1):
                     snow = y - top < (base_row - top) * 0.45
                     cells[(xx, y)] = (shade if xx > cx else c) if snow or not rock else (rock if xx > cx else shade)
-            stamp(cells, 0)
+            stamp(cells, 0.6)  # 空きが 6 割ある所だけ（切れた かけら が散らばらないように）
             x += w - 3
 
     W_ = col("W", sky_base)
     D, V = col("D", None), col("V", None)
     if place in ("kouen", "umibe", "hanabatake"):
-        sun(col("Y", sky_base), col("O", col("Y", sky_base)))
+        # 太陽：きいろ（無ければ だいだい）の まる。どちらも無い絵には描かない（空の色の穴あきの輪にならないように）
+        sf = "Y" if "Y" in used else ("O" if "O" in used else None)
+        if sf and not ov.get("nosun"):
+            sun(sf, "O" if ("O" in used and sf == "Y") else sf)
     hill = [[False] * W for _ in range(H)]
     if place == "kouen":
         hills(D, 6, 0.22, hz)  # 遠くの丘（こいみどり）
@@ -248,7 +261,8 @@ def main():
     if place == "daidokoro":
         # かべ：上は しろいタイル（みずいろの目地、ところどころに小さな花の模様）、
         #       腰の高さから下は 板（だいだいに ちゃいろの継ぎ目、上に ちゃいろの見切り）
-        grout = col("S", sky_base)
+        # 目地：みずいろ（無ければ ピンク・だいだい・きいろの順。しろいだけの かべ にしない）
+        grout = "W" if white_hero else next((c for c in "SPOY" if c in used), "S")
         wain = max(0, hz - max(6, hz // 4))  # 腰板の上のはし
         for y in range(wain):
             for x in range(W):
@@ -294,7 +308,7 @@ def main():
                         if 0 <= aa < W and 0 <= bb < H and big[bb][aa] and not seen[bb][aa]:
                             seen[bb][aa] = True
                             st.append((aa, bb))
-                if len(comp) < 6:
+                if len(comp) < 10:  # 小さく切れた かけら（10 マス未満）
                     for a, b in comp:
                         out[b][a] = gnd_base if b >= hz else (sea_base if sea_base and b >= sea_top else sky_base)
 

@@ -5,7 +5,7 @@ mkdir -p out
 while IFS="	" read face tier dir id; do
   for p in kouen umibe daidokoro yukiyama mori hanabatake; do case $id in *$p*) place=$p;; esac; done
   printf "%s %s %s " "$face" "$id" "$place"; python3 bg.py ../$dir/$id.txt $place out/$id.txt
-done < list.tsv > out/log.txt
+done < list.tsv > out/horizon.log
 for p in kouen umibe daidokoro yukiyama mori hanabatake; do
   awk -F"	" -v p=$p 'index($4,p){print $1":"$4":../"$3"/"$4".txt:out/"$4".txt"}' list.tsv > out/.items
   n=$(wc -l < out/.items); k=1; i=0
@@ -15,3 +15,5 @@ for p in kouen umibe daidokoro yukiyama mori hanabatake; do
   done
 done
 rm -f out/.items
+python3 counts.py > /dev/null
+node count.js out/*.txt | grep -c "parse OK"   # 148 なら全部 OK
