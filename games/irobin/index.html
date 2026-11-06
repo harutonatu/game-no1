@@ -712,6 +712,7 @@
   .card ul.book .now { flex: 1 1 100%; font-size: 13px; color: var(--ink); opacity: 0.9; word-break: keep-all; overflow-wrap: anywhere; }
   .card ul.book .now[hidden] { display: none; }
   .card ul.book .left.done { color: var(--accent); font-weight: 700; }
+  @media (min-height: 700px) { .card ul.book .left.done { padding: 2px 0; } }   /* G-4：余白は背の高い画面だけ（SE は詰めずに入る最後の 12px をここで使わない。BW38 (k)） */
   .card p.note.book-home { line-height: 1.4; word-break: keep-all; }
   /* 背の低い縦（SE など）：なかよしちょうは絵を小さくして 6 匹が 1 画面に入るようにする。
      クリアのカードは、なかよしの一言（.friend）が 2 行になっても節目＋★3 のカードが収まるよう、すき間を詰める */

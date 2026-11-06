@@ -586,7 +586,7 @@
     const n = el.card.querySelector(".share-note");
     if (!n) return;
     n.textContent = text;
-    if (url) { const u = document.createElement("span"); u.className = "url"; u.textContent = SHARE_URL; n.appendChild(u); }
+    if (url) { const u = document.createElement("span"); u.className = "url"; u.innerHTML = SHARE_URL.split("/").map((x) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;")).join("/<wbr>"); n.appendChild(u); }
   }
   function doShare() {
     if (sharing) return;
@@ -1011,7 +1011,7 @@
       <h2 id="cardTitle">かぎの びん</h2>
       <div class="lockintro">${svg}</div>
       <p class="lockline">かぎの びんは、<b data-f="c"></b>を <b>4つ かさねると</b> あくよ</p>
-      <p class="note">ほかの びんに 4つ そろえてね</p>
+      <p class="note">ほかの びんは、おなじ いろを 4つ そろえて いっぱいに してね</p>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, { c: colorMark(c) }, "intro");
   }
   function closeCard() {

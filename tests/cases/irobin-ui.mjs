@@ -2785,16 +2785,16 @@ export const tests = [
         const menuOf = async (book) => {
           await seed(page, { 'irobin.best': '12', 'irobin.book': book, 'zenmai.progress': J({ stars: { z01: 3 }, unlocked: 2 }) });
           await page.goto(BASE); await wait(page, 200);
-          return page.evaluate(() => [...document.querySelectorAll('a.game')].map((a) => { const b = a.querySelector('.best b'), lh = parseFloat(getComputedStyle(b).lineHeight) || 20; return { url: a.getAttribute('href'), t: b.textContent, lines: Math.round(b.getBoundingClientRect().height / lh), fit: b.scrollWidth <= b.clientWidth + 0.5 }; }));
+          return page.evaluate(() => [...document.querySelectorAll('a.game')].map((a) => { const b = a.querySelector('.best b'), sr = a.querySelector('.stars'), lh = parseFloat(getComputedStyle(b).lineHeight) || 20; return { url: a.getAttribute('href'), t: b.textContent + (sr && !sr.hidden ? ' ' + sr.textContent : ''), lines: Math.round(b.getBoundingClientRect().height / lh), fit: b.scrollWidth <= b.clientWidth + 0.5 }; }));
         };
         const m1 = await menuOf(J({ v: 1, a: {}, s: { 1: [3, 9], 2: [2, 30] }, last: 2 }));
         const ib = m1.find((x) => x.url === 'games/irobin/') || {};
         const others = m1.filter((x) => x.url !== 'games/irobin/' && /ぜんぶで/.test(x.t));
         check(`(b) IB-50 ${v.label}：メニューのいろびんが「12 めん クリア ★ ぜんぶで 5こ」（${J(ib.t)}・${ib.lines} 行）・切れない・ほかのゲームに「ぜんぶで」は出ない`,
-          ib.t === '12\u00a0めん\u00a0クリア ★\u00a0ぜんぶで\u00a05こ' && ib.lines <= 2 && ib.fit && others.length === 0, { ib, others });
+          ib.t === '12\u00a0めん\u00a0クリア ★\u00a0ぜんぶで 5こ' && ib.lines <= 2 && ib.fit && others.length === 0, { ib, others });
         const m2 = await menuOf(J({ v: 1, a: {}, s: { 1: [3, 9] }, last: 1, o: 7 }));
         const ib2 = m2.find((x) => x.url === 'games/irobin/') || {};
-        check(`(b) IB-54：畳んだ★ o 7 も足す（${J(ib2.t)}）`, ib2.t === '12\u00a0めん\u00a0クリア ★\u00a0ぜんぶで\u00a010こ', ib2);
+        check(`(b) IB-54：畳んだ★ o 7 も足す（${J(ib2.t)}）`, ib2.t === '12\u00a0めん\u00a0クリア ★\u00a0ぜんぶで 10こ', ib2);
         await ctx.close();
       }
       // ---- (c) IB-51：クリアのカードに、いちばん近い 1 匹の「あと ○にんで ○○」（絵＋名前は読み上げ用） ----

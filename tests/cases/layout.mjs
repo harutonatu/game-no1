@@ -431,6 +431,19 @@ export const tests = [
         check(`${v.label} ${v.w}×${v.h}：${r.length} 本の長い記録（${r.map((x) => `${x.t}${x.lines > 1 ? '（2 行）' : ''}`).join('・')}）が「…」で切れず 2 行まで、カードがはみ出さない、横スクロールなし`,
           r.length === GAME_URLS.length && bad.length === 0 && !hs, { bad, hs });
         check(`${v.label}：ゼンマイの「${z.s}」の「45 / 45」が行の途中で割れない（${z.rows} 行）`, z.rows === 1, z);
+        // G-1：いろびんの「★ ぜんぶで Mこ」の行が .info の幅の中（›に重ならない）。SE 縦などで ★ 2・4・6 桁を試す
+        for (const [n, label] of [[1, '2 桁'], [1111, '4 桁'], [111111, '6 桁']]) {
+          const bk = JSON.stringify({ v: 1, a: {}, s: { 1: [3, 9] }, last: 1, o: n === 1 ? 10 : n });
+          await seed(page, { 'irobin.best': '999', 'irobin.book': bk });
+          await page.goto(BASE); await wait(page, 200);
+          const g = await page.evaluate(() => {
+            const a = document.querySelector('a.game[href="games/irobin/"]'), st = a.querySelector('.stars'), info = a.querySelector('.info'), go = a.querySelector('.go');
+            const q = st.getBoundingClientRect(), i = info.getBoundingClientRect(), o = go.getBoundingClientRect();
+            return { t: st.textContent, hidden: st.hidden, right: Math.round(q.right), infoRight: Math.round(i.right), goLeft: Math.round(o.left), h: Math.round(q.height), sw: st.scrollWidth <= st.clientWidth + 0.5, hs: document.documentElement.scrollWidth > innerWidth };
+          });
+          check(`${v.label}：いろびんの★の行（${label}「${g.t}」）が .info の右端（${g.infoRight}）と「›」（${g.goLeft}）の内側に入り、横スクロールなし（右端 ${g.right}）`,
+            !g.hidden && g.right <= g.infoRight && g.right <= g.goLeft + 0.5 && g.sw && !g.hs, g);
+        }
         await ctx.close();
       }
     },
