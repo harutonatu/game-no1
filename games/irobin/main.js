@@ -527,19 +527,24 @@
       return `つぎは ${next}めん。${nm}さんが まってるよ`;
     }
     // 105 面から先（more でない）：なかよしの段が一番近い動物を出す（IB-42）。全部そろっていれば今までどおり
-    const near = safeCall(() => {
+    const near = nearFriend();
+    if (near) return `つぎは ${next}めん。${R.ANIMAL_NAMES[near.k] || "おきゃくさん"}さん あと ${near.left}にんで ${near.item}`;
+    return `つぎは ${next}めん`;
+  }
+  // なかよしの段がいちばん近い 1 匹（まだ 3 つ そろっていない動物のうち、あと必要な数がいちばん少ない。同じなら一覧の順）。
+  // 保存から読む。新しい版の帳面・全部そろった・おしゃれの名前が無い → null（IB-42・IB-51）
+  function nearFriend() {
+    return safeCall(() => {
       const rb = readBookNow();
       if (!rb || !rb.write) return null;   // 新しい版の帳面は「あと ○にん」を出さない
       let pick = null;
       for (const k of R.ANIMALS || []) {
         const n = rb.book.a[k] || 0, at = L.nextStepAt(n);
-        if (at && (!pick || at - n < pick.left)) pick = { k, left: at - n, step: L.bookStep(n) + 1 };
+        if (at && (!pick || at - n < pick.left)) pick = { k, left: at - n, step: L.bookStep(n) + 1, now: L.bookStep(n) };
       }
-      return pick;
+      const item = pick && R.DRESS_ITEMS && R.DRESS_ITEMS[pick.k] ? R.DRESS_ITEMS[pick.k][pick.step - 1] : null;
+      return item ? Object.assign(pick, { item: item[0] }) : null;
     }, null);
-    const item = near && R.DRESS_ITEMS && R.DRESS_ITEMS[near.k] ? R.DRESS_ITEMS[near.k][near.step - 1] : null;
-    if (near && item) return `つぎは ${next}めん。${R.ANIMAL_NAMES[near.k] || "おきゃくさん"}さん あと ${near.left}にんで ${item[0]}`;
-    return `つぎは ${next}めん`;
   }
   // なかよしの段が上がったときのクリアのカードの一言（IB-34）。ups＝[{ kind, step }]。無ければ []
   // 返す形は [{ t: 文字, nb: true なら途中で折り返さない }]（おしゃれの名前が「まるい / めがね」と割れないように）
@@ -632,6 +637,8 @@
     const canShare = star === 3 || !!c.milestone;
     const animals = Array.isArray(c.animals) ? c.animals : [];
     const friend = friendText(c.ups);
+    // いちばん近い 1 匹の「あと ○にん」（IB-51）。段が上がった一言が出る面と、予告の行にもう同じことを書く面（105 面から先の節目）では出さない
+    const near = !friend && !(c.milestone && !c.more) ? nearFriend() : null;
     showCard(`
       <h2 id="cardTitle" data-f="h"></h2>
       <p class="stars" data-f="s"></p>
@@ -640,6 +647,7 @@
       <p class="best-new" data-f="b"></p>
       <p class="next-note" data-f="n"></p>
       <p class="friend" data-f="f"></p>
+      <p class="near"></p>
       <div class="btns">
         ${canShare ? '<p class="share-note" aria-live="polite"></p>' : ""}
         <button class="cta primary" type="button" data-cmd="next">つぎの めんへ</button>
@@ -650,6 +658,21 @@
     if (again) focusBack = fb;   // なかよしちょうへ行く前の戻り先（瓶など）を残す
     if (!friend) { const fr = el.card.querySelector(".friend"); if (fr) fr.hidden = true; }
     else { const fr = el.card.querySelector(".friend"); if (fr) fillParts(fr, friendParts(c.ups)); }
+    { // 「あと ○にんで ○○」：動物は小さな絵（名前は読み上げ用の .sr）。おしゃれの名前は途中で折り返さない
+      const nr = el.card.querySelector(".near");
+      if (nr && near) {
+        const cv = document.createElement("canvas");
+        const dpr = Math.min(2, Math.max(1, Number(window.devicePixelRatio) || 1));
+        cv.width = cv.height = Math.round(24 * dpr);
+        cv.setAttribute("aria-hidden", "true");
+        try { const ctx = cv.getContext("2d"); if (ctx) R.drawAnimal(ctx, near.k, { w: cv.width, h: cv.height, mood: "happy", dress: near.now }); } catch (e) { /* 絵が描けなくても続ける */ }
+        const nm = document.createElement("span"); nm.className = "sr"; nm.textContent = `${R.ANIMAL_NAMES[near.k] || "おきゃくさん"}さん `;
+        const tx = document.createElement("span");
+        fillParts(tx, [{ t: `あと ${near.left}にんで ` }, { t: near.item, nb: true }]);
+        nr.dataset.kind = near.k;
+        nr.append(cv, nm, tx);
+      } else if (nr) nr.hidden = true;
+    }
     // 動物の顔の列（狭い画面では CSS で隠す）。aria-label は showCard のあとに直接入れる
     const served = el.card.querySelector(".served");
     if (served) {

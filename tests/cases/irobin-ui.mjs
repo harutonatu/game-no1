@@ -2795,6 +2795,38 @@ export const tests = [
         check(`(b) IB-54：畳んだ★ o 7 も足す（${J(ib2.t)}）`, ib2.t === '12\u00a0めん\u00a0クリア ★\u00a0ぜんぶで\u00a010こ', ib2);
         await ctx.close();
       }
+      // ---- (c) IB-51：クリアのカードに、いちばん近い 1 匹の「あと ○にんで ○○」（絵＋名前は読み上げ用） ----
+      {
+        const nearOf = (p) => p.evaluate(() => {
+          const e = document.querySelector('#card p.near');
+          const vis = !!e && !e.hidden && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0;
+          return e ? { vis, kind: e.dataset.kind || null, text: e.textContent.replace(/\s+/g, ' ').trim(), canvas: !!e.querySelector('canvas[aria-hidden="true"]'), sr: e.querySelector('.sr')?.textContent.trim() || null, nw: e.querySelector('.nw')?.textContent || null, fs: parseFloat(getComputedStyle(e).fontSize) } : null;
+        });
+        // 期待：保存された帳面から、3 段そろっていない動物のうち あと必要な数がいちばん少ない 1 匹（同じなら一覧の順）
+        const want = (p) => p.evaluate((KINDS) => {
+          const a = JSON.parse(localStorage.getItem('irobin.book')).a, R = window.IrobinRender;
+          let pick = null;
+          for (const k of KINDS) { const n = a[k] || 0, at = [10, 50, 200].find((t) => n < t); if (at && (!pick || at - n < pick.left)) pick = { k, left: at - n, item: R.DRESS_ITEMS[k][[10, 50, 200].indexOf(at)][0] }; }
+          return pick;
+        }, KINDS);
+        const run = async (label, extra) => {
+          const g = await openG(browser, `BW40 c ${label}`, { extra: { 'irobin.best': '30', ...extra } });
+          await solveToClear(g.page); await wait(g.page, 700);
+          const r = { near: await nearOf(g.page), want: await want(g.page), friend: await g.page.evaluate(() => { const f = document.querySelector('#card .friend'); return !!f && !f.hidden; }) };
+          await g.ctx.close();
+          return r;
+        };
+        const r1 = await run('ふつう', { 'irobin.book': J({ v: 1, a: { kuma: 3, usagi: 47, neko: 46, penguin: 150 }, s: {}, last: 0 }) });
+        const w1 = r1.want, nm1 = { kuma: 'くま', usagi: 'うさぎ', neko: 'ねこ', penguin: 'ペンギン', risu: 'りす', hitsuji: 'ひつじ' }[w1 && w1.k];
+        check(`(c) IB-51：1 面のクリアのカードに「あと ○にんで ○○」（${J(r1.near)}）が、帳面からの期待（${J(w1)}）どおり・絵（aria-hidden）・名前「${nm1}さん」は .sr・おしゃれの名前は折り返さない・14px 以上`,
+          !!w1 && !!r1.near && r1.near.vis && r1.near.kind === w1.k && r1.near.text === `${nm1}さん あと ${w1.left}にんで ${w1.item}` && r1.near.canvas && r1.near.sr === `${nm1}さん` && r1.near.nw === w1.item && r1.near.fs >= 14, r1);
+        const r2 = await run('全部そろった', { 'irobin.book': J({ v: 1, a: Object.fromEntries(KINDS.map((k) => [k, 300])), s: {}, last: 0 }) });
+        check(`(c) IB-51：6 匹とも 3 段そろっていれば出さない（${J(r2.near)}）`, !!r2.near && !r2.near.vis && r2.want === null, r2);
+        const r3 = await run('段が上がる', { 'irobin.book': J({ v: 1, a: Object.fromEntries(KINDS.map((k) => [k, 9])), s: {}, last: 0 }) });
+        check(`(c) IB-51：段が上がった一言（.friend）が出る面では出さない（friend ${r3.friend}・${J(r3.near)}）`, r3.friend && !!r3.near && !r3.near.vis, r3);
+        const r4 = await run('新しい版', { 'irobin.book': J({ v: 9, a: {}, s: {} }) });
+        check(`(c) IB-51：新しい版の帳面では出さない（${J(r4.near)}）`, !!r4.near && !r4.near.vis, r4);
+      }
     },
   },
 ];

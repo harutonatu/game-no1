@@ -657,6 +657,10 @@
   /* なかよしちょう（v45・IB-34・IB-41）：クリアのカードの一言と、6 匹の帳面 */
   .card .nw { white-space: nowrap; }   /* おしゃれの名前は途中で折り返さない */
   .card p.friend { color: var(--accent); font-weight: 700; font-size: 15px; line-height: 1.45; word-break: keep-all; }
+  /* いちばん近い 1 匹の「あと ○にんで ○○」（IB-51）：小さな絵＋1 行 */
+  .card p.near { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; line-height: 1.35; word-break: keep-all; }
+  .card p.near[hidden] { display: none; }
+  .card p.near canvas { flex: 0 0 auto; width: 24px; height: 24px; }
   .card .book-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; column-gap: 12px; row-gap: 0; }
   .card p.book-stars { color: #ffd84d; font-weight: 700; }
   .card ul.book { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; text-align: left; }

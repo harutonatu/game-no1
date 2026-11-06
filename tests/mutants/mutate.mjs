@@ -300,6 +300,8 @@ const M = [
   ['MB69 いろびん：保存に見せた動物（an）を書かない（開き直すと内わけがずれる。IB-55）', '保存', 'games/irobin/logic.js', '    if (an) o.an = an;\n', ''],
   ['MB70 いろびん：開き直した面で、保存の an を画面の動物に使わない（IB-55）', '保存', 'games/irobin/render.js', '      if (bopts && Array.isArray(bopts.seen)) bopts.seen.forEach(', '      if (false) bopts.seen.forEach('],
   ['MB71 いろびん：validateSave が an を返さない（IB-55）', '保存', 'games/irobin/logic.js', '    if (seen) out.seen = seen;\n', ''],
+  ['MB72 いろびん：クリアのカードに「あと ○にん」を出さない（IB-51）', '見た目', 'games/irobin/main.js', 'const near = !friend && !(c.milestone && !c.more) ? nearFriend() : null;', 'const near = null;'],
+  ['MB73 いろびん：段が上がった一言と「あと ○にん」を両方出す（IB-51）', '見た目', 'games/irobin/main.js', 'const near = !friend && !(c.milestone && !c.more) ? nearFriend() : null;', 'const near = !(c.milestone && !c.more) ? nearFriend() : null;'],
   ['MQ41 まとめてポン：pageshow で終わりのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/matomete/main.js', '    if (overlayKind !== "over") return;\n    const unlock', '    return;\n    const unlock'],
   ['MQ42 まとめてポン：表に戻ったとき保存がほかで変わっていても開き直さない（契約 §11・X-20）', '保存', 'games/matomete/main.js', '    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;', '    return false;'],
   ['MQ43 まとめてポン：裏で別のタブが書いても保存を止めない（storage を見ない。契約 §11・X-20）', '保存', 'games/matomete/main.js', 'if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true;', 'if (false) stale = true;'],
