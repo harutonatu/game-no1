@@ -20,3 +20,12 @@
 | 流し直し | Opus（テストの仕組みの判断） | §1.1 | tests/run.mjs・tests/cases/*.mjs（印を付けるだけ）・tests/README.md・tests/design.md・CLAUDE.md §5 の文・docs/issues.md の T-31〜T-39 |
 | WW10 | Opus（原因の分からない性能の不具合） | §1.2 | games/seizai/・tests/cases/seizai-*.mjs（基準は下げない） |
 | 版上げ・関門 | PM・Haiku | | |
+
+## 3. 技術レビューの結果と直し（PM。2026-11-06）
+PM の決定：4 つとも公開前に直す（どれも小さく、1・2 は利用者と不具合の見のがしに関わる）。
+| 番号 | 変える前 → 変えた後 |
+|---|---|
+| H-1 | もくもくこうば `toCssBg` の `toBlob`（背景を PNG にする）が WebKit で 230〜340ms 画面を止め、段が上がる演出の始まりと重なる → すぐに呼ばず、`stageAnim` が終わってから（と、開いた直後・向きを変えた直後は少し待ってから・requestIdleCallback があればそれで）呼ぶ。それまでは canvas に写す道すじのまま |
+| H-2 | 揺れやすい印が広すぎる（機能の確かめまで流し直しで合格に数えうる）→ 印を `flaky: { why, checks: /…/ }` の形にし、1 回目に落ちた確かめが**全部** checks の形に当てはまるとき、または時間切れのときだけ流し直す。KW22（原因不明）・S2（SW 更新と保存）・HW8（古いタイマー）は印を外す。WW2・WW8・BW2・KW5・HW18 は時間の確かめだけを checks にする。tests/README.md の表も直す |
+| H-3 | 変異テストからも流し直しが働く → `FLAKY_RETRY` を環境変数で変えられるようにし、mutate.mjs は子に `FLAKY_RETRY=0` を渡す |
+| H-4 | 使い回しの canvas が多い（SE 10.4MB・iPad 35.9MB）→ 捨てる canvas の幅と高さを 0 にしてから捨てる（scale が変わったときも）。上限 1000 → 500 |
