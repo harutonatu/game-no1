@@ -705,7 +705,7 @@
     .card ul.book .name { font-size: 15px; }
   }
   /* 共有の知らせは場所を取らない吹き出し（.btns の上にかぶせる）。出ても「つぎの めんへ」は動かない */
-  .card p.share-note { position: absolute; left: 0; right: 0; bottom: 100%; box-sizing: border-box; max-width: 100%; margin-bottom: 4px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; color: var(--ink); min-height: 0; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; z-index: 2; box-shadow: 0 4px 14px rgba(0,0,0,0.4); }
+  .card p.share-note { position: absolute; left: 0; right: 0; bottom: 100%; box-sizing: border-box; max-width: 100%; word-break: keep-all; margin-bottom: 4px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; color: var(--ink); min-height: 0; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; z-index: 2; box-shadow: 0 4px 14px rgba(0,0,0,0.4); }
   .card p.share-note:empty { visibility: hidden; pointer-events: none; }   /* 空のときは見えないだけ（aria-live の読み上げのため display:none にしない） */
   /* URL は長おしで選べるように、親からの継承に頼らず自分にも書く（WebKit は継承した user-select の計算値が auto のままで、長おしの選択が親まかせになる。T-35） */
   .card p.share-note .url { display: block; overflow-wrap: anywhere; word-break: normal; -webkit-user-select: text; user-select: text; }

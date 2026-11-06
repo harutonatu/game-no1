@@ -950,7 +950,7 @@
   }
   el.overlay.addEventListener("click", (e) => {
     const note = e.target && e.target.closest ? e.target.closest(".share-note") : null;
-    if (note) { note.textContent = ""; return; }   // 吹き出しは押すと閉じる
+    if (note) { if (!(e.target.closest(".url"))) note.textContent = ""; return; }   // 吹き出しは押すと閉じる。あどれすを長おしして選ぶ途中では閉じない（IB-60）
     const btn = e.target && e.target.closest ? e.target.closest("[data-cmd]") : null;
     if (!btn) return;
     if ((overlayKind === "clear" || overlayKind === "rescue") && now() - cardShownAt < CARD_LOCK_MS) return;   // 出た直後の連打で押し間違えない
