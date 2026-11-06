@@ -1150,14 +1150,16 @@
   }
 
   // ---------------------------------------------------------------- なかよしちょう（v45・IB-34。契約 §24）
-  // 形 { v: 1, a: { 動物: 届けた数 }, s: { "面": [星 1〜3, 一番少ない手数] }, last: 最後に数を足した面 }。
+  // 形 { v: 1, a: { 動物: 届けた数 }, s: { "面": [星 1〜3, 一番少ない手数] }, last: 最後に数を足した面, o: 古い面の星の合計（無ければ 0。v69・IB-54） }。
+  // 面の記録は BOOK_MAX_LEVELS 件まで。超えたら一番小さい面の記録を o に畳む（星の合計は減らない。手数は捨てる）
   // main は書くたびに保存から読み直して足す（メモリの値から書かない。契約 §18 G7 の場面にしない）
   // 帳面が無い人は 0 から数える（古い irobin.best・irobin.save から数を作らない。ユーザー決定 2026-10-26「0から数える」）
   const BOOK_V = 1;
   const BOOK_STEPS = Object.freeze([10, 50, 200]);   // なかよしの段（0〜3）：届けた数がこの数になったら 1 段上がる（決まった数で必ず。ガチャではない）
   const BOOK_MAX_COUNT = 1e9;     // 数・手数の上限（大きすぎる値は捨てる）
-  const BOOK_MAX_LEVELS = 5000;   // 面の記録を読む数の上限
-  function emptyBook() { return { v: BOOK_V, a: {}, s: {}, last: 0 }; }
+  const BOOK_MAX_LEVELS = 5000;   // 面の記録を残す数の上限（超えた分は一番小さい面から o に畳む。IB-54）
+  const BOOK_SCAN_MAX = 20000;    // 読むときに見る鍵の数の上限（壊れた・大きすぎる帳面で止まらない）
+  function emptyBook() { return { v: BOOK_V, a: {}, s: {}, last: 0 }; }   // o は畳んだ星があるときだけ持つ
   function bookStep(n) { let s = 0; for (const t of BOOK_STEPS) if (Number(n) >= t) s += 1; return s; }
   // 次の段になる数（もう最後の段なら 0）
   function nextStepAt(n) { for (const t of BOOK_STEPS) if (!(Number(n) >= t)) return t; return 0; }
@@ -1172,15 +1174,22 @@
     const a = o.a && typeof o.a === "object" && !Array.isArray(o.a) ? o.a : {};
     for (const k of ANIMAL_KEYS) { const n = a[k]; if (Number.isSafeInteger(n) && n > 0 && n <= BOOK_MAX_COUNT) b.a[k] = n; }
     const s = o.s && typeof o.s === "object" && !Array.isArray(o.s) ? o.s : {};
-    let kept = 0;
+    const list = [];
+    let scanned = 0;
     for (const key of Object.keys(s)) {
-      if (kept >= BOOK_MAX_LEVELS) break;
+      if (++scanned > BOOK_SCAN_MAX) break;
       const r = s[key];
       if (!/^[1-9][0-9]{0,15}$/.test(key) || !Number.isSafeInteger(Number(key))) continue;
       if (!Array.isArray(r) || r.length !== 2 || !(r[0] === 1 || r[0] === 2 || r[0] === 3) || !Number.isSafeInteger(r[1]) || r[1] < 1 || r[1] > BOOK_MAX_COUNT) continue;
-      b.s[key] = [r[0], r[1]];
-      kept += 1;
+      list.push([Number(key), key, r[0], r[1]]);
     }
+    let old = Number.isSafeInteger(o.o) && o.o > 0 ? o.o : 0;
+    if (list.length > BOOK_MAX_LEVELS) {   // 多すぎる：一番小さい面から o に畳む（新しい面の★が残る。IB-54）
+      list.sort((x, y) => x[0] - y[0]);
+      for (const d of list.splice(0, list.length - BOOK_MAX_LEVELS)) old = Math.min(Number.MAX_SAFE_INTEGER, old + d[2]);
+    }
+    for (const d of list) b.s[d[1]] = [d[2], d[3]];
+    if (old > 0) b.o = old;
     b.last = Number.isSafeInteger(o.last) && o.last >= 0 ? o.last : 0;
     return { book: b, write: true };
   }
@@ -1190,6 +1199,7 @@
   function addClear(book, c) {
     const src = book && typeof book === "object" ? book : emptyBook();
     const b = { v: BOOK_V, a: Object.assign({}, src.a), s: Object.assign({}, src.s), last: Number.isSafeInteger(src.last) ? src.last : 0 };
+    if (Number.isSafeInteger(src.o) && src.o > 0) b.o = src.o;
     const o = c || {};
     const lv = normLevel(o.level);
     const ups = [];
@@ -1208,18 +1218,33 @@
     const prev = Array.isArray(b.s[key]) ? b.s[key] : null;
     const star = o.star === 1 || o.star === 2 || o.star === 3 ? o.star : 0;
     const mv = Number.isSafeInteger(o.moves) && o.moves >= 1 ? Math.min(o.moves, BOOK_MAX_COUNT) : 0;
-    if (star && mv) b.s[key] = prev ? [Math.max(prev[0], star), Math.min(prev[1], mv)] : [star, mv];
+    if (star && mv && !prev) {   // 新しい面の記録：上限なら一番小さい面を o に畳んで空ける（この面がそれより小さければ残さない。IB-54）
+      const keys = Object.keys(b.s);
+      if (keys.length >= BOOK_MAX_LEVELS) {
+        let min = null;
+        for (const k of keys) if (min === null || Number(k) < Number(min)) min = k;
+        if (min !== null && Number(min) < lv) {
+          const r = b.s[min];
+          if (Array.isArray(r) && (r[0] === 1 || r[0] === 2 || r[0] === 3)) b.o = Math.min(Number.MAX_SAFE_INTEGER, (b.o || 0) + r[0]);
+          delete b.s[min];
+        }
+      }
+      if (Object.keys(b.s).length < BOOK_MAX_LEVELS) b.s[key] = [star, mv];
+    } else if (star && mv) b.s[key] = [Math.max(prev[0], star), Math.min(prev[1], mv)];
     return { book: b, ups, rec: prev ? { star: prev[0], moves: prev[1] } : null };
   }
   function bookStars(book) {
     const s = book && book.s && typeof book.s === "object" ? book.s : {};
     let n = 0;
     for (const k of Object.keys(s)) { const r = s[k]; if (Array.isArray(r) && (r[0] === 1 || r[0] === 2 || r[0] === 3)) n += r[0]; }
+    if (book && Number.isSafeInteger(book.o) && book.o > 0) n += book.o;   // 畳んだ古い面の星（IB-54）
     return n;
   }
   function makeBook(book) {
     const b = book && typeof book === "object" ? book : emptyBook();
-    return JSON.stringify({ v: BOOK_V, a: b.a || {}, s: b.s || {}, last: Number.isSafeInteger(b.last) ? b.last : 0 });
+    const out = { v: BOOK_V, a: b.a || {}, s: b.s || {}, last: Number.isSafeInteger(b.last) ? b.last : 0 };
+    if (Number.isSafeInteger(b.o) && b.o > 0) out.o = b.o;   // 畳んだ星があるときだけ書く（ふつうの人の帳面の形は v68 と同じ）
+    return JSON.stringify(out);
   }
 
 
@@ -1256,7 +1281,7 @@
     solve,
     replay, hud, validateBest, validateSave, makeSave, recordBest, validateFlag,
     MILESTONE_EVERY, milestoneFor,
-    BOOK_V, BOOK_STEPS, emptyBook, bookStep, nextStepAt, readBook, addClear, bookStars, makeBook,
+    BOOK_V, BOOK_STEPS, BOOK_MAX_LEVELS, emptyBook, bookStep, nextStepAt, readBook, addClear, bookStars, makeBook,
     animalFor, colorName, lockProgress,
     normalizeState
   });

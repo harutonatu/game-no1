@@ -293,6 +293,10 @@ const M = [
   ['MB63 いろびん：錠の数に、鍵の瓶の中身も数える（v47）', '見た目', 'games/irobin/logic.js', "if (!b || !Array.isArray(b.cells) || b.lock !== null && b.lock !== undefined) continue;", "if (!b || !Array.isArray(b.cells)) continue;"],
   ['MB64 いろびん：錠の数に、ちいさい びん（cap 3）も数える（v47）', '見た目', 'games/irobin/logic.js', "if (b.cap === SMALL_CAP) continue;", ""],
   ['MB65 いろびん：錠の数に、布の瓶も数える（v47）', '見た目', 'games/irobin/logic.js', "if (b.cover !== null && b.cover !== undefined) continue;", ""],
+  // いろびん v69（契約 §26。流すときは ONLY にいろびんの BL・BW の全項目、M=MB66,…）
+  ['MB66 いろびん：面の記録が 5000 件のとき、新しい面のために一番小さい面を畳まない（新しい面の★が残らない。IB-54）', '保存', 'games/irobin/logic.js', 'if (min !== null && Number(min) < lv) {', 'if (false) {'],
+  ['MB67 いろびん：5000 件より多い帳面を読むとき、捨てた面の★を o に足さない（★の合計が減る。IB-54）', '保存', 'games/irobin/logic.js', 'old = Math.min(Number.MAX_SAFE_INTEGER, old + d[2]);', 'old = old;'],
+  ['MB68 いろびん：bookStars が畳んだ古い面の★（o）を数えない（IB-54）', '保存', 'games/irobin/logic.js', '    if (book && Number.isSafeInteger(book.o) && book.o > 0) n += book.o;   // 畳んだ古い面の星（IB-54）\n', ''],
   ['MQ41 まとめてポン：pageshow で終わりのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/matomete/main.js', '    if (overlayKind !== "over") return;\n    const unlock', '    return;\n    const unlock'],
   ['MQ42 まとめてポン：表に戻ったとき保存がほかで変わっていても開き直さない（契約 §11・X-20）', '保存', 'games/matomete/main.js', '    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;', '    return false;'],
   ['MQ43 まとめてポン：裏で別のタブが書いても保存を止めない（storage を見ない。契約 §11・X-20）', '保存', 'games/matomete/main.js', 'if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true;', 'if (false) stale = true;'],

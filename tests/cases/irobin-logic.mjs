@@ -1196,4 +1196,39 @@ export const tests = [
       check('(g) 壊れた入力は 0 で落ちない', bad.every((x) => x === 0) && bad2.every((x) => x === 0), { bad, bad2 });
     },
   },
+  {
+    id: 'BL28', tier: 'smoke', node: true, title: 'いろびん v69（IB-54）なかよしちょうの面の記録が 5000 件を超えても新しい面の★が残る（一番小さい面を o に畳む・★の合計は減らない・古い帳面も読める・o の壊れた値は捨てる）',
+    run({ check, root }) {
+      const L = load(root);
+      const MAX = L.BOOK_MAX_LEVELS;
+      const full = (n, star = 1) => { const s = {}; for (let i = 1; i <= n; i++) s[i] = [star, 10]; return s; };
+      check(`(a) BOOK_MAX_LEVELS が 5000（${MAX}）`, MAX === 5000, MAX);
+      // (b) 5000 件ある帳面に 5001 面を足す：5001 面の★が残り、1 面は o に畳まれる。合計は 5000 + 3
+      const b0 = { v: 1, a: {}, s: full(5000), last: 5000 };
+      const r1 = L.addClear(b0, { level: 5001, animals: ['kuma'], star: 3, moves: 7 });
+      const k1 = Object.keys(r1.book.s);
+      check(`(b) 5001 面の★ [3,7] が残る（${J(r1.book.s[5001])}）・件数 ${k1.length}＝5000・1 面が消え o＝1（${r1.book.o}）・bookStars ${L.bookStars(r1.book)}＝5003・元の帳面は変えない`,
+        J(r1.book.s[5001]) === '[3,7]' && k1.length === 5000 && !r1.book.s[1] && r1.book.o === 1 && L.bookStars(r1.book) === 5003 && Object.keys(b0.s).length === 5000 && b0.o === undefined, { o: r1.book.o, n: k1.length });
+      // (c) 書いて読むと o も残る。もう一度先の面を足すと o が増える
+      const rr = L.readBook(L.makeBook(r1.book));
+      const r2 = L.addClear(rr.book, { level: 5002, animals: [], star: 2, moves: 9 });
+      check(`(c) makeBook → readBook で o（${rr.book.o}）と件数（${Object.keys(rr.book.s).length}）が残る・続けて 5002 面で o＝2（${r2.book.o}）・合計 5005（${L.bookStars(r2.book)}）`,
+        rr.write && rr.book.o === 1 && Object.keys(rr.book.s).length === 5000 && r2.book.o === 2 && L.bookStars(r2.book) === 5005 && J(r2.book.s[5002]) === '[2,9]', { o: rr.book.o });
+      // (d) もうある面を良くする（件数は増えない）・一番小さい面より小さい面（ふつうは無い）は畳まずに残さない
+      const r3 = L.addClear(r1.book, { level: 3000, animals: [], star: 3, moves: 5 });
+      const r4 = L.addClear(r1.book, { level: 1, animals: [], star: 3, moves: 5 });
+      check(`(d) もうある 3000 面は [3,5] に良くなり o は 1 のまま（${r3.book.o}）・畳んだ 1 面を足しても記録せず o も件数も同じ（${J(r4.book.s[1])}・${r4.book.o}）`,
+        J(r3.book.s[3000]) === '[3,5]' && r3.book.o === 1 && Object.keys(r3.book.s).length === 5000 && r4.book.s[1] === undefined && r4.book.o === 1 && Object.keys(r4.book.s).length === 5000, null);
+      // (e) 5000 件より多い帳面を読む（手で作った・古い版）：大きい方の 5000 面を残し、残りの★を o に足す（合計は同じ）
+      const big = { v: 1, a: {}, s: full(6000, 2), last: 6000, o: 5 };
+      const rb = L.readBook(J(big));
+      check(`(e) 6000 面（★2）＋o 5 を読む：件数 5000（${Object.keys(rb.book.s).length}）・6000 面あり・1000 面なし・o＝5＋2000（${rb.book.o}）・合計 12005（${L.bookStars(rb.book)}）`,
+        Object.keys(rb.book.s).length === 5000 && !!rb.book.s[6000] && !rb.book.s[1000] && !!rb.book.s[1001] && rb.book.o === 2005 && L.bookStars(rb.book) === 12005, { o: rb.book.o });
+      // (f) o の壊れた値は捨てる・o が無い（v68 の）帳面は今までと同じ形で書く
+      const bad = [-1, 1.5, '3', null, [], {}, 2 ** 60].map((o) => L.readBook(J({ v: 1, a: {}, s: { 1: [3, 4] }, last: 1, o })).book);
+      const plain = L.makeBook(L.readBook(J({ v: 1, a: { kuma: 2 }, s: { 1: [3, 4] }, last: 1 })).book);
+      check(`(f) o が -1・1.5・"3"・null・[]・{}・2^60 なら o なし（合計 3）・o の無い帳面は o を書かない（${plain}）`,
+        bad.every((b) => b.o === undefined && L.bookStars(b) === 3) && plain === '{"v":1,"a":{"kuma":2},"s":{"1":[3,4]},"last":1}', bad);
+    },
+  },
 ];
