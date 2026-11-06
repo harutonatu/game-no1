@@ -197,7 +197,7 @@ const openPhone = (r, page, p = '', key = r.key) => page.goto(r.url(`${p}?debug=
 
 export const tests = [
   {
-    id: 'RL1', tier: 'smoke', flaky: '中継の応答を実時間で待つ（並列の負荷で 1 回落ちた。T-37）', title: '中継：起動 → ?debug=1&relay=1&key=… で開く → /status が connected、info・layout・state・logs が /run で返る',
+    id: 'RL1', tier: 'smoke', flaky: { why: '中継の応答を実時間で待つ（並列の負荷で 1 回落ちた。T-37）', checks: /^\/wait：|^\/logs：|^答えが timeoutMs を過ぎると/ }, title: '中継：起動 → ?debug=1&relay=1&key=… で開く → /status が connected、info・layout・state・logs が /run で返る',
     async run({ browser, check, root }) {
       await withRelays(async (start) => {
         const r = await start(root);

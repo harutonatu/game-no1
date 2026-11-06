@@ -572,7 +572,8 @@ try {
     fs.writeFileSync(f, src.replace(from, to));
     const row = { name, risk };
     for (const t of tiers) {
-      const r = spawnSync(process.execPath, [RUN, t, dir], { encoding: 'utf8', timeout: 600000, env: process.env });
+      // 揺れやすい項目の流し直しはしない（FLAKY_RETRY=0）：変異で落ちた時間の確かめを、流し直しの合格で見のがさないため（技術レビュー H-3）
+      const r = spawnSync(process.execPath, [RUN, t, dir], { encoding: 'utf8', timeout: 600000, env: { ...process.env, FLAKY_RETRY: '0' } });
       const failed = ((r.stdout.match(/不合格: (.*)/) || [])[1] || '').trim();
       row[t] = r.status === 0 ? '見逃し' : `検出（${failed || '実行エラー'}）`;
       row[t + 'Sec'] = (r.stdout.match(/所要 ([\d.]+) 秒/) || [])[1];

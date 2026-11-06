@@ -7,9 +7,12 @@
 //   ONLY=D2,S1（項目を絞る）  JSON=path（結果を JSON で書き出す）  VERBOSE=1（合格した確認も表示）
 //   CLOCK=0（待ち時間の早送りを止める）  TEST_TIMEOUT=60000（1項目の上限 ms）
 //   HEADED=1（画面を出してブラウザを起動。Linux で画面が無いときは xvfb-run -a を前につける）
-//   FORCE_FAIL=AL11:1,L1:1（仕組みの確かめ用：その項目を最初の N 回だけわざと不合格にする。1 回目＝ふつうの段、2・3 回目＝揺れやすい項目の流し直し）
-// 揺れやすい項目（項目の定義に flaky: '理由'）：ふつうの不合格になったら、全部終わったあとにその項目だけを 1 つずつ（並列なし）最大 FLAKY_RETRY 回流し直し、
-//   1 回でも合格なら「揺れ（流し直しで合格）」として合格に数え、結果の最後に一覧で出す。印の無い項目は流し直さない（本当の不具合を隠さない）
+//   FLAKY_RETRY=2（揺れやすい項目の流し直しの回数。0 で流し直さない。mutate.mjs は 0 を渡す）
+//   FORCE_FAIL=AL11:1:time,L1:1（仕組みの確かめ用：その項目を最初の N 回だけわざと不合格にする。1 回目＝ふつうの段、2・3 回目＝揺れやすい項目の流し直し。
+//     :time を付けると、その項目の時間の確かめ（flaky.checks に当てはまる確かめ。checks が無ければ時間切れ）を落とす。付けないと、別の確かめ（機能の確かめの代わり）を落とす）
+// 揺れやすい項目（項目の定義に flaky: { why: '理由', checks: /時間の確かめの名前/ }）：ふつうの不合格になり、落ちた確かめが全部 checks に当てはまるとき、
+//   または時間切れのときだけ、全部終わったあとにその項目だけを 1 つずつ（並列なし）最大 FLAKY_RETRY 回流し直し、
+//   1 回でも合格なら「揺れ（流し直しで合格）」として合格に数え、結果の最後に一覧で出す。印の無い項目・機能の確かめが落ちた項目は流し直さない（本当の不具合を隠さない）
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -86,10 +89,22 @@ const STALLED = (m) => /秒以内に終わらない$/.test(m.trim()) || /CDP の
 // WebKit（Linux・画面なし）の落ちる原因は MT-14（canvas から canvas への drawImage）。公開の条件の WebKit は画面あり（HEADED=1）で流す
 const MAX_RETRY = 1;
 // 揺れやすい項目（flaky: '理由'）の流し直しの回数の上限（ユーザー「テストの揺れを片付ける (Recommended)」。計画書 docs/plans/test-flaky.md §1.1）
-const FLAKY_RETRY = 2;
-// 仕組みの確かめ用：FORCE_FAIL=ID:N で、その項目を最初の N 回だけわざと不合格にする（FLAKY_TRY は親が渡す何回目か。0＝ふつうの段）
-const FORCE_FAIL = Object.fromEntries((process.env.FORCE_FAIL || '').split(',').filter(Boolean).map((x) => { const [id, n] = x.split(':'); return [id, Number(n || 1)]; }));
+// 環境変数 FLAKY_RETRY で変えられる（0 で流し直さない。変異テスト mutate.mjs は 0 を渡す：変異を流し直しで見のがさない。技術レビュー H-3）
+const FLAKY_RETRY = /^\d+$/.test(process.env.FLAKY_RETRY || '') ? Number(process.env.FLAKY_RETRY) : 2;
+// 仕組みの確かめ用：FORCE_FAIL=ID:N（:time）で、その項目を最初の N 回だけわざと不合格にする（FLAKY_TRY は親が渡す何回目か。0＝ふつうの段）
+const FORCE_FAIL = Object.fromEntries((process.env.FORCE_FAIL || '').split(',').filter(Boolean).map((x) => { const [id, n, kind] = x.split(':'); return [id, { n: Number(n || 1), time: kind === 'time' }]; }));
 const FLAKY_TRY = Number(process.env.FLAKY_TRY || 0);
+// 揺れやすい印の形：flaky: { why: '理由', checks: /時間の確かめの名前/ }（checks が無ければ、時間切れのときだけ流し直す。技術レビュー H-2）
+const flakyOf = (t) => (t && t.flaky ? (typeof t.flaky === 'string' ? { why: t.flaky, checks: null } : t.flaky) : null);
+// 時間切れ（1 項目の上限・Playwright の操作の時間切れ・CDP のタッチが返らない）で落ちた確かめ
+const TIMED_OUT = /秒以内に終わらない|Timeout \d+ms exceeded|CDP のタッチが \d+ 秒返らない/;
+const isTimeout = (c) => c.name === '例外' && TIMED_OUT.test(String(c.detail));
+// 1 回目に落ちた確かめが、全部 時間の確かめ（checks に当てはまる）か時間切れなら流し直す。ほかの確かめ（機能）が 1 つでも落ちていたら流し直さない
+function flakyRetryable(def, it) {
+  const bad = it.checks.filter((c) => !c.ok && !c.known);
+  if (!bad.length) return false;
+  return bad.every((c) => isTimeout(c) || (def.checks instanceof RegExp && c.name !== '例外' && def.checks.test(c.name)));
+}
 
 if (isWorker) await worker(args[2]); else await main();
 
@@ -128,13 +143,17 @@ async function worker(key) {
         rec.start(t.id, t.title);
         // live：この回の確かめだけを記録する（時間切れのあとも裏で動き続けた run の check が、次の項目の結果に混ざらないように。v39 1 章）
         let live = true, stalled = null;
-        const ctx = { browser, srv, root, tier, errors: lib.pageErrors, check: (n, ok, d, known) => (live ? rec.check(n, ok, d, known) : !!ok) };
+        // FORCE_FAIL の :time：時間の確かめ（flaky.checks に当てはまる名前）をわざと落とす
+        const ff = FORCE_FAIL[t.id] && FORCE_FAIL[t.id].n > FLAKY_TRY ? FORCE_FAIL[t.id] : null;
+        const ffRe = ff && ff.time && flakyOf(t) && flakyOf(t).checks instanceof RegExp ? flakyOf(t).checks : null;
+        const ctx = { browser, srv, root, tier, errors: lib.pageErrors, check: (n, ok, d, known) => (live ? rec.check(n, ffRe && ffRe.test(n) ? false : ok, ffRe && ffRe.test(n) ? 'わざと不合格（FORCE_FAIL・時間の確かめ）' : d, known) : !!ok) };
         const limit = Math.max(TEST_TIMEOUT, t.timeout || 0);   // 項目ごとの上限（t.timeout）は、既定より長いときだけ使う
         let timer;
         try { await Promise.race([t.run(ctx), new Promise((_, rej) => { timer = setTimeout(() => rej(new Error(`${limit / 1000} 秒以内に終わらない`)), limit); })]); }
         catch (e) { rec.fail(e); const m = String(e && e.message || e); if (STALLED(m)) stalled = m.split('\n')[0].slice(0, 120); }
         finally { clearTimeout(timer); live = false; }
-        if (FORCE_FAIL[t.id] > FLAKY_TRY) rec.check(`わざと不合格（FORCE_FAIL・${FLAKY_TRY + 1} 回目）`, false, '仕組みの確かめ用');
+        if (ff && !ff.time) rec.check(`わざと不合格（FORCE_FAIL・${FLAKY_TRY + 1} 回目）`, false, '仕組みの確かめ用（機能の確かめの代わり）');
+        else if (ff && ff.time && !ffRe) rec.fail(new Error(`わざと時間切れ（FORCE_FAIL・${FLAKY_TRY + 1} 回目）：60 秒以内に終わらない`));
         // 止まった（時間切れなど）ときは、その項目のページを閉じる（裏で動き続けて重くする・次の項目に混ざるのを止める）
         if (stalled) for (const c of browser ? browser.contexts() : []) await c.close().catch(() => {});
         srv?.reset();
@@ -210,9 +229,13 @@ async function main() {
   }));
   if (split) for (const g of plan.filter(hasSolo)) await runOne(g, 0, 'solo');
   // ---- 揺れやすい項目（flaky）の流し直し：全部終わったあと、ふつうの不合格になった項目だけを 1 つずつ順に（WORKERS が何でも並列なし）最大 FLAKY_RETRY 回 ----
+  // 落ちた確かめが全部 時間の確かめ（flaky.checks）か時間切れのときだけ流し直す（技術レビュー H-2）。
   // 1 回でも合格したら、その回の結果に置き換えて「揺れ（流し直しで合格）」の印を付ける。FLAKY_RETRY 回とも不合格なら、最初の結果のまま不合格
-  const flakyDef = (g, id) => mods[g.key].find((t) => t.id === id && t.flaky);
-  const flakyTodo = plan.flatMap((g) => (results[g.key]?.items || []).filter((it) => !it.ok && flakyDef(g, it.id)).map((it) => ({ g, it })));
+  const flakyDef = (g, id) => flakyOf(mods[g.key].find((t) => t.id === id && t.flaky));
+  const flakyFailed = plan.flatMap((g) => (results[g.key]?.items || []).filter((it) => !it.ok && flakyDef(g, it.id)).map((it) => ({ g, it })));
+  const flakyTodo = FLAKY_RETRY > 0 ? flakyFailed.filter(({ g, it }) => flakyRetryable(flakyDef(g, it.id), it)) : [];
+  const flakySkip = flakyFailed.filter((x) => !flakyTodo.includes(x));
+  if (flakySkip.length) console.log(`\n  揺れやすい項目だが流し直さない（${FLAKY_RETRY > 0 ? '時間の確かめ・時間切れのほかの確かめが落ちた' : 'FLAKY_RETRY=0'}）: ${flakySkip.map((x) => x.it.id).join(', ')}`);
   if (flakyTodo.length) console.log(`\n  揺れやすい項目の流し直し（1 つずつ・最大 ${FLAKY_RETRY} 回）: ${flakyTodo.map((x) => x.it.id).join(', ')}`);
   for (const { g, it } of flakyTodo) {
     const firstWhy = it.checks.filter((c) => !c.ok && !c.known).map((c) => c.name).join('・').slice(0, 160);
@@ -230,7 +253,7 @@ async function main() {
     }
     const list = results[g.key].items;
     const idx = list.indexOf(it);
-    const info = { reason: flakyDef(g, it.id).flaky, first: firstWhy, tries };
+    const info = { reason: flakyDef(g, it.id).why, first: firstWhy, tries };
     if (passed) list[idx] = { ...passed, flaky: info, retry: it.retry, retryWhy: it.retryWhy };
     else it.flaky = info;
   }

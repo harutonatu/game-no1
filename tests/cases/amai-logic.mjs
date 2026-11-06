@@ -671,7 +671,7 @@ export const tests = [
     },
   },
   {
-    id: 'AL11', tier: 'full', flaky: 'Node で面の生成の時間を測る', node: true, solo: true, title: 'あまいものあつめ：性能（1〜60 面と 1000 面の生成の合計が Node で 3 秒以内・1〜162 面と 1000 面の 1 面 250ms 以内・一番大きい絵の面で解を最後まで再生して 150ms 以内）',
+    id: 'AL11', tier: 'full', flaky: { why: 'Node で面の生成の時間を測る', checks: /≦ \d+ms/ }, node: true, solo: true, title: 'あまいものあつめ：性能（1〜60 面と 1000 面の生成の合計が Node で 3 秒以内・1〜162 面と 1000 面の 1 面 250ms 以内・一番大きい絵の面で解を最後まで再生して 150ms 以内）',
     async run({ check, root }) {
       const L = load(root);
       await withPictures(L, (kind) => {
@@ -1104,7 +1104,7 @@ export const tests = [
     },
   },
   {
-    id: 'AL20', tier: 'full', flaky: 'Node で 1 面の生成の時間を測る', node: true, solo: true, title: 'あまいものあつめ：ちょうせん（わく 2 つ）の 1〜150 面がすべて ふつうの作り（予備 1・2 に落ちない）で、解を再生して won。1 面の生成は 150ms 以内（iPhone SE で重すぎない目安）。ふつうの 1〜150 面はちょうせんを足しても同じ面',
+    id: 'AL20', tier: 'full', flaky: { why: 'Node で 1 面の生成の時間を測る', checks: /^ちょうせんの 1 面の生成/ }, node: true, solo: true, title: 'あまいものあつめ：ちょうせん（わく 2 つ）の 1〜150 面がすべて ふつうの作り（予備 1・2 に落ちない）で、解を再生して won。1 面の生成は 150ms 以内（iPhone SE で重すぎない目安）。ふつうの 1〜150 面はちょうせんを足しても同じ面',
     async run({ check, root }) {
       const L = load(root);
       await withPictures(L, (kind) => {

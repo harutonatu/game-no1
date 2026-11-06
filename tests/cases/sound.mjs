@@ -170,7 +170,7 @@ export const tests = [
     },
   },
   {
-    id: 'A5', tier: 'full', flaky: '押したときの処理の時間（16ms）を実時間で測る（並列のときだけ落ちた）', solo: true, title: 'メニュー：カードを押すと tap が鳴り、押したときの処理が短い（遷移を遅らせない）',
+    id: 'A5', tier: 'full', flaky: { why: '押したときの処理の時間（16ms）を実時間で測る（並列のときだけ落ちた）', checks: /^pointerdown の処理は短い/ }, solo: true, title: 'メニュー：カードを押すと tap が鳴り、押したときの処理が短い（遷移を遅らせない）',
     async run({ browser, check }) {
       const { ctx, page } = await newPage(browser, V(), 'A5', {
         initScript: () => {

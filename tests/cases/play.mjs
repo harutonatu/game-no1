@@ -232,7 +232,7 @@ export const tests = [
     },
   },
   {
-    id: 'P9', tier: 'full', flaky: '長く遊ぶ間の時計のずれで揺れる（v66 の関門で 1 回落ち、流し直しで合格）', title: 'キリトリ道場：ひと振りで 3 つ以上切るとコンボ加点、爆弾を切るとライフ −1（すぐには終わらない）、的は上〜中央を飛ぶ、動きを減らす設定',
+    id: 'P9', tier: 'full', flaky: { why: '長く遊ぶ間の時計のずれで揺れる（v66 の関門で 1 回落ち、流し直しで合格）', checks: /^爆弾を切るとライフ −1/ }, title: 'キリトリ道場：ひと振りで 3 つ以上切るとコンボ加点、爆弾を切るとライフ −1（すぐには終わらない）、的は上〜中央を飛ぶ、動きを減らす設定',
     async run({ browser, check }) {
       const { ctx, page } = await newPage(browser, view('SE', 'p', 'app'), 'P9', { clock: true, initScript: SFX_SPY });   // 長く遊ぶので、描く面積の小さい SE で
       await ctx.addInitScript(fixedRandom);   // 出てくる的の順番を毎回同じにする（爆弾・3つ同時がいつ来るかを安定させる）

@@ -80,7 +80,7 @@ export const tests = [
     },
   },
   {
-    id: 'S2', tier: 'smoke', flaky: 'Service Worker の更新は page.clock の外で実時間に頼る', title: '更新：旧版の SW から新版へ → 旧キャッシュが消えて新版だけ残る（版数は決め打ちしない）、保存データは残る',
+    id: 'S2', tier: 'smoke', title: '更新：旧版の SW から新版へ → 旧キャッシュが消えて新版だけ残る（版数は決め打ちしない）、保存データは残る',
     async run({ browser, check, srv, root }) {
       const info = swInfo(root);
       const OLD = info.ver + '-old-test';

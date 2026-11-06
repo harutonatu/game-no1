@@ -1067,7 +1067,7 @@ export const tests = [
     },
   },
   {
-    id: 'KL19', tier: 'full', flaky: 'Node の CPU 時間を測る（並列の負荷で 1 回落ちた。T-37）', node: true, title: 'ほしくだき：重さ（§21.5：48×41 のいちばん大きな星・4 台 Lv30 で 1 step の中央 1ms 以下、stepCells 6000 以下、greedy で星 30 まで CPU 時間 10 秒以内（T-20））',
+    id: 'KL19', tier: 'full', flaky: { why: 'Node の CPU 時間を測る（並列の負荷で 1 回落ちた。T-37）', checks: /1 step の中央が 1ms 以下|CPU 時間 10 秒以内/ }, node: true, title: 'ほしくだき：重さ（§21.5：48×41 のいちばん大きな星・4 台 Lv30 で 1 step の中央 1ms 以下、stepCells 6000 以下、greedy で星 30 まで CPU 時間 10 秒以内（T-20））',
     run({ check, root }) {
       const L = load(root);
       const slots = ['spread', 'bomb', 'bolt', 'beam'].map((id) => ({ id, lv: 30 }));
