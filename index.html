@@ -866,7 +866,7 @@
   }
 
   // いろびん：irobin.best（クリアした一番大きい面）。安全な整数で 1 以上のときだけ「N めん クリア」、それ以外は空。
-  // なかよしちょう（irobin.book、v45）の ★ が 1 つ以上なら「・★M」を足す。壊れた帳面は ★ なしとして扱う
+  // なかよしちょう（irobin.book、v45）の ★ が 1 つ以上なら「★ ぜんぶで Mこ」を足す（v69・IB-50）。壊れた帳面は ★ なしとして扱う
   function irobinBest() {
     try {
       const raw = localStorage.getItem("irobin.best");
@@ -891,8 +891,9 @@
           if (Number.isSafeInteger(b.o) && b.o > 0) stars += b.o;
         }
       } catch (e) { stars = 0; }
-      // ★があるときは「N めん クリア」の中を折り返さない空白にし、★の前の空白でだけ 2 行目へ回す（SE 縦でも 2 行まで。V13）
-      return stars > 0 ? n + "\u00a0めん\u00a0クリア ★" + stars : n + " めん クリア";
+      // ★があるときは「N めん クリア」の中を折り返さない空白にし、★の前の空白でだけ 2 行目へ回す（SE 縦でも 2 行まで。V13）。
+      // ★は面ごとの★（★★☆）と分かるよう「★ ぜんぶで Mこ」と書く（v69・IB-50）
+      return stars > 0 ? n + "\u00a0めん\u00a0クリア ★\u00a0ぜんぶで\u00a0" + stars + "こ" : n + " めん クリア";
     } catch (e) { return ""; }
   }
 
