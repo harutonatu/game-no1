@@ -208,12 +208,30 @@
       c.fillStyle = "#e4dccb"; c.fillRect(0, 0, bg.width, bg.height);
       c.setTransform(r, 0, 0, r, 0, 0);
       paintBg(c, geo);
-      toCssBg();
+      laterCssBg();
+    }
+    // 背景を画像にする（toBlob）のは重い（WebKit で 230〜340ms 画面が止まる）ので、すぐには呼ばない。
+    // 少し待ち、段が上がる演出（stageAnim）が終わってから、requestIdleCallback があればその中で呼ぶ。それまでは今までどおり canvas に写す（H-1）
+    const BG_WAIT_MS = 600;
+    let bgTimer = 0;
+    function laterCssBg() {
+      const seq = ++bgSeq;
+      bgCss = "";
+      if (bgTimer && root.clearTimeout) root.clearTimeout(bgTimer);
+      bgTimer = 0;
+      if (!root.setTimeout) return;
+      const go = () => {
+        bgTimer = 0;
+        if (seq !== bgSeq) return;
+        if (stageAnim) { bgTimer = root.setTimeout(go, 300); return; }
+        if (root.requestIdleCallback) root.requestIdleCallback(() => { if (seq !== bgSeq) return; if (stageAnim) bgTimer = root.setTimeout(go, 300); else toCssBg(seq); }, { timeout: 1000 });
+        else toCssBg(seq);
+      };
+      bgTimer = root.setTimeout(go, BG_WAIT_MS);
     }
     // 背景の canvas を画像（blob）にして、canvas の CSS の背景に置く。画像が読めてから切り替える（それまでは毎コマ canvas に写す）
-    function toCssBg() {
-      const seq = ++bgSeq, key = bgKey;
-      bgCss = "";
+    function toCssBg(seq) {
+      const key = bgKey;
       const U = root.URL;
       if (!bg || !bg.toBlob || !U || !U.createObjectURL || !root.Image || !canvas.style) return;
       try {
@@ -553,7 +571,7 @@
       wk = k; wox = ox; woy = oy;
       // stamp（動かない形を写す）は、拡大の演出がなく、スクロールが画素ちょうどのときだけ使う（端数のスクロールでは直接描く）
       stampOk = !stageAnim && Math.abs(oy - Math.round(oy)) < 0.001;
-      if (stampScale !== k) { stampScale = k; stampCache = new Map(); }
+      if (stampScale !== k) { stampScale = k; dropSprites(stampCache); stampCache = new Map(); }
       if (stageAnim && bg) ctx.drawImage(bg, 0, 0, bg.width, bg.height, 0, 0, W, geo.H);   // 画面を引いた形（背景を縮めて描き直す）
       const s = state;
       // 見えない所（スクロールの外）は描かない（性能 §6.4・T-34）。段が上がる演出の間は画面を引くので、全部描く
@@ -626,7 +644,7 @@
           catch (err) { e = null; }
           finally { ctx = mainCtx; }
         }
-        if (stampCache.size > 1000) stampCache.clear();   // ふつうは 300 ほど（みなと・全部最大で 20 秒）
+        if (stampCache.size > 500) dropSprites(stampCache);   // ふつうは 300 ほど（みなと・全部最大で 20 秒）。捨てる canvas は幅と高さを 0 にして画素の記憶を返す（H-4）
         stampCache.set(ck, e);
       }
       if (!e) { stampEnd(); paint(wx, wy); return; }
@@ -700,6 +718,12 @@
         }
       }
     }
+    // 使い回しの小さな canvas を捨てる。幅と高さを 0 にしてから捨てると、WebKit が画素の記憶をすぐ返す（H-4）
+    function dropSprites(m) {
+      if (!m) return;
+      m.forEach((e) => { if (e && e.c) { try { e.c.width = 0; e.c.height = 0; } catch (err) { /* 何もしない */ } } });
+      m.clear();
+    }
     function spriteCanvas(w, h) {
       if (!doc || !doc.createElement) return null;
       const c = doc.createElement("canvas");
@@ -712,7 +736,7 @@
       const fz = Math.max(12.5, 9 * scale) / scale;
       const r = scale * dpr;
       const ck = r.toFixed(3);
-      if (ck !== labelKey) { labelKey = ck; labelCache = new Map(); }
+      if (ck !== labelKey) { labelKey = ck; dropSprites(labelCache); labelCache = new Map(); }
       const key = text + "|" + (op.bold ? 1 : 0) + "|" + (op.bg || "") + "|" + (op.ink || "");
       let e = labelCache.get(key);
       if (e) return e;
@@ -737,7 +761,7 @@
         } else c = null;
       }
       e = { c, w, h, fz, font };
-      if (labelCache.size > 400) labelCache.clear();
+      if (labelCache.size > 400) dropSprites(labelCache);
       labelCache.set(key, e);
       return e;
     }
