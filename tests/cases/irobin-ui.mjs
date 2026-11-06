@@ -22,9 +22,10 @@ async function openG(browser, label, { v = STD_V(), opts = {}, extra = {}, help 
   await gotoG(page, extra, { help });
   return { ctx, page };
 }
-// 初回だけ出る遊び方は、見たことにして始める（help: false なら出る状態で始める）
+// 初回だけ出る遊び方は、見たことにして始める（help: false なら出る状態で始める）。
+// かぎの びんの説明カード（v69・IB-58）も見たことにする（出したいときは extra に 'irobin.lockcard': null）
 async function gotoG(page, extra = {}, { help = true } = {}) {
-  await seed(page, { ...(help ? { 'irobin.help': '1' } : {}), ...extra });
+  await seed(page, { ...(help ? { 'irobin.help': '1' } : {}), 'irobin.lockcard': '1', ...extra });
   await page.goto(IR); await wait(page, 300);
   const has = await page.evaluate(() => !!window.IrobinGame && typeof window.IrobinGame.getState === 'function');
   if (!has) throw new Error('window.IrobinGame.getState が無い（games/irobin/main.js が読まれていないか、テスト用 API が未実装）');
@@ -2826,6 +2827,51 @@ export const tests = [
         check(`(c) IB-51：段が上がった一言（.friend）が出る面では出さない（friend ${r3.friend}・${J(r3.near)}）`, r3.friend && !!r3.near && !r3.near.vis, r3);
         const r4 = await run('新しい版', { 'irobin.book': J({ v: 9, a: {}, s: {} }) });
         check(`(c) IB-51：新しい版の帳面では出さない（${J(r4.near)}）`, !!r4.near && !r4.near.vis, r4);
+      }
+      // ---- (d) IB-58：かぎの びんが ある面を はじめて開くと、絵つきの説明カード（わかった で irobin.lockcard）。SE の 4 画面でスクロールなしで収まる ----
+      {
+        const L101 = { 'irobin.best': '100', 'irobin.cloth': '1', 'irobin.small': '1', 'irobin.only': '1', 'irobin.lockcard': null, 'irobin.save': J({ v: 3, level: 101, moves: [] }) };
+        const intro = (p) => p.evaluate(() => {
+          const ov = document.querySelector('#overlay'), c = document.querySelector('#card');
+          ov.scrollTop = 0;
+          const pic = c.querySelector('svg.lockpic'), q = pic ? pic.getBoundingClientRect() : null;
+          const texts = [...c.querySelectorAll('h2, p, .btns button')].map((e) => e.getBoundingClientRect());
+          const btn = c.querySelector('[data-cmd="close"]'), bq = btn ? btn.getBoundingClientRect() : null;
+          const minFs = Math.min(...[...c.querySelectorAll('h2, p, b, button')].map((e) => parseFloat(getComputedStyle(e).fontSize)));
+          return { kind: c.dataset.kind, head: c.querySelector('h2')?.textContent.trim(), line: c.querySelector('p.lockline')?.textContent.replace(/\s+/g, ' ').trim(), pic: !!pic && pic.getAttribute('aria-hidden') === 'true' && q.height >= 40,
+            fit: ov.scrollHeight <= ov.clientHeight + 1 && texts.every((r) => r.top >= 0 && r.bottom <= innerHeight + 0.5), btn: bq ? { h: bq.height, w: bq.width } : null, minFs };
+        });
+        for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari'), STD_V()]) {
+          const g = await openG(browser, `BW40 d ${v.label}`, { v, extra: L101 });
+          const st = await gs(g.page);
+          const lk = st.bottles.find((b) => Number.isSafeInteger(b.lock));
+          const want = lk ? await g.page.evaluate((c) => `${window.IrobinLogic.colorName(c)}（${window.IrobinRender.markWord(c)}）`, lk.lock) : null;
+          const r = await intro(g.page);
+          check(`(d) IB-58 ${v.label}：101 面を はじめて開くと overlay intro（${st.overlay}）・見出し「かぎの びん」・絵・「かぎの びんは、${want}を 4つ かさねると あくよ」（${r.line}）・スクロールなしで全部見える・わかった 44px 以上・字 12px 以上`,
+            st.level === 101 && st.overlay === 'intro' && r.kind === 'intro' && r.head === 'かぎの びん' && r.pic && r.line === `かぎの びんは、${want}を 4つ かさねると あくよ` && r.fit && r.btn && r.btn.h >= 43.5 && r.btn.w >= 43.5 && r.minFs >= 12, { st: st.overlay, r });
+          if (v.label === 'SE縦・ホーム画面') {
+            await g.page.evaluate(() => window.IrobinGame.pick(0)); await wait(g.page, 50);
+            const s1 = await gs(g.page);
+            await clickCmd(g.page, 'close'); await wait(g.page, 100);
+            const s2 = await gs(g.page), flag = await stored(g.page, 'irobin.lockcard');
+            check(`(d) IB-58：カードの間は瓶を選べない（selected ${s1.selected}）・わかった で閉じて（${s2.overlay}）irobin.lockcard が "1"（${flag}）・止めていた演出を戻す（paused ${s2.paused}）`, s1.selected === null && s2.overlay === null && flag === '1' && !s2.paused, { s1, s2, flag });
+            await g.page.reload(); await wait(g.page, 400);
+            const s3 = await gs(g.page);
+            check(`(d) IB-58：開き直しても もう出ない（${s3.overlay}）`, s3.level === 101 && s3.overlay === null, s3);
+          }
+          await g.ctx.close();
+        }
+        // 遊び方を見ていない人：遊び方 → 閉じると かぎの説明。かぎの無い面（100 面）では出さず、irobin.lockcard も書かない
+        const h = await openG(browser, 'BW40 d 遊び方の後', { help: false, extra: L101 });
+        const h1 = await gs(h.page);
+        await clickCmd(h.page, 'close'); await wait(h.page, 100);
+        const h2 = await gs(h.page);
+        check(`(d) IB-58：遊び方が先（${h1.overlay}）、閉じると かぎの説明（${h2.overlay}）`, h1.overlay === 'help' && h2.overlay === 'intro', { h1: h1.overlay, h2: h2.overlay });
+        await h.ctx.close();
+        const n = await openG(browser, 'BW40 d 100 面', { extra: { ...L101, 'irobin.save': J({ v: 3, level: 100, moves: [] }) } });
+        const n1 = await gs(n.page), nf = await stored(n.page, 'irobin.lockcard');
+        check(`(d) IB-58：かぎの無い 100 面では出さない（${n1.overlay}）・irobin.lockcard は書かない（${nf}）`, n1.level === 100 && n1.overlay === null && nf === null, { n1: n1.overlay, nf });
+        await n.ctx.close();
       }
     },
   },

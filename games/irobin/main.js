@@ -25,7 +25,8 @@
   const KEY_CLOTH = L.SAVE_KEY_CLOTH || "irobin.cloth";
   // v37 の新しい仕掛け（契約 §19）：はじめて出た面で説明を見たら "1"
   const GIM_KEYS = { small: L.SAVE_KEY_SMALL || "irobin.small", only: L.SAVE_KEY_ONLY || "irobin.only", lock: L.SAVE_KEY_LOCK || "irobin.lock" };
-  const KEY_BOOK = L.SAVE_KEY_BOOK || "irobin.book";   // なかよしちょう（v45・IB-34。契約 §24）
+  const KEY_BOOK = L.SAVE_KEY_BOOK || "irobin.book";
+  const KEY_LOCKCARD = L.SAVE_KEY_LOCKCARD || "irobin.lockcard";   // かぎの びんの説明カード（v69・IB-58）   // なかよしちょう（v45・IB-34。契約 §24）
   // 星（めやすの手数と比べて 1〜3。めやすが無い面は 0）。クリアのカード・共有・帳面で同じ式を使う
   const starOf = (mv, p) => (!p ? 0 : mv <= p ? 3 : mv <= Math.ceil(p * 1.5) ? 2 : 1);
   const CARD_LOCK_MS = 400;     // カードを出してから押せない時間
@@ -337,6 +338,7 @@
     checkDoomed();
     renderTools();
     setHint(phase === "stuck" ? HINT_STUCK : idleHint());
+    if (booted) showLockIntro();
     return true;
   }
 
@@ -948,9 +950,39 @@
       <p class="note">こまったら<span style="white-space:nowrap">「1手もどす」</span><span style="white-space:nowrap">「やりなおし」</span>。${hasFinePointer() ? "キー：やじるし・エンター・すうじ（0 は 10、- は 11、= は 12ぽんめ）で えらぶ。U もどす、M おと。" : ""}</p>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");
   }
+  // かぎの びんの説明カード（v69・IB-58）：かぎの びんが ある面を、手 0 で はじめて開いたときだけ。「わかった」で見たことにする（irobin.lockcard）。
+  // 遊び方のカードが出ているときは、閉じてから出す。setState の局面・クリアした面・ほかのカードの上には出さない
+  let booted = false;
+  function showLockIntro() {
+    if (overlayKind || custom || !state || state.won || moves.length || paused) return;
+    const lk = (state.bottles || []).find((b) => b && Number.isSafeInteger(b.lock));
+    if (!lk) return;
+    if (safeCall(() => L.validateFlag(readKey(KEY_LOCKCARD)), false)) return;
+    const c = lk.lock, hex = safeCall(() => L.COLORS[c].hex, "#0072B2") || "#0072B2";
+    const mk = (x, y, s) => (safeCall(() => R.markSvg(c, "imk"), "") || "").replace("<svg ", `<svg x="${x}" y="${y}" width="${s}" height="${s}" `);
+    const bottle = (x) => `<rect x="${x}" y="14" width="44" height="72" rx="10" fill="rgba(255,255,255,0.10)" stroke="#cfd6e6" stroke-width="2.5"/>`;
+    const lock = (x, y, open) => `<path d="M${x + 6} ${y}v-6a8 8 0 0 1 16 0${open ? "v-5" : "v6"}" fill="none" stroke="#eef1f8" stroke-width="4" stroke-linecap="round" transform="${open ? `translate(10 -6)` : ""}"/><rect x="${x}" y="${y}" width="28" height="22" rx="5" fill="${hex}" stroke="#fff" stroke-width="1.5"/>${mk(x + 6, y + 3, 16)}`;
+    const segs = (x) => [0, 1, 2, 3].map((i) => `<rect x="${x + 4}" y="${68 - i * 16}" width="36" height="15" rx="3" fill="${hex}"/>${mk(x + 15, 69.5 - i * 16, 12)}`).join("");
+    const arrow = (x) => `<path d="M${x} 50h18m-6-6l6 6l-6 6" fill="none" stroke="#ffd84d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
+    const svg = `<svg class="lockpic" viewBox="0 0 252 96" aria-hidden="true" focusable="false">${bottle(4)}${lock(12, 40, false)}${arrow(56)}${bottle(84)}${segs(84)}${arrow(136)}${bottle(164)}${lock(172, 40, true)}<path d="M222 22l3 7l7 3l-7 3l-3 7l-3-7l-7-3l7-3z" fill="#ffd84d"/></svg>`;
+    render.pause();
+    showCard(`
+      <h2 id="cardTitle">かぎの びん</h2>
+      <div class="lockintro">${svg}</div>
+      <p class="lockline">かぎの びんは、<b data-f="c"></b>を <b>4つ かさねると</b> あくよ</p>
+      <p class="note">ほかの びんに 4つ そろえてね</p>
+      <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, { c: colorMark(c) }, "intro");
+  }
   function closeCard() {
     if (overlayKind === "help") {
       writeKey(KEY_HELP, "1");
+      hideOverlay();
+      if (!document.hidden) render.resume();
+      showLockIntro();   // 遊び方のあとに、かぎの びんの説明（IB-58）
+      return;
+    }
+    if (overlayKind === "intro") {
+      writeKey(KEY_LOCKCARD, "1");
       hideOverlay();
       if (!document.hidden) render.resume();
       return;
@@ -1024,7 +1056,7 @@
     } else {
       if (reloadIfStale()) return;
       paused = false;
-      if (overlayKind !== "help" && overlayKind !== "confirm" && overlayKind !== "rescue") render.resume();
+      if (overlayKind !== "help" && overlayKind !== "intro" && overlayKind !== "confirm" && overlayKind !== "rescue") render.resume();
       syncPhase();
     }
   });
@@ -1163,6 +1195,8 @@
     if (!ok) startLevel(1, []);
     requestAnimationFrame(() => render.layout());
     if (!safeCall(() => L.validateFlag(readKey(KEY_HELP)), false)) showHelp();
+    booted = true;
+    showLockIntro();   // 遊び方が出ていれば何もしない（閉じたときに出す）
   })();
 })();
 

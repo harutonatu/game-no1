@@ -50,6 +50,7 @@
   const SAVE_KEY_SMALL = "irobin.small";
   const SAVE_KEY_ONLY = "irobin.only";
   const SAVE_KEY_LOCK = "irobin.lock";
+  const SAVE_KEY_LOCKCARD = "irobin.lockcard";   // かぎの びんの説明カードを見た（v69・IB-58。"1" だけ）
   const SAVE_KEY_BOOK = "irobin.book";   // なかよしちょう（v45・IB-34。契約 §24）：動物ごとの届けた数・面ごとの星と一番少ない手数
   const SMALL_CAP = 3;                     // ちいさい びんの段数
   const MAX_BOTTLES = MAX_COLORS + 2;  // 画面が並べる瓶の最大（12 本。v42 で 11 から。IB-43）。生成はこれを超えない
@@ -1287,7 +1288,7 @@
 
   const api = Object.freeze({
     NAME, CAP, ORDER_SLOTS, MAX_COLORS, MAX_MOVES_SAVED, SOLVE_NODE_LIMIT, GEN_NODE_BUDGET, GEN_TRIES,
-    SAVE_KEY_BEST, SAVE_KEY_SAVE, SAVE_KEY_HELP, SAVE_KEY_CLOTH, SAVE_KEY_SMALL, SAVE_KEY_ONLY, SAVE_KEY_LOCK, SAVE_KEY_BOOK, COLORS, LEVELS,
+    SAVE_KEY_BEST, SAVE_KEY_SAVE, SAVE_KEY_HELP, SAVE_KEY_CLOTH, SAVE_KEY_SMALL, SAVE_KEY_ONLY, SAVE_KEY_LOCK, SAVE_KEY_LOCKCARD, SAVE_KEY_BOOK, COLORS, LEVELS,
     SMALL_CAP, SMALL_FROM, ONLY_FROM, KEY_FROM,
     MAX_BOTTLES, ANIMAL_KEYS,
     makeRng, seedFor, paramsFor, createLevel,

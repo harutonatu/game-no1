@@ -657,6 +657,10 @@
   /* なかよしちょう（v45・IB-34・IB-41）：クリアのカードの一言と、6 匹の帳面 */
   .card .nw { white-space: nowrap; }   /* おしゃれの名前は途中で折り返さない */
   .card p.friend { color: var(--accent); font-weight: 700; font-size: 15px; line-height: 1.45; word-break: keep-all; }
+  /* かぎの びんの説明カード（IB-58）：絵（かぎの びん → 4つ かさねる → あく）と 1 行 */
+  .card .lockintro { display: flex; justify-content: center; }
+  .card .lockintro svg { width: min(100%, 252px); height: auto; aspect-ratio: 252 / 96; }
+  .card p.lockline b { color: var(--accent); white-space: nowrap; }
   /* いちばん近い 1 匹の「あと ○にんで ○○」（IB-51）：小さな絵＋1 行 */
   .card p.near { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; line-height: 1.35; word-break: keep-all; }
   .card p.near[hidden] { display: none; }
@@ -753,6 +757,7 @@
     .card .btns button, .card .btns button.half { flex: 1 1 0; width: auto; white-space: nowrap; }
     .card .btns button.share { flex: 1 1 100%; white-space: nowrap; }
     .card .btns button { min-height: 44px; }
+    .card .lockintro svg { width: auto; height: 60px; }   /* かぎの びんの説明（IB-58）：背の低い横向きでは絵を低く */
     /* なかよしちょう：見出しと ★ を 1 行に、6 匹を 2 列 × 3 段に */
     .card ul.book { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; }
     .card ul.book canvas { width: 46px; height: 46px; }
