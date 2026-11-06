@@ -731,6 +731,31 @@
     .card ul.book li:not([data-step="0"]) .dress .dl { display: none; }
     .card ul.book .now { flex: 1 1 auto; font-size: 12px; white-space: nowrap; }
   }
+  /* 画面より高いカードを詰める（IB-47・IB-49。main.js の fitCard が data-tight を付ける） */
+  #card[data-kind="clear"][data-tight] { flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: baseline; column-gap: 12px; gap: 6px 12px; padding: 10px 14px; }
+  #card[data-kind="clear"][data-tight] > * { flex: 1 1 100%; min-width: 0; }
+  #card[data-kind="clear"][data-tight] > h2, #card[data-kind="clear"][data-tight] > p.stars { flex: 0 1 auto; }
+  #card[data-kind="clear"][data-tight] h2 { font-size: 20px; line-height: 1.2; }
+  #card[data-kind="clear"][data-tight] p { font-size: 14px; line-height: 1.4; }
+  #card[data-kind="clear"][data-tight] p.stars { font-size: 17px; line-height: 1.2; }
+  #card[data-kind="clear"][data-tight] p.friend { font-size: 13px; line-height: 1.35; }
+  #card[data-kind="clear"][data-tight] .btns { gap: 8px; }
+  #card[data-kind="clear"][data-tight] .btns button { min-height: 44px; padding-top: 6px; padding-bottom: 6px; }
+  #card[data-kind="clear"][data-tight="2"] p.moves { display: none; }
+  #card[data-kind="book"][data-tight] { gap: 4px; padding: 8px 10px; }
+  #card[data-kind="book"][data-tight] ul.book { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 6px; }
+  #card[data-kind="book"][data-tight] ul.book li { gap: 5px; padding: 2px 4px; }
+  #card[data-kind="book"][data-tight] ul.book canvas { width: 38px; height: 38px; margin: 0; }
+  #card[data-kind="book"][data-tight] ul.book .who { font-size: 12px; line-height: 1.2; column-gap: 4px; }
+  #card[data-kind="book"][data-tight] ul.book .name { font-size: 14px; }
+  #card[data-kind="book"][data-tight] ul.book .dress { flex: 0 0 auto; font-size: 12px; }
+  #card[data-kind="book"][data-tight] ul.book .dress .dl, #card[data-kind="book"][data-tight] ul.book .now, #card[data-kind="book"][data-tight] ul.book .left .nw, #card[data-kind="book"][data-tight] ul.book .left .de { display: none; }
+  #card[data-kind="book"][data-tight] ul.book .left.done { display: none; }   /* そろった札は ★★★ と ♛ で分かる（読み上げは aria-label の「おしゃれ 3こ／3こ」） */
+  #card[data-kind="book"][data-tight] ul.book li.done .who { padding-right: 0; }
+  #card[data-kind="book"][data-tight] ul.book .left { font-size: 12px; white-space: nowrap; }
+  #card[data-kind="book"][data-tight] ul.book li.done::after { font-size: 11px; right: 3px; }
+  #card[data-kind="book"][data-tight] p.note.book-home { font-size: 12px; line-height: 1.3; }
+  #card[data-kind="book"][data-tight] .btns button { min-height: 44px; padding-top: 6px; padding-bottom: 6px; }
   /* 共有の知らせは場所を取らない吹き出し（.btns の上にかぶせる）。出ても「つぎの めんへ」は動かない */
   .card p.share-note { position: absolute; left: 0; right: 0; bottom: 100%; box-sizing: border-box; max-width: 100%; word-break: keep-all; margin-bottom: 4px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; color: var(--ink); min-height: 0; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; z-index: 2; box-shadow: 0 4px 14px rgba(0,0,0,0.4); }
   .card p.share-note:empty { visibility: hidden; pointer-events: none; }   /* 空のときは見えないだけ（aria-live の読み上げのため display:none にしない） */
@@ -777,6 +802,10 @@
     .card .btns button.share { flex: 1 1 100%; white-space: nowrap; }
     .card .btns button { min-height: 44px; }
     .card .lockintro svg { width: auto; height: 60px; }   /* かぎの びんの説明（IB-58）：背の低い横向きでは絵を低く */
+    /* 詰めるとき（IB-47）：クリアのカードの 4 つのボタンを 1 行に */
+    #card[data-kind="clear"][data-tight] { gap: 2px 12px; padding: 4px 14px; }
+    #card[data-kind="clear"][data-tight] h2 { font-size: 17px; }
+    #card[data-kind="clear"][data-tight] .btns button, #card[data-kind="clear"][data-tight] .btns button.share { flex: 1 1 auto; font-size: 14px; padding-left: 6px; padding-right: 6px; }
     /* なかよしちょう：見出しと ★ を 1 行に、6 匹を 2 列 × 3 段に */
     .card ul.book { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; }
     .card ul.book canvas { width: 46px; height: 46px; }

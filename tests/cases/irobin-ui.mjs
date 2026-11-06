@@ -2614,7 +2614,8 @@ export const tests = [
         ['全部 1000', bookOf(1000, { s: stars3, last: 1 })],
         ['ペンギン 1000001', J({ v: 1, a: { kuma: 1000, usagi: 250, neko: 200, penguin: 1000001, risu: 300, hitsuji: 200 }, s: stars3, last: 1 })],
       ];
-      for (const [v, minCv] of [[view('SE', 'p', 'app'), 48], [view('SE', 'l', 'app'), 44], [view('SE', 'p', 'safari'), 48], [view('SE', 'l', 'safari'), 44], [view('i13', 'p', 'app'), 76], [view('iPad', 'p', 'app'), 76]]) {
+      // v69（IB-47）：SE の Safari は高さに収まるよう詰める（2 列・横は 3 列、絵 38px・36px）ので、絵の下限は 36px
+      for (const [v, minCv] of [[view('SE', 'p', 'app'), 48], [view('SE', 'l', 'app'), 44], [view('SE', 'p', 'safari'), 36], [view('SE', 'l', 'safari'), 36], [view('i13', 'p', 'app'), 76], [view('iPad', 'p', 'app'), 76]]) {
         const app = v.label.includes('ホーム画面');
         const [, , sb] = v.safe || [0, 0, 0, 0];
         const g = await toBook(v, BOOKS[0][1], `k ${v.label}`, { opts: app ? { initScript: STANDALONE46 } : {} });
@@ -2900,8 +2901,11 @@ export const tests = [
         check(`(e) IB-52：動きを減らす設定では動かない（pop ${ec.pop}・animation ${ec.anim}）・絵は出る（${ec.n}）`, !ec.pop && ec.anim === 'none' && ec.n === 1, ec);
       }
       // ---- (g) IB-56：なかよしちょうの札に「いま：○○」（いま つけている いちばん新しい おしゃれ）。まだ無い札には出さない。SE の 4 画面と 13 縦で 12px 以上・札の中 ----
+      //      SE の Safari は高さに収めるため詰めた札（IB-47）で「いま：」を隠す（文は DOM に残す）
+      const STANDALONE = () => { Object.defineProperty(Navigator.prototype, 'standalone', { configurable: true, get: () => true }); };
       for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari'), STD_V()]) {
-        const g = await openG(browser, `BW40 g ${v.label}`, { v, extra: { 'irobin.best': '30' } });
+        const safari = !v.label.includes('ホーム画面');
+        const g = await openG(browser, `BW40 g ${v.label}`, { v, opts: safari ? {} : { initScript: STANDALONE }, extra: { 'irobin.best': '30' } });
         await solveToClear(g.page); await wait(g.page, 700);
         await g.page.evaluate((r) => localStorage.setItem('irobin.book', r), J({ v: 1, a: { kuma: 50, usagi: 12, neko: 210 }, s: {}, last: 1 }));
         await clickCmd(g.page, 'book'); await wait(g.page, 600);
@@ -2910,9 +2914,10 @@ export const tests = [
           const vis = !!n && !n.hidden && getComputedStyle(n).display !== 'none' && q.height > 0;
           return [li.dataset.kind, { vis, t: n ? n.textContent.trim() : null, fs: n ? parseFloat(getComputedStyle(n).fontSize) : 0, inside: !!q && (!vis || (q.left >= lq.left - 0.5 && q.right <= lq.right + 0.5)) }];
         })));
-        check(`(g) IB-56 ${v.label}：くま（50）「${r.kuma && r.kuma.t}」・うさぎ（12）「${r.usagi && r.usagi.t}」・ねこ（210）「${r.neko && r.neko.t}」・ペンギン（0）は出さない・12px 以上・札の中`,
-          r.kuma.vis && r.kuma.t === 'いま：むぎわらぼうし' && r.usagi.vis && r.usagi.t === 'いま：にんじんの バッジ' && r.neko.vis && r.neko.t === 'いま：おうかん' && !r.penguin.vis
-            && ['kuma', 'usagi', 'neko'].every((k) => r[k].fs >= 12 && r[k].inside), r);
+        const okText = r.kuma.t === 'いま：むぎわらぼうし' && r.usagi.t === 'いま：にんじんの バッジ' && r.neko.t === 'いま：おうかん' && !r.penguin.vis;
+        if (safari) check(`(g) IB-56 ${v.label}：文は「${r.kuma && r.kuma.t}」など・詰めた札では見せない（${['kuma', 'usagi', 'neko'].map((k) => r[k].vis)}）`, okText && ['kuma', 'usagi', 'neko'].every((k) => !r[k].vis), r);
+        else check(`(g) IB-56 ${v.label}：くま（50）「${r.kuma && r.kuma.t}」・うさぎ（12）「${r.usagi && r.usagi.t}」・ねこ（210）「${r.neko && r.neko.t}」・ペンギン（0）は出さない・12px 以上・札の中`,
+          okText && r.kuma.vis && r.usagi.vis && r.neko.vis && ['kuma', 'usagi', 'neko'].every((k) => r[k].fs >= 12 && r[k].inside), r);
         await g.ctx.close();
       }
       // ---- (f) IB-48：ボタン「なかよしちょう」に ハートの帳面の印（左上の角に貼る。字の幅を取らない・読み上げに出ない）。SE の 4 画面と 13 縦で、メニューへ と同じ行のまま・ほかのボタンにかからない ----
@@ -2929,6 +2934,48 @@ export const tests = [
         check(`(f) IB-48 ${v.label}：「なかよしちょう」に印（svg.bi・aria-hidden・${Math.round(r.iw)}px）・名前は「${r.text}」のまま・メニューへ と同じ行（${r.sameRow}）・どちらのボタンも押せる・44px 以上`,
           r.icon && r.iw >= 20 && r.iconIn && r.text === 'なかよしちょう' && r.sameRow && r.hitM && r.hitB && r.h >= 43.5, r);
         await g.ctx.close();
+      }
+      // ---- (h) IB-47・IB-49：SE の Safari（320×454・568×270）でも、いちばん長いクリアのカード（節目・あたらしい きろく・★3・共有・6 匹の一言／あと ○にん）と
+      //      なかよしちょう（そろった札・7 桁の数）が、一番上のままで ボタンの帯に隠れず スクロールなしで全部見える。横は 4 つのボタンを 1 行、なかよしちょうは縦 2 列・横 3 列 ----
+      {
+        const fitInfo = (p) => p.evaluate(() => {
+          const ov = document.querySelector('#overlay'), c = document.querySelector('#card'); ov.scrollTop = 0;
+          const vis = (e) => !e.closest('[hidden]') && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0;
+          const band = c.querySelector('.btns').getBoundingClientRect();
+          const items = [...c.querySelectorAll(':scope > h2, :scope > p, :scope > .served, ul.book li, :scope > .book-head')].filter(vis).filter((e) => !e.classList.contains('share-note'));
+          const hidden = items.filter((e) => e.getBoundingClientRect().bottom > band.top + 0.5).map((e) => e.className || e.tagName);
+          const btns = [...c.querySelectorAll('.btns button')].filter(vis).map((b) => { const q = b.getBoundingClientRect(); return { cmd: b.dataset.cmd, top: Math.round(q.top), h: q.height, w: q.width, inside: q.top >= 0 && q.bottom <= innerHeight + 0.5 && q.left >= 0 && q.right <= innerWidth + 0.5 }; });
+          const fs = Math.min(...[...c.querySelectorAll('h2, p, li, button, span')].filter(vis).map((e) => parseFloat(getComputedStyle(e).fontSize)));
+          const cols = new Set([...c.querySelectorAll('ul.book li')].map((li) => Math.round(li.getBoundingClientRect().left))).size;
+          return { tight: c.dataset.tight || null, sh: ov.scrollHeight, ch: ov.clientHeight, hidden, btns, fs, cols };
+        });
+        const SE_SAFARI = [view('SE', 'p', 'safari'), view('SE', 'l', 'safari')];
+        for (const v of [...SE_SAFARI, view('SE', 'p', 'app'), view('SE', 'l', 'app')]) {
+          for (const [nm, book] of [['6 匹の一言', J({ v: 1, a: Object.fromEntries(KINDS.map((k) => [k, 9])), s: {}, last: 0 })], ['あと ○にん', J({ v: 1, a: { penguin: 41 }, s: {}, last: 0 })]]) {
+            const g = await openG(browser, `BW40 h ${v.label} ${nm}`, { v, extra: { 'irobin.best': '9', 'irobin.save': J({ v: 3, level: 10, moves: [] }), 'irobin.book': book } });
+            await solveToClear(g.page); await wait(g.page, 700);
+            const r = await fitInfo(g.page);
+            const land = v.w > v.h;
+            const oneRow = new Set(r.btns.map((b) => b.top)).size === 1;
+            check(`(h) IB-47 ${v.label}・10 面（${nm}）：スクロールなし（${r.sh}/${r.ch}・詰め ${r.tight}）・帯に隠れる行なし（${J(r.hidden)}）・ボタン ${r.btns.length} つが 44px 以上で画面の中${land && r.tight ? `・1 行（${oneRow}）` : ''}・字 12px 以上（${r.fs}）`,
+              r.sh <= r.ch + 1 && r.hidden.length === 0 && r.btns.length === 4 && r.btns.every((b) => b.h >= 43.5 && b.w >= 43.5 && b.inside) && (!land || !r.tight || oneRow) && r.fs >= 12, r);
+            await g.ctx.close();
+          }
+        }
+        for (const v of SE_SAFARI) {
+          const g = await openG(browser, `BW40 h 帳面 ${v.label}`, { v, extra: { 'irobin.best': '30' } });
+          await solveToClear(g.page); await wait(g.page, 700);
+          for (const [nm, book] of [['途中', J({ v: 1, a: { kuma: 20, usagi: 3, neko: 120, penguin: 150, risu: 60, hitsuji: 30 }, s: { 1: [3, 20] }, last: 1 })], ['全部 1000', J({ v: 1, a: Object.fromEntries(KINDS.map((k) => [k, 1000])), s: { 1: [3, 20] }, last: 1 })], ['ペンギン 1000001', J({ v: 1, a: { kuma: 1000, usagi: 250, neko: 200, penguin: 1000001, risu: 300, hitsuji: 200 }, s: { 1: [3, 20] }, last: 1 })]]) {
+            await g.page.evaluate((r) => localStorage.setItem('irobin.book', r), book);
+            await clickCmd(g.page, 'book'); await wait(g.page, 600);
+            const r = await fitInfo(g.page);
+            const want = v.w > v.h ? 3 : 2;
+            check(`(h) IB-47・IB-49 ${v.label}・なかよしちょう（${nm}）：スクロールなし（${r.sh}/${r.ch}）・最後の札まで帯に隠れない（${J(r.hidden)}）・${want} 列（${r.cols}）・字 12px 以上（${r.fs}）・もどる 44px 以上`,
+              r.tight === '1' && r.sh <= r.ch + 1 && r.hidden.length === 0 && r.cols === want && r.fs >= 12 && r.btns.length === 1 && r.btns[0].h >= 43.5 && r.btns[0].inside, r);
+            await clickCmd(g.page, 'bookClose'); await wait(g.page, 400);
+          }
+          await g.ctx.close();
+        }
       }
     },
   },

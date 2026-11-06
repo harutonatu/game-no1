@@ -716,6 +716,7 @@
     if (!c.milestone) { const nn = el.card.querySelector(".next-note"); if (nn) nn.hidden = true; }
     if (!starText) { const sEl = el.card.querySelector(".stars"); if (sEl) sEl.hidden = true; }
     else { const sEl = el.card.querySelector(".stars"); if (sEl) { sEl.dataset.stars = String(star); sEl.setAttribute("aria-label", `ほし ${star}つ`); } }
+    fitCard();
     if (again) {
       bookLockAt = now();   // 閉じた直後に、高さの変わったカードの別のボタンを押してメニューへ出ないように
       const bk = el.card.querySelector('button[data-cmd="book"]');
@@ -770,7 +771,8 @@
       const nm = document.createElement("b"); nm.className = "name"; nm.textContent = R.ANIMAL_NAMES[k] || "おきゃくさん";
       const cnt = document.createElement("span"); cnt.className = "cnt"; cnt.textContent = `${n}にん`;
       const left = document.createElement("span"); left.className = "left";
-      if (at && items[step]) fillParts(left, [{ t: `あと ${at - n}にんで ` }, { t: items[step][0], nb: true }]);
+      // 「あと ○にん」「で 」「○○」を分けて入れる（詰めた札は「あと ○にん」だけ見せる。IB-47）
+      if (at && items[step]) { const a1 = document.createElement("span"); a1.textContent = `あと ${at - n}にん`; const a2 = document.createElement("span"); a2.className = "de"; a2.textContent = "で "; const a3 = document.createElement("span"); a3.className = "nw"; a3.textContent = items[step][0]; left.append(a1, a2, a3); }
       else { left.textContent = "ぜんぶ そろったよ"; left.classList.add("done"); }
       const dr = document.createElement("span"); dr.className = "dress";   // 段のしるし（もらった分だけ ★、まだは ☆）
       dr.setAttribute("aria-label", `おしゃれ ${step}こ／3こ`);
@@ -785,6 +787,19 @@
       li.append(cv, who);
       ul.appendChild(li);
     }
+    fitCard();
+  }
+  // カードが画面より高いときだけ詰める（IB-47・IB-49）：data-tight="1"（字とすき間を詰める。なかよしちょうは 2 列・横は 3 列）。
+  // クリアのカードがまだ高ければ "2"（手数の行を隠す。★ と めやすの比べは ★ で分かる）。高さが変わったら（向きを変えた）測り直す
+  function fitCard() {
+    const c = el.card, ov = el.overlay;
+    if (!c) return;
+    delete c.dataset.tight;
+    if (overlayKind !== "clear" && overlayKind !== "book") return;
+    const over = () => ov.scrollHeight > ov.clientHeight + 1;
+    if (!over()) return;
+    c.dataset.tight = "1";
+    if (overlayKind === "clear" && over()) c.dataset.tight = "2";
   }
   function closeBook() {
     if (overlayKind !== "book") return;
@@ -1102,7 +1117,7 @@
   function relayout() {
     if (layoutQueued) return;
     layoutQueued = true;
-    requestAnimationFrame(() => { layoutQueued = false; render.layout(); });
+    requestAnimationFrame(() => { layoutQueued = false; render.layout(); fitCard(); });
   }
   window.addEventListener("resize", relayout);
   window.addEventListener("orientationchange", relayout);
