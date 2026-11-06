@@ -707,6 +707,10 @@
   .card ul.book .name { font-size: 16px; }
   .card ul.book .cnt { font-weight: 700; white-space: nowrap; }
   .card ul.book .left { flex: 1 1 100%; word-break: keep-all; overflow-wrap: anywhere; }
+  /* いま つけている おしゃれ（IB-56）：いちばん新しい 1 つ（前の分は絵で見える。全部を並べると 3 段の札が 2〜3 行ふえて、13 縦のホーム画面でも収まらない）。
+     大きい画面は 1 行、SE の画面は ★ の横に */
+  .card ul.book .now { flex: 1 1 100%; font-size: 13px; color: var(--ink); opacity: 0.9; word-break: keep-all; overflow-wrap: anywhere; }
+  .card ul.book .now[hidden] { display: none; }
   .card ul.book .left.done { color: var(--accent); font-weight: 700; }
   .card p.note.book-home { line-height: 1.4; word-break: keep-all; }
   /* 背の低い縦（SE など）：なかよしちょうは絵を小さくして 6 匹が 1 画面に入るようにする。
@@ -722,6 +726,10 @@
     .card ul.book .left { font-size: 12px; white-space: nowrap; }
     .card ul.book li { padding-left: 4px; padding-right: 4px; gap: 7px; }
     .card ul.book .name { font-size: 15px; }
+    /* IB-56：★ の横に「いま：いちばん新しい おしゃれ」（「おしゃれ」の字は ★ が付いた札だけ省く。読み上げは aria-label のまま） */
+    .card ul.book li:not([data-step="0"]) .dress { flex: 0 0 auto; }
+    .card ul.book li:not([data-step="0"]) .dress .dl { display: none; }
+    .card ul.book .now { flex: 1 1 auto; font-size: 12px; white-space: nowrap; }
   }
   /* 共有の知らせは場所を取らない吹き出し（.btns の上にかぶせる）。出ても「つぎの めんへ」は動かない */
   .card p.share-note { position: absolute; left: 0; right: 0; bottom: 100%; box-sizing: border-box; max-width: 100%; word-break: keep-all; margin-bottom: 4px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; color: var(--ink); min-height: 0; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; z-index: 2; box-shadow: 0 4px 14px rgba(0,0,0,0.4); }
@@ -777,6 +785,10 @@
     .card ul.book .left { font-size: 12px; white-space: nowrap; }
     .card ul.book li { padding-left: 4px; padding-right: 4px; gap: 7px; }
     .card ul.book .name { font-size: 15px; }
+    /* IB-56：★ の横に「いま：いちばん新しい おしゃれ」（「おしゃれ」の字は ★ が付いた札だけ省く。読み上げは aria-label のまま） */
+    .card ul.book li:not([data-step="0"]) .dress { flex: 0 0 auto; }
+    .card ul.book li:not([data-step="0"]) .dress .dl { display: none; }
+    .card ul.book .now { flex: 1 1 auto; font-size: 12px; white-space: nowrap; }
   }
   /* 横でとくに背が低い（SE 横の 320px など）ときだけ 13px・すき間 1px に詰めて、仕掛けの行が入っても収める */
   @media (orientation: landscape) and (max-height: 340px) {

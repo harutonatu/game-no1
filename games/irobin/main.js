@@ -777,7 +777,11 @@
       dr.setAttribute("role", "img");
       const dl = document.createElement("span"); dl.className = "dl"; dl.setAttribute("aria-hidden", "true"); dl.textContent = "おしゃれ"; dr.appendChild(dl);
       for (let i = 0; i < 3; i++) { const sp = document.createElement("i"); sp.setAttribute("aria-hidden", "true"); sp.textContent = i < step ? "★" : "☆"; if (i < step) sp.className = "on"; dr.appendChild(sp); }
-      who.append(nm, cnt, dr, left);
+      // いま つけている おしゃれ（IB-56）：「いま：○○」＝いちばん新しい 1 つ（前の分は絵で見える）。まだ無ければ出さない
+      const nowEl = document.createElement("span"); nowEl.className = "now";
+      if (step > 0 && items[step - 1]) fillParts(nowEl, [{ t: "いま：" }, { t: items[step - 1][0], nb: true }]);
+      else nowEl.hidden = true;
+      who.append(nm, cnt, dr, nowEl, left);
       li.append(cv, who);
       ul.appendChild(li);
     }

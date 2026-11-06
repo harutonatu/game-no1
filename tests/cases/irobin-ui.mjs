@@ -2899,6 +2899,22 @@ export const tests = [
         const ec = await up('動きを減らす', one, { reducedMotion: 'reduce' });
         check(`(e) IB-52：動きを減らす設定では動かない（pop ${ec.pop}・animation ${ec.anim}）・絵は出る（${ec.n}）`, !ec.pop && ec.anim === 'none' && ec.n === 1, ec);
       }
+      // ---- (g) IB-56：なかよしちょうの札に「いま：○○」（いま つけている いちばん新しい おしゃれ）。まだ無い札には出さない。SE の 4 画面と 13 縦で 12px 以上・札の中 ----
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari'), STD_V()]) {
+        const g = await openG(browser, `BW40 g ${v.label}`, { v, extra: { 'irobin.best': '30' } });
+        await solveToClear(g.page); await wait(g.page, 700);
+        await g.page.evaluate((r) => localStorage.setItem('irobin.book', r), J({ v: 1, a: { kuma: 50, usagi: 12, neko: 210 }, s: {}, last: 1 }));
+        await clickCmd(g.page, 'book'); await wait(g.page, 600);
+        const r = await g.page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#card ul.book li')].map((li) => {
+          const n = li.querySelector('.now'), q = n ? n.getBoundingClientRect() : null, lq = li.getBoundingClientRect();
+          const vis = !!n && !n.hidden && getComputedStyle(n).display !== 'none' && q.height > 0;
+          return [li.dataset.kind, { vis, t: n ? n.textContent.trim() : null, fs: n ? parseFloat(getComputedStyle(n).fontSize) : 0, inside: !!q && (!vis || (q.left >= lq.left - 0.5 && q.right <= lq.right + 0.5)) }];
+        })));
+        check(`(g) IB-56 ${v.label}：くま（50）「${r.kuma && r.kuma.t}」・うさぎ（12）「${r.usagi && r.usagi.t}」・ねこ（210）「${r.neko && r.neko.t}」・ペンギン（0）は出さない・12px 以上・札の中`,
+          r.kuma.vis && r.kuma.t === 'いま：むぎわらぼうし' && r.usagi.vis && r.usagi.t === 'いま：にんじんの バッジ' && r.neko.vis && r.neko.t === 'いま：おうかん' && !r.penguin.vis
+            && ['kuma', 'usagi', 'neko'].every((k) => r[k].fs >= 12 && r[k].inside), r);
+        await g.ctx.close();
+      }
       // ---- (f) IB-48：ボタン「なかよしちょう」に ハートの帳面の印（左上の角に貼る。字の幅を取らない・読み上げに出ない）。SE の 4 画面と 13 縦で、メニューへ と同じ行のまま・ほかのボタンにかからない ----
       for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari'), STD_V()]) {
         const g = await openG(browser, `BW40 f ${v.label}`, { v, extra: { 'irobin.best': '30' } });
