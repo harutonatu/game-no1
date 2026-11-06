@@ -10,7 +10,11 @@
  * - 世界は幅 360 の単位。#scene の幅に合わせて拡大縮小（上限 1.8 倍。広い画面では真ん中に寄せる）
  * - canvas は「見えている所」だけの大きさで、#sceneInner の中で position: sticky。スクロールの量だけずらして描く
  *   （世界の高さぶんの canvas を作らない＝iPad でも重くない）。.zone のボタンは #sceneInner に世界の座標で並べる
- * - 背景（空・地面・建物）は段と大きさが変わったときだけ、オフスクリーン canvas に描き直す（bgRedraws）
+ * - 背景（空・地面・建物）は段と大きさが変わったときだけ、オフスクリーン canvas に描き直す（bgRedraws）。
+ *   描いた背景は画像にして canvas の CSS の background-image に置き、毎コマは写さない（canvas は透明で、人などだけ描く。
+ *   background-position を同じコマでスクロールに合わせる）。画像ができるまでと、段が上がる演出の間は canvas に写す（T-34）
+ * - 見えない所（スクロールの外）の台・山・名札・演出は描かない。育ちきった木・若木・切り株・山・人の体は、
+ *   小さな canvas に一度だけ描いて写す（stamp。画素の端数の位置まで合わせるので見た目は同じ）（T-34）
  * - 影・ぼかしは使わない。1人の描画は図形 10 回以内。見えない所の人は描かない（§6.4）
  * - 道具の絵は logic の toolTier（Lv 1・5・15・30 の 4 段）で形が変わる。名前の表は logic の TOOLS だけ（§19.2）。
  *   「きんの」は前の段と同じ形で金色＋小さな光。手の動きの速さは SeizaiActors.ANIM_MUL（見た目だけ）
@@ -68,7 +72,9 @@
 
   function create(canvas, opts) {
     const o = opts || {};
-    const ctx = canvas.getContext("2d", { alpha: false }) || canvas.getContext("2d");
+    // 透明の canvas（背景は canvas の CSS の background-image に出す。毎コマ 背景を写さない。性能 §6.4・T-34）
+    const mainCtx = canvas.getContext("2d");
+    let ctx = mainCtx;   // 描く先（stamp の間だけ小さな canvas に替える）
     const inner = canvas.parentElement || null;
     const scroller = (canvas.closest && canvas.closest("#scene")) || (inner && inner.parentElement) || null;
     const mq = root.matchMedia ? root.matchMedia("(prefers-reduced-motion: reduce)") : null;
@@ -84,6 +90,8 @@
     let scrollY = 0;
     const scrollTopRaw = () => scrollY;
     let bg = null, bgKey = "", bgRedraws = 0, bgRatio = 1;
+    // 背景の絵を CSS の background-image にしたもの（bgCss が bgKey と同じ間だけ使う。できるまでは canvas に写す）
+    let bgSeq = 0, bgUrl = "", bgCss = "", bgPos = "";
     let frames = 0, slowFrames = 0, lastFrameAt = null;
     const drawTimes = [];
     let paused = false;
@@ -194,9 +202,41 @@
       if (!bg) bg = doc.createElement("canvas");
       bg.width = Math.ceil(W * r);
       bg.height = Math.ceil(H * r);
-      const c = bg.getContext("2d");
+      // 不透明（alpha: false）にして、毎コマの写し（drawImage）を混ぜ合わせなしの写しにする（性能 §6.4・T-34）
+      const c = bg.getContext("2d", { alpha: false }) || bg.getContext("2d");
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.fillStyle = "#e4dccb"; c.fillRect(0, 0, bg.width, bg.height);
       c.setTransform(r, 0, 0, r, 0, 0);
       paintBg(c, geo);
+      toCssBg();
+    }
+    // 背景の canvas を画像（blob）にして、canvas の CSS の背景に置く。画像が読めてから切り替える（それまでは毎コマ canvas に写す）
+    function toCssBg() {
+      const seq = ++bgSeq, key = bgKey;
+      bgCss = "";
+      const U = root.URL;
+      if (!bg || !bg.toBlob || !U || !U.createObjectURL || !root.Image || !canvas.style) return;
+      try {
+        bg.toBlob((b) => {
+          if (seq !== bgSeq || !b) return;
+          const u = U.createObjectURL(b);
+          const img = new root.Image();
+          const done = () => {
+            if (seq !== bgSeq) { U.revokeObjectURL(u); return; }
+            if (bgUrl) U.revokeObjectURL(bgUrl);
+            bgUrl = u;
+            canvas.style.backgroundImage = "url(\"" + u + "\")";
+            canvas.style.backgroundRepeat = "no-repeat";
+            canvas.style.backgroundSize = (W * scale) + "px " + (geo.H * scale) + "px";
+            bgPos = "";
+            bgCss = key;
+            if (lastState) draw(lastState);
+          };
+          img.onload = () => { if (img.decode) img.decode().then(done, done); else done(); };
+          img.onerror = () => U.revokeObjectURL(u);
+          img.src = u;
+        }, "image/png");
+      } catch (e) { bgCss = ""; }
     }
     function rect(c, x, y, w, h, col) { c.fillStyle = col; c.fillRect(x, y, w, h); }
     function paintBg(c, g) {
@@ -487,12 +527,19 @@
       const scrollY = clamp(scrollTopRaw(), 0, Math.max(0, worldCssH - viewH));
       const vTop = scrollY / scale, vBot = (scrollY + viewH) / scale;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = "#e4dccb";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      if (bg) {
-        const sy = scrollY / scale * bgRatio;
-        const sh = viewH / scale * bgRatio;
-        ctx.drawImage(bg, 0, sy, bg.width, Math.min(sh, bg.height - sy), offX * dpr, 0, W * scale * dpr, Math.min(sh, bg.height - sy) / bgRatio * scale * dpr);
+      if (bg && bgCss === bgKey && !stageAnim) {
+        // 背景は CSS の背景（canvas の下）。canvas は消して、背景の位置だけスクロールに合わせる（同じコマで動かすので人とずれない）
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const pos = offX + "px " + (-scrollY) + "px";
+        if (pos !== bgPos) { bgPos = pos; canvas.style.backgroundPosition = pos; }
+      } else {
+        ctx.fillStyle = "#e4dccb";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (bg) {
+          const sy = scrollY / scale * bgRatio;
+          const sh = viewH / scale * bgRatio;
+          ctx.drawImage(bg, 0, sy, bg.width, Math.min(sh, bg.height - sy), offX * dpr, 0, W * scale * dpr, Math.min(sh, bg.height - sy) / bgRatio * scale * dpr);
+        }
       }
       let k = scale * dpr;
       let ox = offX * dpr, oy = -scrollY * dpr;
@@ -503,8 +550,14 @@
         ox = cx + (ox - cx) * z; oy = cy + (oy - cy) * z; k *= z;
       }
       ctx.setTransform(k, 0, 0, k, ox, oy);
+      wk = k; wox = ox; woy = oy;
+      // stamp（動かない形を写す）は、拡大の演出がなく、スクロールが画素ちょうどのときだけ使う（端数のスクロールでは直接描く）
+      stampOk = !stageAnim && Math.abs(oy - Math.round(oy)) < 0.001;
+      if (stampScale !== k) { stampScale = k; stampCache = new Map(); }
       if (stageAnim && bg) ctx.drawImage(bg, 0, 0, bg.width, bg.height, 0, 0, W, geo.H);   // 画面を引いた形（背景を縮めて描き直す）
       const s = state;
+      // 見えない所（スクロールの外）は描かない（性能 §6.4・T-34）。段が上がる演出の間は画面を引くので、全部描く
+      cTop = stageAnim ? -1e9 : vTop; cBot = stageAnim ? 1e9 : vBot;
       drawDynamicScenery(s, vTop, vBot);
       drawForest(vTop, vBot);
       drawPiles(s);
@@ -521,6 +574,8 @@
       }
     }
 
+    let cTop = -1e9, cBot = 1e9;   // 見えている世界の上と下（draw が決める。外の物は描かない）
+    const seen = (y0, y1) => y1 >= cTop && y0 <= cBot;
     function drawDynamicScenery(s, vTop, vBot) {
       // 煙突の煙（こうじょう から）・かもめ（みなと）
       if (stage >= 3 && vTop < 230) {
@@ -542,14 +597,55 @@
       }
     }
 
+    // 動かない形（育ちきった木・若木・切り株・置き場の山）は、小さな canvas に一度だけ描いて、毎コマはそれを写す。
+    // 画面の画素の端数の位置まで合わせて描いておき、写すときは画素ちょうどに置くので、直接描いたときと同じ絵になる（性能 §6.4・T-34）
+    let stampCache = new Map(), stampScale = 0, stampOk = false;
+    let wk = 1, wox = 0, woy = 0;   // いまの世界の座標 → canvas の画素（draw が決める）
+    let stampIdent = false;   // いま canvas が画素の座標（写すため）。stampEnd で世界の座標に戻す
+    function stampEnd() { if (stampIdent) { stampIdent = false; ctx.setTransform(wk, 0, 0, wk, wox, woy); } }
+    // half：動く物（人）は、画素の端数を 1/2 にまとめる（絵の数を 4 通りまでにする。ずれは 1/4 画素＝CSS の 1/8 px まで）
+    function stamp(key, wx, wy, x0, y0, x1, y1, paint, half) {
+      if (!stampOk || !doc || !doc.createElement) { stampEnd(); paint(wx, wy); return; }
+      const dx = wox + wx * wk, dy = woy + wy * wk;
+      let ix = Math.floor(dx), iy = Math.floor(dy), fx = dx - ix, fy = dy - iy;
+      if (half) {
+        fx = Math.round(fx * 2) / 2; fy = Math.round(fy * 2) / 2;
+        if (fx >= 1) { fx = 0; ix += 1; }
+        if (fy >= 1) { fy = 0; iy += 1; }
+      }
+      const ck = key + "|" + Math.round(fx * 1000) + "|" + Math.round(fy * 1000);
+      let e = stampCache.get(ck);
+      if (e === undefined) {
+        e = null;
+        const px = Math.ceil(-x0 * wk) + 1, py = Math.ceil(-y0 * wk) + 1;
+        const c = spriteCanvas(px + Math.ceil(x1 * wk) + 2, py + Math.ceil(y1 * wk) + 2);
+        const x = c && c.getContext("2d");
+        if (x) {
+          ctx = x;
+          try { x.setTransform(wk, 0, 0, wk, px + fx, py + fy); paint(0, 0); e = { c, px, py }; }
+          catch (err) { e = null; }
+          finally { ctx = mainCtx; }
+        }
+        if (stampCache.size > 1000) stampCache.clear();   // ふつうは 300 ほど（みなと・全部最大で 20 秒）
+        stampCache.set(ck, e);
+      }
+      if (!e) { stampEnd(); paint(wx, wy); return; }
+      if (!stampIdent) { stampIdent = true; ctx.setTransform(1, 0, 0, 1, 0, 0); }
+      ctx.drawImage(e.c, ix - e.px, iy - e.py);
+    }
+    const paintStump = (x, y) => drawStump(x, y), paintSapling = (x, y) => drawSapling(x, y), paintTree = (x, y) => drawTree(x, y, 1);
     function drawForest(vTop, vBot) {
       if (vTop > 210) return;
       const sl = actors.slots();
       for (const t of sl) {
-        if (t.kind === "tree") drawTree(t.x, t.y, calm ? 1 : 0.6 + 0.4 * t.grow);
-        else if (t.kind === "sapling") drawSapling(t.x, t.y);
-        else drawStump(t.x, t.y);
+        if (t.kind === "tree") {
+          const k = calm ? 1 : 0.6 + 0.4 * t.grow;
+          if (k === 1) stamp("tree" + stage, t.x, t.y, -14, -48, 14, 1, paintTree);
+          else { stampEnd(); drawTree(t.x, t.y, k); }   // 育っている間は直接描く
+        } else if (t.kind === "sapling") stamp("sapling", t.x, t.y, -9, -15, 9, 2, paintSapling);
+        else stamp("stump", t.x, t.y, -10, -11, 10, 2, paintStump);
       }
+      stampEnd();
     }
     function drawTree(x, y, k) {
       const st = stage;
@@ -585,6 +681,11 @@
 
     function drawPile(x, y, n, item, maxIcons) {
       const shown = Math.min(Math.floor(n), maxIcons || 10);
+      if (!(shown > 0)) return;
+      stamp("pile|" + item + "|" + shown, x, y, -2, -38, 62, 2, (px, py) => paintPile(px, py, shown, item));
+      stampEnd();
+    }
+    function paintPile(x, y, shown, item) {
       const col = ITEM_COL[item] || "#d9a95f";
       let i = 0;
       for (let row = 0; i < shown; row++) {
@@ -598,6 +699,12 @@
           else { ctx.fillStyle = col; ctx.fillRect(px, py - 6, 7.5, 6); }
         }
       }
+    }
+    function spriteCanvas(w, h) {
+      if (!doc || !doc.createElement) return null;
+      const c = doc.createElement("canvas");
+      c.width = Math.max(1, w | 0); c.height = Math.max(1, h | 0);
+      return c;
     }
     // 名札・吹き出しの札は、文字と丸い地を小さな canvas に一度だけ描いて使い回す（毎コマ fillText しない。性能 §6.4・§19.3.1）
     let labelCache = new Map(), labelKey = "";
@@ -714,13 +821,14 @@
       const f = geo.factory;
       for (const c of f.cols) {
         const k = A.inOf ? A.inOf(c.dept, stage) : null;
-        if (!k) continue;
+        if (!k || !seen(c.y0, c.y0 + 30)) continue;
         drawPile(c.x1 - 44, c.y0 + 24, v(k), ITEM_OF[k] || "beam", 7);
       }
       // 売り物の山
       const gk = productKey(stage);
       const g = v("goods");
       const sx = geo.zones.goods.x + 14, sy = geo.shop.pileY;
+      if (!seen(sy - 40, sy + 6)) return;
       rect(ctx, sx - 6, sy, 112, 6, "#8a5a2b");
       drawPile(sx, sy, g, ITEM_OF[gk] || "plank", 16);
       label(String(g), geo.zones.goods.x + geo.zones.goods.w - 8, sy - 34, { right: true });
@@ -744,6 +852,7 @@
         const mul = calm ? 1 : ANIM_MUL[tier] || 1;
         for (let r = 0; r < f.rows; r++) {
           const st = A.station(geo, d, r);
+          if (!seen(st.ty - 60, st.ty + 10)) continue;
           if (r >= lines) {
             // まだ無い台：点線の枠（買える場所の目印）
             ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 1.2;
@@ -771,8 +880,9 @@
         }
       }
       // お店の看板（おみせ の道具。屋根の右。§19.2.1）
-      drawShopSign(tierOf(s, "shop"));
       const sh = geo.shop;
+      if (!seen(sh.y0, sh.counterY + 14)) return;
+      drawShopSign(tierOf(s, "shop"));
       if (flashes.shop) { ctx.fillStyle = "rgba(255,255,220,0.5)"; ctx.fillRect(152, sh.counterY - 30, 200, 44); }
     }
     // 台の上の道具（原点は台の上の真ん中。台の上面は y = -14）
@@ -974,6 +1084,7 @@
     }
     function drawCounter() {
       const sh = geo.shop;
+      if (!seen(sh.counterY, sh.counterY + 14)) return;
       rect(ctx, 152, sh.counterY, 200, 14, stage >= 3 ? "#8a5a2b" : "#a8774a");
       rect(ctx, 152, sh.counterY, 200, 3, "#c79a64");
     }
@@ -990,28 +1101,30 @@
       const x = a.x, y = a.y - hop;
       const bow = a.bow > 0 ? Math.sin(Math.min(1, a.bow / 1.2) * Math.PI) : 0;
       if (a.role === "carrier" && (a.tier | 0) === 3) { drawTruck(a); return; }
-      ctx.save();
-      ctx.translate(x, y);
-      if (k !== 1) ctx.scale(k, k);
-      // 1. 足
-      ctx.strokeStyle = "#3a3a3a"; ctx.lineWidth = 2;
       const sw = walking ? Math.sin(ph) * 3 : 0;
-      ctx.beginPath(); ctx.moveTo(-2, -7); ctx.lineTo(-2 + sw, 0); ctx.moveTo(2, -7); ctx.lineTo(2 - sw, 0); ctx.stroke();
-      if (bow) ctx.rotate(bow * 0.45 * a.dir);
-      // 2. 胴
-      ctx.fillStyle = col;
-      ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(-4.5, -16, 9, 10, 3); else ctx.rect(-4.5, -16, 9, 10);
-      ctx.fill();
-      // 3. 頭
-      const hx = 0, hy = -20;
-      ctx.fillStyle = SKIN[a.id % 4];
-      ctx.beginPath(); ctx.arc(hx, hy, 4.2, 0, 6.29); ctx.fill();
-      // 4. 帽子（形で部署が分かる）
-      drawHat(a, hx, hy);
-      // 5. 手と持ち物
-      drawHands(a, ph);
-      ctx.restore();
+      if (stampOk && !bow) {
+        // 体・頭・帽子（立っているときは足も）は、一度描いた絵を写す（形は同じ。写す位置は 1/2 画素まで。性能 §6.4・T-34）
+        const legsIn = sw === 0;
+        const pk = wk * k, pox = wox + x * wk, poy = woy + y * wk;   // この人の足もとを原点にした座標（save・translate の代わり）
+        if (!legsIn) { stampEnd(); ctx.setTransform(pk, 0, 0, pk, pox, poy); personLegs(sw); ctx.setTransform(wk, 0, 0, wk, wox, woy); }
+        const key = "p|" + a.role + "|" + (a.role === "customer" ? a.look % 4 : 0) + "|" + (a.dir < 0 ? -1 : 1) + "|" + (a.id % 4) + "|" + (legsIn ? 1 : 0);
+        personPaint.a = a; personPaint.col = col; personPaint.k = k; personPaint.legs = legsIn;
+        stamp(key, x, y, -11, -40, 11, 2, paintPerson, true);
+        stampIdent = false;
+        ctx.setTransform(pk, 0, 0, pk, pox, poy);
+        drawHands(a, ph);
+        ctx.setTransform(wk, 0, 0, wk, wox, woy);
+      } else {
+        ctx.save();
+        ctx.translate(x, y);
+        if (k !== 1) ctx.scale(k, k);
+        personLegs(sw);
+        if (bow) ctx.rotate(bow * 0.45 * a.dir);
+        personBody(a, col);
+        // 5. 手と持ち物
+        drawHands(a, ph);
+        ctx.restore();
+      }
       // 6. 頭の上の印（…＝まち、！＝おうえん）
       if ((a.pose === "wait" && !speakers[a.id]) || a.pose === "cheer") {
         const my = a.y - 30 * k - hop;
@@ -1024,6 +1137,31 @@
         ctx.strokeText(t, a.x, my); ctx.fillText(t, a.x, my);
         ctx.textAlign = "left";
       }
+    }
+    // stamp に渡す人の絵（毎コマ 関数を作らない）
+    const personPaint = { a: null, col: "", k: 1, legs: false };
+    function paintPerson(px, py) {
+      const p = personPaint;
+      ctx.save(); ctx.translate(px, py); if (p.k !== 1) ctx.scale(p.k, p.k);
+      if (p.legs) personLegs(0);
+      personBody(p.a, p.col);
+      ctx.restore();
+    }
+    // 1. 足（原点は足もと）
+    function personLegs(sw) {
+      ctx.strokeStyle = "#3a3a3a"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-2, -7); ctx.lineTo(-2 + sw, 0); ctx.moveTo(2, -7); ctx.lineTo(2 - sw, 0); ctx.stroke();
+    }
+    // 2. 胴・3. 頭・4. 帽子（形で部署が分かる）
+    function personBody(a, col) {
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(-4.5, -16, 9, 10, 3); else ctx.rect(-4.5, -16, 9, 10);
+      ctx.fill();
+      const hx = 0, hy = -20;
+      ctx.fillStyle = SKIN[a.id % 4];
+      ctx.beginPath(); ctx.arc(hx, hy, 4.2, 0, 6.29); ctx.fill();
+      drawHat(a, hx, hy);
     }
     // はこぶ の トラック：人が乗った小さな車（6 本つむ）。§19.2.1
     function drawTruck(a) {
@@ -1283,6 +1421,14 @@
       for (const d of geo.order) {
         const z = geo.zones[d];
         const x = depts[d] || {};
+        if (!seen(z.y, z.y + z.h)) {
+          // 見えない場所は描かない。つまりの札の言葉（テストで見る jamTag）だけは、描いたときと同じに決める
+          if (bn === d) {
+            const text = memo.maxed ? (labelWidth("ぜんぶ さいだい！", true) <= z.w - 6 ? "ぜんぶ さいだい！" : "さいだい！") : (labelWidth("ここが おそい！", true) <= z.w - 6 ? "ここが おそい！" : "おそい！");
+            jamTag = { dept: d, text };
+          }
+          continue;
+        }
         // 名前の札（文字でも部署が分かる）
         const right = d === "carry";
         const lx = right ? z.x + z.w - 3 : z.x + 3;
@@ -1344,6 +1490,7 @@
     }
     function drawFx() {
       for (const p of particles) {
+        if (!seen(p.y - 50, p.y + 50)) continue;
         if (p.fall) {
           const q = clamp(p.t / 0.6, 0, 1);
           ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.dir * q * 1.45);
