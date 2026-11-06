@@ -911,6 +911,8 @@
       board.appendChild(frag);
       // 新しい面・局面のときは、お客さんの動物を決め直す（keep：並べ直しだけのときは、待っている人の動物をそのまま）
       if (!(bopts && bopts.keep)) seenKind.clear();
+      // 開き直した面：前に見せた動物から続ける（保存の an。v69・IB-55）。知らない動物・注文の外の番号は使わない
+      if (bopts && Array.isArray(bopts.seen)) bopts.seen.forEach((k, i) => { if (i < orders.length && ANIMALS.includes(k)) seenKind.set(i, k); });
       for (const c of custs) { c.sig = ""; if (!(bopts && bopts.keep)) c.kind = null; }
       layout();
       if (state) update(state);

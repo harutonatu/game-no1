@@ -2746,4 +2746,37 @@ export const tests = [
       }
     },
   },
+  {
+    id: 'BW40', tier: 'full', timeout: 180000, title: 'いろびん v69（IB-55・IB-51・IB-50・IB-58・IB-52・IB-48・IB-56・IB-49・IB-47）：開き直した面でも見せた動物で数える・クリアのカードの「あと ○にん」・101 面のかぎの説明カード・段が上がる演出・なかよしちょうの印と「いま：」・SE の Safari でクリアのカードとなかよしちょうが帯に隠れない',
+    async run({ browser, check }) {
+      const KINDS = ['kuma', 'usagi', 'neko', 'penguin', 'risu', 'hitsuji'];
+      const EMPTY_BOOK = J({ v: 1, a: {}, s: {}, last: 0 });
+      const bookA = async (p) => { const r = await stored(p, 'irobin.book'); try { return JSON.parse(r).a || {}; } catch { return null; } };
+      // ---- (a) IB-55：最後の手の演出の途中で閉じて開き直しても、画面で見せた動物で数える（66 面：ずらされた動物が出て、animalFor だけで数えると内わけが変わる面） ----
+      {
+        const LV = 66, SEED = { 'irobin.best': '200', 'irobin.save': J({ v: 3, level: LV, moves: [] }), 'irobin.book': EMPTY_BOOK };
+        const A = await openG(browser, 'BW40 a 続けて', { extra: SEED });
+        const sol = await solutionOf(A.page);
+        await playMoves(A.page, sol); await toClear(A.page); await wait(A.page, 600);
+        const live = await bookA(A.page);
+        const fb = await A.page.evaluate(([lv]) => { const L = window.IrobinLogic, st = L.createLevel(lv).state, n = [].concat(st.slots, st.queue).filter((x) => x !== null && x !== undefined).length, m = {}; for (let i = 0; i < n; i++) { const k = L.animalFor(lv, i); m[k] = (m[k] || 0) + 1; } return m; }, [LV]);
+        await A.ctx.close();
+        const B = await openG(browser, 'BW40 a 閉じる', { extra: SEED });
+        await playMoves(B.page, sol.slice(0, -1));
+        const last = sol[sol.length - 1];
+        await B.page.evaluate(([f, t]) => { window.IrobinGame.pick(f); window.IrobinGame.pick(t); }, last);
+        await setHidden(B.page, true); await wait(B.page, 50);
+        const sv = JSON.parse(await stored(B.page, 'irobin.save'));
+        const book0 = await stored(B.page, 'irobin.book');
+        await B.page.reload(); await wait(B.page, 600); await toClear(B.page); await wait(B.page, 300);
+        const back = await bookA(B.page);
+        const same = (x, y) => KINDS.every((k) => (x[k] || 0) === (y[k] || 0));
+        check(`(a) IB-55：最後の手の演出中に裏へ回すと irobin.save に見せた動物 an（${J(sv.an)}）と全部の手（${sv.moves.length}/${sol.length}）・帳面はまだ書かない（${book0}）`,
+          Array.isArray(sv.an) && sv.an.some((k) => KINDS.includes(k)) && sv.moves.length === sol.length && book0 === EMPTY_BOOK, sv);
+        check(`(a) IB-55：開き直したクリアで数えた動物（${J(back)}）が、続けて遊んだとき（${J(live)}）と同じ。前の数え方（animalFor だけ：${J(fb)}）とは違う面で確かめる`,
+          !!back && !!live && same(back, live) && !same(live, fb), { back, live, fb });
+        await B.ctx.close();
+      }
+    },
+  },
 ];

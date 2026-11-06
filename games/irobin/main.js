@@ -257,7 +257,7 @@
   }
   function save() {
     if (custom || !state) return;
-    safeCall(() => writeKey(KEY_SAVE, L.makeSave(level, moves)), false);
+    safeCall(() => writeKey(KEY_SAVE, L.makeSave(level, moves, safeCall(() => render.animalsSeen(), null))), false);   // 見せた動物も書く（開き直しても同じ動物で数える。IB-55）
   }
 
   // ===== 面を始める =====
@@ -283,7 +283,8 @@
   // 置き場所の数（§17.7）：面の最初の瓶の本数（id は 0〜本数-1）
   const placesOf = (s) => (s && Array.isArray(s.bottles) ? s.bottles.reduce((m, b) => Math.max(m, Number.isSafeInteger(b.id) ? b.id + 1 : 0), s.bottles.length) : 0);
   const ordersOf = (s) => [].concat(s && s.slots || [], s && s.queue || []).filter((x) => x !== null && x !== undefined);
-  function startLevel(lv, mv) {
+  // seen（省略可）：保存にあった、画面で見せた動物の並び（IB-55）。手を全部当て直せたときだけ使う
+  function startLevel(lv, mv, seen) {
     clearLater();
     runId += 1;
     pending = null;
@@ -322,7 +323,8 @@
       }
       if (gimTip) { gimTipLevel = n; gimTipKind = gimTip; }   // 既読にするのは最初の 1 手を指した時（doMove）
     }
-    render.build(state, { orders: ordersOf(b.base), places: b.base.bottles.length });
+    const useSeen = Array.isArray(seen) && Array.isArray(mv) && mv.length > 0 && b.ok.length === mv.length;
+    render.build(state, { orders: ordersOf(b.base), places: b.base.bottles.length, ...(useSeen ? { seen } : {}) });
     render.update(state, { selected: null });
     if (state.won) {   // 最後の手まで保存されていた（クリアの記録の前に閉じた）：その面のクリアのカードから続ける（IB-22）
       hud();
@@ -1133,7 +1135,7 @@
     if (rb && typeof render.setDress === "function") render.setDress(dressMap(rb.book));
     const sv = safeCall(() => L.validateSave(readKey(KEY_SAVE)), null);
     let ok = false;
-    if (sv && Number.isSafeInteger(sv.level) && sv.level >= 1) ok = startLevel(sv.level, sv.moves);
+    if (sv && Number.isSafeInteger(sv.level) && sv.level >= 1) ok = startLevel(sv.level, sv.moves, sv.seen);
     if (!ok) ok = startLevel(Math.min(Number.MAX_SAFE_INTEGER, (Number(best) || 0) + 1), []);
     if (!ok) startLevel(1, []);
     requestAnimationFrame(() => render.layout());

@@ -1231,4 +1231,18 @@ export const tests = [
         bad.every((b) => b.o === undefined && L.bookStars(b) === 3) && plain === '{"v":1,"a":{"kuma":2},"s":{"1":[3,4]},"last":1}', bad);
     },
   },
+  {
+    id: 'BL29', tier: 'smoke', node: true, title: 'いろびん v69（IB-55）保存に画面で見せた動物（an）：makeSave が書き validateSave が seen で返す・無い／壊れた an でも保存は読める・v68 の保存の形は同じ',
+    run({ check, root }) {
+      const L = load(root);
+      const raw = L.makeSave(7, [[0, 1]], [null, 'kuma', 'neko', 'x']);
+      const o = JSON.parse(raw), v = L.validateSave(raw);
+      check(`(a) makeSave(…, seen) は an を書く（知らない動物は null）（${raw}）・validateSave は seen で返す（${J(v && v.seen)}）`,
+        J(o.an) === J([null, 'kuma', 'neko', null]) && o.v === 3 && !!v && J(v.seen) === J([null, 'kuma', 'neko', null]) && J(v.moves) === '[[0,1]]', { o, v });
+      const plain = [L.makeSave(7, [[0, 1]]), L.makeSave(7, [[0, 1]], [null, null]), L.makeSave(7, [[0, 1]], 'kuma'), L.makeSave(7, [[0, 1]], [])];
+      check(`(b) seen が無い・1 匹もいない・配列でない・空なら an を書かない（v68 と同じ形）（${plain[1]}）`, plain.every((r) => r === '{"v":3,"level":7,"moves":[[0,1]]}'), plain);
+      const bad = [5, 'kuma', {}, [], [1, 2], Array(65).fill('kuma'), [null]].map((an) => L.validateSave(J({ v: 3, level: 7, moves: [[0, 1]], an })));
+      check(`(c) an が壊れていても保存は読め、seen は付かない（${J(bad)}）`, bad.every((x) => x && x.level === 7 && J(x.moves) === '[[0,1]]' && x.seen === undefined), bad);
+    },
+  },
 ];

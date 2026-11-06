@@ -1095,13 +1095,27 @@
     if (!Number.isSafeInteger(o.level) || o.level < 1) return null;
     if (!Array.isArray(o.moves) || o.moves.length > MAX_MOVES_SAVED) return null;
     for (const m of o.moves) if (!Array.isArray(m) || m.length !== 2 || !Number.isSafeInteger(m[0]) || !Number.isSafeInteger(m[1]) || m[0] < 0 || m[1] < 0) return null;
-    return { level: o.level, moves: o.moves.map((m) => [m[0], m[1]]) };
+    const out = { level: o.level, moves: o.moves.map((m) => [m[0], m[1]]) };
+    const seen = seenOf(o.an);   // 画面で見せた動物（v69・IB-55。無い・壊れていれば付けない。保存そのものは捨てない）
+    if (seen) out.seen = seen;
+    return out;
+  }
+  // 画面で見せた動物の並び（注文の番号ごと。まだ見せていない番号は null）。知らない動物は null、配列でない・長すぎる・1 匹もいない → null
+  const SEEN_MAX = 64;
+  function seenOf(a) {
+    if (!Array.isArray(a) || a.length === 0 || a.length > SEEN_MAX) return null;
+    const out = a.map((k) => (typeof k === "string" && ANIMAL_KEYS.includes(k) ? k : null));
+    return out.some((k) => k !== null) ? out : null;
   }
 
   // 手は最初の MAX_MOVES_SAVED 手まで書く（validateSave が読める長さ。超えた分は保存しないので、開き直すとその手の局面から。IB-09）
-  function makeSave(level, moves) {
+  // seen（省略可。v69・IB-55）：画面で見せた動物の並び（render.animalsSeen）。1 匹でもいれば an に書く（開き直しても同じ動物で数える）
+  function makeSave(level, moves, seen) {
     const mv = Array.isArray(moves) ? moves.slice(0, MAX_MOVES_SAVED).map((m) => (Array.isArray(m) ? [m[0], m[1]] : m)) : [];
-    return JSON.stringify({ v: SAVE_V, level, moves: mv });
+    const o = { v: SAVE_V, level, moves: mv };
+    const an = seenOf(seen);
+    if (an) o.an = an;
+    return JSON.stringify(o);
   }
 
   function recordBest(prevBest, clearedLevel) {
