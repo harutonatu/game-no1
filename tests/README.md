@@ -92,7 +92,7 @@ $env:HEADED=1; $env:BROWSER="webkit"; $env:WORKERS=1; node tests/run.mjs smoke
 | ゼンマイさんぽ（games/zenmai/）の変更 | smoke ＋ `ONLY=ZL1,ZL2,ZL3,ZL4,ZL5,ZL6,ZL7,ZU6,ZU7,ZU8,ZU9,ZU10,ZU11,ZU12,ZU13,ZU14,ZU16,ZU17 node tests/run.mjs full`（ステージの数値は ZL、画面は ZU） |
 | ピカッと早押し（games/pikatto/）の変更 | smoke ＋ `ONLY=PK5,PK6,PK7,PK8,PK9,PK12,PK14,PK16,PK17,PK18,PK19,PK20,PK21,PK22 node tests/run.mjs full`（ルール・保存を変えたら `ONLY=PK1,PK3,PK9,PK15,PK16 M=MP1,MP2,MP3,MP4,MP5,MP6,MP7 node tests/mutants/mutate.mjs both`。「メニューへ」の確認（PK-33）を変えたら `ONLY=PK4,PK20,X1 M=MP11,MP12 node tests/mutants/mutate.mjs both`） |
 | ハシわたり（games/hashi/）の変更 | smoke ＋ `ONLY=HW5,HW6,HW7,HW8,HW9,HW10,HW11,HW12,HW13,HW14,HW15,HW17,HW19,HW20,HW21,HW22,HW23 node tests/run.mjs full`（ロジックだけなら `ONLY=HL1,HL2,HL3,HL4,HL5,HL6,HL7,HL8,HL9,HL10,HL11,HL12,HL13 node tests/run.mjs smoke`、0 秒。ルール・保存を変えたら `PORT=9900 ONLY=HL1,…,HL13,HW1,…,HW19,HW23 M=MH1,…,MH20,MH29,MH30,MH31,MH32 node tests/mutants/mutate.mjs both`（10 個ずつに分けて流す）。古いページから書き戻さない（X-20）を変えたら `ONLY=HW20 M=MH21,MH22,MH23 PORT=9900 node tests/mutants/mutate.mjs both`。v31 の直しを変えたら `ONLY=HW21 M=MH24,MH25,MH26,MH27 node tests/mutants/mutate.mjs both`。HW22 を変えたら ONLY=HW22,X1 M=MH33） |
-| いろびん（games/irobin/）の変更 | smoke ＋ `ONLY=BW5,BW6,BW7,BW8,BW9,BW10,BW11,BW12,BW13,BW14,BW15,BW16,BW20,BW21,BW22,BW23,BW24,BW25,BW26,BW27,BW28,BW29,BW30,BW33,BW34,BW35,BW36,BW37,BW38,BW39 node tests/run.mjs full`（BW31・BW32 は smoke に入っている。ロジックだけなら `ONLY=BL1,BL2,BL3,BL4,BL5,BL6,BL7,BL8,BL9,BL10,BL11,BL12,BL13,BL14,BL15,BL16,BL17,BL18,BL19,BL21,BL22,BL23,BL24,BL25,BL26,BL27 node tests/run.mjs smoke`、約 9 秒。ルール・保存・生成を変えたら `ONLY=BL1,…,BL19,BL21,BL22,BL23,BL24,BL25,BL26,BL27,BW1,…,BW18,BW22,BW23,BW24,BW25,BW26,BW27,BW29,BW30,BW31,BW32,BW33,BW36,BW37,BW39 M=MB1,…,MB17,MB19,MB20,MB21,MB26,MB27,MB28,MB29,MB30,MB31,MB32,MB33,MB34,MB35,MB36,MB37,MB38,MB39,MB40,MB41,MB42,MB43,MB44,MB45,MB46,MB47,MB48,MB49,MB50,MB51,MB52,MB53,MB54,MB55,MB56,MB57,MB58,MB59,MB60,MB61,MB62,MB63,MB64,MB65 node tests/mutants/mutate.mjs both`。MB18 は欠番。古いページから書き戻さない（X-20）を変えたら `ONLY=BW20 M=MB23,MB24,MB25 PORT=9900 node tests/mutants/mutate.mjs both`） |
+| いろびん（games/irobin/）の変更 | smoke ＋ `ONLY=BW5,BW6,BW7,BW8,BW9,BW10,BW11,BW12,BW13,BW14,BW15,BW16,BW20,BW21,BW22,BW23,BW24,BW25,BW26,BW27,BW28,BW29,BW30,BW33,BW34,BW35,BW36,BW37,BW38,BW39,BW40 node tests/run.mjs full`（BW31・BW32 は smoke に入っている。ロジックだけなら `ONLY=BL1,BL2,BL3,BL4,BL5,BL6,BL7,BL8,BL9,BL10,BL11,BL12,BL13,BL14,BL15,BL16,BL17,BL18,BL19,BL21,BL22,BL23,BL24,BL25,BL26,BL27,BL28,BL29 node tests/run.mjs smoke`、約 9 秒。ルール・保存・生成を変えたら `ONLY=BL1,…,BL19,BL21,BL22,BL23,BL24,BL25,BL26,BL27,BW1,…,BW18,BW22,BW23,BW24,BW25,BW26,BW27,BW29,BW30,BW31,BW32,BW33,BW36,BW37,BW39 M=MB1,…,MB17,MB19,MB20,MB21,MB26,MB27,MB28,MB29,MB30,MB31,MB32,MB33,MB34,MB35,MB36,MB37,MB38,MB39,MB40,MB41,MB42,MB43,MB44,MB45,MB46,MB47,MB48,MB49,MB50,MB51,MB52,MB53,MB54,MB55,MB56,MB57,MB58,MB59,MB60,MB61,MB62,MB63,MB64,MB65 node tests/mutants/mutate.mjs both`。MB18 は欠番。古いページから書き戻さない（X-20）を変えたら `ONLY=BW20 M=MB23,MB24,MB25 PORT=9900 node tests/mutants/mutate.mjs both`） |
 | まとめてポン（games/matomete/）の変更 | smoke ＋ `ONLY=QW4,QW5,QW6,QW7,QW8,QW9,QW10,QW11,QW12,QW13,QW14,QW15,QW18,QW19,QW21,QW22,QW23 node tests/run.mjs full`（ロジックだけなら `ONLY=QL1,QL2,QL3,QL4,QL5,QL6,QL7,QL8,QL9,QL10,QL11 node tests/run.mjs full`、数秒。ルール・保存・2回タップを変えたら `ONLY=QL1,…,QL11,QW1,…,QW19 M=MQ1,MQ2,…,MQ40 node tests/mutants/mutate.mjs both`。古いページから書き戻さない（X-20）を変えたら `ONLY=QW21 M=MQ42,MQ43,MQ44 PORT=9950 node tests/mutants/mutate.mjs both`） |
 | ミチビキ空港（games/michibiki/）の変更 | smoke ＋ `ONLY=FW6,FW7,FW8,FW9,FW10,FW11,FW12,FW13,FW14,FW15,FW16,FW17,FW18,FW19,FW22,FW23,FW24 node tests/run.mjs full`（ロジックだけなら `ONLY=FL1,FL2,FL3,FL4,FL5,FL6,FL7,FL8,FL9,FL10,FL11,FL12,FL13 node tests/run.mjs full`、約 20 秒。ルール・保存・出現を変えたら `ONLY=FL1,…,FL13,FW1,…,FW24 M=MF1,…,MF32 node tests/mutants/mutate.mjs both`） |
 | もくもくこうば（games/seizai/）の変更 | smoke ＋ `ONLY=WW7,WW8,WW9,WW10,WW11,WW12,WW13,WW14,WW15,WW16,WW17,WW18,WW19,WW20,WW21,WW22,WW23,WW24,WW25,WW26,WW27,WW28,WW29 node tests/run.mjs full`（ロジックだけなら `ONLY=WL1,WL2,WL3,WL4,WL5,WL6,WL7,WL8,WL9,WL10,WL11,WL12,WL13,WL14 node tests/run.mjs full`。経済・保存・閉じた間・船・注文を変えたら `ONLY=WL1,…,WL11,WW1,…,WW19 M=MW1,…,MW50 PORT=9640 WORKERS=2 node tests/mutants/mutate.mjs both`。10 個ずつ M を区切って流す。さいしょから（契約 §21）を変えたら `ONLY=WW25 M=MW61,MW62,MW63,MW64 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`。古いページから書き戻さない（X-20）を変えたら `ONLY=WW26 M=MW65,MW66,MW67 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`。かんな の速さ・もう強くできない つまり（契約 §23・SZ-08）を変えたら `ONLY=WL14,WW27,X1 M=MW68,MW69 PORT=8800 WORKERS=2 node tests/mutants/mutate.mjs both`） |
@@ -785,6 +785,24 @@ OGP の絵（`icons/og-irobin.png`・`icons/og-menu.png`）を作り直すとき
 | MB63 いろびん：錠の数に、鍵の瓶の中身も数える（IB-57） | 検出（BL27） | 検出（BL27。v47） |
 | MB64 いろびん：錠の数に、ちいさい びんも数える（IB-57） | 検出（BL27） | 検出（BL27。v47） |
 | MB65 いろびん：錠の数に、布の瓶も数える（IB-57） | 検出（BL27） | 検出（BL27。v47） |
+| MB66 いろびん：面の記録が 5000 件のとき、新しい面のために一番小さい面を畳まない（新しい面の★が残らない。IB-54） | （full の項目で見る） | 検出（BL28。v69） |
+| MB67 いろびん：5000 件より多い帳面を読むとき、捨てた面の★を o に足さない（★の合計が減る。IB-54） | （full の項目で見る） | 検出（BL28。v69） |
+| MB68 いろびん：bookStars が畳んだ古い面の★（o）を数えない（IB-54） | （full の項目で見る） | 検出（BL28。v69） |
+| MB69 いろびん：保存に見せた動物（an）を書かない（開き直すと内わけがずれる。IB-55） | （full の項目で見る） | 検出（BL29, BW40。v69） |
+| MB70 いろびん：開き直した面で、保存の an を画面の動物に使わない（IB-55） | （full の項目で見る） | 検出（BW40。v69） |
+| MB71 いろびん：validateSave が an を返さない（IB-55） | （full の項目で見る） | 検出（BL29, BW40。v69） |
+| MB72 いろびん：クリアのカードに「あと ○にん」を出さない（IB-51） | （full の項目で見る） | 検出（BW40。v69） |
+| MB73 いろびん：段が上がった一言と「あと ○にん」を両方出す（IB-51） | （full の項目で見る） | 検出（BW40。v69） |
+| MB74 いろびん：かぎの びんの説明カードを出さない（IB-58） | （full の項目で見る） | 検出（BW40。v69） |
+| MB75 いろびん：かぎの びんの説明カードを閉じても見たことにしない（毎回出る。IB-58） | （full の項目で見る） | 検出（BW40。v69） |
+| MB76 いろびん：見たことがあっても、かぎの びんの説明カードを出す（IB-58） | （full の項目で見る） | 検出（BW40。v69） |
+| MB77 いろびん：段が上がった面の演出を出さない（IB-52） | （full の項目で見る） | 検出（BW40。v69） |
+| MB78 いろびん：動きを減らす設定でも段が上がった面の演出を出す（IB-52） | （full の項目で見る） | 検出（BW40。v69） |
+| MB79 いろびん：ボタン「なかよしちょう」の印を付けない（IB-48） | （full の項目で見る） | 検出（BW40。v69） |
+| MB80 いろびん：なかよしちょうに「いま：○○」を出さない（IB-56） | （full の項目で見る） | 検出（BW40。v69） |
+| MB81 いろびん：画面より高いカードを詰めない（SE の Safari で帯に隠れる。IB-47） | （full の項目で見る） | 検出（BW40。v69） |
+| MB82 いろびん：詰めてもまだ高いクリアのカードで手数の行を隠さない（IB-47） | （full の項目で見る） | 検出（BW40。v69） |
+| MB83 いろびん：SE 横で詰めた なかよしちょうを 3 列にしない（IB-49） | （full の項目で見る） | 検出（BW40。v69） |
 | MH29 ハシわたり：ぴったりを続けても いのちが戻らない（HS-09） | smoke は流していない | 検出（v37 の関門） |
 | MH30 ハシわたり：いのちが上限を超えて戻る（HS-09） | smoke は流していない | 検出（v37 の関門） |
 | MH31 ハシわたり：ステージでも いのちが戻る（HS-09） | smoke は流していない | 検出（v37 の関門） |
@@ -805,6 +823,8 @@ v42（公開日は後で記入）：いろびん MB1〜MB47（MB42〜MB47 が新
 v45（2026-10-27）：いろびん MB1〜MB60（MB52〜MB60 が新しい。IB-34。`M=MB52,MB53,MB54,MB55,MB56,MB57,MB58,MB59,MB60 node tests/mutants/mutate.mjs both`。9 つとも「検出」が合格。v45 の関門のあとに流し、full で 9 つとも検出。MB56 は BL26 が ONLY に無く一度見逃しになったので、ルール・保存・生成の ONLY に BL26 を足した。MB28 は v45 で onClear の呼び方が変わり置き換え前の文字が無くなったので、定義を今の main.js に合わせた（BW22・BW36 が検出））。
 
 v47（公開日は後で記入）：いろびん MB1〜MB65（MB61〜MB65 が新しい。IB-57。`ONLY=BL27 M=MB61,MB62,MB63,MB64,MB65 node tests/mutants/mutate.mjs both`。5 つとも BL27 が検出するはず。結果は関門のあとの Haiku の報告で書く）。
+
+v69（2026-11-06）：いろびん MB66〜MB83（IB-47〜IB-58）。`ONLY=BL26,BL28,BL29,BW31,BW38,BW40,X1 M=MB66,…,MB83 node tests/mutants/mutate.mjs full` で 18 つとも検出。
 
 v38（2026-10-24）：V8 を消したあと M6・M13、HW22 の直しの MH33v38 の関門で検出。
 
