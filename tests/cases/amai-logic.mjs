@@ -1131,7 +1131,7 @@ export const tests = [
     },
   },
   {
-    id: 'AL22', tier: 'smoke', node: true, title: 'あまいものあつめ：途中の保存の絵の目印（picSig。課題 AM-18）：makeSave が今の絵の目印（8 桁の 16 進）を書き、validateSave が読む。目印が合えば saveFits が true（続きから）・絵が変わると false（同じ面の最初から）・反転した面は反転の目印。目印の無い古い保存（v66 の形）は 3 面から false・1・2 面は true。壊れた picSig（数・長すぎる・形ちがい）でも保存は読めて false・例外なし',
+    id: 'AL22', tier: 'smoke', node: true, title: 'あまいものあつめ：途中の保存の絵の目印（picSig。課題 AM-18）：makeSave が今の絵の目印（8 桁の 16 進）を書き、validateSave が読む。目印が合えば saveFits が true（続きから）・絵が変わると false（同じ面の最初から）・反転した面は反転の目印。目印の無い古い保存（v66 の形）はどの面も false（2026-11-06 から。前は 1・2 面だけ true）・決まりの版を混ぜる前の目印（v67 の形）も false（取る角砂糖の決まりが道のりに変わった。amai-route.md）。壊れた picSig（数・長すぎる・形ちがい）でも保存は読めて false・例外なし',
     async run({ check, root }) {
       const L = load(root);
       await withPictures(L, (kind) => {
@@ -1167,7 +1167,12 @@ export const tests = [
         // ③目印の無い古い保存（v66 の形）
         const old = (lv, id) => J({ v: 1, level: lv, pic: id, mirror: false, rep: false, presses: [[0, 1]], t: 3 });
         const oldRes = { lv5: L.saveFits(L.validateSave(old(5, PO[4].id))), lv3: L.saveFits(L.validateSave(old(3, PO[2].id))), lv1: L.saveFits(L.validateSave(old(1, PO[0].id))), lv2: L.saveFits(L.validateSave(old(2, PO[1].id))) };
-        check('③目印の無い古い保存：読めて、3 面・5 面は false（最初から）・1・2 面は true（続きから）', L.validateSave(old(5, PO[4].id)) !== null && oldRes.lv5 === false && oldRes.lv3 === false && oldRes.lv1 === true && oldRes.lv2 === true, oldRes);
+        check('③目印の無い古い保存：読めて、1・2・3・5 面とも false（最初から。決まりが変わったので 1・2 面も）', L.validateSave(old(5, PO[4].id)) !== null && oldRes.lv5 === false && oldRes.lv3 === false && oldRes.lv1 === false && oldRes.lv2 === false, oldRes);
+        // ⑤v67 の形の目印（絵の地図と mirror だけの FNV-1a。決まりの版を混ぜる前）の保存は、絵が同じでも false（同じ面の最初から）
+        const sig67 = (p0, m) => { const pic = L.pictureById(p0.id, m); let h = 0x811c9dc5; const mx = (v) => { h ^= v & 0xff; h = Math.imul(h, 0x01000193) >>> 0; }; mx(pic.W); mx(pic.H); mx(m ? 1 : 0); for (const c of pic.cells) mx(c + 1); return (h >>> 0).toString(16).padStart(8, '0'); };
+        const v67 = (lv, p0, m) => L.validateSave(J({ v: 1, level: lv, pic: p0.id, mirror: m, rep: m, presses: [[0, 1]], t: 3, picSig: sig67(p0, m) }));
+        const r67 = { lv5: L.saveFits(v67(5, pk, false)), lv1: L.saveFits(v67(1, { id: PO[0].id }, false)), lv155: L.saveFits(v67(155, pk, true)), sig: L.pictureSig(pk), old: sig67(pk, false) };
+        check(`⑤v67 の形の目印（${r67.old}）は今の目印（${r67.sig}）と違い、1・5・155（反転）面とも false（最初から）`, r67.sig !== r67.old && r67.lv5 === false && r67.lv1 === false && r67.lv155 === false, r67);
         // ④壊れた picSig
         const good = JSON.parse(ms);
         const broken = { '数': 12345678, '長すぎる': 'a'.repeat(100000), '大文字': sig.toUpperCase() === sig ? 'ZZZZZZZZ' : sig.toUpperCase(), '7 桁': sig.slice(1), 'オブジェクト': { x: 1 }, 'null': null, '配列': [sig], '空': '' };
@@ -1192,6 +1197,63 @@ export const tests = [
         const rp = L.saveFits(v2) ? L.replay(v2.level, v2.pick, v2.presses, v2.t) : null;
         check('合う保存の押した手で replay が ok（押した数 1）', !!rp && rp.ok === true && rp.state.presses === 1, rp && { ok: rp.ok, applied: rp.applied });
       });
+    },
+  },
+  {
+    id: 'AL23', tier: 'smoke', node: true, title: 'あまいものあつめ：取る角砂糖は道のり（巣から空いたマスと外の枠を歩く数）がいちばん短いふち、同じなら前の順（巣に近い → 下 → 左）（2026-11-06。ユーザー「経路の1番近いところから」。amai-route.md §2 B）：①まっすぐ近いが回り道の角砂糖より、道のりの近い角砂糖が先 ②本物の面を遊んで、毎はこび総当たりの幅優先と一致 ③edgeCells の先頭＝次に取る角砂糖',
+    run({ check, root }) {
+      const L = load(root);
+      // ①まん中の R（3,2）は巣にまっすぐ近い（前の順で 1 番）が、上からしか入れない（道のり 14）。下のはしの R（0,3）・（6,3）は道のり 4
+      const map = ['.......', '.GG.GG.', '.GRRRG.', 'RGGGGGR'];
+      let s = mk(L, map, { slots: [{ c: LET.R, n: 5 }] });
+      const got = [];
+      for (let i = 0; i < 5; i++) { const r = L.step(s); if (!r.moved) break; got.push(r.carries[0].cell); s = r.state; }
+      const want = [at(s, 0, 3), at(s, 6, 3), at(s, 3, 2), at(s, 2, 2), at(s, 4, 2)];
+      check(`①道のりの近い順（${J(got)}。前のまっすぐの近さなら ${J([at(s, 3, 2), at(s, 2, 2), at(s, 4, 2), at(s, 0, 3), at(s, 6, 3)])}）・同じ道のりなら前の順（左が先）`, J(got) === J(want), { got, want });
+      // ②総当たり：外（外とつながった空き）と外の枠を幅優先で歩いた数＋1 が一番小さいふち、同じなら前の順
+      const brute = (st, color) => {
+        const W = st.W, H = st.H, vw = W + 2, vh = H + 2, out = new Uint8Array(W * H), stack = [];
+        const seed = (i) => { if (st.cells[i] < 0 && !out[i]) { out[i] = 1; stack.push(i); } };
+        for (let x = 0; x < W; x++) { seed(x); seed((H - 1) * W + x); }
+        for (let y = 0; y < H; y++) { seed(y * W); seed(y * W + W - 1); }
+        while (stack.length) { const i = stack.pop(), x = i % W, y = (i - x) / W; if (x > 0) seed(i - 1); if (x < W - 1) seed(i + 1); if (y > 0) seed(i - W); if (y < H - 1) seed(i + W); }
+        const walk = (v) => { const vx = v % vw, vy = (v - vx) / vw; return vx === 0 || vy === 0 || vx === vw - 1 || vy === vh - 1 || out[(vy - 1) * W + vx - 1] === 1; };
+        const d = new Int32Array(vw * vh).fill(-1), st0 = (H + 1) * vw + Math.round((W - 1) / 2) + 1, q = [st0];
+        d[st0] = 0;
+        for (let h = 0; h < q.length; h++) { const v = q[h], vx = v % vw; for (const u of [vx > 0 ? v - 1 : -1, vx < vw - 1 ? v + 1 : -1, v - vw, v + vw]) if (u >= 0 && u < vw * vh && d[u] < 0 && walk(u)) { d[u] = d[v] + 1; q.push(u); } }
+        let best = -1, bk = null;
+        for (let i = 0; i < W * H; i++) {
+          if (st.cells[i] !== color) continue;
+          const x = i % W, y = (i - x) / W, v = (y + 1) * vw + x + 1;
+          let m = Infinity;
+          for (const u of [v - 1, v + 1, v - vw, v + vw]) if (d[u] >= 0 && walk(u)) m = Math.min(m, d[u] + 1);
+          if (m === Infinity) continue;
+          const k = [m, Math.abs(2 * x - (W - 1)) + 2 * (H - y), -y, x];
+          if (!bk || k[0] < bk[0] || (k[0] === bk[0] && (k[1] < bk[1] || (k[1] === bk[1] && (k[2] < bk[2] || (k[2] === bk[2] && k[3] < bk[3])))))) { bk = k; best = i; }
+        }
+        return best;
+      };
+      const rows = [];
+      let n = 0;
+      for (const lv of [1, 3, 13, 84]) {
+        const c = L.createLevel(lv, null);
+        let st = c.state;
+        const rnd = rngOf(lv * 7 + 1);
+        for (let g = 0; g < 400 && !st.won; g++) {
+          const can = [0, 1, 2, 3].filter((k) => L.canPress(st, k) === null);
+          if (can.length && (L.isStable(st) || rnd() < 0.3)) st = L.press(st, can[Math.floor(rnd() * can.length)]).state;
+          const k0 = st.slots.findIndex((b) => b);
+          const want0 = k0 >= 0 ? brute(st, st.slots[k0].color) : -1;
+          const e0 = k0 >= 0 ? L.edgeCells(st, st.slots[k0].color)[0] ?? -1 : -1;
+          const r = L.step(st);
+          if (!r.moved) { if (L.isStuck(st)) break; continue; }
+          n++;
+          const c0 = r.carries[0];
+          if (c0.slot === k0 && (c0.cell !== want0 || e0 !== want0) && rows.length < 5) rows.push(`${lv} 面 t ${st.t}: 取った ${c0.cell}・総当たり ${want0}・edgeCells の先頭 ${e0}`);
+          st = r.state;
+        }
+      }
+      check(`②③本物の面（1・3・13・84 面）を遊んで ${n} はこび、左のわくの箱が取る角砂糖が総当たりの「道のり → 前の順」と一致し、edgeCells の先頭とも一致`, n > 300 && rows.length === 0, rows);
     },
   },
   {

@@ -464,7 +464,7 @@ const M = [
   // ---- あまいものあつめ（games/amai/）。ふち・運ぶ・押す・うごかせない・再生・保存・ずかん・絵の選び方・中断・古いページの仕組みを変えたときだけ流す（契約 §7.4）----
   ['MA1 あまいものあつめ：ふちでない角砂糖も運ぶ（見つける：AL3・AL4）', 'ルール', 'games/amai/logic.js', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;', 'return true;'],
   ['MA2 あまいものあつめ：ななめもふちに数える（見つける：AL3）', 'ルール', 'games/amai/logic.js', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1 || o[i - W - 1] === 1 || o[i - W + 1] === 1 || o[i + W - 1] === 1 || o[i + W + 1] === 1;'],
-  ['MA3 あまいものあつめ：ちがう色の角砂糖も運ぶ（見つける：AL4）', 'ルール', 'games/amai/logic.js', 'if (cells[i] === color && isEdge(b, i)) return i;', 'if (cells[i] >= 0 && isEdge(b, i)) return i;'],
+  ['MA3 あまいものあつめ：ちがう色の角砂糖も運ぶ（見つける：AL4）', 'ルール', 'games/amai/logic.js', 'if (!rt || !(color >= 0 && color < rt.hn.length) || rt.hn[color] === 0) return -1;\n    return rt.heap[color][0];', 'let best = -1; for (let c = 0; rt && c < rt.hn.length; c++) if (rt.hn[c] && (best < 0 || rt.key[rt.heap[c][0]] < rt.key[best])) best = rt.heap[c][0];\n    return best;'],
   ['MA4 あまいものあつめ：数が 0 になっても箱がわくに残る（見つける：AL4・AW1）', 'ルール', 'games/amai/logic.js', 'slots[k] = count === 0 ? null :', 'slots[k] = false ? null :'],
   ['MA5 あまいものあつめ：押した箱が列に残る（見つける：AL5・AW1）', 'ルール', 'games/amai/logic.js', 'let arr = ci === col ? c.slice(1) : c;', 'let arr = c;'],
   ['MA6 あまいものあつめ：わくがいっぱいでも押せる（見つける：AL5・AL7）', 'ルール', 'games/amai/logic.js', 'if (s.slots.indexOf(null) < 0) return "full";', ''],
@@ -478,7 +478,7 @@ const M = [
   ['MA14 あまいものあつめ：古いページが書く（見つける：AW18）', 'データ消失', 'games/amai/main.js', 'if (stale) return false;', ''],
   ['MA15 あまいものあつめ：ずかんに足すとき、ほかの絵を消す（見つける：AL9・AW17）', 'データ消失', 'games/amai/logic.js', 'b.got[id] = Math.min(BOOK_MAX, gotOf(b, id) + 1);', 'b.got = Object.create(null); b.got[id] = Math.min(BOOK_MAX, gotOf(b, id) + 1);'],
   ['MA16 あまいものあつめ：ずかんの回数が増えない（見つける：AW17）', 'ルール', 'games/amai/logic.js', 'b.got[id] = Math.min(BOOK_MAX, gotOf(b, id) + 1);', 'b.got[id] = Math.min(BOOK_MAX, gotOf(b, id));'],
-  ['MA17 あまいものあつめ：運ぶ順が巣に近い順でない（見つける：AL4）', 'ルール', 'games/amai/logic.js', 'for (let k = 0; k < ord.length; k++) {\n      const i = ord[k];', 'for (let k = ord.length - 1; k >= 0; k--) {\n      const i = ord[k];'],
+  ['MA17 あまいものあつめ：同じ道のりのとき、運ぶ順が巣に近い順（下・左）でない（見つける：AL4・AL23）', 'ルール', 'games/amai/logic.js', 'for (let k = 0; k < ord.length; k++) r[ord[k]] = k;', 'for (let k = 0; k < ord.length; k++) r[ord[k]] = ord.length - 1 - k;'],
   ['MA18 あまいものあつめ：押せない理由の順が違う（見つける：AL5）', 'ルール', 'games/amai/logic.js', 'if (c[0].ice > s.presses) return "frozen";\n    if (s.slots.indexOf(null) < 0) return "full";', 'if (s.slots.indexOf(null) < 0) return "full";\n    if (c[0].ice > s.presses) return "frozen";'],
   ['MA19 あまいものあつめ：こおりの箱も押せる（見つける：AL5・AW20）', 'ルール', 'games/amai/logic.js', 'if (c[0].ice > s.presses) return "frozen";', ''],
   ['MA20 あまいものあつめ：保存の押した手の t が逆順でも通る・最後の t を超えても通る（見つける：AL9）', '保存データ互換', 'games/amai/logic.js', 'if (prev > o.t) return null;', ''],
@@ -524,10 +524,16 @@ const M = [
   ['MA58 あまいものあつめ：角砂糖の上限が 2800 のまま（背景を足した 64×48 の絵が読めない。見つける：AL1・AL21）', 'ルール', 'games/amai/logic.js', 'const MAX_SUGAR = 3072;', 'const MAX_SUGAR = 2800;'],
   ['MA59 あまいものあつめ：こいみどりの箱の読み上げに印（つき）が無い（見つける：AW36）', 'アクセシビリティ', 'games/amai/render.js', 'stripes: "たてせん", moon: "つき", drop: "しずく" });', 'stripes: "たてせん" });'],
   // 途中の保存の絵の目印（picSig。2026-11-05。課題 AM-18・計画書 docs/plans/amai-bg.md §8）
-  ['MA60 あまいものあつめ：保存の絵の目印を比べない（絵が変わっても押した手を当てはめる。見つける：AL22・AW37）', '保存データ互換', 'games/amai/logic.js', 'if (typeof sv.sig === "string" && sv.sig !== "") return sv.sig === now;', 'if (typeof sv.sig === "string" && sv.sig !== "") return true;'],
-  ['MA61 あまいものあつめ：目印の無い古い保存を合うとみなす（見つける：AL22・AW37）', '保存データ互換', 'games/amai/logic.js', 'return sv.level <= 2;\n', 'return true;\n'],
+  ['MA60 あまいものあつめ：保存の絵の目印を比べない（絵が変わっても押した手を当てはめる。見つける：AL22・AW37）', '保存データ互換', 'games/amai/logic.js', 'return typeof sv.sig === "string" && sv.sig !== "" && sv.sig === now;', 'return typeof sv.sig === "string" && sv.sig !== "";'],
+  ['MA61 あまいものあつめ：目印の無い古い保存を合うとみなす（見つける：AL22・AW37）', '保存データ互換', 'games/amai/logic.js', 'return typeof sv.sig === "string" && sv.sig !== "" && sv.sig === now;', 'return typeof sv.sig === "string" && sv.sig !== "" ? sv.sig === now : true;'],
   ['MA62 あまいものあつめ：画面が目印を見ずに続きから始める（見つける：AW37）', '保存データ互換', 'games/amai/main.js', 'const fits = known && !!safeCall(() => L.saveFits(sv), false);', 'const fits = known;'],
   ['MA63 あまいものあつめ：絵の目印に反転を混ぜない（左右が同じ絵で反転の面と同じ目印。見つける：AL22）', '保存データ互換', 'games/amai/logic.js', 'mix(pic.W); mix(pic.H); mix(m ? 1 : 0);', 'mix(pic.W); mix(pic.H);'],
+  // 道のり・ありんこの道（2026-11-06。ユーザー「角砂糖の上を歩いてる？」「経路の1番近いところから」。計画書 docs/plans/amai-route.md）
+  ['MA64 あまいものあつめ：取る角砂糖を道のりでなく前の順（まっすぐの近さ）で選ぶ（見つける：AL23）', 'ルール', 'games/amai/logic.js', 'const nk = (dv + 1) * R + rank[j];', 'const nk = rank[j];'],
+  ['MA65 あまいものあつめ：ありんこが、まだ持ち上げていない角砂糖の上を待たずに通る（見つける：AW38）', '見た目', 'games/amai/render.js', 'if (liftAt - arrive > t0) t0 = liftAt - arrive;', ''],
+  ['MA66 あまいものあつめ：運ぶときに #fx の位置を測り直さない（ありんこと道がずれて角砂糖の上に見える。見つける：AW38）', '見た目', 'games/amai/render.js', '        sizeFx();\n        const np = nestPoint();', '        const np = nestPoint();'],
+  ['MA67 あまいものあつめ：絵の目印に決まりの版を混ぜない（v67 の途中の保存を今の決まりで再生する。見つける：AL22・AW37）', '保存データ互換', 'games/amai/logic.js', 'mix(0xa5); mix(RULE_V);', ''],
+  ['MA68 あまいものあつめ：外が広がっても道のりを直さない（見つける：AL23）', 'ルール', 'games/amai/logic.js', '    if (n) relax(b, q, n);\n', ''],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

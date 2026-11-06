@@ -13,7 +13,8 @@
  *     次の press・step で確かめ直さない。外から来た state は validateState を通す。
  *   - 「外」（外とつながった空き）は cells から求める。速さのため、cells の配列ごとに外の表を覚えておき（WeakMap）、
  *     1 はこびでは運んだマスのまわりだけ足す（閉じた空きが外とつながったら、その空きをたどって外にする）。
- *   - 運ぶ順（巣に近い → 下 → 左）は、絵の大きさごとにマスを並べた表 ord を 1 回作り、前から見て最初に当たるマスを取る。
+ *   - 取る角砂糖は、巣から空いたマスと外の枠を歩く道のりがいちばん短いふちの角砂糖（2026-11-06）。同じ道のりなら ord（巣に近い → 下 → 左）の順。
+ *     盤ごとに道のりの表と色ごとの山を持ち、運ぶたびに短くなった所だけ直す（「道のり」の節）。
  *   - 生成（createLevel）も、確かめも、画面と同じ press・step（中の pressImpl・stepImpl）を通る。
  *   - 生成の上限は時間ではなく手間の数（work）。どの端末でも同じ面になる。
  */
@@ -373,14 +374,109 @@
     return o;
   }
 
-  // 盤：{ W, H, cells, out, ord, own }。own が false の間は state の配列をそのまま読み、運ぶときに写す
-  const outCache = new WeakMap();   // cells の配列 → { out: 外の表, lists: 色ごとの並び }
+  // ---------------------------------------------------------------- 道のり（2026-11-06。計画書 docs/plans/amai-route.md §2 B）
+  // ユーザー「経路の1番近いところから、に変更できますか？」：取る角砂糖は、巣から**空いたマスと外の枠だけを歩く道のり**が
+  // いちばん短いふちの角砂糖（同じ道のりなら ord の順＝前の決まりの順）。
+  // 道のりの格子は、絵のまわりに 1 マスの「外の枠」を足した (W+2)×(H+2)。巣（出発）は下の枠の (round((W−1)/2)+1, H+1)。
+  // 歩けるのは外の枠と「外」（外とつながった空き）のマス。描画（render.js の findRoute）も同じ格子・同じ出発で幅優先に歩くので、
+  // ありんこが歩く道の長さ＝ここで比べた道のり（選んだ理由が見て分かる）。
+  // 速さ：盤ごとに「道のりの表 dist」と「色ごとのふちの角砂糖の山（小さい順のヒープ。鍵＝(道のり)×R＋順位）」を持ち、
+  // 運ぶたびに、運んだマス（と、つながった閉じた空き）から短くなった所だけ幅優先で直す（外が広がると道のりは短くなるだけ）。
+  // findTarget は山の先頭を見るだけ（O(1)・盤を変えない）。
+  const INF = 0x3fffffff;
+  const rankCache = new Map();
+  function rankFor(W, H) {
+    const key = W * 100 + H;
+    let r = rankCache.get(key);
+    if (r) return r;
+    const ord = orderFor(W, H);
+    r = new Int32Array(W * H);
+    for (let k = 0; k < ord.length; k++) r[ord[k]] = k;
+    rankCache.set(key, r);
+    return r;
+  }
+  // 巣の出発のマス（外の枠つきの格子の番号）。render.js の findRoute と同じ
+  function nestV(W, H) { return (H + 1) * (W + 2) + Math.min(W + 1, Math.max(0, Math.round((W - 1) / 2) + 1)); }
+  const qCache = new Map();
+  function queueFor(n) { let q = qCache.get(n); if (!q) { q = new Int32Array(n); qCache.set(n, q); } return q; }
+  // ヒープ（色ごと）。鍵は rt.key[マス]、場所は rt.pos[マス]
+  function hUp(h, k, key, pos) {
+    const v = h[k], kv = key[v];
+    while (k > 0) { const p = (k - 1) >> 1, u = h[p]; if (key[u] <= kv) break; h[k] = u; pos[u] = k; k = p; }
+    h[k] = v; pos[v] = k;
+  }
+  function hDown(h, n, k, key, pos) {
+    const v = h[k], kv = key[v];
+    for (;;) {
+      let c = 2 * k + 1;
+      if (c >= n) break;
+      if (c + 1 < n && key[h[c + 1]] < key[h[c]]) c++;
+      if (key[h[c]] >= kv) break;
+      h[k] = h[c]; pos[h[k]] = k; k = c;
+    }
+    h[k] = v; pos[v] = k;
+  }
+  // 歩けるマス v（外の枠つき）のまわりの角砂糖の鍵を、v の道のり dv から直す
+  function touch(b, v, dv) {
+    const W = b.W, H = b.H, vw = W + 2, rt = b.rt, cells = b.cells, key = rt.key, pos = rt.pos, rank = rt.rank, R = W * H;
+    const vx = v % vw, vy = (v - vx) / vw;
+    for (let d = 0; d < 4; d++) {
+      const x = (d === 0 ? vx - 1 : d === 1 ? vx + 1 : vx) - 1, y = (d === 2 ? vy - 1 : d === 3 ? vy + 1 : vy) - 1;
+      if (x < 0 || y < 0 || x >= W || y >= H) continue;
+      const j = y * W + x, c = cells[j];
+      if (c < 0) continue;
+      const nk = (dv + 1) * R + rank[j];
+      if (nk >= key[j]) continue;
+      key[j] = nk;
+      const h = rt.heap[c];
+      if (pos[j] < 0) { const n = rt.hn[c]++; h[n] = j; hUp(h, n, key, pos); } else hUp(h, pos[j], key, pos);
+    }
+  }
+  function walkable(b, v) {
+    const vw = b.W + 2, vx = v % vw, vy = (v - vx) / vw;
+    if (vx === 0 || vy === 0 || vx === vw - 1 || vy === b.H + 1) return true;
+    return b.out[(vy - 1) * b.W + (vx - 1)] === 1;
+  }
+  // q[0..n) の歩けるマス（道のりは入れてある）から、短くなった所を幅優先で広げる。変わったマスのまわりの鍵も直す
+  function relax(b, q, n) {
+    const vw = b.W + 2, vh = b.H + 2, dist = b.rt.dist;
+    let head = 0;
+    while (head < n) {
+      const v = q[head++], dv = dist[v];
+      touch(b, v, dv);
+      const vx = v % vw, vy = (v - vx) / vw, nd = dv + 1;
+      if (vx > 0 && dist[v - 1] > nd && walkable(b, v - 1)) { dist[v - 1] = nd; q[n++] = v - 1; }
+      if (vx < vw - 1 && dist[v + 1] > nd && walkable(b, v + 1)) { dist[v + 1] = nd; q[n++] = v + 1; }
+      if (vy > 0 && dist[v - vw] > nd && walkable(b, v - vw)) { dist[v - vw] = nd; q[n++] = v - vw; }
+      if (vy < vh - 1 && dist[v + vw] > nd && walkable(b, v + vw)) { dist[v + vw] = nd; q[n++] = v + vw; }
+    }
+  }
+  // 盤 b（W・H・cells・out）の道のりの表と山を一から作る
+  function buildRoute(b) {
+    const W = b.W, H = b.H, n = W * H, vn = (W + 2) * (H + 2);
+    const cnt = new Int32Array(COLORS.length);
+    for (let i = 0; i < n; i++) { const c = b.cells[i]; if (c >= 0) cnt[c]++; }
+    const heap = [];
+    for (let c = 0; c < COLORS.length; c++) heap.push(new Int32Array(cnt[c]));
+    b.rt = { dist: new Int32Array(vn).fill(INF), key: new Float64Array(n).fill(Infinity), pos: new Int32Array(n).fill(-1), heap, hn: new Int32Array(COLORS.length), rank: rankFor(W, H) };
+    const q = queueFor(vn), st = nestV(W, H);
+    b.rt.dist[st] = 0; q[0] = st;
+    relax(b, q, 1);
+    return b.rt;
+  }
+  function copyRoute(rt) {
+    return { dist: rt.dist.slice(), key: rt.key.slice(), pos: rt.pos.slice(), heap: rt.heap.map((h) => h.slice()), hn: rt.hn.slice(), rank: rt.rank };
+  }
+
+  // 盤：{ W, H, cells, out, rt, ord, own }。own が false の間は state の配列をそのまま読み、運ぶときに写す
+  const outCache = new WeakMap();   // cells の配列 → { out: 外の表, lists: 色ごとの並び, rt: 道のりの表と山 }
   function boardOf(s) {
     let e = outCache.get(s.cells);
     const ord = orderFor(s.W, s.H);
-    if (!e) { e = { out: computeOutside(s.W, s.H, s.cells), lists: null }; outCache.set(s.cells, e); }
-    if (!e.lists) e.lists = buildLists(s.W, s.H, s.cells, ord);
-    return { W: s.W, H: s.H, cells: s.cells, out: e.out, ord, own: false, lists: e.lists, ptr: new Int32Array(COLORS.length) };
+    if (!e) { e = { out: null, lists: null, rt: null }; outCache.set(s.cells, e); }
+    if (!e.out) { e.out = computeOutside(s.W, s.H, s.cells); e.rt = null; }
+    if (!e.rt) e.rt = buildRoute({ W: s.W, H: s.H, cells: s.cells, out: e.out });
+    return { W: s.W, H: s.H, cells: s.cells, out: e.out, rt: e.rt, ord, own: false, lists: e.lists, ptr: null, e };
   }
   function isEdge(b, i) {
     const W = b.W, x = i % W, y = (i - x) / W;
@@ -388,11 +484,8 @@
     const o = b.out;
     return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;
   }
-  // 色ごとの「運ぶ順のマスの並び」（この盤のあいだだけ使う表）。
+  // 色ごとの「運ぶ順のマスの並び」（生成で「まだ届かない分」を数える findAny だけが使う。この盤のあいだだけ使う表）。
   // マスは運ばれて空きになるだけ（色が増えることはない）ので、先頭の目印 p は後ろへ進めるだけでよい。
-  // 作るのは 1 回（全部の色をまとめて）。findTarget が絵の全マスを見なくてよくなる（マスが 4 倍になった分の重さを戻す）
-  // 並びそのものは盤をまたいで使い回す（運ばれて消えたマスが混じっていてもよい。見たときに色がちがえば飛ばす）。
-  // 先頭の目印だけは盤ごとに持つ（同じ局面から別の手を試すときに、進めた目印が混ざらないように）
   function buildLists(W, H, cells, ord) {
     const tmp = [];
     for (let c = 0; c < COLORS.length; c++) tmp.push([]);
@@ -405,23 +498,15 @@
     return out;
   }
   function colorLists(b) {
-    if (!b.lists) b.lists = buildLists(b.W, b.H, b.cells, b.ord);
+    if (!b.lists) { b.lists = buildLists(b.W, b.H, b.cells, b.ord); if (b.e && !b.own) b.e.lists = b.lists; }
     if (!b.ptr) b.ptr = new Int32Array(COLORS.length);
     return b.lists;
   }
-  // その色の、運ぶ順で一番先のふちの角砂糖（無ければ -1）
+  // その色の、道のりがいちばん短いふちの角砂糖（同じなら運ぶ順 ord が先のもの。無ければ -1）。山の先頭を見るだけ
   function findTarget(b, color) {
-    const a = colorLists(b)[color];
-    if (!a) return -1;
-    const cells = b.cells, ptr = b.ptr;
-    let p = ptr[color];
-    while (p < a.length && cells[a[p]] !== color) p++;
-    ptr[color] = p;
-    for (let k = p; k < a.length; k++) {
-      const i = a[k];
-      if (cells[i] === color && isEdge(b, i)) return i;
-    }
-    return -1;
+    const rt = b.rt;
+    if (!rt || !(color >= 0 && color < rt.hn.length) || rt.hn[color] === 0) return -1;
+    return rt.heap[color][0];
   }
   // その色の、運ぶ順で一番先の角砂糖（ふちでなくてもよい。生成で「まだ届かない分」を数えるときだけ使う）
   function findAny(b, color) {
@@ -433,12 +518,50 @@
     ptr[color] = p;
     return p < a.length ? a[p] : -1;
   }
-  // マス i を運ぶ（空きにして、外を広げる）
+  // マス i を運ぶ（空きにして、外を広げ、道のりと山を直す）
   function takeCell(b, i) {
-    if (!b.own) { b.cells = Array.from(b.cells); b.out = Uint8Array.from(b.out); b.own = true; }
-    b.cells[i] = -1;
-    b.out[i] = 1;
-    flood(b.W, b.H, b.cells, b.out, [i]);
+    if (!b.own) {
+      b.cells = Array.from(b.cells);
+      // 外の表と道のりの表は、覚えた元（前の局面の cells の表）から引き取って書きかえる（写すと 1 はこびごとに重い）。
+      // 元の局面をもう一度使うとき（1手もどし・生成の別の手）は boardOf が cells から作り直す
+      const e = b.e;
+      if (e && e.out === b.out && e.rt === b.rt) { e.out = null; e.rt = null; }
+      else { b.out = Uint8Array.from(b.out); b.rt = copyRoute(b.rt); }
+      b.own = true; b.e = null;
+    }
+    const W = b.W, H = b.H, vw = W + 2, rt = b.rt, cells = b.cells, out = b.out;
+    const c = cells[i];
+    if (c >= 0 && rt.pos[i] >= 0) {
+      // 山から抜く（最後の要素を i の場所へ入れて、上か下へ直す）
+      const h = rt.heap[c], k = rt.pos[i], last = h[--rt.hn[c]];
+      rt.pos[i] = -1;
+      if (last !== i) { h[k] = last; rt.pos[last] = k; hUp(h, k, rt.key, rt.pos); hDown(h, rt.hn[c], rt.pos[last], rt.key, rt.pos); }
+    }
+    rt.key[i] = Infinity;
+    cells[i] = -1;
+    const q = queueFor(vw * (H + 2));
+    let n = 0;
+    if (!out[i]) {
+      // 外を広げる（閉じた空きとつながったら、その空きも外にする）。新しく外になったマスを覚える
+      out[i] = 1;
+      const add = [i];
+      for (let t = 0; t < add.length; t++) {
+        const k = add[t], x = k % W, y = (k - x) / W;
+        if (x > 0 && cells[k - 1] < 0 && !out[k - 1]) { out[k - 1] = 1; add.push(k - 1); }
+        if (x < W - 1 && cells[k + 1] < 0 && !out[k + 1]) { out[k + 1] = 1; add.push(k + 1); }
+        if (y > 0 && cells[k - W] < 0 && !out[k - W]) { out[k - W] = 1; add.push(k - W); }
+        if (y < H - 1 && cells[k + W] < 0 && !out[k + W]) { out[k + W] = 1; add.push(k + W); }
+      }
+    }
+    // i の道のり＝まわりの歩けるマスの道のり＋1（閉じた空きは i を通ってだけつながるので、i から広げれば足りる）
+    const x = i % W, y = (i - x) / W, v = (y + 1) * vw + x + 1, dist = rt.dist;
+    let m = INF;
+    if (dist[v - 1] < m && walkable(b, v - 1)) m = dist[v - 1];
+    if (dist[v + 1] < m && walkable(b, v + 1)) m = dist[v + 1];
+    if (dist[v - vw] < m && walkable(b, v - vw)) m = dist[v - vw];
+    if (dist[v + vw] < m && walkable(b, v + vw)) m = dist[v + vw];
+    if (m < INF && m + 1 < dist[v]) { dist[v] = m + 1; q[n++] = v; }
+    if (n) relax(b, q, n);
   }
 
   // ---------------------------------------------------------------- 局面
@@ -622,10 +745,10 @@
       slots[k] = count === 0 ? null : { id: bx.id, color: bx.color, count };
     }
     if (n === 0) return { state: s, moved: false, carries: Object.freeze([]), n: 0, won: false, stuck: skipStuck ? false : stuckImpl(s, b) };
-    outCache.set(b.cells, { out: b.out, lists: b.lists });
+    outCache.set(b.cells, { out: b.out, lists: b.lists, rt: b.rt });
     const state = mkState(s, { cells: b.cells, left, slots, t: s.t + 1, won: left === 0 }, skipStuck);
     // skipStuck：生成の再生（verify・solveSearch）では stuck を見ないので数えない（マスが 4 倍になった分の手間を減らす）
-    const stuck = skipStuck ? false : stuckImpl(state, { ...b, own: false, ptr: new Int32Array(COLORS.length) });
+    const stuck = skipStuck ? false : stuckImpl(state, { ...b, own: false, ptr: null, e: null });
     return { state, moved: true, carries: Object.freeze(carries), n, won: state.won, stuck, board: b };
   }
 
@@ -646,7 +769,7 @@
     try { const s = asState(state); return s ? stuckImpl(s) : false; } catch (e) { return false; }
   }
 
-  // 今のふちの角砂糖（運ぶ順。color を決めればその色だけ）
+  // 今のふちの角砂糖（運ぶ順＝道のりの短い順、同じなら ord の順。color を決めればその色だけ）
   function edgeCells(state, color) {
     try {
       const s = asState(state);
@@ -654,11 +777,12 @@
       const b = boardOf(s);
       const want = color === undefined || color === null ? null : color;
       const res = [];
-      for (let k = 0; k < b.ord.length; k++) {
-        const i = b.ord[k];
+      for (let i = 0; i < s.cells.length; i++) {
         const v = s.cells[i];
         if (v >= 0 && (want === null || v === want) && isEdge(b, i)) res.push(i);
       }
+      const key = b.rt.key;
+      res.sort((a, z) => key[a] - key[z]);
       return res;
     } catch (e) { return []; }
   }
@@ -772,7 +896,9 @@
 
   function picBoard(pic) {
     const cells = Array.from(pic.cells);
-    return { W: pic.W, H: pic.H, cells, out: computeOutside(pic.W, pic.H, cells), ord: orderFor(pic.W, pic.H), own: true, lists: null, ptr: null };
+    const b = { W: pic.W, H: pic.H, cells, out: computeOutside(pic.W, pic.H, cells), rt: null, ord: orderFor(pic.W, pic.H), own: true, lists: null, ptr: null, e: null };
+    buildRoute(b);
+    return b;
   }
 
   // 運び切る順 S（1 箱だけで運び切れる箱の列）。chooser(cands, R, rem) → { color, n }
@@ -1059,7 +1185,10 @@
 
   // 絵の目印（課題 AM-18。2026-11-05）：その面の絵の地図（W・H・cells。反転した面は反転した cells）と mirror の FNV-1a 32 bit を 8 桁の 16 進の文字にする。
   // 途中の保存（amai.save の picSig）に書き、開くときに今の絵の目印と比べる。合わなければ押した手を使わずその面の最初から（§4.2）
+  // 2026-11-06（計画書 amai-route.md §2 B）：取る角砂糖の決まり（道のり）が変わったので、決まりの版 RULE_V も混ぜる。
+  // 前の版（v67 まで。RULE_V を混ぜていない目印）の途中の保存は合わなくなり、同じ面の最初から（押した手は今の決まりでは別の局面になるため）
   const SIG_RE = /^[0-9a-f]{8}$/;
+  const RULE_V = 2;   // 1＝v67 まで（まっすぐの近さ）・2＝道のり
   const sigCache = new Map();
   function pictureSig(pick) {
     try {
@@ -1073,20 +1202,20 @@
       const mix = (v) => { h ^= v & 0xff; h = Math.imul(h, 0x01000193) >>> 0; };
       mix(pic.W); mix(pic.H); mix(m ? 1 : 0);
       for (let i = 0; i < pic.cells.length; i++) mix(pic.cells[i] + 1);
+      mix(0xa5); mix(RULE_V);   // 決まりの版（2026-11-06）
       const sig = (h >>> 0).toString(16).padStart(8, "0");
       sigCache.set(pic, sig);
       return sig;
     } catch (e) { return ""; }
   }
-  // 保存（validateSave の結果）の押した手を今の盤で使ってよいか。目印が今の絵と同じなら true。
-  // 目印の無い古い保存（v66 まで）は合わないとみなす。ただし 1・2 面（りんご・さくらんぼ。絵が変わっていない）は目印が無くても true
+  // 保存（validateSave の結果）の押した手を今の盤で使ってよいか。目印が今の絵と決まりの目印と同じなら true。
+  // 目印の無い古い保存（v66 まで）は、どの面も合わないとみなす（2026-11-06 から。前は 1・2 面だけ true だったが、決まりが変わったので 1・2 面も最初から）
   function saveFits(sv) {
     try {
       if (!sv || typeof sv !== "object" || !isInt(sv.level) || sv.level < 1 || !sv.pick) return false;
       const now = pictureSig(sv.pick);
       if (now === "") return false;
-      if (typeof sv.sig === "string" && sv.sig !== "") return sv.sig === now;
-      return sv.level <= 2;
+      return typeof sv.sig === "string" && sv.sig !== "" && sv.sig === now;
     } catch (e) { return false; }
   }
 

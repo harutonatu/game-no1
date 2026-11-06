@@ -1407,7 +1407,7 @@
     let ok = false;
     if (sv && Number.isSafeInteger(sv.level) && sv.level >= 1) {
       // 保存の絵が PICTURE_ORDER に無い：pickPicture で選び直してその面の最初から
-      // 絵の目印（picSig）が今の絵と合わない（絵が変わった・目印の無い古い保存の 3 面から）：押した手を使わず同じ絵でその面の最初から（課題 AM-18）
+      // 絵の目印（picSig）が今の絵と合わない（絵が変わった・決まりが変わった（v67 までの保存）・目印の無い古い保存）：押した手を使わず同じ絵でその面の最初から（課題 AM-18・amai-route.md）
       const known = sv.pick && inOrder(sv.pick.id);
       const fits = known && !!safeCall(() => L.saveFits(sv), false);
       ok = startLevel(sv.level, known ? sv.pick : null, fits ? sv.presses : [], fits ? sv.t : 0);

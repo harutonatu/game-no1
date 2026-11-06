@@ -298,6 +298,8 @@
     let gen = 0;
     const frameTimes = [];
     let redraws = 0, fullDraws = 0;
+    // 歩く道の数え（テスト AW38 と計画書 amai-route.md の測り方）：道あり・予備の道・見えている角砂糖の上にいたコマ数
+    const walkStat = { routes: 0, noRoute: 0, antFrames: 0, onSugar: 0, onPending: 0, waited: 0 };
 
     function active() { return tweens.size || ants.length || parts.length || rings.length || vanish.length || celeb; }
     function kick() { if (!raf && !paused) raf = raf_(frame); }
@@ -545,16 +547,21 @@
       if (walkVer !== gridVer || !walkGrid) { walkGrid = buildWalk(); walkVer = gridVer; }
       return walkGrid;
     }
-    // 目当ての角砂糖（cell）のとなりの、歩けるマスまでの道。見つからなければ null
-    function findRoute(cell) {
+    // 目当ての角砂糖（cell）のとなりの、歩けるマスまでの道。見つからなければ null。
+    // block：まだ歩けないとみなすマス（同じ 1 はこびで、この角砂糖より後に logic が運んだマス）。
+    // logic（logic.js の「道のり」）と同じ格子・同じ出発で幅優先に歩くので、道の長さ＝logic が比べた道のり（2026-11-06。amai-route.md §2 B）
+    function findRoute(cell, block) {
       if (!W || !H) return null;
-      const hit = routeCache.get(cell);
-      if (hit !== undefined) return hit;
+      const useCache = !block || !block.length;
+      if (useCache) { const hit = routeCache.get(cell); if (hit !== undefined) return hit; }
       const vw = W + 2, vh = H + 2, a = walkNow();
       const tx = (cell % W) + 1, ty = Math.floor(cell / W) + 1;
       // 目当てのマスそのものは通らない（logic で運ばれたことになっていて歩けるとしていても、
       // そのありんこにとってはまだ角砂糖なので、となりで止まって手を伸ばす）
-      const tk = ty * vw + tx, tOpen = a[tk]; if (tOpen) a[tk] = 0;
+      const shut = [];
+      const close = (i) => { if (!Number.isSafeInteger(i) || i < 0 || i >= W * H) return; const k = (Math.floor(i / W) + 1) * vw + (i % W) + 1; if (a[k]) { a[k] = 0; shut.push(k); } };
+      close(cell);
+      if (block) for (const i of block) close(i);
       const goal = new Uint8Array(vw * vh);
       let goals = 0;
       const mark = (vx, vy) => {
@@ -563,9 +570,9 @@
         if (a[k]) { goal[k] = 1; goals++; }
       };
       mark(tx - 1, ty); mark(tx + 1, ty); mark(tx, ty - 1); mark(tx, ty + 1);
-      const fin = (r) => { if (tOpen) a[tk] = tOpen; routeCache.set(cell, r); return r; };
+      const fin = (r) => { for (const k of shut) a[k] = 1; if (useCache) routeCache.set(cell, r); return r; };
       if (!goals) return fin(null);
-      const sx = Math.min(vw - 1, Math.max(0, Math.round((W - 1) / 2) + 1)), sy = vh - 1;   // 巣の下（外の枠）
+      const sx = Math.min(vw - 1, Math.max(0, Math.round((W - 1) / 2) + 1)), sy = vh - 1;   // 巣の下（外の枠）。logic.js の nestV と同じ
       const start = sy * vw + sx;
       const prev = new Int32Array(vw * vh).fill(-1);
       const seen = new Uint8Array(vw * vh);
@@ -917,6 +924,14 @@
         }
         shown.push({ a, at });
       }
+      // ありんこの中心が、見えている角砂糖（目当てのマスは除く）の上にいるか数える（持ち上げを全部すませてから見る）
+      for (const it of shown) {
+        const a = it.a, at = it.at;
+        if (!(a.kk > 0 && cell > 0)) continue;
+        walkStat.antFrames++;
+        const gx = Math.floor(((at.x - a.ox) / a.kk - padX) / cell), gy = Math.floor(((at.y - a.oy) / a.kk - padY) / cell);
+        if (gx >= 0 && gy >= 0 && gx < W && gy < H) { const gi = gy * W + gx; if (gi !== a.cell && isColor(shownCells[gi])) { walkStat.onSugar++; if (cur && Array.isArray(cur.cells) && !isColor(cur.cells[gi])) walkStat.onPending++; } }
+      }
       if (shown.length) {
         // 行列の道（砂の細い線）。ありんこが通る所だけ、うすく 1 本の線にまとめて描く（strokeは 1 回）
         fctx.save();
@@ -1046,9 +1061,17 @@
       const list = out && Array.isArray(out.carries) ? out.carries : [];
       if (list.length) {
         const prect = rectOf(pic);
+        // 描く板（#fx）の位置も、絵・わくと同じ瞬間に測り直す（2026-11-06。amai-route.md §3 A）。
+        // 前は layout() のときだけ測った位置を使い続けたので、その後に #fx の位置がずれて見えると（録画の 84 面では左へ約 108pt）、
+        // ありんこと道の線がまるごと横へずれて、角砂糖の上を歩いて見えた
+        sizeFx();
         const np = nestPoint();
         const k = fast ? 0.5 : 1;
-        for (const c of list) {
+        // まだ持ち上げていない角砂糖 → それを運ぶありんこ（道がそのマスを通るなら、持ち上げた後に通るよう出発を待つ）
+        const pend = new Map();
+        for (const a of ants) if (!a.lifted) pend.set(a.cell, a);
+        for (let ci = 0; ci < list.length; ci++) {
+          const c = list[ci];
           if (!c || !Number.isSafeInteger(c.cell)) continue;
           const slotEl = slotEls[c.slot];
           if (calm || !fctx || ants.length >= MAX_ANTS || !slotEl || !cssW) {
@@ -1060,7 +1083,9 @@
           const jitter = (((c.id | 0) * 37 + c.cell * 13) % 9 - 4) * 1.2;
           // 道のり（R-3 の直し 2026-10-30）：わく → 巣の口 → **空いているマスだけをたどって** 目当ての角砂糖のとなりまで
           // → そこから手を伸ばして持ち上げる → 同じ道をもどって巣へ。角砂糖のあるマスの上は絶対に通らない。
-          const route = findRoute(c.cell);
+          const later = [];
+          for (let cj = ci + 1; cj < list.length; cj++) if (list[cj] && Number.isSafeInteger(list[cj].cell)) later.push(list[cj].cell);
+          const route = findRoute(c.cell, later);
           const p0 = { x: sr.left + sr.width / 2 + jitter, y: sr.top - 2 };
           const p1 = { x: np.x + jitter, y: np.top };                // 巣の口
           const p3 = { x: np.x, y: np.y };                           // 巣の中
@@ -1097,11 +1122,34 @@
           const prev = pts[liftIdx - 1] || p1;
           const walkMs = WALK_MAX_MS - EXIT_MS - LIFT_MS;
           const v = Math.min(WALK_V_MAX, Math.max(WALK_V, L / (walkMs / 1000)));
+          // 道が「まだ持ち上げていない角砂糖」（前のありんこが運ぶマス）を通るなら、そのマスに入る前に持ち上がるよう、出発を遅らせる。
+          // 見えている角砂糖の上は通らない（2026-11-06。ユーザー「角砂糖の上を歩いてる？」。amai-route.md §2 A）
+          let t0 = clock;
+          if (route && route.length) {
+            const kk = cssW ? prect.width / cssW : 1, stepPx = cell * kk;
+            const head = seg[0] + seg[1];                              // わく → 巣の口 → 道の最初のマス
+            for (let j = 1; j < route.length; j++) {
+              const vk = route[j], vx = vk % (W + 2), vy = (vk - vx) / (W + 2);
+              if (vx < 1 || vy < 1 || vx > W || vy > H) continue;
+              const i = (vy - 1) * W + (vx - 1);
+              if (!isColor(shownCells[i])) continue;
+              const b = pend.get(i);
+              if (!b) { removeCell(i); continue; }                     // 運ぶありんこがいない（数の上限など）：先に消す
+              const liftAt = b.t0 + b.k * (EXIT_MS + b.la / b.v * 1000 + LIFT_MS / 2) + 40;
+              const arrive = k * (EXIT_MS + Math.max(0, head + (j - 0.7) * stepPx) / v * 1000);
+              if (liftAt - arrive > t0) t0 = liftAt - arrive;
+            }
+            if (t0 > clock) walkStat.waited++;
+          }
           const hex = colorInfo(c.color).hex;
-          ants.push({
-            t0: clock, k, p: pts, seg, L, la, v, liftIdx, liftAng: Math.atan2(cc.y - prev.y, cc.x - prev.x),
-            sx: sr.left + sr.width / 2, sy: sr.top + sr.height * 0.4, cell: c.cell, hex, hexD: mix(hex, "#000000", 0.35), hexL: mix(hex, "#ffffff", 0.45), s: antScale(), lifted: false
-          });
+          const ant = {
+            t0, k, p: pts, seg, L, la, v, liftIdx, liftAng: Math.atan2(cc.y - prev.y, cc.x - prev.x),
+            sx: sr.left + sr.width / 2, sy: sr.top + sr.height * 0.4, cell: c.cell, hex, hexD: mix(hex, "#000000", 0.35), hexL: mix(hex, "#ffffff", 0.45), s: antScale(), lifted: false,
+            ox: prect.left, oy: prect.top, kk: cssW ? prect.width / cssW : 0
+          };
+          ants.push(ant);
+          pend.set(c.cell, ant);
+          if (route && route.length) walkStat.routes++; else walkStat.noRoute++;
         }
         kick();
       }
@@ -1301,7 +1349,7 @@
     function stats() {
       const s = frameTimes.slice().sort((a, b) => a - b);
       const med = s.length ? s[Math.floor(s.length / 2)] : 0;
-      return { ants: ants.length, frameMs: Math.round(med * 100) / 100, redraws, full: fullDraws, running: !!raf, cell };
+      return { ants: ants.length, frameMs: Math.round(med * 100) / 100, redraws, full: fullDraws, running: !!raf, cell, walk: Object.assign({}, walkStat), fx: [fxL, fxT] };
     }
     setCalm(calm);
 

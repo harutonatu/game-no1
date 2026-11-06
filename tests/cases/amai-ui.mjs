@@ -2032,7 +2032,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW37', tier: 'smoke', title: 'あまいもの 途中の保存の絵の目印（picSig。課題 AM-18）：①目印が合う保存は開き直すと続きから ②目印が合わない保存は同じ面の最初から（押した数 0・t 0。保存は今の目印に直る）③目印の無い古い保存（v66 の形）は 5 面なら最初から・1 面は続きから ④壊れた picSig（数・長すぎる・形ちがい）でも落ちずに同じ面の最初から。ベスト・ずかん・花輪は変わらない',
+    id: 'AW37', tier: 'smoke', title: 'あまいもの 途中の保存の絵の目印（picSig。課題 AM-18）：①目印が合う保存は開き直すと続きから ②目印が合わない保存は同じ面の最初から（押した数 0・t 0。保存は今の目印に直る）③目印の無い古い保存（v66 の形）は 5 面も 1 面も最初から（2026-11-06 から）・決まりの版を混ぜる前の目印（v67 の形）も最初から ④壊れた picSig（数・長すぎる・形ちがい）でも落ちずに同じ面の最初から。ベスト・ずかん・花輪は変わらない',
     async run({ browser, check }) {
       const keep = { 'amai.best': '7', 'amai.book': J({ v: 1, got: { ringo: 2 } }), 'amai.clean': J({ v: 1, ids: ['ringo'] }), 'amai.gold': J({ v: 1, ids: ['ringo'] }) };
       const { ctx, page } = await openG(browser, 'AW37', { v: SMOKE_V(), extra: keep });
@@ -2055,7 +2055,12 @@ export const tests = [
       const { picSig: _a, ...old5 } = save5, { picSig: _b, ...old1 } = save1;
       const s3 = await open(J(old5));
       const s3b = await open(J(old1));
-      check(`③目印の無い古い保存：5 面は最初から（押した数 ${s3 && s3.presses}）・1 面は続きから（押した数 ${s3b && s3b.presses}）`, !!s3 && s3.level === 5 && s3.presses === 0 && s3.t === 0 && !!s3b && s3b.level === 1 && s3b.presses === 1, { s3, s3b });
+      check(`③目印の無い古い保存：5 面も（押した数 ${s3 && s3.presses}）1 面も（押した数 ${s3b && s3b.presses}）最初から（決まりが変わった。amai-route.md）`, !!s3 && s3.level === 5 && s3.presses === 0 && s3.t === 0 && !!s3b && s3b.level === 1 && s3b.presses === 0 && s3b.t === 0, { s3, s3b });
+      // v67 の形の目印（決まりの版を混ぜる前。絵の地図と mirror だけの FNV-1a）：ページの絵から作る
+      const sig67 = await page.evaluate((lv) => { const L = window.AmaiLogic; const pk = L.pickPicture(lv, null); const pic = L.pictureById(pk.id, false); let h = 0x811c9dc5; const mx = (v) => { h ^= v & 0xff; h = Math.imul(h, 0x01000193) >>> 0; }; mx(pic.W); mx(pic.H); mx(0); for (const c of pic.cells) mx(c + 1); return (h >>> 0).toString(16).padStart(8, '0'); }, 5);
+      const s67 = await open(J({ ...save5, picSig: sig67 }));
+      const re67 = JSON.parse((await stored(page, 'amai.save')) || '{}');
+      check(`v67 の形の目印（${sig67}・今は ${sig5}）の保存：5 面の最初から（押した数 ${s67 && s67.presses}・t ${s67 && s67.t}）・保存は今の目印に直る`, sig67 !== sig5 && !!s67 && s67.level === 5 && s67.presses === 0 && s67.t === 0 && re67.picSig === sig5, { s67, re67 });
       const bad = [];
       for (const [k, v] of Object.entries({ '数': 12345678, '長すぎる': 'a'.repeat(50000), '形ちがい': 'XYZ', 'null': null, 'オブジェクト': { a: 1 } })) {
         const s = await open(J({ ...save5, picSig: v }));
@@ -2064,6 +2069,28 @@ export const tests = [
       check('④壊れた picSig（5 通り）でも落ちず、5 面の最初から', bad.length === 0, bad);
       const after = {}; for (const k of Object.keys(keep)) after[k] = await stored(page, k);
       check('ベスト・ずかん・花輪（amai.best・amai.book・amai.clean・amai.gold）は変わらない', J(after) === J(keep), after);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'AW38', tier: 'full', title: 'あまいもの ありんこは見えている角砂糖の上を歩かない（2026-11-06。ユーザー「角砂糖の上を歩いてる？」。amai-route.md §2 A）：①#fx の位置が layout の後にずれても、運ぶたびに測り直して描く位置がそろう（録画の 84 面では ありんこと道が左へ約 108pt ずれていた）②84 面を はやくで 8 秒・解の順にどんどん押して、ありんこの中心が見えている角砂糖の上にいたコマ 0・予備の道（絵の外から手を伸ばす）0',
+    async run({ browser, check }) {
+      const { ctx, page } = await openG(browser, 'AW38', { opts: { clock: false }, extra: { 'amai.fast': '1' } });
+      await setLevel(page, 84);
+      await sleep(400);
+      // ① layout() のときに #fx がずれていた（の再現）：ずらして resize → layout が測る → ずれを戻す（resize は起きない）
+      await page.evaluate(() => { document.querySelector('#fx').style.transform = 'translate(108px, 8px)'; window.dispatchEvent(new Event('resize')); });
+      await sleep(300);
+      const fx0 = (await gs(page)).stats.fx;
+      await page.evaluate(() => { document.querySelector('#fx').style.transform = ''; });
+      const sol = await solutionOf(page);
+      const run = await driveFor(page, 8000, sol);
+      const g = await gs(page);
+      const live = await page.evaluate(() => { const r = document.querySelector('#fx').getBoundingClientRect(); return [r.left, r.top]; });
+      check(`①ずれた #fx を layout が測った（${J(fx0)}）あとでも、運ぶときに測り直す（今 ${J(g.stats.fx)}・本当の位置 ${J(live)}）`, Math.abs(fx0[0] - 108) < 1 && Math.abs(g.stats.fx[0] - live[0]) < 1 && Math.abs(g.stats.fx[1] - live[1]) < 1, { fx0, now: g.stats.fx, live });
+      const w = g.stats.walk;
+      check(`②8 秒で ${run.dt} はこび・ありんこ ${w.routes + w.noRoute} 匹（待って出た ${w.waited} 匹）`, run.dt > 30 && w.routes >= 30, { dt: run.dt, w });
+      check(`②ありんこの中心が見えている角砂糖の上にいたコマ ${w.onSugar}／${w.antFrames}（0 であること）・予備の道 ${w.noRoute}（0 であること）`, w.antFrames > 500 && w.onSugar === 0 && w.noRoute === 0, w);
       await ctx.close();
     },
   },
