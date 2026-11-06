@@ -831,6 +831,30 @@
       fx.height = Math.max(1, Math.round(h * d));
     }
     sizeFx();
+    // 運びのあいだに画面が動いても（向き・iOS の画面の上下・画面の切りかえ）、列が巣の真上に戻るよう測り直す（2026-11-06）。
+    // 1 コマに 1 回にまとめる。visualViewport が無くても動く。destroy() でリスナーを外す（作り直しで増え続けない）
+    let fxRaf = 0, fxOff = [];
+    function sizeFxSoon() {
+      if (fxRaf || !fx) return;
+      const rq = win.requestAnimationFrame;
+      if (typeof rq !== "function") { sizeFx(); return; }
+      fxRaf = rq.call(win, () => { fxRaf = 0; sizeFx(); });
+    }
+    function listenFx(t, names) {
+      if (!t || typeof t.addEventListener !== "function") return;
+      for (const n of names) {
+        t.addEventListener(n, sizeFxSoon);
+        fxOff.push(() => { try { t.removeEventListener(n, sizeFxSoon); } catch (e) { /* 無視 */ } });
+      }
+    }
+    listenFx(win, ["resize", "orientationchange"]);
+    listenFx(win.visualViewport, ["resize", "scroll"]);
+    function destroy() {
+      for (const f of fxOff) f();
+      fxOff = [];
+      if (fxRaf && typeof win.cancelAnimationFrame === "function") { try { win.cancelAnimationFrame(fxRaf); } catch (e) { /* 無視 */ } }
+      fxRaf = 0;
+    }
     function clearFx() {
       if (!fctx || !fxDirty) return;
       fctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1354,7 +1378,7 @@
     setCalm(calm);
 
     return {
-      build, layout, update, carry, place, deny, celebrate, finishAll: () => finishAll(), pause, resume, setCalm, setFast, stats,
+      build, layout, update, carry, place, deny, celebrate, finishAll: () => finishAll(), destroy, pause, resume, setCalm, setFast, stats,
       get busy() { return !!(ants.length || tweens.size || vanish.length || celeb); },
       get calm() { return calm; },
       get fast() { return fast; },

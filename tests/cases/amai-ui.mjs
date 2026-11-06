@@ -2091,6 +2091,16 @@ export const tests = [
       const w = g.stats.walk;
       check(`②8 秒で ${run.dt} はこび・ありんこ ${w.routes + w.noRoute} 匹（待って出た ${w.waited} 匹）`, run.dt > 30 && w.routes >= 30, { dt: run.dt, w });
       check(`②ありんこの中心が見えている角砂糖の上にいたコマ ${w.onSugar}／${w.antFrames}（0 であること）・予備の道 ${w.noRoute}（0 であること）`, w.antFrames > 500 && w.onSugar === 0 && w.noRoute === 0, w);
+      // ③ 遊んでいる途中で画面の大きさを変える → 次の運びを待たずに、覚えている #fx の位置が本当の位置に戻る
+      await page.evaluate(() => { document.querySelector('#fx').style.transform = 'translate(37px, 5px)'; });
+      await page.setViewportSize({ width: 360, height: 700 });
+      await sleep(500);
+      await page.evaluate(() => { document.querySelector('#fx').style.transform = ''; });
+      await page.setViewportSize({ width: 402, height: 874 });
+      await sleep(500);
+      const g3 = await gs(page);
+      const live3 = await page.evaluate(() => { const r = document.querySelector('#fx').getBoundingClientRect(); return [r.left, r.top]; });
+      check(`③画面の大きさを変えたあと、次の運びを待たずに #fx の位置が本当の位置にそろう（覚えた ${J(g3.stats.fx)}・本当 ${J(live3)}）`, Math.abs(g3.stats.fx[0] - live3[0]) < 1 && Math.abs(g3.stats.fx[1] - live3[1]) < 1, { fx: g3.stats.fx, live3 });
       await ctx.close();
     },
   },
