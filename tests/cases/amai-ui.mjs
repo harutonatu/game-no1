@@ -1315,8 +1315,8 @@ export const tests = [
     id: 'AW25', tier: 'full', title: 'あまいもの 待っているのが分かる：ふちに無い色の箱をわくに入れると、ありんこが 0 匹でも .slot に data-wait="1"・「まってる」の札が出て、#hint に いま運べる色の名前（data-warn="1"）、今すぐ運べる手前の箱に data-ready="1" が付く（data-ready は いま運べる色の箱と一致する）',
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'AW25');
-      // 12 面（2026-11-05 に 3 → 12。背景をうめた絵では 3 面の手前の箱がみな ふちに出ている色になったため。ふちに無い色の手前の箱がある面）
-      await page.evaluate(() => window.AmaiGame.setLevel(12));
+      // 9 面（2026-11-05 に 3 → 12、2026-11-06 に 12 → 9。取る順を道のりにして面の作りが変わり、12 面の手前の箱がみな ふちに出ている色になったため。ふちに無い色の手前の箱がある面）
+      await page.evaluate(() => window.AmaiGame.setLevel(9));
       await wait(page, 300);
       const edge0 = await page.evaluate(() => window.AmaiGame.edgeColors());
       check(`edgeColors() が 今ふちに出ている色を返す（${JSON.stringify(edge0)}）`, Array.isArray(edge0) && edge0.length > 0, edge0);
@@ -1395,11 +1395,11 @@ export const tests = [
     },
   },
   {
-    id: 'AW27', tier: 'full', title: 'あまいもの 小さい画面（SE 縦 320×568）：①12・18・41 面などの長い案内が切れない（幅・折り返したときは高さも）②ずかんの名前が言葉の途中で折り返されない（各 span が 1 行）③48 枚そろっても見出し「ずかん」が 1 行',
+    id: 'AW27', tier: 'full', title: 'あまいもの 小さい画面（SE 縦 320×568）：①9・14・39 面などの長い案内が切れない（幅・折り返したときは高さも）②ずかんの名前が言葉の途中で折り返されない（各 span が 1 行）③48 枚そろっても見出し「ずかん」が 1 行',
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'AW27 案内', { v: SMOKE_V() });
-      // 12・18・41 面（2026-11-05 に 3・13・40 から。背景をうめた絵で、ふちに無い色の手前の箱がある M・L・XXL の面）
-      for (const lv of [12, 18, 41]) {
+      // 9・14・39 面（2026-11-05 に 3・13・40 から 12・18・41、2026-11-06 に取る順を道のりにして面の作りが変わったので 9・14・39。ふちに無い色の手前の箱がある M・L・XXL の面）
+      for (const lv of [9, 14, 39]) {
         await page.goto(AM); await wait(page, 300);
         await page.evaluate((lv) => window.AmaiGame.setLevel(lv), lv);
         await wait(page, 500);
