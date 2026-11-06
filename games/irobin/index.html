@@ -657,6 +657,9 @@
   /* なかよしちょう（v45・IB-34・IB-41）：クリアのカードの一言と、6 匹の帳面 */
   .card .nw { white-space: nowrap; }   /* おしゃれの名前は途中で折り返さない */
   .card p.friend { color: var(--accent); font-weight: 700; font-size: 15px; line-height: 1.45; word-break: keep-all; }
+  /* ボタン「なかよしちょう」の印（IB-48）：ハートの帳面の絵を、ボタンの左上の角に シールのように貼る（字の幅を取らない＝ボタンの並びは変えない） */
+  .card .btns button.book { position: relative; }
+  .card .btns button.book svg.bi { position: absolute; top: -11px; left: -6px; width: 28px; height: 28px; transform: rotate(-12deg); pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5)); }
   /* 段が上がった動物の小さな絵（IB-52）：はじめて出たときだけ 0.7 秒ふくらんで光る。押すのを妨げない（pointer-events なし）。動きを減らす設定では動かない */
   .card p.friend .ups { display: inline-flex; gap: 2px; vertical-align: -6px; margin-right: 4px; pointer-events: none; }
   .card p.friend .ups canvas { width: 24px; height: 24px; filter: drop-shadow(0 0 2px rgba(255, 216, 77, 0.6)); }

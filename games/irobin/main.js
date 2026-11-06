@@ -624,6 +624,8 @@
       setShareNote(NOTE_FAIL_COPY, true);
     }
   }
+  // ボタン「なかよしちょう」の印（IB-48）：ハートの付いた帳面の絵。読み上げには出さない（ボタンの名前は「なかよしちょう」のまま）
+  const BOOK_ICON = '<svg class="bi" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 3.5h12.5a1.5 1.5 0 0 1 1.5 1.5v15.5H6.5A1.5 1.5 0 0 1 5 19z" fill="#ffd84d"/><path d="M5 19a1.5 1.5 0 0 1 1.5-1.5H19" fill="none" stroke="#b8860b" stroke-width="1.6"/><path d="M12 15.2l-3.3-3.1a2 2 0 0 1 3.3-2.6a2 2 0 0 1 3.3 2.6z" fill="#ff5a8a"/></svg>';
   // o.again：なかよしちょうから戻ったとき（音と 400ms の押せない時間はくり返さない。フォーカスは「なかよしちょう」へ）
   function showClearCard(o) {
     const again = !!(o && o.again);
@@ -654,7 +656,7 @@
         ${canShare ? '<p class="share-note" aria-live="polite"></p>' : ""}
         <button class="cta primary" type="button" data-cmd="next">つぎの めんへ</button>
         <button class="cta half" type="button" data-cmd="menu">メニューへ</button>
-        <button class="cta half book" type="button" data-cmd="book">なかよしちょう</button>
+        <button class="cta half book" type="button" data-cmd="book">${BOOK_ICON}なかよしちょう</button>
         ${canShare ? '<button class="cta share" type="button" data-cmd="share">ともだちに おしえる</button>' : ""}
       </div>`, { h: `${c.level} めん クリア！`, s: starText, m1: `${c.moves}かい そそいで とどけたよ`, m2: p ? `（めやす ${p}かい）` : "", b: showRecord ? "あたらしい きろく！" : showQuiet ? `ここまで ${c.level}めん` : "", n: c.milestone ? nextNoteText(c) : "", f: friend }, "clear");
     if (again) focusBack = fb;   // なかよしちょうへ行く前の戻り先（瓶など）を残す

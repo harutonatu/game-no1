@@ -2899,6 +2899,21 @@ export const tests = [
         const ec = await up('動きを減らす', one, { reducedMotion: 'reduce' });
         check(`(e) IB-52：動きを減らす設定では動かない（pop ${ec.pop}・animation ${ec.anim}）・絵は出る（${ec.n}）`, !ec.pop && ec.anim === 'none' && ec.n === 1, ec);
       }
+      // ---- (f) IB-48：ボタン「なかよしちょう」に ハートの帳面の印（左上の角に貼る。字の幅を取らない・読み上げに出ない）。SE の 4 画面と 13 縦で、メニューへ と同じ行のまま・ほかのボタンにかからない ----
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari'), STD_V()]) {
+        const g = await openG(browser, `BW40 f ${v.label}`, { v, extra: { 'irobin.best': '30' } });
+        await solveToClear(g.page); await wait(g.page, 600);
+        const r = await g.page.evaluate(() => {
+          const ov = document.querySelector('#overlay'); ov.scrollTop = 0;
+          const bk = document.querySelector('#card [data-cmd="book"]'), mn = document.querySelector('#card [data-cmd="menu"]'), ic = bk.querySelector('svg.bi');
+          const q = bk.getBoundingClientRect(), m = mn.getBoundingClientRect(), iq = ic ? ic.getBoundingClientRect() : null;
+          const hitM = document.elementFromPoint(m.left + m.width / 2, m.top + m.height / 2), hitB = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2);
+          return { text: bk.textContent.trim(), icon: !!ic && ic.getAttribute('aria-hidden') === 'true', iw: iq ? iq.width : 0, iconIn: !!iq && iq.top >= 0 && iq.left >= 0 && iq.right <= innerWidth, sameRow: Math.abs(q.top - m.top) < 1, hitM: !!hitM && !!hitM.closest('[data-cmd="menu"]'), hitB: !!hitB && !!hitB.closest('[data-cmd="book"]'), h: q.height };
+        });
+        check(`(f) IB-48 ${v.label}：「なかよしちょう」に印（svg.bi・aria-hidden・${Math.round(r.iw)}px）・名前は「${r.text}」のまま・メニューへ と同じ行（${r.sameRow}）・どちらのボタンも押せる・44px 以上`,
+          r.icon && r.iw >= 20 && r.iconIn && r.text === 'なかよしちょう' && r.sameRow && r.hitM && r.hitB && r.h >= 43.5, r);
+        await g.ctx.close();
+      }
     },
   },
 ];
