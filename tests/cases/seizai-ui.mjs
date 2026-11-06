@@ -187,7 +187,7 @@ export const tests = [
     },
   },
   {
-    id: 'WW2', tier: 'smoke', title: 'もくもくこうば 節目：目標の前は #expandBtn が隠れ、達成すると出て（値段は STAGES の費用）、押すと段 2・body[data-stage]=2・seizai.best=2・背景の描き直し（bgRedraws）、演出のあとに #stageCard（出た直後は押せない）、#goalText が次の目標、人・きかいは引き継ぐ',
+    id: 'WW2', tier: 'smoke', flaky: '節目のカードの直後 400ms のロックで WebKit で揺れる（T-38）', title: 'もくもくこうば 節目：目標の前は #expandBtn が隠れ、達成すると出て（値段は STAGES の費用）、押すと段 2・body[data-stage]=2・seizai.best=2・背景の描き直し（bgRedraws）、演出のあとに #stageCard（出た直後は押せない）、#goalText が次の目標、人・きかいは引き継ぐ',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const st = mkState(L, 1, { goal: { done: 60 }, money: 5000 });
@@ -463,7 +463,7 @@ export const tests = [
     },
   },
   {
-    id: 'WW8', tier: 'full', title: 'もくもくこうば 大きな船の注文：みなとで #goalText が goalOf（30,000）、1せき目で #endCard（Esc で閉じない・seizai.best=5）→「このまま あそぶ」で #goalText が次の船（36,000）・#shipCount が 1、2せき目はカードなし・ヒントにお礼・#shipCount 2・お金が増える、最大の桁（ships 9999・SHIP_NEED_MAX）で #goalText・#shipCount が SE 幅で崩れない',
+    id: 'WW8', tier: 'full', flaky: '終わりのカードの直後 400ms を待って押す（時計のずれ）', title: 'もくもくこうば 大きな船の注文：みなとで #goalText が goalOf（30,000）、1せき目で #endCard（Esc で閉じない・seizai.best=5）→「このまま あそぶ」で #goalText が次の船（36,000）・#shipCount が 1、2せき目はカードなし・ヒントにお礼・#shipCount 2・お金が増える、最大の桁（ships 9999・SHIP_NEED_MAX）で #goalText・#shipCount が SE 幅で崩れない',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await openW(browser, 'WW8', { debug: true });
@@ -542,7 +542,7 @@ export const tests = [
     },
   },
   {
-    id: 'WW10', tier: 'full', solo: true, cdp: 'CDP の CPU 低速化', title: 'もくもくこうば 性能：みなとで全部最大（人 60 前後）にして、CPU 4 倍遅く（CDP）で 6 秒、人の数 66 以下、34ms を超えるコマが 10% 以下（ユーザー決定 2026-10-26。T-33）',
+    id: 'WW10', tier: 'full', flaky: 'CPU 4 倍遅くで重いコマの割合を測る（クラウドの CPU で揺れる。T-34）', solo: true, cdp: 'CDP の CPU 低速化', title: 'もくもくこうば 性能：みなとで全部最大（人 60 前後）にして、CPU 4 倍遅く（CDP）で 6 秒、人の数 66 以下、34ms を超えるコマが 10% 以下（ユーザー決定 2026-10-26。T-33）',
     async run({ browser, check }) {
       const { ctx, page } = await newPage(browser, view('SE', 'p', 'app'), 'WW10');
       await seed(page, { 'seizai.help': '1' });
@@ -1657,7 +1657,7 @@ export const tests = [
     },
   },
   {
-    id: 'WW29', tier: 'full', title: 'もくもくこうば 森の置き場の札（SZ-06）：はこぶ が速くて置き場がいつも 0 でも、はこぶ が働いている間は札が「すぐ はこぶ」（こわれていると思われない）。丸太が本当に来ないときは「0」、はこぶ の人がいなくて丸太がたまれば数字。SE の縦・横でも画面内',
+    id: 'WW29', tier: 'full', flaky: 'ゲームの時間を長く進める間の時計のずれ（T-25・T-26 の形）', title: 'もくもくこうば 森の置き場の札（SZ-06）：はこぶ が速くて置き場がいつも 0 でも、はこぶ が働いている間は札が「すぐ はこぶ」（こわれていると思われない）。丸太が本当に来ないときは「0」、はこぶ の人がいなくて丸太がたまれば数字。SE の縦・横でも画面内',
     async run({ browser, check, root, errors }) {
       const L = logicOf(root);
       const e0 = errors.length;

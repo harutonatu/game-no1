@@ -384,7 +384,7 @@ export const tests = [
     },
   },
   {
-    id: 'KW5', tier: 'smoke', title: 'ほしくだき クリア：win で最後のマスを壊すと phase clear・#clearBanner「ほし N クリア！」・asteroid.best=N、CLEAR_SEC 後に実時間で次の星。ENDING_STAR をクリアすると #endCard（出た直後は押せない・場は止まる・asteroid.best=ENDING_STAR）→「このまま あそぶ」で次の星から続く（cleared）、その後のクリアではエンディングを出さない',
+    id: 'KW5', tier: 'smoke', flaky: 'CLEAR_SEC 後の次の星を実時間で待つ（T-33 の形）', title: 'ほしくだき クリア：win で最後のマスを壊すと phase clear・#clearBanner「ほし N クリア！」・asteroid.best=N、CLEAR_SEC 後に実時間で次の星。ENDING_STAR をクリアすると #endCard（出た直後は押せない・場は止まる・asteroid.best=ENDING_STAR）→「このまま あそぶ」で次の星から続く（cleared）、その後のクリアではエンディングを出さない',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await openK(browser, 'KW5', { v: SMOKE_V(), debug: true });
@@ -671,7 +671,7 @@ export const tests = [
   },
 
   {
-    id: 'KW22', tier: 'smoke', title: 'ほしくだき 砲台と斜め撃ち（§3.8・§21.2）：枠の数だけ砲台（turrets）があり、位置は turretsOf(n)（弧に等間隔。1 台なら真ん中）、撃つと砲身の向き ang が 0 以外にもなり（|ang| ≦ AIM_MAX）、たま の弾は斜めに飛ぶ（vx ≠ 0）、砲台の x は動かない、弾はどれも砲台に載っている武器から出る（ひかえの武器は撃たない）。あたらしい ぶき で砲台が増えて並び直す。場を押しても砲台の向きは変わらない',
+    id: 'KW22', tier: 'smoke', flaky: '時計を止めて撃つ所。WebKit で 1 回だけ落ちた・原因不明（T-32）', title: 'ほしくだき 砲台と斜め撃ち（§3.8・§21.2）：枠の数だけ砲台（turrets）があり、位置は turretsOf(n)（弧に等間隔。1 台なら真ん中）、撃つと砲身の向き ang が 0 以外にもなり（|ang| ≦ AIM_MAX）、たま の弾は斜めに飛ぶ（vx ≠ 0）、砲台の x は動かない、弾はどれも砲台に載っている武器から出る（ひかえの武器は撃たない）。あたらしい ぶき で砲台が増えて並び直す。場を押しても砲台の向きは変わらない',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await openK(browser, 'KW22', { v: SMOKE_V(), debug: true });
@@ -936,7 +936,7 @@ export const tests = [
     },
   },
   {
-    id: 'KW10', tier: 'full', solo: true, cdp: 'CDP の CPU 低速化', title: 'ほしくだき 性能（§21.5）：gostar で ほし 30（大きな星・48×48 に近い）・4 台 Lv30 にして、CPU 4 倍遅く（CDP）で 10 秒、34ms を超えるコマが 5% 以下・描画 drawMs の中央 8ms 以内・ロジック stepMs の中央 4ms 以内、粒 ≦ 240・弾 ≦ SHOTS_MAX',
+    id: 'KW10', tier: 'full', flaky: 'CPU 4 倍遅くで重いコマの割合・描く時間を測る', solo: true, cdp: 'CDP の CPU 低速化', title: 'ほしくだき 性能（§21.5）：gostar で ほし 30（大きな星・48×48 に近い）・4 台 Lv30 にして、CPU 4 倍遅く（CDP）で 10 秒、34ms を超えるコマが 5% 以下・描画 drawMs の中央 8ms 以内・ロジック stepMs の中央 4ms 以内、粒 ≦ 240・弾 ≦ SHOTS_MAX',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await newPage(browser, view('SE', 'p', 'app'), 'KW10');

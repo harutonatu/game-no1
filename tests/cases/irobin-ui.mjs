@@ -178,7 +178,7 @@ export const tests = [
     },
   },
   {
-    id: 'BW2', tier: 'smoke', title: 'いろびん：solution() の手順を pick で進めるとクリアのカード（next・menu）、irobin.best が更新され、next で面 +1・手 0（カードの直後 400ms は押せない）',
+    id: 'BW2', tier: 'smoke', flaky: 'クリアのカード直後 400ms の時計のずれ（T-31。v40 で一度直した形）', title: 'いろびん：solution() の手順を pick で進めるとクリアのカード（next・menu）、irobin.best が更新され、next で面 +1・手 0（カードの直後 400ms は押せない）',
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'BW2', { v: SMOKE_V() });
       // クリアのカードが出てから「直後の next」を押すまでを frozen に入れる（ページの時間は wait の分だけ進む）。

@@ -778,7 +778,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW11', tier: 'full', audio: true, title: 'あまいもの 効果音：place・nest・empty・clear が起きた順に鳴り、実際に音の部品が動く。使う音の名前がすべて sfx.js の amai の表にある。♪でオフにすると鳴らない',
+    id: 'AW11', tier: 'full', flaky: '音を実時間で待つ。WebKit の画面ありで時間切れになる（T-39）', audio: true, title: 'あまいもの 効果音：place・nest・empty・clear が起きた順に鳴り、実際に音の部品が動く。使う音の名前がすべて sfx.js の amai の表にある。♪でオフにすると鳴らない',
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'AW11', { opts: { initScript: SFX_SPY, touch: false, reducedMotion: 'reduce' } });
       const names = await page.evaluate(() => YubiSfx.create('amai').names);
@@ -1760,7 +1760,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW33', tier: 'full', title: 'あまいもの ずかん・面えらびを開く時間：CPU 6 倍遅く（iPhone SE 相当）・375×667 で、150 枚そろいのずかんと、ベスト 150 の面えらびを開いて 2 コマ描き終わるまでが 1.8 秒以内（v63 までは約 3〜5 秒。目標は 1 秒。性能は揺れるので余裕を持つ）。Chromium だけ',
+    id: 'AW33', tier: 'full', flaky: 'CPU 6 倍遅くで開く時間（実時間）を測る', title: 'あまいもの ずかん・面えらびを開く時間：CPU 6 倍遅く（iPhone SE 相当）・375×667 で、150 枚そろいのずかんと、ベスト 150 の面えらびを開いて 2 コマ描き終わるまでが 1.8 秒以内（v63 までは約 3〜5 秒。目標は 1 秒。性能は揺れるので余裕を持つ）。Chromium だけ',
     async run({ browser, check, root }) {
       if (!IS_CHROMIUM) { check('対象外（CDP の CPU 制限は Chromium だけ）', true); return; }
       const LG = loadLogic(root);

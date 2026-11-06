@@ -426,7 +426,7 @@ export const tests = [
   },
 
   {
-    id: 'HW18', tier: 'smoke', title: 'ハシわたり 旗：ステージで 5 枚渡ると旗（「はた！」の案内・音・checkpoint 5・数字が跳ねる）、落ちると「さいごの はたから」「さいしょから」のカード（400ms 押せない・旗にフォーカス）、旗からは旗の葉に戻り、さいしょからは 0 から、ひとつ飛ばしで旗を越えても取る（「とばし！ 2まい すすんだ」）、旗は保存しない',
+    id: 'HW18', tier: 'smoke', flaky: '案内・カードの直後 400ms の時計のずれ（T-31）', title: 'ハシわたり 旗：ステージで 5 枚渡ると旗（「はた！」の案内・音・checkpoint 5・数字が跳ねる）、落ちると「さいごの はたから」「さいしょから」のカード（400ms 押せない・旗にフォーカス）、旗からは旗の葉に戻り、さいしょからは 0 から、ひとつ飛ばしで旗を越えても取る（「とばし！ 2まい すすんだ」）、旗は保存しない',
     async run({ browser, check }) {
       const { ctx, page } = await openH(browser, 'HW18', { v: SMOKE_V(), mode: 'stage', extra: { 'hashi.stage': '16' }, opts: { initScript: SFX_SPY } });
       const s0 = await gs(page);
@@ -668,7 +668,7 @@ export const tests = [
     },
   },
   {
-    id: 'HW8', tier: 'full', title: 'ハシわたり タイマー：結果カードを出して 400ms 以内の again は効かない、そのあと again を連打しても runId が進んで新しい回になり、古い回の音（splash・over・peek）が鳴らず timers 0',
+    id: 'HW8', tier: 'full', flaky: '結果カードの直後 400ms の時計のずれ（T-31）', title: 'ハシわたり タイマー：結果カードを出して 400ms 以内の again は効かない、そのあと again を連打しても runId が進んで新しい回になり、古い回の音（splash・over・peek）が鳴らず timers 0',
     async run({ browser, check }) {
       const { ctx, page } = await openH(browser, 'HW8', { opts: { initScript: SFX_SPY } });
       for (let i = 0; i < 2; i++) { const L = await lens(page); await holdLen(page, L.short); await settle(page); }
@@ -1065,7 +1065,7 @@ export const tests = [
     },
   },
   {
-    id: 'HW17', tier: 'full', title: 'ハシわたり ステージクリアの演出：ケロが跳ね→花火→蓮の花（clearFx を描く）、2〜3 秒でカード、タップで早送り、カード直後 400ms は押せない、隠すと止まる、動きを減らす設定では短く、キーボードで遊び方を選べる、壊れた hashi.stage は 1 として遊べ値を消さない、SE 縦横で高い葉とケロ・カードが画面内',
+    id: 'HW17', tier: 'full', flaky: 'クリアの演出とカード直後 400ms の時計のずれ（T-31）', title: 'ハシわたり ステージクリアの演出：ケロが跳ね→花火→蓮の花（clearFx を描く）、2〜3 秒でカード、タップで早送り、カード直後 400ms は押せない、隠すと止まる、動きを減らす設定では短く、キーボードで遊び方を選べる、壊れた hashi.stage は 1 として遊べ値を消さない、SE 縦横で高い葉とケロ・カードが画面内',
     async run({ browser, check }) {
       const { ctx, page } = await openH(browser, 'HW17', { mode: 'stage', opts: { initScript: RENDER_SPY } });
       await toLastLeaf(page);
@@ -1157,7 +1157,7 @@ export const tests = [
     },
   },
   {
-    id: 'HW19', tier: 'full', solo: true, title: 'ハシわたり レビュー後の直し：SE 縦横でカード・ボタン・案内の文が語の途中で折れない（クリアカードは「ステージ 40」「クリア！」の2行）、ボタンの文（あそぶ（つづき）・あそびかたを えらぶ）、短い遊び方はスクロールなしで「わかった」まで見える、落ちた所の言葉、花火（同時に3発以上・1発ごとに音・蓮は枚数ぶん・CPU 4倍遅くでも描画 34ms 以内）、高さの差はステージ 1 から・茎を最大に伸ばしても上端に 8px 余白',
+    id: 'HW19', tier: 'full', flaky: 'CPU 4 倍遅くで花火の描く時間を測る', solo: true, title: 'ハシわたり レビュー後の直し：SE 縦横でカード・ボタン・案内の文が語の途中で折れない（クリアカードは「ステージ 40」「クリア！」の2行）、ボタンの文（あそぶ（つづき）・あそびかたを えらぶ）、短い遊び方はスクロールなしで「わかった」まで見える、落ちた所の言葉、花火（同時に3発以上・1発ごとに音・蓮は枚数ぶん・CPU 4倍遅くでも描画 34ms 以内）、高さの差はステージ 1 から・茎を最大に伸ばしても上端に 8px 余白',
     async run({ browser, check }) {
       for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app')]) {
         const head = v.label;

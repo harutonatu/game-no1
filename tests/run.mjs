@@ -7,6 +7,9 @@
 //   ONLY=D2,S1（項目を絞る）  JSON=path（結果を JSON で書き出す）  VERBOSE=1（合格した確認も表示）
 //   CLOCK=0（待ち時間の早送りを止める）  TEST_TIMEOUT=60000（1項目の上限 ms）
 //   HEADED=1（画面を出してブラウザを起動。Linux で画面が無いときは xvfb-run -a を前につける）
+//   FORCE_FAIL=AL11:1,L1:1（仕組みの確かめ用：その項目を最初の N 回だけわざと不合格にする。1 回目＝ふつうの段、2・3 回目＝揺れやすい項目の流し直し）
+// 揺れやすい項目（項目の定義に flaky: '理由'）：ふつうの不合格になったら、全部終わったあとにその項目だけを 1 つずつ（並列なし）最大 FLAKY_RETRY 回流し直し、
+//   1 回でも合格なら「揺れ（流し直しで合格）」として合格に数え、結果の最後に一覧で出す。印の無い項目は流し直さない（本当の不具合を隠さない）
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -82,6 +85,11 @@ const STALLED = (m) => /秒以内に終わらない$/.test(m.trim()) || /CDP の
 // 流し直しの回数の上限：落ちた（CRASHED）・止まった（STALLED）どちらも 1 回だけ（v39 と同じ。ユーザー決定 2026-10-25「1回のまま」）。
 // WebKit（Linux・画面なし）の落ちる原因は MT-14（canvas から canvas への drawImage）。公開の条件の WebKit は画面あり（HEADED=1）で流す
 const MAX_RETRY = 1;
+// 揺れやすい項目（flaky: '理由'）の流し直しの回数の上限（ユーザー「テストの揺れを片付ける (Recommended)」。計画書 docs/plans/test-flaky.md §1.1）
+const FLAKY_RETRY = 2;
+// 仕組みの確かめ用：FORCE_FAIL=ID:N で、その項目を最初の N 回だけわざと不合格にする（FLAKY_TRY は親が渡す何回目か。0＝ふつうの段）
+const FORCE_FAIL = Object.fromEntries((process.env.FORCE_FAIL || '').split(',').filter(Boolean).map((x) => { const [id, n] = x.split(':'); return [id, Number(n || 1)]; }));
+const FLAKY_TRY = Number(process.env.FLAKY_TRY || 0);
 
 if (isWorker) await worker(args[2]); else await main();
 
@@ -126,6 +134,7 @@ async function worker(key) {
         try { await Promise.race([t.run(ctx), new Promise((_, rej) => { timer = setTimeout(() => rej(new Error(`${limit / 1000} 秒以内に終わらない`)), limit); })]); }
         catch (e) { rec.fail(e); const m = String(e && e.message || e); if (STALLED(m)) stalled = m.split('\n')[0].slice(0, 120); }
         finally { clearTimeout(timer); live = false; }
+        if (FORCE_FAIL[t.id] > FLAKY_TRY) rec.check(`わざと不合格（FORCE_FAIL・${FLAKY_TRY + 1} 回目）`, false, '仕組みの確かめ用');
         // 止まった（時間切れなど）ときは、その項目のページを閉じる（裏で動き続けて重くする・次の項目に混ざるのを止める）
         if (stalled) for (const c of browser ? browser.contexts() : []) await c.close().catch(() => {});
         srv?.reset();
@@ -174,10 +183,11 @@ async function main() {
   const hasSolo = (g) => mods[g.key].some((t) => pick(t) && t.solo);
   const hasPar = (g) => mods[g.key].some((t) => pick(t) && !t.solo);
   const queue = [...plan].filter((g) => !split || hasPar(g)).sort((a, b) => b.weight[tier] - a.weight[tier]);
-  const runOne = (g, slot, phase) => new Promise((resolve) => {
-    const file = path.join(tmp, g.key + '.' + phase + '.json');
+  // 1 グループを子プロセスで流して結果を返す（extra：子に渡す環境変数。揺れやすい項目の流し直しでは ONLY と FLAKY_TRY）
+  const spawnWorker = (g, slot, phase, extra = {}, tag = '') => new Promise((resolve) => {
+    const file = path.join(tmp, g.key + '.' + phase + tag + '.json');
     const t0 = Date.now();
-    const child = spawn(process.execPath, [SELF, '--worker', tier, root, g.key], { env: { ...process.env, PORT: String(PORT + slot), RESULT_FILE: file, PHASE: phase }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [SELF, '--worker', tier, root, g.key], { env: { ...process.env, PORT: String(PORT + slot), RESULT_FILE: file, PHASE: phase, ...extra }, stdio: ['ignore', 'pipe', 'pipe'] });
     let log = '';
     child.stdout.on('data', (d) => { log += d; });
     child.stderr.on('data', (d) => { log += d; });
@@ -185,18 +195,45 @@ async function main() {
       let r;
       try { r = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { r = { key: g.key, items: [], errors: [], skipped: [], fatal: `子プロセスが結果を書かずに終了（code ${code}）\n${log.slice(-2000)}` }; }
       r.sec = (Date.now() - t0) / 1000; r.log = log;
+      resolve(r);
+    });
+  });
+  const runOne = (g, slot, phase) => spawnWorker(g, slot, phase).then((r) => {
       const prev = results[g.key];   // 並列の段の結果があれば、solo の段の結果をうしろに足す
       results[g.key] = !prev ? r : { ...prev, items: [...prev.items, ...r.items], errors: [...prev.errors, ...r.errors], skipped: [...prev.skipped, ...r.skipped],
         fatal: [prev.fatal, r.fatal].filter(Boolean).join('\n') || null, sec: prev.sec + r.sec, log: prev.log + r.log };
       const ng = r.items.filter((i) => !i.ok).length + (r.fatal ? 1 : 0);
       console.log(`  … ${g.title.split(' ')[0]}${phase === 'solo' ? '（速さ・1 つずつ）' : ''} 完了 ${r.sec.toFixed(1)}s（${r.items.length} 項目${ng ? `、不合格 ${ng}` : ''}）`);
-      resolve();
-    });
   });
   await Promise.all(Array.from({ length: Math.min(WORKERS, queue.length) }, async (_, slot) => {
     while (queue.length) await runOne(queue.shift(), slot, split ? 'par' : 'all');
   }));
   if (split) for (const g of plan.filter(hasSolo)) await runOne(g, 0, 'solo');
+  // ---- 揺れやすい項目（flaky）の流し直し：全部終わったあと、ふつうの不合格になった項目だけを 1 つずつ順に（WORKERS が何でも並列なし）最大 FLAKY_RETRY 回 ----
+  // 1 回でも合格したら、その回の結果に置き換えて「揺れ（流し直しで合格）」の印を付ける。FLAKY_RETRY 回とも不合格なら、最初の結果のまま不合格
+  const flakyDef = (g, id) => mods[g.key].find((t) => t.id === id && t.flaky);
+  const flakyTodo = plan.flatMap((g) => (results[g.key]?.items || []).filter((it) => !it.ok && flakyDef(g, it.id)).map((it) => ({ g, it })));
+  if (flakyTodo.length) console.log(`\n  揺れやすい項目の流し直し（1 つずつ・最大 ${FLAKY_RETRY} 回）: ${flakyTodo.map((x) => x.it.id).join(', ')}`);
+  for (const { g, it } of flakyTodo) {
+    const firstWhy = it.checks.filter((c) => !c.ok && !c.known).map((c) => c.name).join('・').slice(0, 160);
+    const tries = [];
+    let passed = null;
+    for (let n = 1; n <= FLAKY_RETRY && !passed; n++) {
+      const r = await spawnWorker(g, 0, 'all', { ONLY: it.id, FLAKY_TRY: String(n) }, '.flaky' + n);
+      const got = r.items.find((x) => x.id === it.id);
+      results[g.key].errors.push(...r.errors);
+      results[g.key].log += r.log;
+      const ok = !!(got && got.ok && !r.fatal);
+      tries.push(ok ? '合格' : (got ? got.checks.filter((c) => !c.ok && !c.known).map((c) => c.name).join('・').slice(0, 120) : (r.fatal || '結果なし').split('\n')[0].slice(0, 120)));
+      console.log(`  … ${it.id} 流し直し ${n} 回目 ${ok ? '合格' : '不合格'} ${r.sec.toFixed(1)}s`);
+      if (ok) passed = got;
+    }
+    const list = results[g.key].items;
+    const idx = list.indexOf(it);
+    const info = { reason: flakyDef(g, it.id).flaky, first: firstWhy, tries };
+    if (passed) list[idx] = { ...passed, flaky: info, retry: it.retry, retryWhy: it.retryWhy };
+    else it.flaky = info;
+  }
   fs.rmSync(tmp, { recursive: true, force: true });
 
   // ---- 表示（グループの順に） ----
@@ -209,7 +246,7 @@ async function main() {
     if (r.log.trim() && (process.env.VERBOSE || r.fatal)) console.log(r.log.trim().split('\n').map((l) => '    | ' + l).join('\n'));
     for (const it of r.items) {
       items.push(it);
-      console.log(`  ${it.ok ? 'PASS' : 'FAIL'}  ${it.id.padEnd(3)} ${(it.ms / 1000).toFixed(1).padStart(5)}s  ${it.title}  (${it.checks.filter((c) => c.ok).length}/${it.checks.length})${it.retry ? `\n        ↻ 流し直し ${it.retry} 回（${it.retryWhy}）` : ''}`);
+      console.log(`  ${it.ok ? 'PASS' : 'FAIL'}  ${it.id.padEnd(3)} ${(it.ms / 1000).toFixed(1).padStart(5)}s  ${it.title}  (${it.checks.filter((c) => c.ok).length}/${it.checks.length})${it.retry ? `\n        ↻ 流し直し ${it.retry} 回（${it.retryWhy}）` : ''}${it.flaky ? `\n        〜 揺れやすい項目（${it.flaky.reason}）：1 回目は不合格（${it.flaky.first}）、流し直し ${it.flaky.tries.map((w, i) => `${i + 1} 回目 ${w}`).join(' / ')}` : ''}`);
       for (const c of it.checks) {
         if (c.known && !c.ok) console.log(`        △ 既知の不具合（修正待ち・合否に含めない）: ${c.name}\n          ${c.known}`);
         else if (c.known && c.ok) console.log(`        ★ 既知の不具合が解消した: ${c.name} → tests/lib.mjs の KNOWN_ISSUES から外す`);
@@ -234,6 +271,10 @@ async function main() {
   if (failed.length) console.log('不合格: ' + failed.map((i) => i.id).join(', '));
   const retried = items.filter((i) => i.retry);
   if (retried.length) console.log('流し直し（ページ・ブラウザが落ちた・止まった）: ' + retried.map((i) => `${i.id}（${i.retry} 回。${i.retry + 1} 回目${i.ok ? 'は合格' : 'も不合格'}）`).join(', '));
+  // 揺れ（流し直しで合格）は合格に数えるが、隠さずに最後に一覧で出す
+  const flakyOk = items.filter((i) => i.flaky && i.ok), flakyNg = items.filter((i) => i.flaky && !i.ok);
+  if (flakyOk.length) console.log(`揺れ（流し直しで合格・合格に数えた） ${flakyOk.length} 件:\n` + flakyOk.map((i) => `  ${i.id}（1 回目：${i.flaky.first}／流し直し ${i.flaky.tries.length} 回目で合格。理由：${i.flaky.reason}）`).join('\n'));
+  if (flakyNg.length) console.log(`揺れやすい項目の流し直しも ${FLAKY_RETRY} 回とも不合格 ${flakyNg.length} 件: ` + flakyNg.map((i) => i.id).join(', '));
   if (process.env.JSON) fs.writeFileSync(process.env.JSON, JSON.stringify({ tier, browser: BROWSER, root, totalSec: total, items, skipped }, null, 1));
   process.exit(failed.length ? 1 : 0);
 }
