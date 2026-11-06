@@ -802,10 +802,13 @@
     .card .btns button.share { flex: 1 1 100%; white-space: nowrap; }
     .card .btns button { min-height: 44px; }
     .card .lockintro svg { width: auto; height: 60px; }   /* かぎの びんの説明（IB-58）：背の低い横向きでは絵を低く */
-    /* 詰めるとき（IB-47）：クリアのカードの 4 つのボタンを 1 行に */
+    /* 詰めるとき（IB-47）：クリアのカードの 4 つのボタンを 1 行に。なかよしちょうは 3 列 × 2 段（IB-49） */
     #card[data-kind="clear"][data-tight] { gap: 2px 12px; padding: 4px 14px; }
     #card[data-kind="clear"][data-tight] h2 { font-size: 17px; }
     #card[data-kind="clear"][data-tight] .btns button, #card[data-kind="clear"][data-tight] .btns button.share { flex: 1 1 auto; font-size: 14px; padding-left: 6px; padding-right: 6px; }
+    #card[data-kind="book"][data-tight] { padding: 4px 12px; gap: 2px; }
+    #card[data-kind="book"][data-tight] ul.book { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px 6px; }
+    #card[data-kind="book"][data-tight] ul.book canvas { width: 36px; height: 36px; }
     /* なかよしちょう：見出しと ★ を 1 行に、6 匹を 2 列 × 3 段に */
     .card ul.book { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; }
     .card ul.book canvas { width: 46px; height: 46px; }
