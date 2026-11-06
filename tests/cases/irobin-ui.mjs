@@ -1795,6 +1795,10 @@ export const tests = [
       const HINT1 = 'うえの どうぶつさんが ほしい いろを、1ぽんに 4つ あつめよう';
       const HINTC = 'ぬのの びんは なかが みえないよ。おきゃくさんに とどけると ぬのが とれるよ';
       const HINTCS = 'とどけると ぬのが とれるよ';
+      // v69（IB-61）：知らせの言葉（あまいものあつめと同じ）
+      const NOTE_FAIL_SHARE = 'ともだちに おくれなかったよ。したの あどれすを ながおしして「コピー」を えらんでね';
+      const NOTE_FAIL_COPY = 'コピーできなかったよ。したの あどれすを ながおしして「コピー」を えらんでね';
+      const NOTE_COPIED = 'コピーしたよ。LINE などの にゅうりょくらんに はりつけてね';
       const SHARE_SPY = () => {
         window.__shares = []; window.__clips = [];
         Object.defineProperty(Navigator.prototype, 'share', { configurable: true, writable: true, value: function (d) {
@@ -1895,14 +1899,18 @@ export const tests = [
         await c.page.click('button.share'); await wait(c.page, 100);
         const kf = await card(c.page);
         check(`(f) share が ${mode}：知らせ ${hasUrl ? 'に URL が出る' : 'は何も出ない'}（${kf.note && kf.note.text}）`, hasUrl ? !!kf.note && kf.note.text.includes(URL_) : !!kf.note && kf.note.text === '', kf.note);
+        if (hasUrl) check(`(f) v69（IB-61）：share の失敗の知らせは「${NOTE_FAIL_SHARE}」＋あどれす（${kf.note && kf.note.text}）`, !!kf.note && kf.note.text === NOTE_FAIL_SHARE + URL_, kf.note);
       }
       // (i) 知らせが出ても「つぎの めんへ」は動かない
       const kAfter = await card(c.page);
       check(`(i) 共有の知らせが出る前（${Math.round(topBefore)}）と後（${Math.round(kAfter.btns[0].top)}）で「つぎの めんへ」の top が同じ`, Math.abs(kAfter.btns[0].top - topBefore) < 0.6, { topBefore, after: kAfter.btns[0].top });
-      // (f2) 失敗の知らせは押すと閉じる
-      await c.page.click('.share-note'); await wait(c.page, 50);
+      // (f2) 失敗の知らせの あどれす（.url）を押しても閉じない（長おしで選ぶ途中に消さない。v69・IB-60）。ほかの所を押すと閉じる
+      await c.page.click('.share-note .url'); await wait(c.page, 50);
+      const kf1 = await card(c.page);
+      check(`(f2) v69（IB-60）：知らせの あどれす（.url）を押しても閉じない（${kf1.note && JSON.stringify(kf1.note.text)}）`, !!kf1.note && kf1.note.text.includes(URL_), kf1.note);
+      await c.page.evaluate(() => document.querySelector('#card .share-note').dispatchEvent(new MouseEvent('click', { bubbles: true }))); await wait(c.page, 50);
       const kf2 = await card(c.page);
-      check(`(f2) 失敗の知らせ（URL）は押すと閉じる（${kf2.note && JSON.stringify(kf2.note.text)}）`, !!kf2.note && kf2.note.text === '', kf2.note);
+      check(`(f2) 失敗の知らせ（URL）は あどれす の外を押すと閉じる（${kf2.note && JSON.stringify(kf2.note.text)}）`, !!kf2.note && kf2.note.text === '', kf2.note);
       // (l) share の返事が来ないまま次の面へ進んでも、次のカードで共有が効く（sharing を戻す）
       await c.page.evaluate(() => { window.__shareMode = 'hang'; });
       await c.page.click('button.share'); await wait(c.page, 50);
@@ -1933,7 +1941,7 @@ export const tests = [
       const kg = await card(g.page);
       const clip = await g.page.evaluate(() => window.__clips);
       check(`(g) コピーした文の最後の行が URL（${clip[0] && JSON.stringify(clip[0].split('\n').pop())}）・1 行目に「1めん クリア！」`, clip.length === 1 && clip[0].split('\n').pop() === URL_ && clip[0].startsWith('いろびん 1めん クリア！'), clip);
-      check(`(g) ボタンの文字が「コピーしました」（${kg.btns[3].text}）、知らせが「LINE などの」で始まり 16px 以上（${kg.note && kg.note.text}・${kg.note && kg.note.fs}）`, kg.btns[3].text === 'コピーしました' && !!kg.note && kg.note.text.startsWith('LINE などの') && kg.note.fs >= 16, { btn: kg.btns[3].text, note: kg.note });
+      check(`(g) ボタンの文字が「コピーしました」（${kg.btns[3].text}）、知らせが「${NOTE_COPIED}」（v69・IB-61）で 16px 以上（${kg.note && kg.note.text}・${kg.note && kg.note.fs}）`, kg.btns[3].text === 'コピーしました' && !!kg.note && kg.note.text === NOTE_COPIED && kg.note.fs >= 16, { btn: kg.btns[3].text, note: kg.note });
       await wait(g.page, 3100);
       const kg2 = await card(g.page);
       check(`(g) 3 秒後にボタンの文字が戻り、成功の吹き出しも同時に消える（${kg2.btns[3].text}・${JSON.stringify(kg2.note && kg2.note.text)}）`, kg2.btns[3].text === 'ともだちに おしえる' && !!kg2.note && kg2.note.text === '', { btn: kg2.btns[3].text, note: kg2.note });
@@ -1944,7 +1952,7 @@ export const tests = [
       const kh0 = await card(h.page);
       await h.page.click('button.share'); await wait(h.page, 100);
       const kh = await card(h.page);
-      check(`(h) 「コピーできなかったよ」と URL が出る（${kh.note && kh.note.text}）、URL の user-select が text（${kh.note && kh.note.url}）`, !!kh.note && kh.note.text.includes('コピーできなかったよ') && kh.note.text.includes(URL_) && kh.note.url === 'text', kh.note);
+      check(`(h) 「${NOTE_FAIL_COPY}」（v69・IB-61）と URL が出る（${kh.note && kh.note.text}）、URL の user-select が text（${kh.note && kh.note.url}）`, !!kh.note && kh.note.text === NOTE_FAIL_COPY + URL_ && kh.note.url === 'text', kh.note);
       check(`(i) clipboard も無い知らせでも「つぎの めんへ」の top が同じ（${Math.round(kh0.btns[0].top)}→${Math.round(kh.btns[0].top)}）`, Math.abs(kh.btns[0].top - kh0.btns[0].top) < 0.6, { a: kh0.btns[0].top, b: kh.btns[0].top });
       await h.ctx.close();
       // (j) SE 縦：5 面（節目）を ★3 でクリア。best 4 で 5 面

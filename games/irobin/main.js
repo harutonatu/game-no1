@@ -564,6 +564,10 @@
   const SHARE_URL = "https://harutonatu.github.io/game-no1/games/irobin/";
   const ANIMAL_EMOJI = { kuma: "🐻", usagi: "🐰", neko: "🐱", penguin: "🐧", risu: "🐿️", hitsuji: "🐑" };
   let sharing = false;
+  // 知らせの言葉（IB-61。あまいものあつめと同じ言い方。「あどれす」にそろえ、何を長おしするかを書く）
+  const NOTE_FAIL_SHARE = "ともだちに おくれなかったよ。したの あどれすを ながおしして「コピー」を えらんでね";
+  const NOTE_FAIL_COPY = "コピーできなかったよ。したの あどれすを ながおしして「コピー」を えらんでね";
+  const NOTE_COPIED = "コピーしたよ。LINE などの にゅうりょくらんに はりつけてね";
   function shareText(c, star) {
     const stars = star === 3 ? " ★★★" : star === 2 ? " ★★☆" : star === 1 ? " ★☆☆" : "";
     const faces = (c.animals || []).map((k) => ANIMAL_EMOJI[k] || "").join("");
@@ -590,7 +594,7 @@
         Promise.resolve(pr).then(() => {}, (e) => {
           const name = e && e.name;
           if (name === "AbortError" || name === "InvalidStateError") return;
-          setShareNote("この あどれすを コピーしてね", true);
+          setShareNote(NOTE_FAIL_SHARE, true);
         }).then(() => { sharing = false; });
       } else if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
         const myRun = runId;
@@ -601,14 +605,14 @@
             btn.textContent = "コピーしました";
             later(() => { const b = el.card.querySelector("button.share"); if (b) b.textContent = "ともだちに おしえる"; setShareNote("", false); }, 3000);   // 成功の吹き出しは、ボタンの文字が戻るのと同時に消す
           }
-          setShareNote("LINE などの にゅうりょくらんを ながおしして はりつけてね", false);
-        }, () => { if (overlayKind === "clear") setShareNote("コピーできなかったよ。ながおしで コピーしてね", true); });
+          setShareNote(NOTE_COPIED, false);
+        }, () => { if (overlayKind === "clear") setShareNote(NOTE_FAIL_COPY, true); });
       } else {
-        setShareNote("コピーできなかったよ。ながおしで コピーしてね", true);
+        setShareNote(NOTE_FAIL_COPY, true);
       }
     } catch (e) {
       sharing = false;
-      setShareNote("コピーできなかったよ。ながおしで コピーしてね", true);
+      setShareNote(NOTE_FAIL_COPY, true);
     }
   }
   // o.again：なかよしちょうから戻ったとき（音と 400ms の押せない時間はくり返さない。フォーカスは「なかよしちょう」へ）
