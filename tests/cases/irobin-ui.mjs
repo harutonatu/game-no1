@@ -2873,6 +2873,32 @@ export const tests = [
         check(`(d) IB-58：かぎの無い 100 面では出さない（${n1.overlay}）・irobin.lockcard は書かない（${nf}）`, n1.level === 100 && n1.overlay === null && nf === null, { n1: n1.overlay, nf });
         await n.ctx.close();
       }
+      // ---- (e) IB-52：段が上がった面のクリアのカード：一言の前に新しい おしゃれの絵（2 匹まで）、1 秒以内にふくらんで光る。押すのを妨げない。動きを減らす設定では動かない ----
+      {
+        const upInfo = (p) => p.evaluate(() => {
+          const f = document.querySelector('#card .friend'), cvs = f ? [...f.querySelectorAll('.ups canvas')] : [];
+          const ms = (v) => Math.max(...String(v).split(',').map((x) => parseFloat(x) * (/ms/.test(x) ? 1 : 1000)));
+          const end = (e) => { const cs = getComputedStyle(e); return cs.animationName === 'none' ? 0 : ms(cs.animationDuration) + ms(cs.animationDelay); };
+          const nb = document.querySelector('#card [data-cmd="next"]').getBoundingClientRect(), hit = document.elementFromPoint(nb.left + nb.width / 2, nb.top + nb.height / 2);
+          return { pop: !!f && f.classList.contains('pop'), n: cvs.length, hidden: !!f && !!f.querySelector('.ups') && f.querySelector('.ups').getAttribute('aria-hidden') === 'true', pe: f && f.querySelector('.ups') ? getComputedStyle(f.querySelector('.ups')).pointerEvents : null,
+            end: Math.max(f ? end(f) : 0, ...cvs.map(end)), anim: f ? getComputedStyle(f).animationName : null, nextHit: !!hit && !!hit.closest('[data-cmd="next"]') };
+        });
+        const up = async (label, a, opts = {}) => {
+          const g = await openG(browser, `BW40 e ${label}`, { opts, extra: { 'irobin.best': '30', 'irobin.save': J({ v: 3, level: 10, moves: [] }), 'irobin.book': J({ v: 1, a, s: {}, last: 0 }) } });
+          await solveToClear(g.page); await wait(g.page, 500);
+          const r = await upInfo(g.page);
+          await g.ctx.close();
+          return r;
+        };
+        const one = { kuma: 9, usagi: 30, neko: 30, penguin: 30, risu: 30, hitsuji: 30 };
+        const e1 = await up('1 匹', one);
+        check(`(e) IB-52：1 匹の段が上がると一言の前に絵 1 つ（${e1.n}・aria-hidden ${e1.hidden}・pointer-events ${e1.pe}）・ふくらむ（pop ${e1.pop}）・1 秒以内に終わる（${e1.end}ms）・「つぎの めんへ」を押せる（${e1.nextHit}）`,
+          e1.n === 1 && e1.hidden && e1.pe === 'none' && e1.pop && e1.end > 0 && e1.end <= 1000 && e1.nextHit, e1);
+        const e6 = await up('6 匹', Object.fromEntries(KINDS.map((k) => [k, 9])));
+        check(`(e) IB-52：3 匹以上は絵を付けない（${e6.n}）が、ふくらむ（${e6.pop}・${e6.end}ms）`, e6.n === 0 && e6.pop && e6.end > 0 && e6.end <= 1000, e6);
+        const ec = await up('動きを減らす', one, { reducedMotion: 'reduce' });
+        check(`(e) IB-52：動きを減らす設定では動かない（pop ${ec.pop}・animation ${ec.anim}）・絵は出る（${ec.n}）`, !ec.pop && ec.anim === 'none' && ec.n === 1, ec);
+      }
     },
   },
 ];

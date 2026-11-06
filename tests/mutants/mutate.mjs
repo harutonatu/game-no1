@@ -305,6 +305,8 @@ const M = [
   ['MB74 いろびん：かぎの びんの説明カードを出さない（IB-58）', '見た目', 'games/irobin/main.js', '    if (overlayKind || custom || !state || state.won || moves.length || paused) return;\n    const lk', '    return;\n    const lk'],
   ['MB75 いろびん：かぎの びんの説明カードを閉じても見たことにしない（毎回出る。IB-58）', '保存', 'games/irobin/main.js', '      writeKey(KEY_LOCKCARD, "1");\n', ''],
   ['MB76 いろびん：見たことがあっても、かぎの びんの説明カードを出す（IB-58）', '保存', 'games/irobin/main.js', '    if (safeCall(() => L.validateFlag(readKey(KEY_LOCKCARD)), false)) return;\n', ''],
+  ['MB77 いろびん：段が上がった面の演出を出さない（IB-52）', '演出', 'games/irobin/main.js', 'if (ups.length && !again && !render.calm) fr.classList.add("pop");', ''],
+  ['MB78 いろびん：動きを減らす設定でも段が上がった面の演出を出す（IB-52）', '演出', 'games/irobin/main.js', 'if (ups.length && !again && !render.calm) fr.classList.add("pop");', 'if (ups.length && !again) fr.classList.add("pop");'],
   ['MQ41 まとめてポン：pageshow で終わりのカードの押せない見た目を外さない（ミチビキ空港 §19 A3 の横展開）', '誤タップ', 'games/matomete/main.js', '    if (overlayKind !== "over") return;\n    const unlock', '    return;\n    const unlock'],
   ['MQ42 まとめてポン：表に戻ったとき保存がほかで変わっていても開き直さない（契約 §11・X-20）', '保存', 'games/matomete/main.js', '    if (!stale && WATCH_KEYS.every((k) => readKey(k) === seenRaw.get(k))) return false;', '    return false;'],
   ['MQ43 まとめてポン：裏で別のタブが書いても保存を止めない（storage を見ない。契約 §11・X-20）', '保存', 'games/matomete/main.js', 'if (document.hidden && (e.key === null || seenRaw.has(e.key))) stale = true;', 'if (false) stale = true;'],

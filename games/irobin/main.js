@@ -659,7 +659,27 @@
       </div>`, { h: `${c.level} めん クリア！`, s: starText, m1: `${c.moves}かい そそいで とどけたよ`, m2: p ? `（めやす ${p}かい）` : "", b: showRecord ? "あたらしい きろく！" : showQuiet ? `ここまで ${c.level}めん` : "", n: c.milestone ? nextNoteText(c) : "", f: friend }, "clear");
     if (again) focusBack = fb;   // なかよしちょうへ行く前の戻り先（瓶など）を残す
     if (!friend) { const fr = el.card.querySelector(".friend"); if (fr) fr.hidden = true; }
-    else { const fr = el.card.querySelector(".friend"); if (fr) fillParts(fr, friendParts(c.ups)); }
+    else {
+      const fr = el.card.querySelector(".friend");
+      if (fr) {
+        fillParts(fr, friendParts(c.ups));
+        // 段が上がった動物（2 匹まで。3 匹からは名前の列が長いので絵は付けない）を、新しい おしゃれを つけた小さな絵で前に並べる。
+        // はじめて出たときだけ 0.7 秒ふくらんで光る（IB-52。動きを減らす設定では動かさない）
+        const ups = [];
+        for (const u of Array.isArray(c.ups) ? c.ups : []) if (u && R.ANIMAL_NAMES[u.kind] && !ups.some((x) => x.kind === u.kind)) ups.push(u);
+        if (ups.length && ups.length <= 2) {
+          const box = document.createElement("span"); box.className = "ups"; box.setAttribute("aria-hidden", "true");
+          const dpr = Math.min(2, Math.max(1, Number(window.devicePixelRatio) || 1));
+          for (const u of ups) {
+            const cv = document.createElement("canvas"); cv.width = cv.height = Math.round(24 * dpr);
+            try { const ctx = cv.getContext("2d"); if (ctx) R.drawAnimal(ctx, u.kind, { w: cv.width, h: cv.height, mood: "happy", dress: u.step }); } catch (e) { /* 絵が描けなくても続ける */ }
+            box.appendChild(cv);
+          }
+          fr.insertBefore(box, fr.firstChild);
+        }
+        if (ups.length && !again && !render.calm) fr.classList.add("pop");
+      }
+    }
     { // 「あと ○にんで ○○」：動物は小さな絵（名前は読み上げ用の .sr）。おしゃれの名前は途中で折り返さない
       const nr = el.card.querySelector(".near");
       if (nr && near) {
