@@ -1788,12 +1788,12 @@ export const tests = [
   },
   // ---------- ちょうせんモード（2026-11-05。計画書 docs/plans/amai-challenge.md §1・契約 §3.5） ----------
   {
-    id: 'AW34', tier: 'full', title: 'あまいもの ちょうせん：クリアした 1〜150 面を押すと［ふつうで あそぶ］［ちょうせん］のカード（まだの面はふつうだけ）。ちょうせんは わく 2 つ・1手もどすは 3 回で押せなくなり（ボタンに のこり）、やりなおしで 3 に戻る。途中の保存はしない（開き直すと ふつうの続き）。クリアで「ちょうせん クリア！」・amai.gold に入り、面えらびとずかんに金の花輪（ふつうの花輪より先）・ベストは変わらない・つぎの めんへ はふつうの次の面。ふつうで遊ぶ面の進み方は今までどおり。壊れた amai.gold でも落ちない',
+    id: 'AW34', tier: 'full', title: 'あまいもの ちょうせん：クリアした 1〜150 面を押すと［ふつうで あそぶ］［ちょうせん］のカード（まだの面はふつうだけ）。ちょうせんは わく 2 つ・1手もどすは 3 回で押せなくなり（ボタンに のこり）、やりなおしで 3 に戻る。途中の保存はしない（開き直すと ふつうの続き）。クリアで「ちょうせん クリア！」・amai.gold に入り、面えらびとずかんに金の花輪（ふつうの花輪もあれば ふつうと金を1つずつ並べる）・ベストは変わらない・つぎの めんへ はふつうの次の面。ふつうで遊ぶ面の進み方は今までどおり。壊れた amai.gold でも落ちない',
     async run({ browser, check }) {
       // 途中の保存は、ページの AmaiLogic.makeSave で今の絵の目印（picSig。課題 AM-18）つきで作る（目印が無いと 3 面からは最初から始まる）
       const { PO, save0 } = await (async () => { const { ctx, page } = await openG(browser, 'AW34 絵'); const r = await page.evaluate(() => { const L = window.AmaiLogic; const ids = L.PICTURE_ORDER.map((x) => x.id); return { PO: ids, save0: L.makeSave(11, { id: ids[10], mirror: false, repeat: false }, [[0, 0]], 3) }; }); await ctx.close(); return r; })();
       const got = {}; PO.slice(0, 10).forEach((id) => { got[id] = 1; });
-      const base = { 'amai.best': '10', 'amai.book': J({ v: 1, got }), 'amai.clean': J({ v: 1, ids: [PO[4], PO[6]] }), 'amai.gold': null, 'amai.save': save0 };
+      const base = { 'amai.best': '10', 'amai.book': J({ v: 1, got }), 'amai.clean': J({ v: 1, ids: [PO[4], PO[6]] }), 'amai.gold': J({ v: 1, ids: [PO[2]] }), 'amai.save': save0 };   // 3 面の絵は金だけ（clean に無い）
       const { ctx, page } = await openG(browser, 'AW34', { extra: base });
       const pickLv = async (n) => { await page.evaluate((n) => document.querySelector(`#card ul.levels button[data-level="${n}"]`)?.click(), n); await wait(page, 200); };
       const visSlots = () => page.evaluate(() => [...document.querySelectorAll('#slots .slot')].filter((e) => !e.hidden && e.getBoundingClientRect().width > 0).length);
@@ -1867,19 +1867,21 @@ export const tests = [
       const { s: cl } = await solveToClear(page);
       await wait(page, 600);
       const cc = await overlayInfo(page);
+      const cardW = await page.evaluate(() => [...document.querySelectorAll('#card p.clean.gold .wreath')].map((w) => w.classList.contains('gold')));
+      check(`クリアのカード：5 面の絵は amai.clean にもあるので 小さな花輪が 2 つ（ふつう→金。${J(cardW)}）`, J(cardW) === J([false, true]), cardW);
       const gold = JSON.parse((await stored(page, 'amai.gold')) || 'null');
       const book = JSON.parse((await stored(page, 'amai.book')) || '{}');
       check(`ちょうせんでクリア（${cl.overlay}）：カードに「ちょうせん クリア！」・「1手もどし なし！」は出さない（${cc.text}）`, cl.overlay === 'clear' && /5 めん クリア！/.test(cc.text) && /ちょうせん クリア！/.test(cc.text) && !/1手もどし なし！/.test(cc.text), cc);
-      check(`amai.gold に 5 面の絵（${J(gold)}）・ずかんの回数が 2（${book.got && book.got[PO[4]]}）・ベストは 10 のまま（${await stored(page, 'amai.best')}）・amai.clean は変えない・amai.save は 11 面のまま`, J(gold) === J({ v: 1, ids: [PO[4]] }) && book.got[PO[4]] === 2 && (await stored(page, 'amai.best')) === '10' && (await stored(page, 'amai.clean')) === base['amai.clean'] && (await stored(page, 'amai.save')) === save0, { gold, book });
+      check(`amai.gold に 5 面の絵（${J(gold)}）・ずかんの回数が 2（${book.got && book.got[PO[4]]}）・ベストは 10 のまま（${await stored(page, 'amai.best')}）・amai.clean は変えない・amai.save は 11 面のまま`, J(gold) === J({ v: 1, ids: [PO[2], PO[4]] }) && book.got[PO[4]] === 2 && (await stored(page, 'amai.best')) === '10' && (await stored(page, 'amai.clean')) === base['amai.clean'] && (await stored(page, 'amai.save')) === save0, { gold, book });
       await clickCmd(page, 'share'); await wait(page, 200);
       const sh = await page.evaluate(() => window.__shared && window.__shared.text);
       check(`ともだちに おくる の文に「ちょうせん」（${sh}）`, /5めん ちょうせん クリア！/.test(sh || ''), sh);
       await page.evaluate(() => document.querySelector('.share-note')?.click());
       // ずかん：金の花輪
       await clickCmd(page, 'book'); await wait(page, 200);
-      const bk = await page.evaluate(() => [...document.querySelectorAll('#card ul.book li')].filter((l) => l.querySelector('.wreath')).map((l) => ({ id: l.dataset.id, gold: l.dataset.gold === '1', g: !!l.querySelector('.wreath.gold'), n: l.querySelectorAll('.wreath').length, sr: l.querySelector('.sr')?.textContent || '' })));
+      const bk = await page.evaluate(() => [...document.querySelectorAll('#card ul.book li')].filter((l) => l.querySelector('.wreath')).map((l) => ({ id: l.dataset.id, gold: l.dataset.gold === '1', clean: l.dataset.clean === '1', g: !!l.querySelector('.wreath.gold'), n: l.querySelectorAll('.wreath').length, lr: (() => { const c = l.querySelector('.wreath:not(.gold)'), g = l.querySelector('.wreath.gold'); return c && g ? c.getBoundingClientRect().left < g.getBoundingClientRect().left : null; })(), sr: l.querySelector('.sr')?.textContent || '' })));
       const bgn = await page.evaluate(() => !!document.querySelector('#card p.gnote .wreath.gold'));
-      check(`ずかん：5 面の絵は金の花輪だけ（花輪 1 つ・読み上げ「ちょうせん クリア」）、7 面の絵はふつうの花輪（${J(bk)}）・金の説明の行（${bgn}）`, bgn && J(bk) === J([{ id: PO[4], gold: true, g: true, n: 1, sr: '（ちょうせん クリア）' }, { id: PO[6], gold: false, g: false, n: 1, sr: '（1手もどし なし）' }]), bk);
+      check(`ずかん：3 面の絵は金だけ（n:1）、5 面の絵は ふつう＋金の 2 つ（左がふつう・右が金・読み上げ「1手もどし なし・ちょうせん クリア」）、7 面の絵はふつう 1 つ（${J(bk)}）・金の説明の行（${bgn}）`, bgn && J(bk) === J([{ id: PO[2], gold: true, clean: false, g: true, n: 1, lr: null, sr: '（ちょうせん クリア）' }, { id: PO[4], gold: true, clean: true, g: true, n: 2, lr: true, sr: '（1手もどし なし・ちょうせん クリア）' }, { id: PO[6], gold: false, clean: true, g: false, n: 1, lr: null, sr: '（1手もどし なし）' }]), bk);
       await clickCmd(page, 'close'); await wait(page, 150);
       // つぎの めんへ：ふつうの 6 面
       await clickCmd(page, 'next'); await wait(page, 300);
@@ -1887,8 +1889,8 @@ export const tests = [
       check(`「つぎの めんへ」は ふつうの 6 面（${n6.level}・challenge ${n6.challenge}・わく ${n6.slotCount}・見えている .slot ${await visSlots()}）・ボタンは「1手もどす」だけ`, n6.level === 6 && n6.challenge === false && n6.slotCount === 3 && (await visSlots()) === 3 && (await undoInfo(page)).text === '1手もどす', n6);
       // 面えらび：金の花輪が先
       await page.click('#selectBtn'); await wait(page, 150);
-      const sl = await page.evaluate(() => [...document.querySelectorAll('#card ul.levels li')].filter((l) => l.querySelector('.wreath')).map((l) => ({ lv: Number(l.dataset.level), gold: l.dataset.gold === '1', clean: l.dataset.clean === '1', g: !!l.querySelector('.wreath.gold'), n: l.querySelectorAll('.wreath').length, label: l.querySelector('button').getAttribute('aria-label') })));
-      check(`面えらび：5 面は金の花輪（ふつうの花輪より先・1 つだけ・「ちょうせん クリア」）、7 面はふつうの花輪（${J(sl)}）`, sl.length === 2 && sl[0].lv === 5 && sl[0].gold && sl[0].g && !sl[0].clean && sl[0].n === 1 && /ちょうせん クリア/.test(sl[0].label) && sl[1].lv === 7 && sl[1].clean && !sl[1].g, sl);
+      const sl = await page.evaluate(() => [...document.querySelectorAll('#card ul.levels li')].filter((l) => l.querySelector('.wreath')).map((l) => ({ lv: Number(l.dataset.level), gold: l.dataset.gold === '1', clean: l.dataset.clean === '1', g: !!l.querySelector('.wreath.gold'), n: l.querySelectorAll('.wreath').length, lr: (() => { const c = l.querySelector('.wreath:not(.gold)'), g = l.querySelector('.wreath.gold'); return c && g ? c.getBoundingClientRect().left < g.getBoundingClientRect().left : null; })(), label: l.querySelector('button').getAttribute('aria-label') })));
+      check(`面えらび：3 面は金だけ（n:1）、5 面は ふつう＋金の 2 つ（左がふつう・右が金。「1手もどし なし」「ちょうせん クリア」）、7 面はふつう 1 つ（${J(sl)}）`, sl.length === 3 && sl[0].lv === 3 && sl[0].gold && sl[0].g && !sl[0].clean && sl[0].n === 1 && sl[1].lv === 5 && sl[1].n === 2 && sl[1].gold && sl[1].clean && sl[1].g && sl[1].lr === true && /ちょうせん クリア/.test(sl[1].label) && /1手もどし なし/.test(sl[1].label) && sl[2].lv === 7 && sl[2].clean && !sl[2].g && sl[2].n === 1, sl);
       // ふつうで あそぶ：今までどおりの進み方（ベストは変わらず、つぎは選んだ面の次）
       await pickLv(3);
       await clickCmd(page, 'playNormal'); await wait(page, 300);
@@ -1898,7 +1900,7 @@ export const tests = [
       await wait(page, 600);
       await clickCmd(page, 'next'); await wait(page, 300);
       const n4 = await gs(page);
-      check(`ふつうの 3 面クリア（${c3.overlay}）でベストは 10 のまま・「つぎの めんへ」は 4 面のふつう（${n4.level}・${n4.challenge}）・amai.gold は変わらない`, c3.overlay === 'clear' && (await stored(page, 'amai.best')) === '10' && n4.level === 4 && !n4.challenge && J(JSON.parse(await stored(page, 'amai.gold'))) === J({ v: 1, ids: [PO[4]] }), n4);
+      check(`ふつうの 3 面クリア（${c3.overlay}）でベストは 10 のまま・「つぎの めんへ」は 4 面のふつう（${n4.level}・${n4.challenge}）・amai.gold は変わらない`, c3.overlay === 'clear' && (await stored(page, 'amai.best')) === '10' && n4.level === 4 && !n4.challenge && J(JSON.parse(await stored(page, 'amai.gold'))) === J({ v: 1, ids: [PO[2], PO[4]] }), n4);
       // まだの面（ベスト＋1）は確かめのカードなしで ふつう（押した数 0）
       await page.click('#selectBtn'); await wait(page, 150);
       await pickLv(11);

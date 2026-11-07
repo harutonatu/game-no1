@@ -627,7 +627,7 @@
     } else {
       got = bookCountNow();
     }
-    lastClear = { level, id, name: picture && picture.name ? picture.name : "", mirror: !!pick.mirror, repeat: !!pick.repeat, count, got, improved, next, nextPick, restored: !!restored, clean, gold };
+    lastClear = { level, id, name: picture && picture.name ? picture.name : "", mirror: !!pick.mirror, repeat: !!pick.repeat, count, got, improved, next, nextPick, restored: !!restored, clean, gold, cleanToo: !!(gold && typeof L.hasClean === "function" && safeCall(() => L.hasClean(readKey(KEY_CLEAN), id), false)) };
     renderTools();
     setHint(`${level} めん クリア！`, true);
     sfx.play("clear");
@@ -645,7 +645,7 @@
     showCard(`
       <h2 id="cardTitle" data-f="h"></h2>
       <div class="clearpic"></div>
-      <p class="picname" data-f="n"></p>${c.gold ? '\n      <p class="clean gold"><span class="wreath inline gold" aria-hidden="true"></span><span data-f="o"></span></p>' : c.clean ? '\n      <p class="clean" data-f="k"></p>' : ""}
+      <p class="picname" data-f="n"></p>${c.gold ? `\n      <p class="clean gold">${c.cleanToo ? '<span class="wreath inline" aria-hidden="true"></span>' : ""}<span class="wreath inline gold" aria-hidden="true"></span><span data-f="o"></span></p>` : c.clean ? '\n      <p class="clean" data-f="k"></p>' : ""}
       <p data-f="c"></p>
       <p class="count" data-f="g"></p>
       <div class="btns">
@@ -874,13 +874,14 @@
         if (/^\s+$/.test(part)) { nm.appendChild(document.createTextNode(part)); return; }
         const w = document.createElement("span"); w.className = "w"; w.textContent = part; nm.appendChild(w);
       });
-      // 花輪：ちょうせんで クリアした絵は金の花輪（ふつうの花輪より先）。1 回でも 1手もどし なしで クリアした絵は花輪（読み上げは .sr）
+      // 花輪：1 回でも 1手もどし なしで クリアした絵はふつうの花輪、ちょうせんで クリアした絵は金の花輪。両方なら 1 つずつ並べる（左＝ふつう・右＝金。読み上げは .sr）
       const gold = !!(n > 0 && p && isGold(id));
-      const clean = !gold && !!(n > 0 && p && isClean(id));
-      if (gold || clean) { const sr = document.createElement("span"); sr.className = "sr"; sr.textContent = gold ? "（ちょうせん クリア）" : "（1手もどし なし）"; nm.appendChild(sr); }
+      const clean = !!(n > 0 && p && isClean(id));
+      if (gold || clean) { const sr = document.createElement("span"); sr.className = "sr"; sr.textContent = gold && clean ? "（1手もどし なし・ちょうせん クリア）" : gold ? "（ちょうせん クリア）" : "（1手もどし なし）"; nm.appendChild(sr); }
       li.appendChild(nm);
+      if (gold && clean) li.classList.add("pair");
+      if (clean) { li.dataset.clean = "1"; li.appendChild(wreath()); }
       if (gold) { li.dataset.gold = "1"; li.appendChild(wreath(true)); }
-      else if (clean) { li.dataset.clean = "1"; li.appendChild(wreath()); }
       if (n > 0) { const cnt = document.createElement("span"); cnt.className = "cnt"; cnt.textContent = `${n} かい`; li.appendChild(cnt); }
       const season = p && SEASON_WORD[p.season];
       if (season) { const s = document.createElement("span"); s.className = "season"; s.dataset.season = p.season; s.textContent = season; li.appendChild(s); }
@@ -981,8 +982,12 @@
         const got = !!(p && book.got && Number.isSafeInteger(book.got[p.id]) && book.got[p.id] > 0);
         if (p) { const cv = pictureCanvas(p, 48, { mono: !got, marks: false }, true); cv.style.width = ""; cv.style.height = ""; btn.appendChild(cv); }   // 大きさは CSS（48×36 に収める）
         if (p && got) li.dataset.got = "1";   // クリアしたことのある面：ちょうせんも選べる
-        if (p && got && isGold(p.id)) { li.dataset.gold = "1"; btn.appendChild(wreath(true)); label += "（ちょうせん クリア）"; }   // 金を先に
-        else if (p && got && isClean(p.id)) { li.dataset.clean = "1"; btn.appendChild(wreath()); label += "（1手もどし なし）"; }
+        const wClean = !!(p && got && isClean(p.id));   // 両方なら 1 つずつ並べる（左＝ふつう・右＝金）
+        let wGold = false;
+        if (wClean) { li.dataset.clean = "1"; btn.appendChild(wreath()); }
+        if (p && got && isGold(p.id)) { wGold = true; li.dataset.gold = "1"; btn.appendChild(wreath(true)); }
+        if (wGold && wClean) li.classList.add("pair");
+        if (wGold || wClean) label += wGold && wClean ? "（1手もどし なし・ちょうせん クリア）" : wGold ? "（ちょうせん クリア）" : "（1手もどし なし）";
       } else if (!open) {
         const q = document.createElement("span"); q.className = "q"; q.textContent = "？"; q.setAttribute("aria-hidden", "true"); btn.appendChild(q);
         btn.disabled = true;

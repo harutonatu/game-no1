@@ -535,7 +535,7 @@ const M = [
   ['MA51 あまいものあつめ：ちょうせんの やりなおしで もどしの回数が戻らない（見つける：AW34）', 'お助け', 'games/amai/main.js', '    chal = ch;\n    chalUndo = CHAL_UNDO;', '    chalUndo = ch && chal && n === level ? chalUndo : CHAL_UNDO;\n    chal = ch;'],
   ['MA52 あまいものあつめ：ちょうせんの途中も amai.save に書く（見つける：AW34）', 'データ消失', 'games/amai/main.js', 'if (custom || chal || !state || state.won) return;', 'if (custom || !state || state.won) return;'],
   ['MA53 あまいものあつめ：ちょうせんでクリアしても amai.gold に書かない（見つける：AW34）', 'データ', 'games/amai/main.js', 'if (typeof rg === "string") writeKey(KEY_GOLD, rg);', ''],
-  ['MA54 あまいものあつめ：ずかんで金の花輪を出さない（ふつうの花輪になる。見つける：AW34）', 'ルール', 'games/amai/main.js', 'const gold = !!(n > 0 && p && isGold(id));', 'const gold = false;'],
+  ['MA54 あまいものあつめ：ずかんで金の花輪を出さない（金だけの絵は花輪なし、両方の絵はふつうだけになる。見つける：AW34）', 'ルール', 'games/amai/main.js', 'const gold = !!(n > 0 && p && isGold(id));', 'const gold = false;'],
   ['MA55 あまいものあつめ：まだクリアしていない面でも ちょうせんを選べる（見つける：AW34）', 'ルール', 'games/amai/main.js', 'return !!(pk && book.got && Number.isSafeInteger(book.got[pk.id]) && book.got[pk.id] > 0);', 'return !!pk;'],
   ['MA56 あまいものあつめ：面えらびで金の花輪を出さない（見つける：AW34）', 'ルール', 'games/amai/main.js', 'if (p && got && isGold(p.id)) {', 'if (false) {'],
   // 12 色（2026-11-05 に D こいみどり・V むらさき を足した。計画書 docs/plans/amai-bg.md §4）
