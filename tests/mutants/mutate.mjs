@@ -474,6 +474,7 @@ const M = [
   ['MA36 あまいものあつめ：くり返しが 49 面から（足した 49〜200 面の絵が順に出ない。見つける：AL1・AL13・AL17）', 'ルール', 'games/amai/logic.js', 'const BASE_PICTURES = 200;', 'const BASE_PICTURES = 48;'],
   ['MA46 あまいものあつめ：くり返しが 101 面から（足した 101〜200 面の絵が順に出ない。見つける：AL1・AL13・AL17・AL18）', 'ルール', 'games/amai/logic.js', 'const BASE_PICTURES = 200;', 'const BASE_PICTURES = 100;'],
   ['MA69 あまいものあつめ：くり返しが 151 面から（足した 151〜200 面の絵が順に出ない。見つける：AL1・AL13・AL17・AL18）', 'ルール', 'games/amai/logic.js', 'const BASE_PICTURES = 200;', 'const BASE_PICTURES = 150;'],
+  ['MA71 あまいものあつめ：面の表のふた・こおりを、面の番号どおりでない絵にも使う（151〜200 面を足す前の途中の保存が別の盤になる。見つける：AL17）', '保存データ互換', 'games/amai/logic.js', 'if (lv <= BASE_PICTURES && p.id === PICTURE_ORDER[lv - 1].id) { const r = levelRow(lv);', 'if (lv <= BASE_PICTURES) { const r = levelRow(lv);'],
   ['MA38 あまいものあつめ：面えらびでベスト＋2 面まで選べる（見つける：AL18・AW28）', 'ルール', 'games/amai/logic.js', 'const top = b < Number.MAX_SAFE_INTEGER ? b + 1 : Number.MAX_SAFE_INTEGER;', 'const top = b < Number.MAX_SAFE_INTEGER - 1 ? b + 2 : Number.MAX_SAFE_INTEGER;'],
   ['MA39 あまいものあつめ：面えらびで、途中まで押していても確かめずに始める（見つける：AW28）', '操作', 'games/amai/main.js', 'if (presses.length && phase !== "clear") {\n      selectTarget = n;', 'if (false) {\n      selectTarget = n;'],
   ['MA40 あまいものあつめ：前の面を選ぶとベストが下がる（見つける：AW28）', 'データ消失', 'games/amai/main.js', '    const pk = safeCall(() => L.pickPicture(n, readBook()), null);\n    setHint("えを つくっているよ");', '    best = n - 1; writeKey(KEY_BEST, String(best));\n    const pk = safeCall(() => L.pickPicture(n, readBook()), null);\n    setHint("えを つくっているよ");'],

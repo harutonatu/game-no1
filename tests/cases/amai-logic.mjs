@@ -10,6 +10,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 // 重さを測る CPU 時間（このスレッドだけ。T-21）
 const cpuOf = (prev) => (process.threadCpuUsage ? process.threadCpuUsage(prev) : process.cpuUsage(prev));
 const cpuMs = (u) => (u.user + u.system) / 1000;
@@ -1046,6 +1047,38 @@ export const tests = [
           detail = { mirror: c.state.mirror, picture: c.state.picture, fallback: c.info.fallback, replay: r && r.ok };
         } catch (e) { detail = String(e); }
         check('古い保存の pick（155 面・反転のくり返し）で面を作り・再生しても落ちない（面の番号と絵を保つ）', ok, detail);
+      });
+      // 今の版で作った 155 面の保存（makeSave）は、目印が合い（saveFits）、押した手をそのまま再生できる（2026-11-09 技術レビュー）
+      await withPictures(L, () => {
+        let ok = false, detail = null;
+        try {
+          const c = L.createLevel(155, sv155.pick);
+          let s = c.state; const presses = [];
+          for (const col of c.info.solution.slice(0, 3)) { s = settle(L, s); presses.push([s.t, col]); s = L.press(s, col).state; }
+          const sv = L.validateSave(L.makeSave(155, sv155.pick, presses, s.t));
+          const r = sv && L.replay(155, sv.pick, sv.presses, sv.t);
+          ok = !!sv && L.saveFits(sv) === true && !!r && r.ok === true && r.applied === presses.length;
+          detail = { fits: sv && L.saveFits(sv), replay: r && r.ok, applied: r && r.applied, presses };
+        } catch (e) { detail = String(e); }
+        check('今の版の makeSave(155, pick, 押した手, t) の保存は saveFits が true・replay が ok（押した手をすべて使う）', ok, detail);
+      });
+      // 151〜200 面を足す前の途中の保存：175 面・新しい絵を先に見せるで選ばれた inukouenbooru（L。面の番号どおりの絵ではない）・押した手 3 つ。
+      // 文字は足す前の版（fa11bd3）の makeSave で作ったもの。ふた・こおりはその絵の段の値（L：2・1）で、足す前と同じ盤に戻る（約束 §2.1・§2.7）
+      await withPictures(L, (kind) => {
+        const raw = '{"v":1,"level":175,"pic":"inukouenbooru","mirror":false,"rep":false,"presses":[[0,2],[95,3],[194,2]],"t":199,"picSig":"76de9b25"}';
+        let ok = false, detail = null;
+        try {
+          const sv = L.validateSave(raw);
+          const p = L.paramsFor(175, sv.pick);
+          const h = (x) => createHash('sha1').update(JSON.stringify(x)).digest('hex').slice(0, 16);
+          const c = L.createLevel(175, sv.pick);
+          const r = L.replay(175, sv.pick, sv.presses, sv.t);
+          // 盤の目印（足す前の版で同じ形に作った値）。仮の絵では比べられないので、本物の絵のときだけ
+          const same = kind !== '本物' || (h(c.state) === 'df640e51a710b22f' && h(r.state) === 'db3bd23e9c8fa9cb');
+          ok = p.lids === 2 && p.ices === 1 && (kind !== '本物' || L.saveFits(sv) === true) && r.ok === true && r.applied === 3 && c.state.level === 175 && c.state.picture === 'inukouenbooru' && same;
+          detail = { kind, lids: p.lids, ices: p.ices, fits: L.saveFits(sv), replay: r.ok, applied: r.applied, start: h(c.state), end: h(r.state) };
+        } catch (e) { detail = String(e); }
+        check('足す前の古い保存（175 面・inukouenbooru（L）・押した手 3 つ）は、ふた 2・こおり 1（その絵の段の値）で前と同じ盤になり、押した手もそのまま再生できる', ok, detail);
       });
       const n156 = L.pickPicture(156, book150);
       check('その人の次の面（156 面）は足した 156 枚目の絵（反転しない・くり返しでない）', n156.id === PO[155].id && n156.mirror === false && n156.repeat === false, n156);

@@ -864,7 +864,9 @@
     const p = normPick(lv, pick);
     const T = TIERS[PICTURE_ORDER[orderIndex(p.id)].tier] || TIERS.S;
     let lids, ices;
-    if (lv <= BASE_PICTURES) { const r = levelRow(lv); lids = r.lids; ices = r.ices; }
+    // 面の表（ふた・こおり）を使うのは、面の番号どおりの絵のときだけ（2026-11-09）。151〜200 面を足す前の途中の保存
+    // （151 面より先で、新しい絵を先に見せるで選ばれた XXL 以外の絵）は、前と同じくその絵の段の値で作る（約束 §2.7）
+    if (lv <= BASE_PICTURES && p.id === PICTURE_ORDER[lv - 1].id) { const r = levelRow(lv); lids = r.lids; ices = r.ices; }
     else { lids = T.lids; ices = T.ices; }
     let kmin = T.kmin, kmax = T.kmax, pull = T.pull;
     if (p.repeat) { kmin = REPEAT_K.kmin; kmax = REPEAT_K.kmax; pull += 2; lids = T.lids + 1; ices = T.ices + 1; }
