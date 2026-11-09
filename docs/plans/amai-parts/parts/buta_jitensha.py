@@ -13,9 +13,10 @@ def draw(cx, by, flip=False):
         fill(rect(x0, y, x0 + n - 1, y), 'W')
     bike = jitensha.draw(cx, by)
     sx, sy = bike["seat"]; kx, ky = bike["crank"]; gx, gy = bike["grip"]
-    # 奥の足（うしろのペダルへ）
-    l = line(sx + 3, sy - 2, kx - 3, ky + 1, 4.2); buta.blob(l, dark=True, hi=False)
-    buta.blob(ell(kx - 3.5, ky + 1.5, 2.4, 1.6), dark=True)
+    pfx, pfy = bike["pedal_f"]; pbx, pby = bike["pedal_b"]
+    # 奥の足（短く太い。ひざで まげて うしろの ペダルへ。先は ひづめ C）
+    l = line(sx + 2, sy - 3, sx + 5, sy + 1, 5) | line(sx + 5, sy + 1, pbx, pby - 2, 5); buta.blob(l, dark=True, hi=False)
+    fill(rect(pbx - 1, pby - 1, pbx + 1, pby - 1), 'C')
     # しっぽ → 体（前かがみ）
     buta.tail(sx - 5, sy - 6)
     body = ell(sx + 2, sy - 6, 7.5, 7.5, -15)
@@ -26,9 +27,9 @@ def draw(cx, by, flip=False):
     head = buta.head(hx, hy)
     buta.ear(hx - 2.5, hy - 8.5, 3.4, 5, 35)
     buta.face(hx, hy, eyes='open', mouth='smile')
-    # 手前の足（ひざを まげて ペダルを ふむ）
-    l = line(sx + 2, sy - 2, kx + 5, ky - 7, 4.6) | line(kx + 5, ky - 7, kx + 3, ky - 1, 4.2); buta.blob(l, hi=False)
-    buta.blob(ell(kx + 3.5, ky - .5, 2.6, 1.7))
+    # 手前の足（短く太い。ももを 前へ、ひざで まげて 前の ペダルを ふむ。先は ひづめ C）
+    l = line(sx + 4, sy - 3, pfx + 1, sy - 3, 5.4) | line(pfx + 1, sy - 3, pfx, pfy - 2, 5.2); buta.blob(l, hi=False)
+    fill(rect(pfx - 1, pfy - 1, pfx + 1, pfy - 1), 'C')
     # 手前の手（ハンドルを にぎる）
     a = line(sx + 5, sy - 8, gx - 1, gy + 1, 4.2); buta.blob(a, hi=False)
     buta.blob(ell(gx - .5, gy + .5, 2.3, 2.3))
