@@ -2,6 +2,7 @@
 # 使い方：python3 compose.py <id>…   （引数なしで表の全部）
 # 順番：場所の背景 → 主役の足もとのかげ → 動物 × ふるまい（小物は ふるまいの部品が持つ）→ 閉じた空きをうめて書き出し・確かめ。
 import os, sys, re, importlib
+sys.dont_write_bytecode = True   # __pycache__ を作らない（リポジトリに入れない）
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.join(HERE, 'parts')]
 import lib
