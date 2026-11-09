@@ -10,7 +10,7 @@
 | 161 | XXL | penginkouenjitensha | こうえんで ぺんぎんが じてんしゃに のる | "" | こうえん | ぺんぎん | じてんしゃに のる | x=32 y=46 |
 | 186 | XXL | penginhoshizorajitensha | ほしぞらで ぺんぎんが じてんしゃに のる | "" | ほしぞら | ぺんぎん | じてんしゃに のる | x=34 y=46 ぎゃく 背景ぎゃく sky=V |
 | 166 | XXL | penginmoribooru | もりで ぺんぎんが ボールで あそぶ | "" | もり | ぺんぎん | ボールで あそぶ | x=30 y=46 |
-| 191 | XXL | pengindaidokorobooru | だいどころで ぺんぎんが ボールで あそぶ | "" | だいどころ | ぺんぎん | ボールで あそぶ | x=37 y=46 ぎゃく 背景ぎゃく sky=S |
+| 191 | XXL | pengindaidokorobooru | だいどころで ぺんぎんが ボールで あそぶ | "" | だいどころ | ぺんぎん | ボールで あそぶ | x=39 y=46 ぎゃく 背景ぎゃく sky=S |
 | 171 | XXL | penginhanabatakeodoru | はなばたけで ぺんぎんが おどる | haru | はなばたけ | ぺんぎん | おどる | x=31 y=46 |
 | 196 | XXL | penginmachiodoru | まちで ぺんぎんが おどる | "" | まち | ぺんぎん | おどる | x=35 y=46 ぎゃく 背景ぎゃく ground=W |
 | 176 | XXL | penginyukiyamahon | ゆきやまで ぺんぎんが ほんを よむ | fuyu | ゆきやま | ぺんぎん | ほんを よむ | x=35 y=46 ぎゃく 背景ぎゃく |

@@ -97,3 +97,26 @@ def song_notes(xys):
         under = {at(x + 1, y + 6), at(x + 2, y + 3), at(x + 3, y)}
         c = next(c for c in pal[i:] + pal[:i] if c not in under)
         note(x, y, c)
+
+
+# ---- 大きな顔（ねむる 絵の ため。2026-11-09 に足した。上の head・face は そのまま）----
+EYE_BIG = ((-7, -8), (6.5, -8.5))   # 大きな頭の 目のこぶの まん中（頭のまん中からの ずれ）
+
+
+def head_big(hx, hy, rx=13.5, ry=8.5, er=5.3):
+    """大きな頭（head の 1.3 倍くらい）と 目のこぶ 2 つ。返り値は頭のマス。"""
+    m = ell(hx, hy, rx, ry) | ell(EYE_BIG[0][0] + hx, EYE_BIG[0][1] + hy, er, er) | ell(EYE_BIG[1][0] + hx, EYE_BIG[1][1] + hy, er, er)
+    blob(m)
+    fill({(hx - 10, hy), (hx - 11, hy + 1), (hx - 10, hy + 1), (hx - 9, hy - 2)}, 'D')   # 頭の はん
+    return m
+
+
+def face_sleep(hx, hy):
+    """ねむる顔（大きな頭に）：とじた目 ∪（K）・小さな にっこり口・鼻の あな。"""
+    for ex, ey in ((hx + EYE_BIG[0][0], hy + EYE_BIG[0][1]), (hx + EYE_BIG[1][0], hy + EYE_BIG[1][1])):
+        x, y = int(ex), int(ey)
+        # とじた目 ∪（はばの 広い ゆるい 弧。こぶの ふちと くっつかないように 内がわに）
+        fill({(x - 3, y - 1), (x - 2, y), (x - 1, y + 1), (x, y + 1), (x + 1, y + 1), (x + 2, y), (x + 3, y - 1),
+              (x - 2, y + 1), (x + 2, y + 1), (x - 1, y + 2), (x, y + 2), (x + 1, y + 2)}, 'K')   # 下は 2 マスの 太さ
+    put(hx + 9, hy - 1, 'K'); put(hx + 11, hy - 1, 'K')
+    fill(arc(hx + 2, hy + 1, 6, 3, 25, 155, 2), 'K')
