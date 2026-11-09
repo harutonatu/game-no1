@@ -17,6 +17,7 @@
  *   rock.dirty のマス（とそのまわり 1 マス）だけ塗り直す。ふちの光る線もそのまわりだけ。読んだら rock.dirty = []。
  *   rock.dirty が来ないのに rock.gen が変わったときは、全マスを見比べて変わったマスを探す（念のため）。
  *   毎コマは 背景 1 回 ＋ 見えている区画の drawImage（ふつう 1〜2 回）＋ ひかり のゆれ ＋ 弾・粒・自機。shadowBlur・filter は使わない。
+ *   いちばん重いのは回した区画を画面いっぱいに画素にする所（命令の時間 drawMs には出ない）。コマが遅いときだけ getImageData で測り、重ければ内部の解像度を下げる（checkHeavy）。
  * - 粒は MAX_PARTICLES = 300 まで。行き先は state.ship（動いても追いかける）。
  * - 動きを減らす設定（prefers-reduced-motion か calm）：カメラの回転をゆっくりに・粒を減らす・揺れや輪を出さない。
  */
@@ -31,6 +32,9 @@
   const MAX_PARTICLES = 300;
   const SHOTS_MAX = 200;
   const SLOW_MS = 34;
+  const HEAVY_GAP_MS = 20;        // コマの間隔の中央がこれをこえたら（50fps 未満）、描画が重いのかを測る
+  const HEAVY_DRAW_MS = 12;       // 画素にする時間がこれをこえたまま続いたら、内部の解像度を下げる
+  const PROBE_MS = 150;           // 測る間隔（軽かったら 4 秒まで延ばす）
   const SPAWN_BUDGET = 80;        // 1 コマに新しく出す粒の上限
   const HIT_FX_BUDGET = 24;       // 1 コマに出す「当たった光」の上限
   const TILE = 64;                // 区画の大きさ（マス）。64 × 8 × 2 = 1024 px（§3「1056 を超えるなら区画に分ける」）
@@ -109,6 +113,7 @@
 
     let cssW = 360, cssH = 640, dpr = 1;
     let dprCap = Infinity, heavySince = null;   // 描画が重いときの逃げ道：内部の解像度の上限（一度下げたら戻さない）
+    let probeAt = -Infinity, probeWait = PROBE_MS, flushMs = 0;   // 描いた絵を画素にする時間を、コマが遅いときだけ時々測る（checkHeavy）
     let bg = null;
     let frames = 0, slowFrames = 0, lastFrameAt = null, paused = false;
     const drawTimes = [];
@@ -160,7 +165,8 @@
       if (canvas.width !== pw) canvas.width = pw;
       if (canvas.height !== ph) canvas.height = ph;
       bg = null;
-      if (Math.abs(tileScale - dpr) > 1e-6) needFull = true;   // 区画の細かさは dpr に合わせる
+      // 区画の細かさは dpr に合わせる。ただし重くて下げたときは作り直さない（細かい区画を縮めて描けば同じ絵。作り直しの引っかかりを出さない）
+      if (dpr > tileScale + 1e-6 || (dpr < tileScale - 1e-6 && dprCap === Infinity)) needFull = true;
     }
     function makeCanvas(w, h) {
       if (doc && doc.createElement) { const c = doc.createElement("canvas"); c.width = w; c.height = h; return c; }
@@ -757,17 +763,28 @@
       if (drawTimes.length > 120) drawTimes.shift();
       checkHeavy();
     }
-    // 描画の時間（直近 15 コマの中央）が 12ms をこえたまま 1 秒たったら、内部の解像度を 2 → 1.5 → 1 と下げる（CSS の大きさは変えない）
+    // 描画が重いときの逃げ道：内部の解像度を 2 → 1.5 → 1 と下げる（CSS の大きさは変えない）。
+    // canvas の命令は記録されるだけで、画素にする（ラスタライズ）のはコマの終わりのブラウザの中なので、drawMs（命令の時間）には出ない。
+    // そこで、コマの間隔の中央が 20ms をこえるときだけ、時々 getImageData(1 画素) で画素にするのを今させて、その時間を測る。
+    // 画素にする時間が 12ms をこえたのが 0.15 秒あけて 2 回続いたら下げる。軽ければ測る間隔を延ばす（30fps に止めている端末で何度も測らない）。
     function checkHeavy() {
-      if (dpr <= 1 || drawTimes.length < 15) { heavySince = null; return; }
-      const last = drawTimes.slice(-15).sort((a, b) => a - b);
-      if (last[7] <= 12) { heavySince = null; return; }
+      if (dpr <= 1 || paused || frameGaps.length < 10) { heavySince = null; return; }
+      const gaps = frameGaps.slice(-10).sort((a, b) => a - b);
+      if (gaps[5] <= HEAVY_GAP_MS) { heavySince = null; probeWait = PROBE_MS; return; }
       const t = now();
-      if (heavySince === null) { heavySince = t; return; }
-      if (t - heavySince < 1000) return;
-      dprCap = dpr > 1.5 ? 1.5 : 1;
+      if (t - probeAt < probeWait) return;
+      probeAt = t;
+      try { ctx.getImageData(0, 0, 1, 1); } catch (e) { return; }
+      const ms = now() - t;   // 画素にする時間だけ（星が変わるときの作り直しなど、命令の側の一時の重さでは下げない）
+      if (ms <= HEAVY_DRAW_MS) { heavySince = null; flushMs = ms; probeWait = Math.min(4000, probeWait * 2); return; }
+      probeWait = PROBE_MS;
+      if (heavySince === null) { heavySince = t; flushMs = ms; return; }
+      flushMs = Math.min(flushMs, ms);   // 重い間の小さいほう（たまたま重かった 1 回で下げすぎない）
+      if (t - heavySince < 150) return;
+      // 画素の数に比例するとみて、12ms に収まる見込みの解像度へ（1.5 で足りなければ 1 へまっすぐ。下げる引っかかりを 1 回にする）
+      dprCap = dpr > 1.5 && flushMs * (1.5 / dpr) * (1.5 / dpr) <= HEAVY_DRAW_MS ? 1.5 : 1;
       heavySince = null;
-      drawTimes.length = 0;
+      drawTimes.length = 0; frameGaps.length = 0;
       resize(cssW, cssH, dprCap);
     }
     function advanceFx(dt) {
@@ -1124,7 +1141,7 @@
         fullMs: Math.round(lastFullMs * 100) / 100,
         drawMs: s.length ? Math.round(s[(s.length / 2) | 0] * 100) / 100 : 0,
         drawMsMax: s.length ? Math.round(s[s.length - 1] * 100) / 100 : 0,
-        calm, dpr,
+        calm, dpr, flushMs: Math.round(flushMs * 100) / 100,
         bolt: lastBolt ? Object.assign({}, lastBolt) : null,
         evolve: evolveText ? evolveText.b : null
       };

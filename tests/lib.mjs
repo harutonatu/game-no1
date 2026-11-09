@@ -527,8 +527,6 @@ export const x20Text = (r) => `変わっていなければ開き直さない（$
 export const KNOWN_ISSUES = {
   // ほしくだき（作り直し、2026-10-23）：SE 縦・ホーム画面（320×568、safe-area の上 20px）で 4 台のとき、場の高さが safe-area を除いた高さの 42.7%（契約 §5.1 の 4 割 3 分に 0.3 点足りない）。
   // 部品C の 44% は safe-area なしで測った値。PM の決定待ち（目安を 4 割 2 分にするか、画面を詰めるか）。KW8 の場の高さの確認だけに付ける
-  // ほしくだき（リニューアル、2026-11-09）：CPU 4 倍遅く（CDP）・星 30（132×132）・4 台 Lv30・SE 縦で、34ms を超えるコマが 13〜38%（目安 5% 以下）。描く canvas が画面いっぱいで dpr 2 になったため。KW10 のその確かめだけに付ける。描画の担当の判断待ち
-  'AST-PERF': 'CPU 4 倍遅くで 34ms を超えるコマが 5% をこえる（13〜38%。games/asteroid/render.js）',
 };
 // 既知の不具合のキー → 説明（なければ undefined）。check(名前, ok, 詳細, known(キー)) のように使う
 export const known = (key) => KNOWN_ISSUES[key];
