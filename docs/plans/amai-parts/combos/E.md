@@ -8,3 +8,4 @@
 | 160 | XXL | inukouenjitensha | こうえんで いぬが じてんしゃに のる | "" | こうえん | いぬ | じてんしゃに のる | x=31 y=46 |
 | 165 | XXL | usagihanabatakeutau | はなばたけで うさぎが うたう | haru | はなばたけ | うさぎ | うたう | x=29 y=46 |
 | 170 | XXL | kumayuuenchiutau | ゆうえんちで くまが うたう | "" | ゆうえんち | くま | うたう | x=30 y=46 |
+| 175 | XXL | pandamachijitensha | まちで ぱんだが じてんしゃに のる | "" | まち | ぱんだ | じてんしゃに のる | x=32 y=46 |
