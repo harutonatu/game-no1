@@ -13,7 +13,7 @@
  *   const sfx = YubiSfx.create("matomete"); // まとめてポン（select(n)/pop(n)/fall/allclear/over/deny/undo/blast(r)/streak(n)）
  *   const sfx = YubiSfx.create("michibiki"); // ミチビキ空港（warn/pick/lock/land(n)/near/crash/bounce/open(color)/over）
  *   const sfx = YubiSfx.create("seizai");   // もくもくこうば（chop/saw/sell/buy/hire/tool/cheer/deny/order/deliver(kind)/stage(n)/away）
- *   const sfx = YubiSfx.create("asteroid"); // ちきゅうを守れ！ほしくだき（shot(w)/crack(n)/break(mat)/chunk(n)/absorb/up/evolve/unlock/swap/clear/bounce/boss/deny）
+ *   const sfx = YubiSfx.create("asteroid"); // ちきゅうを守れ！ほしくだき（shot(w)/crack(n)/break(mat)/chunk(n)/absorb/up/evolve/unlock/swap/clear/glow/lost/boss/deny）
  *   const sfx = YubiSfx.create("amai");     // あまいものあつめ（place/nest/empty/clear/open/thaw/deny/undo/stuck）
  *   const sfx = YubiSfx.create("menu");    // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
@@ -43,7 +43,7 @@
   const GROUP_SEIZAI = { chop: "work", saw: "work" };
   // ちきゅうを守れ！ほしくだきだけの間引き（約束 §9）。shot は全武器を合わせて 0.12 秒に 1 回（名前が1つなので自然に合わさる）、
   // break は 0.05 秒・absorb は 0.1 秒に 1 回まで。clear・bounce・deny は ほかのゲームにも同じ名前があるので、このゲームだけに効かせる
-  const GAP_ASTEROID = { shot: 0.12, crack: 0.08, break: 0.05, chunk: 0.12, absorb: 0.1, up: 0.05, bounce: 0.3, deny: 0.2, boss: 1, evolve: 0.2, unlock: 0.3, swap: 0.1, clear: 0.5 };
+  const GAP_ASTEROID = { shot: 0.12, crack: 0.08, break: 0.05, chunk: 0.12, absorb: 0.1, up: 0.05, glow: 0.12, lost: 1, deny: 0.2, boss: 1, evolve: 0.2, unlock: 0.3, swap: 0.1, clear: 0.5 };
 
   function create(game, opts) {
     opts = opts || {};
@@ -631,7 +631,7 @@
 
     // ちきゅうを守れ！ほしくだき：全部自動で撃ち続けるので、ずっと鳴る音（shot・crack・break・absorb）はごく小さく短く、間引く（GAP_ASTEROID）。
     // 気持ちよさの中心は break（材質で高さが変わる「ぽろっ」）・chunk（はなれたかたまりの「ざらざらっ」）・absorb（五音音階で上がる「ちりっ」）。
-    // 基音はどれも A6（1760Hz）まで。bounce は負けの音にしない（やわらかい「ぼよん」）。deny はやさしく下がる2音
+    // 基音はどれも A6（1760Hz）まで。lost（時間切れ）は責めない下がる2音。deny はやさしく下がる2音
     const AST_BREAK = { rock: 330, ice: 880, iron: 523.25, gold: 1318.5 };   // 材質 → 「ぽろっ」の高さ（いわ 低・こおり 高・きん 鈴）
     let astChain = 0, astChainAt = -9;                                        // absorb が続いた数と、最後に鳴った時刻
     const ASTEROID = {
@@ -703,11 +703,17 @@
         bell(G6, t + 0.5, { vol: 0.045, decay: 0.5 });
         bell(1760, t + 0.65, { vol: 0.035, decay: 0.6 });
       },
-      // バリアがはね返した「ぼよん」：やわらかく上がって戻る（負けの音にしない）
-      bounce: () => {
+      // ひかりがまとめて砕けた「きらきらっ」：高い鈴が上がっていく短い音（約 0.3 秒）
+      glow: () => {
         const t = N();
-        partial(330, t, 0.22, { vol: 0.08, from: 196, fromT: 0.06, to: 262, toT: 0.22, a: 0.01 });
-        partial(660, t, 0.12, { vol: 0.02, from: 392, fromT: 0.06, a: 0.01 });
+        [E6, G6, 1760].forEach((f, i) => bell(f, t + i * 0.05, { vol: 0.035, decay: 0.2 }));
+        noise(t, 0.12, { freq: 5000, to: 3000, q: 1.5, vol: 0.012, a: 0.002 });
+      },
+      // まにあわなかった：やわらかく下がる短い音（責めない。約 0.5 秒）
+      lost: () => {
+        const t = N();
+        partial(392, t, 0.3, { vol: 0.07, from: 440, fromT: 0.05, to: 330, toT: 0.3, a: 0.01 });
+        partial(262, t + 0.16, 0.34, { vol: 0.07, from: 294, fromT: 0.05, to: 196, toT: 0.3, a: 0.01 });
       },
       // 大きな星が来た：低い予告（ゆっくり2回）
       boss: () => {

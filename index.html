@@ -206,7 +206,7 @@
     { name: "ミチビキ空港", desc: "ゆびで みちを かいて、おなじ いろの かっそうろへ", url: "games/michibiki/", bestText: () => michibikiBest(), art: "michibiki" },
     { name: "もくもくこうば", desc: "もりの きを きって、いたに して うろう。もくもく はたらく みんなを そだてよう", url: "games/seizai/", bestText: () => seizaiBest(), art: "seizai" },
     // 名前が長いので、折り返すときは nameParts の切れ目（「ちきゅうを守れ！」と「ほしくだき」の間）だけで折る（約束 §1.4・§10）
-    { name: "ちきゅうを守れ！ほしくだき", nameParts: ["ちきゅうを守れ！", "ほしくだき"], desc: "ちきゅうに せまる ほしを、ほうだいが こわすよ。かけらで ぶきを つよく しよう", url: "games/asteroid/", bestText: () => asteroidBest(), art: "asteroid", bestWrap: true },
+    { name: "ちきゅうを守れ！ほしくだき", nameParts: ["ちきゅうを守れ！", "ほしくだき"], desc: "おおきな ほしの まわりを じきが とびまわって こわすよ。ちきゅうに つくまでに こわしきれ！", url: "games/asteroid/", bestText: () => asteroidBest(), art: "asteroid", bestWrap: true },
     { name: "あまいものあつめ", desc: "ありんこが おなじ いろの おさとうを はこぶよ", url: "games/amai/", bestText: () => amaiBest(), art: "amai", bestWrap: true, bestSmall: true }
   ];
 
@@ -710,90 +710,47 @@
       ant(0.76, "#F2D13A");
       ant(0.94, null);
     },
-    // 上から降りてくる、マス目の小惑星（いわ・てつ・こおり・きん。何マスか欠けて、かけらが飛ぶ）と、地球の弧に並んで撃つ小さな砲台3つ
+    // 濃い青の宇宙に、白い光る線の大きな小惑星のふち（階段のギザギザ）と、線だけの自機（見本 D の色）
     asteroid(ctx, w, h) {
       const u = Math.min(w, h), ox = (w - u) / 2, oy = (h - u) / 2;
       const P = (x, y) => [ox + x * u, oy + y * u];
+      const gr = ctx.createLinearGradient(0, 0, 0, h);
+      gr.addColorStop(0, "#0a1630"); gr.addColorStop(1, "#06102a");
+      ctx.fillStyle = gr; ctx.fillRect(0, 0, w, h);
       // 星空
-      ctx.fillStyle = "rgba(255,255,255,0.55)";
-      [[0.1, 0.1], [0.86, 0.14], [0.08, 0.5], [0.9, 0.46], [0.18, 0.74], [0.82, 0.7]].forEach(([x, y]) => ctx.fillRect(...P(x, y), Math.max(1, u * 0.018), Math.max(1, u * 0.018)));
-      // 地球の弧（下）
-      ctx.fillStyle = "#2f6fb0";
-      ctx.beginPath(); ctx.arc(...P(0.5, 1.47), u * 0.68, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#3f8f4e";
-      ctx.beginPath(); ctx.ellipse(...P(0.34, 0.9), u * 0.12, u * 0.035, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "rgba(120,200,255,0.5)"; ctx.lineWidth = Math.max(1, u * 0.02);
-      ctx.beginPath(); ctx.arc(...P(0.5, 1.47), u * 0.74, Math.PI * 1.3, Math.PI * 1.7); ctx.stroke();
-      // 小惑星（7×5 のマス。. は欠けた所）r いわ・i てつ・c こおり・g きん
-      const C = { r: ["#9a6a44", null], i: ["#8a93a3", "grid"], c: ["#8fd3ee", "diag"], g: ["#f2c94c", "star"] };
-      const rows = [
-        "..rri..",
-        ".rrriir",
-        "crrgrr.",
-        "ccrrr..",
-        ".c.r..."
-      ];
-      const n = 7, s = u * 0.08, gx = ox + (u - s * n) / 2, gy = oy + u * 0.06;
-      rows.forEach((row, y) => [...row].forEach((t, x) => {
-        if (t === ".") return;
-        const [col, pat] = C[t], px = gx + x * s, py = gy + y * s;
-        ctx.fillStyle = col; ctx.fillRect(px + 0.5, py + 0.5, s - 1, s - 1);
-        ctx.fillStyle = "rgba(255,255,255,0.18)"; ctx.fillRect(px + 0.5, py + 0.5, s - 1, Math.max(1, s * 0.18));
-        ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.lineWidth = Math.max(0.8, s * 0.08);
-        if (pat === "grid") { ctx.beginPath(); ctx.moveTo(px + s / 2, py + 1); ctx.lineTo(px + s / 2, py + s - 1); ctx.moveTo(px + 1, py + s / 2); ctx.lineTo(px + s - 1, py + s / 2); ctx.stroke(); }
-        if (pat === "diag") { ctx.beginPath(); ctx.moveTo(px + 1, py + s - 1); ctx.lineTo(px + s - 1, py + 1); ctx.stroke(); }
-        if (pat === "star") { ctx.fillStyle = "#fff6c8"; ctx.beginPath(); ctx.arc(px + s / 2, py + s / 2, s * 0.18, 0, Math.PI * 2); ctx.fill(); }
-      }));
-      // ひび（欠けかけのてつ）
-      ctx.strokeStyle = "rgba(20,20,30,0.75)"; ctx.lineWidth = Math.max(0.8, s * 0.09);
-      ctx.beginPath(); ctx.moveTo(gx + 5 * s + s * 0.2, gy + s * 1.2); ctx.lineTo(gx + 5 * s + s * 0.5, gy + s * 1.5); ctx.lineTo(gx + 5 * s + s * 0.4, gy + s * 1.85); ctx.stroke();
-      // 飛び散ったかけら
-      ctx.fillStyle = "#c9935f";
-      [[0.83, 0.5, 0.03], [0.88, 0.42, 0.022], [0.14, 0.52, 0.022]].forEach(([x, y, r]) => ctx.fillRect(...P(x, y), u * r, u * r));
-      // 砲台（地球の弧の上に3つ。白い丸屋根と、ねらう向きの砲身。砲身の色が武器の色）
-      const R0 = 0.68, ARC = (x) => 1.47 - Math.sqrt(R0 * R0 - (x - 0.5) * (x - 0.5));
-      const turret = (x, tx, ty, col) => {
-        const y = ARC(x) + 0.01, [px, py] = P(x, y), r = u * 0.085;
-        const ang = Math.atan2(ty - y, tx - x);
-        // 砲身（丸屋根の中心から、ねらう向きへ）
-        ctx.save();
-        ctx.translate(px, py - r * 0.35); ctx.rotate(ang);
-        ctx.fillStyle = col; ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.lineWidth = Math.max(1, u * 0.012);
-        roundRect(ctx, 0, -r * 0.24, r * 1.45, r * 0.48, r * 0.18); ctx.fill(); ctx.stroke();
-        ctx.restore();
-        // 丸屋根と台
-        ctx.fillStyle = "#e9eef7";
-        ctx.beginPath(); ctx.arc(px, py, r, Math.PI, 0); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = "#b9c3d6";
-        roundRect(ctx, px - r * 1.15, py - r * 0.1, r * 2.3, r * 0.32, r * 0.12); ctx.fill();
-        // 窓（武器の色）
-        ctx.fillStyle = col;
-        ctx.beginPath(); ctx.arc(px, py - r * 0.45, r * 0.26, 0, Math.PI * 2); ctx.fill();
-        return [px + Math.cos(ang) * r * 1.5, py - r * 0.35 + Math.sin(ang) * r * 1.5];
-      };
-      // ねらう所（小惑星の下のほうのマス）
-      const T1 = [0.33, 0.4], T2 = [0.52, 0.38], T3 = [0.65, 0.24];
-      const m1 = turret(0.18, ...T1, "#ff9f3a");
-      const m2 = turret(0.5, ...T2, "#ffd36b");
-      const m3 = turret(0.82, ...T3, "#7fd0ff");
-      // 弾（左と中の砲台から小惑星へ。ねらう向きに細長く）
-      const bullet = ([sx, sy], [tx, ty], f) => {
-        const [bx, by] = [sx + (ox + tx * u - sx) * f, sy + (oy + ty * u - sy) * f];
-        ctx.save(); ctx.translate(bx, by); ctx.rotate(Math.atan2(oy + ty * u - sy, ox + tx * u - sx));
-        ctx.fillStyle = "#ffd36b"; ctx.beginPath(); ctx.ellipse(0, 0, u * 0.03, u * 0.014, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.restore();
-      };
-      bullet(m1, T1, 0.35); bullet(m1, T1, 0.7);
-      bullet(m2, T2, 0.3); bullet(m2, T2, 0.65);
-      // ビーム（右の砲台から、まっすぐの光の帯）
-      const [ex, ey] = P(...T3);
-      ctx.lineCap = "round";
-      ctx.strokeStyle = "rgba(127,208,255,0.45)"; ctx.lineWidth = Math.max(2, u * 0.04);
-      ctx.beginPath(); ctx.moveTo(...m3); ctx.lineTo(ex, ey); ctx.stroke();
-      ctx.strokeStyle = "#f4fbff"; ctx.lineWidth = Math.max(1, u * 0.014);
-      ctx.beginPath(); ctx.moveTo(...m3); ctx.lineTo(ex, ey); ctx.stroke();
-      ctx.fillStyle = "#f4fbff";
-      ctx.beginPath(); ctx.arc(ex, ey, u * 0.022, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "rgba(190,210,255,0.6)";
+      [[0.72, 0.1], [0.9, 0.3], [0.62, 0.52], [0.9, 0.7], [0.74, 0.9], [0.5, 0.06]].forEach(([x, y]) => ctx.fillRect(...P(x, y), Math.max(1, u * 0.018), Math.max(1, u * 0.018)));
+      // 小惑星（左に大きく。ふちは階段）：中は少し明るい青、ふちは白い光る線
+      const edge = [[0, 0.04], [0.3, 0.04], [0.3, 0.12], [0.4, 0.12], [0.4, 0.22], [0.5, 0.22], [0.5, 0.34], [0.58, 0.34], [0.58, 0.48], [0.64, 0.48], [0.64, 0.62], [0.56, 0.62], [0.56, 0.74], [0.46, 0.74], [0.46, 0.86], [0.34, 0.86], [0.34, 0.96], [0, 0.96]];
+      ctx.beginPath();
+      edge.forEach(([x, y], i) => { const [px, py] = P(x, y); if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); });
+      ctx.closePath();
+      ctx.fillStyle = "#0e1c40"; ctx.fill();
+      // マス目の線（うすく）
+      ctx.save(); ctx.clip();
+      ctx.strokeStyle = "rgba(60,90,160,0.35)"; ctx.lineWidth = 1;
+      for (let k = 1; k < 9; k++) {
+        ctx.beginPath(); ctx.moveTo(...P(k * 0.08, 0)); ctx.lineTo(...P(k * 0.08, 1)); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(...P(0, k * 0.1)); ctx.lineTo(...P(1, k * 0.1)); ctx.stroke();
+      }
+      // ひかるマス（オレンジと黄）
+      ctx.fillStyle = "#e8782a"; ctx.fillRect(...P(0.2, 0.3), u * 0.07, u * 0.07); ctx.fillRect(...P(0.27, 0.37), u * 0.07, u * 0.07);
+      ctx.fillStyle = "#f0b72f"; ctx.fillRect(...P(0.12, 0.62), u * 0.07, u * 0.07);
+      ctx.restore();
+      ctx.lineJoin = "miter"; ctx.lineCap = "square";
+      ctx.beginPath();
+      edge.slice(1, -1).forEach(([x, y], i) => { const [px, py] = P(x, y); if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); });
+      ctx.strokeStyle = "rgba(170,205,255,0.35)"; ctx.lineWidth = Math.max(4, u * 0.07); ctx.stroke();
+      ctx.strokeStyle = "#f4f8ff"; ctx.lineWidth = Math.max(1.5, u * 0.025); ctx.stroke();
+      // 自機（線だけの先の丸い三角）と、金の弾
+      ctx.save();
+      const [sx, sy] = P(0.8, 0.45);
+      ctx.translate(sx, sy); ctx.rotate(-2.2);
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = Math.max(1.5, u * 0.03); ctx.lineJoin = "round";
+      ctx.beginPath(); ctx.moveTo(u * 0.1, 0); ctx.lineTo(-u * 0.07, u * 0.065); ctx.lineTo(-u * 0.04, 0); ctx.lineTo(-u * 0.07, -u * 0.065); ctx.closePath(); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = "#f2c14e";
+      [[0.66, 0.56], [0.7, 0.6]].forEach(([x, y]) => { ctx.beginPath(); ctx.arc(...P(x, y), u * 0.022, 0, Math.PI * 2); ctx.fill(); });
     },
     // 絵が用意されていないゲーム用：頭文字のタイル
     fallback(ctx, w, h, game) {

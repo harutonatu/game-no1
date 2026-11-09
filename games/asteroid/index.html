@@ -6,13 +6,13 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ゆびあそび">
-<meta name="theme-color" content="#0e1430">
-<meta name="description" content="広告なし・登録なし。ちきゅうに せまる ほしを、ほうだいが こわすよ。かけらで ぶきを つよく しよう。">
+<meta name="theme-color" content="#0a1630">
+<meta name="description" content="広告なし・登録なし。おおきな ほしの まわりを じきが とびまわって こわすよ。かけらで ぶきを つよく しよう。">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ゆびあそび">
 <meta property="og:locale" content="ja_JP">
 <meta property="og:title" content="ちきゅうを守れ！ほしくだき｜ゆびあそび">
-<meta property="og:description" content="広告なし・登録なし。ちきゅうに せまる ほしを、ほうだいが こわすよ。かけらで ぶきを つよく しよう。">
+<meta property="og:description" content="広告なし・登録なし。おおきな ほしの まわりを じきが とびまわって こわすよ。かけらで ぶきを つよく しよう。">
 <meta property="og:url" content="https://harutonatu.github.io/game-no1/games/asteroid/">
 <meta property="og:image" content="https://harutonatu.github.io/game-no1/icons/og-menu.png">
 <meta property="og:image:width" content="1200">
@@ -26,23 +26,22 @@
 <!-- デバッグ表示（?debug=1 のときだけ動く。読めなくてもゲームは動く） -->
 <script src="../../common/debug.js"></script>
 <style>
-  /* 配置（契約 docs/asteroid-contract.md §5.1）
-     縦向き：上から #hud（← メニュー｜題名｜？ ♪ ／ かけら・ほし ／ 壊した割合）→ #field（場。押しても何も起きない）→ #weapons（最大4行＋あたらしい ぶき）。
-     場（canvas）は #field の箱いっぱいに広がり、render.js が小惑星を場の幅の 7 割前後まで寄せて描く（上の空は切る。地球・バリア・砲台は必ず見える。§18.1 A）。
-     下のボタンの行（.btnrow）：#unlockBtn（広い）と #swapBtn（いれかえ・ひかえの数。88px 以上）を横に並べる（§5.1。行を増やさない）。
-     低い画面（縦で高さ 620px 以下・横で高さ 300px 以下）は武器の行を 1 行構成 44px にする（§18.1 A）。
-     #hud は 3 段（← メニュー｜題名｜？ ♪ ／ かけら・ほし N ／ 壊した割合・星の札）で、札が出ても高さが変わらない（U9）。
-     横向きで背が低い（高さ 500px 以下）：左に #field、右の列に #hud・#weapons。 */
+  /* 配置（リニューアル 2026-11-09。計画書 docs/plans/asteroid-renew.md §2・見本 D）
+     canvas（#field）は画面いっぱいで背景も描く。UI（.app）はその上に重ねる（押しても何も起きない場）。
+     縦向き：上から #hud（← メニュー｜題名｜？ ♪ ／ かけら・ほし ／ 残り時間の棒と地球 ／ ちきゅうまで あと m:ss）→ #fieldzone（帯・ヒント・時間切れの札。透明）→ #weapons（最大4行＋あたらしい ぶき）。
+     色は D：背景 濃い青、枠・文字・かけら・残り時間の棒は金 #f2c14e、ボタンは金の線の枠。
+     低い画面（縦で高さ 620px 以下・横で高さ 300px 以下）は武器の行を 1 行構成 44px にする。
+     横向きで背が低い（高さ 500px 以下）：左に canvas と #fieldzone、右の列に #hud・#weapons。 */
   :root {
-    --bg: #0e1430;
-    --panel: #1a2347;
-    --panel2: #243063;
-    --line: #3a4888;
+    --bg: #0a1630;
+    --panel: rgba(8, 16, 40, 0.86);
+    --panel2: #13214a;
+    --line: rgba(242, 193, 78, 0.5);
     --ink: #f2f4ff;
-    --muted: #aab3d6;
+    --muted: #b4bddc;
     --accent: #ff9a3c;
     --accent-ink: #2a1300;
-    --gold: #ffd84d;
+    --gold: #f2c14e;
     --good: #8fe3a0;
     --font-display: "Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif;
     --font-text: "Hiragino Sans", system-ui, sans-serif;
@@ -88,6 +87,8 @@
     gap: var(--app-gap);
     max-width: 600px;
     margin: 0 auto;
+    position: relative;
+    z-index: 1;
   }
 
   /* ===== #hud ===== */
@@ -111,9 +112,9 @@
     min-height: 44px;
     padding: 0 10px;
     border-radius: 10px;
-    border: 1px solid var(--line);
+    border: 2px solid var(--gold);
     background: var(--panel);
-    color: var(--ink);
+    color: var(--gold);
     font: 700 16px var(--font-text);
     text-decoration: none;
     white-space: nowrap;
@@ -124,12 +125,13 @@
   /* 題名「ちきゅうを守れ！ほしくだき」：1行に入らないときだけ「ちきゅうを守れ！」と「ほしくだき」の間で2行に折る（§1.4）。
      2つの span は中で折れない（white-space: nowrap）。「…」で切らない */
   h1.title {
+    text-shadow: 0 0 8px rgba(4, 10, 28, 0.9);
     margin: 0;
     min-width: 0;
     text-align: center;
     font: 800 16px/1.15 var(--font-display);
     letter-spacing: 0.02em;
-    color: var(--ink);
+    color: var(--gold);
     white-space: normal;
     word-break: keep-all;
     overflow-wrap: normal;
@@ -142,9 +144,9 @@
     min-width: 44px;
     min-height: 44px;
     border-radius: 10px;
-    border: 1px solid var(--line);
-    background: transparent;
-    color: var(--ink);
+    border: 2px solid var(--line);
+    background: var(--panel);
+    color: var(--gold);
     font: 700 18px var(--font-display);
     padding: 0 6px;
     display: inline-flex;
@@ -157,72 +159,58 @@
   /* かけら・ほし の行（1 行。高さは変わらない） */
   .info { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 8px; min-width: 0; padding: 0 2px; }
   .purse { display: flex; align-items: baseline; gap: 4px; min-width: 0; white-space: nowrap; }
-  #kakera { font: 900 22px/1.15 var(--font-display); color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; display: inline-block; transform-origin: left center; }
-  .purse .unit { font: 700 12px/1 var(--font-text); color: var(--muted); }
+  #kakera { font: 900 22px/1.15 var(--font-display); color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; display: inline-block; transform-origin: left center; text-shadow: 0 0 6px rgba(242, 193, 78, 0.35); }
+  .purse .unit { font: 700 12px/1 var(--font-text); color: var(--gold); opacity: 0.85; }
   /* render.js が粒の吸い込まれに合わせて .bump を付ける（数は main.js がロジックの値そのままで書く） */
   #kakera.bump { animation: bump 0.22s ease-out; }
   @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.12); } 100% { transform: scale(1); } }
-  #starLabel { min-width: 0; display: flex; justify-content: flex-end; align-items: baseline; text-align: right; }
-  #starLabel .num { font: 800 15px/1.2 var(--font-display); white-space: nowrap; }
-  /* 大きな星（5 の倍数）は札を明るく。色だけに頼らず ★ も付ける */
+  #starLabel { min-width: 0; display: flex; justify-content: flex-end; align-items: baseline; gap: 6px; text-align: right; color: var(--gold); }
+  #starLabel .num { font: 800 16px/1.2 var(--font-display); white-space: nowrap; }
+  #starTag { font: 700 12px/1 var(--font-text); color: var(--muted); white-space: nowrap; }
+  /* 大きな星（10 の倍数）は札を明るく。色だけに頼らず ★ も付ける */
   #starLabel[data-boss="1"] .num { color: var(--accent); }
   #starLabel[data-boss="1"] .num::before { content: "★"; }
 
-  /* 壊した割合の棒（main.js が aria-valuenow と #starFill の幅、[data-part=pct] の文字を書く）。
-     右に星の札 #starTag（「てつが おおい」など。空でも行の高さは同じ＝場がずれない U9） */
-  .barrow { display: flex; align-items: center; gap: 6px; min-width: 0; height: 13px; padding: 0 2px; }
-  #starTag { flex: 0 0 auto; font: 700 12px/1 var(--font-text); color: var(--muted); white-space: nowrap; }
-  #starBar { flex: 1 1 auto; min-width: 40px; height: 8px; border-radius: 4px; background: #0a0f24; box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
-  #starFill { display: block; height: 100%; width: 0%; border-radius: 4px; background: repeating-linear-gradient(135deg, #ffb35c 0 6px, #ff9a3c 6px 12px); transition: width 0.25s ease-out; }
-  .barrow .pct { flex: 0 0 auto; font: 700 12px/1 var(--font-text); color: var(--muted); font-variant-numeric: tabular-nums; min-width: 2.6em; text-align: right; }
+  /* 残り時間の棒（main.js が aria-valuenow と #timeFill の幅を書く）と、右の小さな地球の絵 */
+  .barrow { display: flex; align-items: center; gap: 8px; min-width: 0; height: 40px; padding: 0 2px; }
+  #timeBar { flex: 1 1 auto; min-width: 40px; height: 14px; border-radius: 7px; background: rgba(4, 10, 28, 0.85); box-shadow: 0 0 0 2px var(--gold), 0 0 8px rgba(242, 193, 78, 0.35); overflow: hidden; }
+  #timeFill { display: block; height: 100%; width: 100%; border-radius: 7px; background: var(--gold); transition: width 0.25s linear; }
+  .earth { flex: 0 0 auto; width: 36px; height: 36px; transition: transform 0.3s ease-out; filter: drop-shadow(0 0 4px rgba(242, 193, 78, 0.5)); }
+  .timerow { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; min-width: 0; padding: 0 2px; font: 700 14px/1.3 var(--font-text); color: var(--gold); }
+  #timeText { text-shadow: 0 0 4px #06102a, 0 0 4px #06102a; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pctbox { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .pctbox b { font-weight: 700; font-variant-numeric: tabular-nums; }
+  /* 30 秒を切ったら棒と字をオレンジに、地球の絵を少し大きく（音は鳴らさない） */
+  .hud[data-urgent="1"] #timeFill { background: var(--accent); }
+  .hud[data-urgent="1"] #timeBar { box-shadow: 0 0 0 2px var(--accent), 0 0 8px rgba(255, 154, 60, 0.5); }
+  .hud[data-urgent="1"] #timeText { color: var(--accent); }
+  .hud[data-urgent="1"] .earth { transform: scale(1.3); }
 
-  /* ===== #field（場。押しても何も起きない：押す処理を付けない・pointer-events なし） ===== */
-  .field {
-    grid-area: field;
-    position: relative;
-    min-height: 0;
-    min-width: 0;
-    border-radius: 12px;
-    background: #070b1f;
-    overflow: hidden;
-    touch-action: manipulation;
-    -webkit-user-select: none;
-    user-select: none;
-  }
-  /* canvas を置く箱。render.js が canvas をこの箱いっぱいに広げ、小惑星に寄せて描く（#distance は場の右端に重ねる。小惑星は真ん中 7 割までなので重ならない） */
-  .stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-  #fieldCanvas { display: block; width: 100px; height: 156px; pointer-events: none; touch-action: manipulation; }
+  /* ===== #field（画面いっぱいの canvas。押しても何も起きない：押す処理を付けない・pointer-events なし）。#fieldzone は帯とヒントと時間切れの札を置く透明な場 ===== */
+  .field { position: fixed; inset: 0; z-index: 0; background: var(--bg); overflow: hidden; pointer-events: none; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  #fieldCanvas { display: block; width: 100%; height: 100%; pointer-events: none; touch-action: manipulation; }
+  .fieldzone { grid-area: field; position: relative; min-height: 0; min-width: 0; pointer-events: none; }
 
-  /* 地球までの近さ（縦の棒。下ほど近い）。main.js が aria-valuenow（0〜100。100＝とどく）と #distanceFill の高さを書く */
-  #distance {
-    position: absolute;
-    right: 6px;
-    top: max(10%, 18px);
-    bottom: var(--dist-bot, 14%);
-    width: 8px;
-    border-radius: 4px;
-    background: #0a0f24;
-    box-shadow: inset 0 0 0 1px var(--line);
-    overflow: hidden;
-    pointer-events: none;
+  /* 時間切れの札（カードではない。#fieldzone の真ん中。押せるのは「もういちど」だけ。下の武器の行は押せる） */
+  .lostcard {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 6;
+    box-sizing: border-box; width: min(300px, calc(100% - 16px)); padding: 12px 14px;
+    display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
+    background: rgba(6, 12, 32, 0.92); border-radius: 14px; box-shadow: 0 0 0 2px var(--gold), 0 0 16px rgba(242, 193, 78, 0.35);
+    pointer-events: auto;
   }
-  #distanceFill { position: absolute; left: 0; right: 0; top: 0; height: 0%; border-radius: 4px; background: linear-gradient(#7fd6ff, #ff7a5c); transition: height 0.25s linear; }
-  /* 地球まで残り 3 割以下：棒が赤くなり、枠も太く赤くなる（色だけに頼らず点滅もする。動きを減らす設定では止まる。U7・Q7） */
-  #distance[data-near="1"] { box-shadow: inset 0 0 0 1px #ff7a5c, 0 0 0 2px rgba(255, 90, 60, 0.7); }
-  #distance[data-near="1"] #distanceFill { background: #ff5a3c; animation: nearBlink 0.8s ease-in-out infinite; }
-  #distance[data-near="1"] ~ .dist-ic.bot { color: #ffb09c; font-weight: 900; }
-  @keyframes nearBlink { 50% { opacity: 0.45; } }
-  .dist-ic { position: absolute; right: 2px; font: 700 12px/1 var(--font-text); color: var(--muted); pointer-events: none; text-shadow: 0 0 3px #070b1f, 0 0 3px #070b1f; }
-  /* 文字は場の中に収め（低い場で上の HUD に重ねない）、右端の砲台の上に重ねない（UX 5。横向きで背が低いときは --dist-bot で棒の下を上げる） */
-  .dist-ic.top { top: calc(max(10%, 18px) - 15px); }
-  .dist-ic.bot { bottom: calc(var(--dist-bot, 14%) - 15px); }
+  .lostcard b { font: 800 20px/1.3 var(--font-display); color: var(--gold); }
+  .lostcard .lostsub { font: 700 14px/1.3 var(--font-text); color: var(--ink); }
+  .lostcard button { box-sizing: border-box; width: 100%; min-height: 48px; margin-top: 2px; border-radius: 12px; border: 2px solid var(--gold); background: rgba(242, 193, 78, 0.18); color: var(--gold); font: 800 17px var(--font-display); }
+  .lostcard button:active:not([aria-disabled="true"]) { filter: brightness(1.3); }
+  .lostcard button[aria-disabled="true"] { opacity: 0.55; }
 
   /* 場の上の帯（カードではない。押せない） */
   .banner {
     position: absolute;
     left: 6px;
     right: 6px;
-    top: max(10%, 46px);
+    top: 8px;
     z-index: 4;
     margin: 0 auto;
     box-sizing: border-box;
@@ -230,8 +218,8 @@
     max-width: calc(100% - 12px);
     padding: 6px 12px;
     border-radius: 12px;
-    background: rgba(14, 20, 48, 0.88);
-    box-shadow: 0 0 0 2px #7fd6ff;
+    background: rgba(6, 12, 32, 0.9);
+    box-shadow: 0 0 0 2px var(--gold);
     color: var(--ink);
     text-align: center;
     font: 800 16px/1.3 var(--font-display);
@@ -247,7 +235,7 @@
   #clearBanner .sub.bonus { color: var(--gold); }
   #clearBanner .sub.best { color: var(--good); font-weight: 800; }
   /* 25・50・75% の区切りの帯（1 秒）：すこし小さく、緑の枠 */
-  #msBanner { box-shadow: 0 0 0 2px var(--good); }
+  #msBanner { box-shadow: 0 0 0 2px var(--gold); }
   #msBanner::before { content: "◎ "; color: var(--good); }
   #bossBanner { box-shadow: 0 0 0 2px var(--accent); }
   #bossBanner::before { content: "★ "; color: var(--accent); }
@@ -258,7 +246,7 @@
     position: absolute;
     left: 6px;
     right: 6px;
-    top: 6px;
+    bottom: 6px;
     z-index: 5;
     margin: 0 auto;
     box-sizing: border-box;
@@ -266,7 +254,7 @@
     max-width: calc(100% - 12px);
     padding: 3px 10px;
     border-radius: 10px;
-    background: rgba(14, 20, 48, 0.85);
+    background: rgba(6, 12, 32, 0.85);
     max-height: 2.9em;
     overflow: hidden;
     text-align: center;
@@ -281,7 +269,7 @@
   /* ===== #weapons（武器の行。最大4行＋あたらしい ぶき） ===== */
   /* 入りきらない画面だけ縦にスクロール（ふつうは全部見える。§18.1 A・U2） */
   /* 上の 6px は 1 行目の「しんか まで あと N」の札の分（縦向きは場の下の端に重ねて、場の高さを減らさない） */
-  .weapons { grid-area: weapons; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 4px; padding-top: 6px; margin-top: -6px; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
+  .weapons { grid-area: weapons; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 4px; padding: 6px 3px 3px; margin: -6px -3px -3px; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
   .weapons > * { flex: 0 0 auto; }
   .wrow {
     position: relative;
@@ -295,7 +283,7 @@
     padding: 2px 4px 2px 6px;
     border-radius: 12px;
     background: var(--panel);
-    box-shadow: 0 0 0 1px var(--line);
+    box-shadow: 0 0 0 2px var(--gold);
     min-width: 0;
   }
   /* 強くした行が光る（main.js が .flash を付け、animationend で外す） */
@@ -309,9 +297,9 @@
   /* しんか の行（main.js が .evolve を付ける） */
   .wrow.evolve { animation: rowEvolve 1.0s ease-out; }
   @keyframes rowEvolve { 0%, 30% { background: #ffe27a; box-shadow: 0 0 0 3px var(--gold); } 100% { background: var(--panel); box-shadow: 0 0 0 1px var(--line); } }
-  /* はね返されたあと「いま一番安く強くできる行」（main.js が data-suggest="1"） */
+  /* 時間切れのあと「いま一番安く強くできる行」（main.js が data-suggest="1"） */
   /* 行は金の枠で止めておき、ボタンだけが脈打つ（動きを減らす設定では脈打ちは止まり、枠だけ残る U4） */
-  .wrow[data-suggest="1"] { box-shadow: 0 0 0 2px var(--gold); }
+  .wrow[data-suggest="1"] { box-shadow: 0 0 0 3px var(--gold), 0 0 12px rgba(242, 193, 78, 0.6); }
   .wrow[data-suggest="1"] .up { animation: suggest 1.1s ease-in-out infinite; }
   @keyframes suggest { 50% { transform: scale(1.07); box-shadow: 0 0 0 4px rgba(255, 216, 77, 0.6); } }
   /* 買えるようになった瞬間の短い光（main.js が .ready を付け、0.7 秒で外す U5） */
@@ -321,7 +309,7 @@
     width: 32px;
     height: 32px;
     border-radius: 8px;
-    background-color: #0a0f24;
+    background-color: #06102a;
     background-repeat: no-repeat;
     background-position: center;
     background-size: 26px 26px;
@@ -331,12 +319,12 @@
   .winfo { min-width: 0; display: flex; flex-direction: column; gap: 0; }
   .wl1 { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; font: 800 14px/1.2 var(--font-display); }
   .wl1 .lv { font: 800 13px/1.2 var(--font-display); color: var(--gold); font-variant-numeric: tabular-nums; }
-  .wl2 { display: flex; align-items: center; gap: 4px; min-width: 0; font: 700 12px/1.2 var(--font-text); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
+  .wl2 { display: flex; align-items: center; gap: 4px; min-width: 0; font: 700 12px/1.2 var(--font-text); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
   /* いまの星に合う武器の印「◎」（main.js が .wrow[data-fit="1"] を付けたときだけ見える。§18.1 C） */
   .wrow .fit { display: none; font: 900 14px/1 var(--font-display); color: var(--good); }
   .wrow[data-fit="1"] .fit { display: inline; }
-  .wrow[data-fit="1"] { box-shadow: 0 0 0 1px var(--good); }
-  .wrow[data-fit="1"][data-suggest="1"] { box-shadow: 0 0 0 2px var(--gold); }
+  .wrow[data-fit="1"] { box-shadow: 0 0 0 2px var(--good); }
+  .wrow[data-fit="1"][data-suggest="1"] { box-shadow: 0 0 0 3px var(--gold), 0 0 12px rgba(242, 193, 78, 0.6); }
   .wrow[data-fit="1"] .good { background: rgba(143, 227, 160, 0.2); border-radius: 6px; padding: 1px 3px; }
   /* 得意の札の文字「てつに つよい」：行の文字の部分に 200px 以上あるときだけ（無ければ印だけ）。◎ と合わせて色だけに頼らない */
   .winfo { container-type: inline-size; }
@@ -386,9 +374,9 @@
     width: var(--up-w);
     padding: 2px 4px;
     border-radius: 10px;
-    border: 0;
-    background: var(--accent);
-    color: var(--accent-ink);
+    border: 2px solid var(--gold);
+    background: rgba(242, 193, 78, 0.14);
+    color: var(--gold);
     font: 800 13px/1.2 var(--font-text);
     display: flex;
     flex-direction: column;
@@ -404,11 +392,11 @@
   .up .cost .unit { font: 700 12px/1.2 var(--font-text); white-space: nowrap; }
   .up .cost b:empty { display: none; }
   .up[data-max="1"] .cost { display: none; }
-  .up:active:not([aria-disabled="true"]) { filter: brightness(1.15); transform: scale(0.97); }
+  .up:active:not([aria-disabled="true"]) { filter: brightness(1.3); transform: scale(0.97); }
   /* 買えない間：所持／値段 の割合で左から塗る（main.js がボタンに --fill（0〜1）を書く。U5） */
-  .up[aria-disabled="true"] { background: linear-gradient(90deg, #3b4a8e calc(var(--fill, 0) * 100%), #2a3360 0); color: var(--muted); box-shadow: inset 0 0 0 1px #4a5899; font-size: 12px; letter-spacing: -0.02em; }
-  .up[aria-disabled="true"] .cost { color: var(--muted); }
-  .up[data-max="1"] { background: transparent; color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+  .up[aria-disabled="true"] { background: linear-gradient(90deg, rgba(242, 193, 78, 0.28) calc(var(--fill, 0) * 100%), rgba(4, 10, 28, 0.6) 0); color: #d9cfae; border-color: rgba(242, 193, 78, 0.5); font-size: 12px; letter-spacing: -0.02em; }
+  .up[aria-disabled="true"] .cost { color: #d9cfae; }
+  .up[data-max="1"] { background: transparent; color: var(--gold); }
   .shake { animation: shake 0.3s ease-in-out; }
   @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
 
@@ -426,9 +414,9 @@
     min-height: 46px;
     padding: 2px 8px;
     border-radius: 12px;
-    border: 2px solid #7fd6ff;
-    background: #13284a;
-    color: var(--ink);
+    border: 2px solid var(--gold);
+    background: var(--panel);
+    color: var(--gold);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -437,8 +425,8 @@
     font: 800 15px/1.15 var(--font-display);
     white-space: nowrap;
   }
-  #swapBtn #benchCount { font: 700 12px/1.15 var(--font-text); color: #bfeeff; }
-  #swapBtn[aria-disabled="true"] { border-color: var(--line); background: transparent; color: var(--muted); }
+  #swapBtn #benchCount { font: 700 12px/1.15 var(--font-text); color: var(--muted); }
+  #swapBtn[aria-disabled="true"] { border-color: var(--line); background: var(--panel); color: var(--muted); }
   #swapBtn[aria-disabled="true"] #benchCount { color: var(--muted); }
   #swapBtn[data-wide="1"] { flex: 1 1 auto; flex-direction: row; gap: 10px; }
   #swapBtn:active:not([aria-disabled="true"]) { filter: brightness(1.2); }
@@ -453,7 +441,7 @@
     padding: 4px 12px;
     border-radius: 12px;
     border: 2px dashed var(--gold);
-    background: #2a2a1a;
+    background: var(--panel);
     color: var(--gold);
     font: 800 15px/1.25 var(--font-display);
     display: flex;
@@ -471,16 +459,13 @@
   #unlockBtn[data-bench="1"] .ul { font-size: 13px; }
   #unlockBtn .cost b { font-variant-numeric: tabular-nums; }
   #unlockBtn .cost .unit { font-size: 13px; }
-  #unlockBtn:not([aria-disabled="true"]) { border-style: solid; background: var(--gold); color: #2a1f00; animation: glow 1.6s ease-in-out infinite; }
-  #unlockBtn[aria-disabled="true"] { opacity: 0.85; color: var(--muted); border-color: #6b6b4a; }
+  #unlockBtn:not([aria-disabled="true"]) { border-style: solid; background: var(--gold); color: #1a1200; animation: glow 1.6s ease-in-out infinite; }
+  #unlockBtn[aria-disabled="true"] { color: #d9cfae; border-color: var(--line); }
   #unlockBtn:active:not([aria-disabled="true"]) { filter: brightness(1.1); }
   @keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 216, 77, 0); } 50% { box-shadow: 0 0 0 4px rgba(255, 216, 77, 0.45); } }
 
-  /* 買った行から、その武器の砲台へ飛ぶ光（main.js が body に足し、Web Animations で動かして消す。押せない Q3） */
-  .zap { position: fixed; left: 0; top: 0; z-index: 12; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: radial-gradient(#fff 25%, #ffd84d 60%, rgba(255, 216, 77, 0) 72%); pointer-events: none; }
-
   /* ===== 武器の絵（data-w）とマスの印（data-mat）。形と模様でも分かる（色覚 §6.2） ===== */
-  /* 武器の絵：地の色は、その武器の砲台の窓の色（＝弾の色。§5.2・§21.3）、絵は紺。形でも分かる（色覚 §6.2） */
+  /* 武器の絵：地の色は、その武器の弾の色、絵は紺。形でも分かる（色覚 §6.2） */
   [data-w="shot"] > .wicon, .wicon[data-w="shot"] { background-color: #ffffff; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='11' y='10' width='2' height='11' rx='1' fill='%230e1430' opacity='.5'/%3E%3Ccircle cx='12' cy='7' r='4' fill='%230e1430'/%3E%3C/svg%3E"); }
   [data-w="spread"] > .wicon, .wicon[data-w="spread"] { background-color: #ffd84d; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='%230e1430'%3E%3Ccircle cx='3.5' cy='11' r='2.2'/%3E%3Ccircle cx='7' cy='5.5' r='2.2'/%3E%3Ccircle cx='12' cy='3.5' r='2.2'/%3E%3Ccircle cx='17' cy='5.5' r='2.2'/%3E%3Ccircle cx='20.5' cy='11' r='2.2'/%3E%3Ccircle cx='12' cy='19' r='2.6'/%3E%3C/g%3E%3C/svg%3E"); }
   [data-w="bomb"] > .wicon, .wicon[data-w="bomb"] { background-color: #ff9a3c; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='%230e1430' stroke-width='1.6' stroke-dasharray='3 2'/%3E%3Ccircle cx='12' cy='12' r='5.5' fill='%230e1430'/%3E%3Ccircle cx='10.3' cy='10.3' r='1.6' fill='%23ffffff' opacity='.7'/%3E%3C/svg%3E"); }
@@ -518,22 +503,19 @@
     box-sizing: border-box;
     margin: auto;
     flex: 0 0 auto;
-    background: var(--panel);
+    background: #0a1632;
     border-radius: 16px;
     padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 10px;
     text-align: center;
-    box-shadow: 0 0 0 1px var(--line), 0 20px 50px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 0 0 2px var(--gold), 0 20px 50px rgba(0, 0, 0, 0.5);
   }
   .card h2:focus { outline: none; }
-  .card h2 { margin: 0; font-size: 22px; line-height: 1.3; letter-spacing: 0.04em; overflow-wrap: anywhere; word-break: keep-all; }
+  .card h2 { margin: 0; color: var(--gold); font-size: 22px; line-height: 1.3; letter-spacing: 0.04em; overflow-wrap: anywhere; word-break: keep-all; }
   .card p { margin: 0; font: 16px/1.5 var(--font-text); word-break: keep-all; overflow-wrap: anywhere; }
   .card p.small { color: var(--muted); font-size: 14px; }
-  /* 古い保存（v:1）から来たときだけ、遊び方の先頭に出す知らせ（UX 4。カードの外のヒントは幕の下に隠れるため） */
-  .card p.mig { margin: 0; padding: 4px 8px; border-radius: 8px; background: rgba(255, 216, 77, 0.16); color: var(--gold); font-weight: 800; text-align: left; }
-  .card p.mig[hidden] { display: none; }
   .card ol.rules { margin: 0; padding-left: 1.4em; text-align: left; font: 15px/1.5 var(--font-text); display: flex; flex-direction: column; gap: 6px; word-break: keep-all; overflow-wrap: anywhere; }
   .card .btns { display: flex; flex-direction: column; gap: 8px; }
   .card .btns button {
@@ -543,14 +525,14 @@
     min-height: 48px;
     padding: 8px 12px;
     border-radius: 12px;
-    border: 1px solid var(--line);
-    background: var(--panel2);
+    border: 2px solid var(--line);
+    background: transparent;
     color: #fff;
     font: 700 16px/1.3 var(--font-text);
     word-break: keep-all;
   }
-  .card .btns button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
-  .card .btns button:active:not([aria-disabled="true"]) { filter: brightness(1.2); }
+  .card .btns button.primary { background: rgba(242, 193, 78, 0.2); color: var(--gold); border-color: var(--gold); font-weight: 800; }
+  .card .btns button:active:not([aria-disabled="true"]) { filter: brightness(1.3); }
   .card button[aria-disabled="true"] { opacity: 0.6; }
   /* 遊び方の「さいしょから あそぶ」：目立たない文字だけのボタン（押せる高さは 44px 以上。§19）。
      色は --muted と --ink の間（6:4）で読みやすく：カード #1a2347 に対して 11.0:1（--muted は 7.4:1）。目立たせるのは「わかった」（primary）のまま */
@@ -588,7 +570,7 @@
   .choice[aria-disabled="true"] { opacity: 0.6; }
   .choice-note { color: var(--muted); font-size: 13px; }
 
-  /* 入れ替えのカード（§5.3）：上に砲台（枠）のボタン 4 つ、下に ひかえ の武器のボタン */
+  /* 入れ替えのカード（§5.3）：上に武器の枠のボタン 4 つ、下に ひかえ の武器のボタン */
   .swapslots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
   .sslot {
     position: relative;
@@ -643,7 +625,7 @@
   .bench[aria-disabled="true"], .sslot[aria-disabled="true"] { opacity: 0.6; }
   .bench-empty { margin: 0; color: var(--muted); font: 600 13px/1.4 var(--font-text); }
 
-  /* エンディングの絵：砲台がそろって空へ光を打ち上げる（§3.11） */
+  /* エンディングの絵：地球とじき（線画） */
   .endpic { display: block; margin: 0 auto; width: 140px; height: 124px; overflow: visible; }
   .endpic .sh { animation: endShot 1.2s ease-in-out infinite; }
   .endpic .s2 { animation-delay: 0.3s; } .endpic .s3 { animation-delay: 0.6s; } .endpic .s4 { animation-delay: 0.9s; }
@@ -703,9 +685,10 @@
       grid-template-areas: "field hud" "field weapons" "field btns";
       gap: var(--app-gap) 8px;
     }
-    /* 場は左の列いっぱい（render.js が小惑星に寄せて描く）。「ちかい」を右端の砲台より上に置く（UX 5） */
-    .field { height: 100%; --dist-bot: 26%; }
-    .weapons { margin-top: 0; }
+    /* canvas は左の列だけ（右の列は UI。背景は同じ濃い青） */
+    .field { right: calc(312px + 8px + max(8px, env(safe-area-inset-right, 0px))); }
+    .fieldzone { height: 100%; }
+    .weapons { margin-top: 0; margin-bottom: -3px; }
     .hud { gap: 0; }
     .head { column-gap: 4px; }
     .back { padding: 0 6px; font-size: 14px; }
@@ -718,7 +701,6 @@
     .card p { font-size: 13px; line-height: 1.4; }
     .card p.small { font-size: 12px; }
     .card ol.rules { font-size: 13px; line-height: 1.35; gap: 2px; }
-    .card p.mig { padding: 1px 8px; font-size: 13px; line-height: 1.3; }
     .card .btns { flex-direction: row; }
     .card .btns button { min-height: 44px; padding: 4px 6px; font-size: 14px; }
     .choices { flex-direction: row; gap: 8px; }
@@ -729,6 +711,8 @@
     .choice .good { font-size: 12px; }
     .choice-note { font-size: 12px; }
     .endpic { width: 90px; height: 80px; }
+    .barrow { height: 36px; }
+    .earth { width: 30px; height: 30px; }
     .sslot { min-height: 44px; flex-direction: row; gap: 4px; }
     .sslot .wicon { width: 22px; height: 22px; background-size: 18px 18px; }
     .sslot[aria-pressed="true"]::after { display: none; }
@@ -760,6 +744,8 @@
 </style>
 </head>
 <body data-phase="fly">
+<!-- 画面いっぱいの canvas（背景も描く。押しても何も起きない）。UI は .app でその上に重ねる -->
+<div class="field" id="field"><canvas id="fieldCanvas" role="img" aria-label="おおきな ほしと じき。おしても うごかないよ"></canvas></div>
 <div class="app" id="app">
   <header class="hud" id="hud">
     <div class="head">
@@ -772,24 +758,24 @@
     </div>
     <div class="info">
       <div class="purse"><b id="kakera" aria-live="off">0</b><span class="unit">かけら</span></div>
-      <div id="starLabel"><span class="num" data-part="num">ほし 1</span></div>
+      <div id="starLabel"><span id="starTag" class="tag" data-part="tag"></span><span class="num" data-part="num">ほし 1</span></div>
     </div>
     <div class="barrow">
-      <div id="starBar" role="progressbar" aria-label="こわした わりあい" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="starFill"></span></div>
-      <span class="pct" data-part="pct">0%</span>
-      <span id="starTag" class="tag" data-part="tag"></span>
+      <div id="timeBar" role="progressbar" aria-label="ちきゅうまでの のこりじかん" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span id="timeFill"></span></div>
+      <svg class="earth" id="earth" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#0c1d44" stroke="#f2c14e" stroke-width="2"/><path d="M12 9 L20 7 L25 13 L21 19 L14 17 Z" fill="#f2c14e"/><path d="M24 24 L29 22 L28 28 Z" fill="#f2c14e"/></svg>
     </div>
+    <div class="timerow"><span id="timeText">ちきゅうまで あと 0:00</span><span class="pctbox">こわした <b id="starPct">0%</b></span></div>
   </header>
 
-  <main class="field" id="field" aria-label="うちゅう">
-    <div class="stage" id="stage"><canvas id="fieldCanvas" role="img" aria-label="ほしと ほうだい。おしても うごかないよ"></canvas></div>
-    <span class="dist-ic top" aria-hidden="true">とおい</span>
-    <div id="distance" role="progressbar" aria-label="ちきゅうまでの ちかさ" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="distanceFill"></span></div>
-    <span class="dist-ic bot" aria-hidden="true">ちかい</span>
-    <p class="banner" id="bounceBanner" hidden><span data-part="main">バリアで はねかえした！</span><span class="sub" data-part="sub"></span></p>
+  <main class="fieldzone" id="fieldzone" aria-label="うちゅう">
     <p class="banner" id="clearBanner" hidden><span data-part="main">ほし 1 クリア！</span><span class="sub" data-part="time"></span><span class="sub" data-part="dist"></span><span class="sub bonus" data-part="sub"></span></p>
     <p class="banner" id="msBanner" hidden><span data-part="main">はんぶん こわした！</span><span class="sub" data-part="sub"></span></p>
     <p class="banner" id="bossBanner" hidden><span data-part="main">おおきな ほしが きた！</span></p>
+    <div class="lostcard" id="lostCard" role="group" aria-labelledby="lostTitle" hidden>
+      <b id="lostTitle">まにあわなかった！</b>
+      <span class="lostsub">つよくして もういちど</span>
+      <button type="button" data-cmd="retry">もういちど</button>
+    </div>
     <p class="hint" id="hint" role="status" aria-live="polite"></p>
   </main>
 
@@ -864,12 +850,12 @@
   </div>
 </div>
 
-<!-- 入れ替え（§3.6・§5.3）：上で砲台（枠）を選び、下の ひかえ の武器を押すと予約。替わるのは つぎの ほしか、はねかえされた あと -->
+<!-- 入れ替え（§3.6・§5.3）：上で武器の枠を選び、下の ひかえ の武器を押すと予約。替わるのは つぎの ほしか、もういちどの あと -->
 <div class="overlay" id="swapCard" role="dialog" aria-modal="true" aria-labelledby="swapTitle" hidden>
   <div class="card">
     <h2 id="swapTitle" tabindex="-1">どの ぶきに かえる？</h2>
-    <p class="small" id="swapText">えらぶと、つぎの ほしから かわるよ（ほしが ちきゅうに とどいた あとも かわるよ）</p>
-    <div class="swapslots" role="group" aria-label="ほうだい">
+    <p class="small" id="swapText">えらぶと、つぎの ほしから かわるよ（まにあわなくて もういちどに なったときも かわるよ）</p>
+    <div class="swapslots" role="group" aria-label="ぶきの わく">
       <button type="button" class="sslot" data-swap-slot="0" aria-pressed="true"></button>
       <button type="button" class="sslot" data-swap-slot="1" aria-pressed="false" hidden></button>
       <button type="button" class="sslot" data-swap-slot="2" aria-pressed="false" hidden></button>
@@ -884,11 +870,10 @@
 <div class="overlay" id="help" role="dialog" aria-modal="true" aria-labelledby="helpTitle" hidden>
   <div class="card">
     <h2 id="helpTitle">あそびかた</h2>
-    <p class="mig" id="helpMig" hidden>あたらしい ほしくだきに なったよ。かけらは そのまま つかえるよ。</p>
     <ol class="rules">
-      <li>ほうだいは じぶんで うつよ。みているだけで いいよ。ほしを ぜんぶ こわすと クリア。</li>
-      <li>したの ボタンを おすと ぶきが つよくなるよ。ぶきには とくいが あるよ。てにいれた ぶきは「いれかえ」で えらべるよ。かわるのは つぎの ほしから。がめんの ほしは おしても うごかないよ。</li>
-      <li>ほしが ちきゅうに とどいても バリアが まもるよ。つよくして もういちど！</li>
+      <li>じきは じぶんで とびまわって うつよ。みているだけで いいよ。</li>
+      <li>ほしを ぜんぶ こわすと クリア。ちきゅうに つくまでに まにあわないと、もういちど。</li>
+      <li>したの ボタンで ぶきを つよく しよう。</li>
     </ol>
     <div class="btns">
       <button type="button" id="helpOk" class="primary">わかった</button>
@@ -914,23 +899,11 @@
   <div class="card">
     <h2 id="endTitle">ちきゅうを まもりきった！</h2>
     <svg class="endpic" viewBox="0 0 140 124" aria-hidden="true">
-      <circle cx="70" cy="62" r="30" fill="#2f7fd8"/>
-      <path d="M52 50 C58 44 66 46 64 54 C62 60 54 62 50 58 Z M74 66 C80 60 90 64 88 72 C85 80 76 80 74 74 Z M70 40 C74 38 80 40 78 44 C75 46 70 45 70 40 Z" fill="#4cbf6a"/>
-      <circle cx="70" cy="62" r="38" fill="none" stroke="#9fe6ff" stroke-width="2" opacity="0.7"/>
-      <g fill="#ffd84d"><circle cx="16" cy="16" r="1.6"/><circle cx="122" cy="22" r="1.4"/><circle cx="128" cy="96" r="1.6"/><circle cx="12" cy="92" r="1.3"/><circle cx="104" cy="8" r="1.2"/></g>
-      <!-- 砲台がそろって空へ光を打ち上げる（§3.11） -->
-      <g class="shots" stroke-linecap="round" stroke-width="3">
-        <line class="sh s1" x1="46" y1="40" x2="22" y2="6" stroke="#ffffff"/>
-        <line class="sh s2" x1="62" y1="33" x2="56" y2="2" stroke="#ffd84d"/>
-        <line class="sh s3" x1="78" y1="33" x2="84" y2="2" stroke="#bfeeff"/>
-        <line class="sh s4" x1="94" y1="40" x2="118" y2="6" stroke="#7fd6ff"/>
-      </g>
-      <g>
-        <g transform="translate(48 41) rotate(-35)"><rect x="-1.6" y="-9" width="3.2" height="8" rx="1.2" fill="#ff9a3c"/><path d="M-5 1 A5 5 0 0 1 5 1 Z" fill="#ffffff"/><circle cx="0" cy="-1" r="1.4" fill="#ffffff"/></g>
-        <g transform="translate(63 34) rotate(-10)"><rect x="-1.6" y="-9" width="3.2" height="8" rx="1.2" fill="#ff9a3c"/><path d="M-5 1 A5 5 0 0 1 5 1 Z" fill="#ffffff"/><circle cx="0" cy="-1" r="1.4" fill="#ffd84d"/></g>
-        <g transform="translate(77 34) rotate(10)"><rect x="-1.6" y="-9" width="3.2" height="8" rx="1.2" fill="#ff9a3c"/><path d="M-5 1 A5 5 0 0 1 5 1 Z" fill="#ffffff"/><circle cx="0" cy="-1" r="1.4" fill="#bfeeff"/></g>
-        <g transform="translate(92 41) rotate(35)"><rect x="-1.6" y="-9" width="3.2" height="8" rx="1.2" fill="#ff9a3c"/><path d="M-5 1 A5 5 0 0 1 5 1 Z" fill="#ffffff"/><circle cx="0" cy="-1" r="1.4" fill="#7fd6ff"/></g>
-      </g>
+      <circle cx="70" cy="62" r="30" fill="#0c1d44" stroke="#f2c14e" stroke-width="3"/>
+      <path d="M52 50 L66 44 L76 54 L68 66 L54 62 Z M78 70 L90 66 L90 78 Z" fill="#f2c14e"/>
+      <circle cx="70" cy="62" r="38" fill="none" stroke="#f4f8ff" stroke-width="2" opacity="0.6"/>
+      <g fill="#cfe0ff"><circle cx="16" cy="16" r="1.6"/><circle cx="122" cy="22" r="1.4"/><circle cx="128" cy="96" r="1.6"/><circle cx="12" cy="92" r="1.3"/><circle cx="104" cy="8" r="1.2"/></g>
+      <g class="sh" fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"><path d="M24 40 L8 50 L24 56 L20 48 Z"/></g>
     </svg>
     <p id="endText">30この ほしを くだいて、ちきゅうを まもったよ！</p>
     <p class="endmore" id="endMore">ほしは まだまだ つづくよ</p>

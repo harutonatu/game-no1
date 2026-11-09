@@ -1,21 +1,24 @@
 /*
- * ちきゅうを守れ！ほしくだき — 画面と進行・入力・保存（部品C。作り直し 2026-10-23）
- * 契約：docs/asteroid-contract.md（正とする順は §20 → §21 → §1〜§19）。§5（画面・DOM）・§7（進行・入力・テスト用 API・デバッグ命令）・
- *       §8（保存 v:2 と §8.4 の v:1 の読み方）・§21.3（部品B との約束）・§21.4（X-20・MK20）・§21.5（stepMs）
+ * ちきゅうを守れ！ほしくだき — 画面と進行・入力・保存（部品C。2 回目の作り直し 2026-11-09 のリニューアル）
+ * 約束：docs/plans/asteroid-renew.md（§1.3 時間切れ・§1.6 保存・§2 見た目・§5.2・§5.3）と docs/asteroid-contract.md §23。
+ *       古い決め（§1〜§22）とぶつかる所は計画書が正。X-20（§21.4）・さいしょから（§19）は残す。
  * 読み込み順：../../common/sfx.js → logic.js → render.js → main.js
  *
  * - 時間：rAF ごとに差を取り 0.1 秒で頭打ち、STEP（1/30 秒）ずつ step（1 フレームに最大 3 回。足りない分は捨てる）。
  * - 閉じている間は止まる（ユーザー決定「止まる」）：hidden → 保存して rAF を止める。visible → そのまま続き（実際の時計は使わない）。
  * - カード（遊び方・2択・入れ替え・エンディング・さいしょから）が出ている間は進まない（running の 1 行の式。MK20 の置換元）。
- * - 砲台：武器ごとに 1 台（state.turrets[k] は slots[k] の台）。行の並び（上から）＝砲台の並び（左から）。
- * - ひかえと入れ替え：#swapBtn → #swapCard で予約（reserveSwap）。替わるのは次の星の始めと、はね返しのやり直しの始め（logic が swap の出来事を出す）。
+ * - 自機は全部自動（砲台・はね返し・バリアは無い）。残り時間（state.left）が 0 になると phase 'lost'：#lostCard が出る。
+ *   #lostCard はカードではなく場の上の札（押せるのは [data-cmd="retry"]「もういちど」だけ）。lost の間も 強くする・2択・入れ替え はできる。
+ * - ひかえと入れ替え：#swapBtn → #swapCard で予約（reserveSwap）。替わるのは次の星の始めと、時間切れのやり直しの始め（logic が swap の出来事を出す）。
  * - X-20（古いページから書き戻さない）：ほかの 7 本と同じ形（WATCH_KEYS・seenRaw・noteSaved・changedElsewhere・reloadIfStale・staleOnHide・storage）。
  * - さいしょから（§19）：asteroid.save と asteroid.save.bak を消し、保存を止めてから読み直す（best・help は残す）。
- * - 場（#field・#fieldCanvas）には押す処理を付けない（ユーザー決定「なにもしない」）。
- * - 画面の数はロジックの関数（formatKakera・upCostOf・slotCostOf・progressOf・dpsOf）の値そのまま（§13-1）。
+ * - 古い保存（ユーザー決定「最初から」・計画書 §1.6）：asteroid.v3 の印が無いとき、1 回だけ asteroid.save・.bak・.best・.help を消して印をつける。
+ *   v:1・v:2 の保存が後から見つかっても、読まずに新しく始める（bak へも写さない）。
+ * - 場（#field。画面いっぱいの canvas）には押す処理を付けない（ユーザー決定「なにもしない」）。UI はその上に重ねる。
+ * - 画面の数はロジックの関数（formatKakera・formatTime・upCostOf・slotCostOf・progressOf・dpsOf）の値そのまま（§13-1）。
  * - タイマーは later / clearLater だけ（setTimeout を直接呼ばない）。
  * - 保存は logic の makeSave の形に、main だけが読む欄を 2 つ足して書く（loadSave は知らない欄を読まない）：
- *     t      … 遊んだ秒（エンディングの「あそんだ じかん」用。星の途中の位置と いまの挑戦の秒は logic の mid が持つ）
+ *     t      … 遊んだ秒（エンディングの「あそんだ じかん」用）
  *     ending … エンディングのカードを出している途中で閉じたら true（開き直したらカードをもう一度出す）
  */
 (function () {
@@ -39,6 +42,7 @@
   const KEY_BAK = L.SAVE_KEY_BAK || "asteroid.save.bak";
   const KEY_BEST = L.SAVE_KEY_BEST || "asteroid.best";
   const KEY_HELP = L.SAVE_KEY_HELP || "asteroid.help";
+  const KEY_V3 = L.SAVE_KEY_V3 || "asteroid.v3";
   const W_IDS = Array.isArray(L.WEAPONS) ? L.WEAPONS.map((w) => w.id) : ["shot", "spread", "bomb", "bolt", "beam", "fire"];
   const WEAPON = {};
   if (Array.isArray(L.WEAPONS)) for (const w of L.WEAPONS) WEAPON[w.id] = w;
@@ -46,13 +50,9 @@
   if (Array.isArray(L.MATS)) for (const m of L.MATS) MAT_NAME[m.id] = m.name;
 
   const HINT_BROKEN = "ほぞんが よめなかったので さいしょから はじめるよ";
-  const HINT_MIGRATED = "あたらしい ほしくだきに なったよ。かけらは そのまま つかえるよ";   // v:1 から来たとき（§8.4 ④・§21.7 の案 5）
-  const HINT_RETRY_END = "を つよくして もういちど！";   // 先頭に武器の名前（U4）
-  const HINT_RETRY = "ひかっている ぶきを つよくして もういちど！";
-  const HINT_NEAR = "バリアが ひかってる！";
   const HINT_NO_BENCH = "ひかえの ぶきが まだ ないよ";
   const NEXT_LONG = "つぎの ほしから", NEXT_SHORT = "つぎから";   // 予約の札の頭（UX 1。幅が足りない行だけ短いほう）
-  const NEAR_AT = 0.28;                // 地球までの残りがこの割合以下で赤く（U7・Q7）
+  const URGENT_SEC = 30;               // 残り時間がこの秒以下で、棒と字をオレンジに・地球の絵を少し大きく（音は鳴らさない）
   const MS_BANNER_SEC = 1.0;           // 25・50・75% の帯（ロジックの時計で数える）
   const MS_TEXT = { 25: "4ぶんの1 こわした！", 50: "はんぶん こわした！", 75: "あと 4ぶんの1！" };
   const PLUS_MS = 800;                 // 「＋12%」を出しておく時間
@@ -67,14 +67,15 @@
 
   const el = {
     back: $("back"), title: $("gameTitle"), helpBtn: $("helpBtn"), soundBtn: $("soundBtn"),
-    kakera: $("kakera"), starLabel: $("starLabel"), starTag: $("starTag"), starBar: $("starBar"), starFill: $("starFill"),
-    field: $("field"), canvas: $("fieldCanvas"), distance: $("distance"), distanceFill: $("distanceFill"),
+    hud: $("hud"), kakera: $("kakera"), starLabel: $("starLabel"), starTag: $("starTag"),
+    timeBar: $("timeBar"), timeFill: $("timeFill"), timeText: $("timeText"), starPct: $("starPct"),
+    field: $("field"), canvas: $("fieldCanvas"), lostCard: $("lostCard"), retryBtn: document.querySelector('[data-cmd="retry"]'),
     weapons: $("weapons"), unlockBtn: $("unlockBtn"), swapBtn: $("swapBtn"), benchCount: $("benchCount"),
     choiceCard: $("choiceCard"), choiceA: $("choiceA"), choiceB: $("choiceB"), choiceNote: $("choiceNote"),
     swapCard: $("swapCard"), swapTitle: $("swapTitle"), swapText: $("swapText"), swapSlots: $("swapSlots"), benchList: $("benchList"), swapDone: $("swapDone"),
-    bounceBanner: $("bounceBanner"), clearBanner: $("clearBanner"), bossBanner: $("bossBanner"), msBanner: $("msBanner"), choiceLead: $("choiceLead"),
+    clearBanner: $("clearBanner"), bossBanner: $("bossBanner"), msBanner: $("msBanner"), choiceLead: $("choiceLead"),
     endCard: $("endCard"), endText: $("endText"), endStats: $("endStats"), endOk: $("endOk"),
-    help: $("help"), helpOk: $("helpOk"), helpMig: $("helpMig"), hint: $("hint"),
+    help: $("help"), helpOk: $("helpOk"), hint: $("hint"),
     helpRestart: $("helpRestart"), restartCard: $("restartCard"), restartNo: $("restartNo"), restartYes: $("restartYes")
   };
   const part = (node, name) => (node ? node.querySelector('[data-part="' + name + '"]') : null);
@@ -92,8 +93,7 @@
   // 画面の大きさ・向きが変わったら、予約の札の長さ（つぎの ほしから／つぎから）を測り直す（次の updateUi で）
   window.addEventListener("resize", () => { for (const r of rows) r.nextShown = null; });
   const slotBtns = [0, 1, 2, 3].map((k) => document.querySelector('[data-swap-slot="' + k + '"]'));
-  const barPct = document.querySelector(".barrow [data-part=pct]");
-  const missing = ["kakera", "starLabel", "starBar", "canvas", "unlockBtn", "swapBtn", "choiceCard", "swapCard", "benchList"].filter((k) => !el[k]);
+  const missing = ["kakera", "starLabel", "timeBar", "timeText", "canvas", "lostCard", "unlockBtn", "swapBtn", "choiceCard", "swapCard", "benchList"].filter((k) => !el[k]);
   if (missing.length) console.error("ほしくだき: 画面の部品が見つかりません：" + missing.join(", "));
 
   // 題名（同じなら書き換えない＝ <span> と <wbr> を残す）
@@ -129,6 +129,18 @@
     if (stale) return false;
     try { localStorage.removeItem(key); noteSaved(key); return localStorage.getItem(key) === null; } catch (e) { return false; }
   }
+
+  // ===== 古い保存を消す（ユーザー決定「最初から」・計画書 §1.6） =====
+  // 印 asteroid.v3 が無い（このリニューアルを初めて開いた）とき 1 回だけ、前の版の保存・控え・ベスト・遊び方の印を消す（メニューのベスト表示もこれで消える）。
+  // 先に消してから印をつける（印だけ付いて消えていない、を作らない）。X-20 の seenRaw を作るより前に呼ぶ（消したあとの値を「最後に読んだ文字」にする）
+  function dropOldSaves() {
+    try {
+      if (localStorage.getItem(KEY_V3) === "1") return;
+      for (const k of [KEY_SAVE, KEY_BAK, KEY_BEST, KEY_HELP]) localStorage.removeItem(k);
+      localStorage.setItem(KEY_V3, "1");
+    } catch (e) { /* 保存が使えなくても遊べる（印が付かなければ次に開いたときまた試す） */ }
+  }
+  dropOldSaves();
 
   // ===== 古いページから書き戻さない（§21.4・X-20。ほかの 7 本と同じ形） =====
   // bfcache（戻る・進む）で戻ったページや、裏にいる間にほかのタブが同じ保存を書いたページは、メモリの古い状態を保存に書かず、
@@ -183,10 +195,10 @@
   let best = 0;
   let hintTimer = 0, cardUnlockTimer = 0, cardShownAt = -Infinity, focusBack = null;
   let bossUntil = -1;          // ロジックの時計（state.t）でこの秒まで #bossBanner
-  let suggestSlot = -1;        // はね返しのあとに光らせる行
+  let suggestSlot = -1;        // 時間切れのあとに光らせる行（いま一番安く強くできる行）
+  let lostShown = false, lostAt = -Infinity;   // #lostCard を出しているか・出した時刻（出た直後 400ms は押せない）
   let phaseShown = "";
   let msUntil = -1, msStepT = -1, msBonus = 0;   // 区切りの帯（ロジックの時計）
-  let nearTold = false, nearNow = false;         // 「バリアが ひかってる！」は 1 回の挑戦で 1 回だけ
   let swapSel = 0;             // 入れ替えのカードで選んでいる枠
   const stepTimes = [];        // 最近の step の ms（§21.5）
 
@@ -198,16 +210,40 @@
   }
 
   // ===== 描画（render.js が無くても遊べる・テストできる） =====
+  // canvas は画面いっぱい（#field）。背景も canvas が塗る。大きさは #field に合わせ、変わったら r.resize
+  const fieldSize = () => {
+    const f = el.field;
+    const w = (f && f.clientWidth) || window.innerWidth || 360, h = (f && f.clientHeight) || window.innerHeight || 640;
+    return { w, h, dpr: window.devicePixelRatio || 1 };
+  };
   const R = window.AsteroidRender;
   const render = (R && typeof R.create === "function" && el.canvas
-    ? safeCall(() => R.create(el.canvas, { calm, onAbsorb: () => sfx.play("absorb") }), null) : null) || stubRender();
+    ? safeCall(() => { const z = fieldSize(); return R.create(el.canvas, { cssW: z.w, cssH: z.h, dpr: z.dpr, calm, onAbsorb: () => sfx.play("absorb") }); }, null) : null) || stubRender();
   if (render.isStub) console.error("ほしくだき: AsteroidRender が読み込まれていません（render.js）。絵なしで動きます");
   function stubRender() {
     let frames = 0, c = calm;
     return {
-      isStub: true, layout() {}, frame() { frames += 1; }, burst() {}, setCalm(b) { c = !!b; }, setNear() {}, pause() {}, resume() {},
-      stats() { return { particles: 0, shots: 0, frames, slowFrames: 0, rockRedraws: 0, calm: c, cellPx: 0, view: null, turrets: [] }; }
+      isStub: true, frame() { frames += 1; }, resize() {}, reset() {}, burst() {}, setCalm(b) { c = !!b; }, pause() {}, resume() {},
+      stats() { return { particles: 0, shots: 0, frames, slowFrames: 0, rockRedraws: 0, calm: c, cellPx: 0, view: null }; }
     };
+  }
+  let sizeShown = "";
+  function fitCanvas() {
+    const z = fieldSize();
+    const key = z.w + "x" + z.h + "@" + z.dpr;
+    if (key === sizeShown) return;
+    sizeShown = key;
+    R_call("resize", z.w, z.h, z.dpr);
+  }
+  sizeShown = (() => { const z = fieldSize(); return z.w + "x" + z.h + "@" + z.dpr; })();
+  window.addEventListener("resize", fitCanvas);
+  window.addEventListener("orientationchange", fitCanvas);
+  if (window.ResizeObserver && el.field) { try { new ResizeObserver(fitCanvas).observe(el.field); } catch (e) { /* resize イベントだけで足りる */ } }
+  // 星が変わった・やり直した（rock.key が変わった）ら、render にオフスクリーンの作り直しを頼む（毎コマの前に呼ぶ）
+  let rockKeyShown = null;
+  function syncRock() {
+    const k = state && state.rock ? state.rock.key : null;
+    if (k !== rockKeyShown) { rockKeyShown = k; R_call("reset"); }
   }
   function R_call(name, ...a) { const f = render && render[name]; if (typeof f !== "function") return undefined; return safeCall(() => f.apply(render, a), undefined); }
   function onCalmChange() { calm = !!reduceMotion.matches; applyCalm(); }
@@ -260,18 +296,19 @@
       return { t: Number.isFinite(t) && t >= 0 ? Math.min(t, 1e10) : 0, ending: o.ending === true };
     } catch (e) { return { t: 0, ending: false }; }
   }
-  // state の時計を t に合わせる。いまの挑戦の始め（tryAt）も同じだけずらす
+  // state の時計を t に合わせる（自機の向きを変える時刻・各武器の次に撃つ時刻も同じだけずらす）
   function setClock(s, t) {
     const d = t - (Number(s.t) || 0);
     s.t = t;
-    s.tryAt = (Number.isFinite(s.tryAt) ? s.tryAt : 0) + d;
+    if (s.ship && Number.isFinite(s.ship.flip)) s.ship = Object.assign({}, s.ship, { flip: s.ship.flip + d });
+    if (Array.isArray(s.cd)) s.cd = s.cd.map((c) => (Number.isFinite(c) ? c + d : t));
     return s;
   }
   // logic の state を、保存と同じ検証に通して「その星の最初」にする（bench・swap も loadSave が直す）
   function normalize(obj) {
     if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
     let raw;
-    try { raw = JSON.stringify(Object.assign({}, obj, { v: L.SAVE_VERSION || 2, rock: undefined, shots: undefined, burns: undefined, turrets: undefined })); } catch (e) { return null; }
+    try { raw = JSON.stringify(Object.assign({}, obj, { v: L.SAVE_VERSION || 3, rock: undefined, ship: undefined, shots: undefined, burns: undefined })); } catch (e) { return null; }
     const s = safeCall(() => L.loadSave(raw), null);
     if (!s) return null;
     const t = Number(obj.t);
@@ -389,13 +426,9 @@
       if (!running()) acc = 0;
       if (saveSince >= SAVE_EVERY_SEC) saveNow();
     } else acc = 0;
+    syncRock();
     R_call("frame", state, events, dt);
     updateUi();
-    // 地球が近い（残り 3 割以下）とき、1 回の挑戦で 1 回だけ、控えめに知らせる（Q7）。ほかのヒントが出ているときは出さない
-    if (nearNow && !nearTold && running()) {
-      nearTold = true;
-      if (el.hint && !el.hint.textContent) setHint(HINT_NEAR, 2200);
-    }
     ensureLoop();
   }
 
@@ -410,12 +443,13 @@
         case "break": sfx.play("break", e.mat); break;
         case "chunk": sfx.play("chunk", Array.isArray(e.cells) ? e.cells.length : 1); break;
         case "evolve": sfx.play("evolve"); break;
+        case "glow": sfx.play("glow"); break;
         case "clear": {
           sfx.play("clear");
           writeBest(e.star);
           const banner = el.clearBanner;
           setText(part(banner, "main"), "ほし " + (e.star | 0) + " クリア！");
-          // 時間とベスト（初回「はじめて」・更新「ベスト！」・ふつうは前のベスト）、ちきゅうまでの残り（Q4）
+          // 時間とベスト（初回「はじめて」・更新「ベスト！」・ふつうは前のベスト）、ちきゅうまでの残り
           const hasTime = Number.isFinite(Number(e.time)) && Number(e.time) > 0;
           let tline = "";
           if (hasTime) {
@@ -423,10 +457,8 @@
             tline = fmtTime(e.time) + "・" + (prev === null ? "はじめて" : Number(e.time) < prev ? "ベスト！" : "ベスト " + fmtTime(prev));
           }
           setText(part(banner, "time"), tline);
-          const dist = Number(e.distance);
-          let dline = "";
-          if (Number.isFinite(dist)) { const n = Math.round(Math.max(0, Math.min(1, dist)) * 100); dline = n >= 1 ? "ちきゅうまで あと " + n + "%" : "ちきゅうの すぐ そばだった！"; }
-          setText(part(banner, "dist"), dline);
+          const lf = Number(e.left);
+          setText(part(banner, "dist"), Number.isFinite(lf) && lf > 0 ? "ちきゅうまで あと " + safeCall(() => L.formatTime(lf), "") + " のこして！" : "ぎりぎり まにあった！");
           setText(part(banner, "sub"), (e.bonus | 0) > 0 ? "＋" + fmt(e.bonus) + "かけら" : "");
           const tb = part(banner, "time");
           if (tb) tb.classList.toggle("best", hasTime && tline.indexOf("ベスト！") >= 0 || tline.indexOf("はじめて") >= 0);
@@ -435,22 +467,15 @@
           saveAfter = true;
           break;
         }
-        case "bounce": {
-          sfx.play("bounce");
-          const broken = Number(e.broken) || 0;
-          const leftPct = Math.max(1, Math.round((1 - broken) * 100));
-          setText(part(el.bounceBanner, "main"), "バリアで はねかえした！");
-          // 50% を超えて残っていたら、数字より先にすることを言う（U4）
-          setText(part(el.bounceBanner, "sub"), leftPct > 50 ? "もう すこし つよく しよう" : "あと " + leftPct + "% だった");
+        case "lost": {
+          // 時間切れ：やさしい下がる音（責めない）。#lostCard は updateUi が phase から出す。いま一番安く強くできる行を光らせる
+          sfx.play("lost");
           suggestSlot = cheapestSlot();
-          const sg = suggestSlot >= 0 && state && state.slots[suggestSlot] ? wName(state.slots[suggestSlot].id) : "";
-          if (!silent) setHint(sg ? sg + HINT_RETRY_END : HINT_RETRY, 4000);
-          nearTold = false;
           saveAfter = true;
           break;
         }
         case "swap": {
-          // 予約が当たって武器が替わった（次の星の始め・はね返しのやり直しの始め）。絵は render が events から出す
+          // 予約が当たって武器が替わった（次の星の始め・時間切れのやり直しの始め）。絵は render が events から出す
           if (!swapped) sfx.play("swap");
           swapped = true;
           const k = e.slot | 0;
@@ -479,7 +504,7 @@
     }
     if (saveAfter) saveNow();
   }
-  // いま一番安く強くできる武器の行（はね返しのあとに光らせる）
+  // いま一番安く強くできる武器の行（時間切れのあとに光らせる）
   function cheapestSlot() {
     if (!state) return -1;
     let bestK = -1, bc = Infinity;
@@ -502,31 +527,43 @@
     setText(part(el.starLabel, "num"), "ほし " + s.star);
     setText(el.starTag, info.tag || "");
     setAttr(el.starLabel, "data-boss", info.boss ? "1" : null);
-    const pr = safeCall(() => L.progressOf(s), null) || { broken: 0, distance: 1 };
+    const pr = safeCall(() => L.progressOf(s), null) || { broken: 0, timeLeft: 0, timeFrac: 0 };
     const pct = Math.max(0, Math.min(100, Math.floor(pr.broken * 100)));
     if (lastUi.pct !== pct) {
       lastUi.pct = pct;
-      setAttr(el.starBar, "aria-valuenow", String(pct));
-      if (el.starFill) el.starFill.style.width = pct + "%";
-      setText(barPct, pct + "%");
+      setText(el.starPct, pct + "%");
     }
-    const near = Math.max(0, Math.min(100, Math.round((1 - pr.distance) * 100)));
-    nearNow = s.phase === "fly" && pr.distance <= NEAR_AT;
-    if (lastUi.near !== near || lastUi.nearFlag !== nearNow) {
-      lastUi.near = near;
-      lastUi.nearFlag = nearNow;
-      setAttr(el.distance, "aria-valuenow", String(near));
-      if (el.distanceFill) el.distanceFill.style.height = near + "%";
-      setAttr(el.distance, "data-near", nearNow ? "1" : null);
-      R_call("setNear", nearNow);
+    // 残り時間（ちきゅうまで あと m:ss）。30 秒を切ったら棒と字をオレンジに、地球の絵を少し大きく（音は鳴らさない）
+    const timeStr = safeCall(() => L.formatTime(s.left), "0:00");
+    const frac = Math.round(Math.max(0, Math.min(1, pr.timeFrac)) * 1000) / 10;
+    if (lastUi.timeStr !== timeStr) {
+      lastUi.timeStr = timeStr;
+      setText(el.timeText, "ちきゅうまで あと " + timeStr);
+      setAttr(el.timeBar, "aria-valuetext", "ちきゅうまで あと " + timeStr);
     }
-    if (!nearNow && (s.phase !== "fly" || pr.distance > NEAR_AT + 0.12)) nearTold = false;
+    if (lastUi.frac !== frac) {
+      lastUi.frac = frac;
+      setAttr(el.timeBar, "aria-valuenow", String(Math.round(frac)));
+      if (el.timeFill) el.timeFill.style.width = frac + "%";
+    }
+    const urgent = Number(s.left) <= URGENT_SEC && s.phase !== "clear";
+    if (lastUi.urgent !== urgent) { lastUi.urgent = urgent; setAttr(el.hud, "data-urgent", urgent ? "1" : null); }
     // 帯（ロジックの phase と時計で出す＝advance でも止まっていても正しい）
-    setHidden(el.bounceBanner, s.phase !== "bounce");
     setHidden(el.clearBanner, s.phase !== "clear");
     setHidden(el.bossBanner, !(s.phase === "fly" && s.t < bossUntil));
     setHidden(el.msBanner, !(s.phase === "fly" && s.t < msUntil));
-    // 武器の行（上から＝砲台の左から）
+    // 時間切れの札（まにあわなかった！ もういちど）。出た直後 400ms は押せない
+    const showLost = s.phase === "lost";
+    if (showLost !== lostShown) {
+      lostShown = showLost;
+      setHidden(el.lostCard, !showLost);
+      if (showLost) {
+        lostAt = now();
+        lockCardButtons(el.lostCard);
+        if (el.retryBtn && !overlay) { try { el.retryBtn.focus({ preventScroll: true }); } catch (e) { /* 無視 */ } }
+      }
+    }
+    // 武器の行
     for (let k = 0; k < rows.length; k++) updateRow(k);
     // あたらしい ぶき（4 台のあとは ひかえへ。6 種類そろったら消える）
     const sc = safeCall(() => L.slotCostOf(s), null);
@@ -639,36 +676,6 @@
     cancel(r.plusTimer);
     r.plusTimer = later(() => { r.plusTimer = 0; r.plus.classList.remove("show"); r.plus.textContent = ""; }, PLUS_MS);
   }
-  // 買った行の絵から、その武器の砲台へ飛ぶ小さな光（動きを減らす設定では出さない。押せない）。
-  // 砲台の位置は見た目の位置（stats().turrets[k]。並び直しで滑っている間も絵に合う）、無ければ state.turrets[k]
-  function zapToTurret(k) {
-    if (calm || !state || !window.Element || !Element.prototype.animate) return;
-    const r = rows[k], icon = r && r.row && r.row.querySelector(".wicon");
-    const st = safeCall(() => render.stats(), null);
-    const v = st && st.view;
-    const tvis = st && Array.isArray(st.turrets) ? st.turrets[k] : null;
-    const tlog = Array.isArray(state.turrets) ? state.turrets[k] : null;
-    const T = tvis && Number.isFinite(tvis.x) ? tvis : tlog;
-    if (!icon || !v || !T || !el.field || !(v.zoom > 0)) return;
-    const a = icon.getBoundingClientRect(), f = el.field.getBoundingClientRect();
-    const x0 = a.left + a.width / 2, y0 = a.top + a.height / 2;
-    const x1 = f.left + (Number(T.x) - v.left) * v.zoom, y1 = f.top + (Number(T.y) - v.top) * v.zoom;
-    if (![x0, y0, x1, y1].every(Number.isFinite)) return;
-    const z = document.createElement("div");
-    z.className = "zap";
-    z.setAttribute("aria-hidden", "true");
-    document.body.appendChild(z);
-    const done = () => { if (z.parentNode) z.parentNode.removeChild(z); };
-    try {
-      const an = z.animate([
-        { transform: "translate(" + x0 + "px," + y0 + "px) scale(1)", opacity: 1 },
-        { transform: "translate(" + x1 + "px," + y1 + "px) scale(0.5)", opacity: 0.35 }
-      ], { duration: 320, easing: "ease-in" });
-      an.onfinish = done;
-      later(done, 700);
-    } catch (e) { done(); }
-  }
-
   // ===== 操作（§7.2） =====
   function doUpgrade(slot, btn) {
     if (!state || overlay) return { ok: false, reason: "card" };
@@ -680,7 +687,6 @@
     if (r.ok) {
       state = r.state;
       showPlus(k, dpsBefore, safeCall(() => L.dpsOf(state, k), null));
-      zapToTurret(k);
       const evs = Array.isArray(r.events) ? r.events : [];
       const evolved = evs.some((e) => e && e.kind === "evolve");
       for (const e of evs) pendingEvents.push(e);   // しんかの文字は render が events から出す
@@ -729,7 +735,6 @@
     const r = safeCall(() => L.choose(state, k), null);
     if (!r || !r.ok) return { ok: false, reason: "choose" };
     state = r.state;
-    for (const e of Array.isArray(r.events) ? r.events : []) pendingEvents.push(e);   // 砲台が増えた（turrets）→ render が滑らせる
     closeCard("choose");
     sfx.play("unlock");
     const toBench = r.to === "bench";
@@ -934,7 +939,7 @@
     syncPhase();
   }
   // カードの間は裏（？・♪・場・武器の行・下のボタン）に Tab で移れないようにする。a#back だけは例外でいつでも押せる（T7）
-  const BACK_PARTS = [el.helpBtn, el.soundBtn, el.field, el.weapons, $("btnrow"), document.querySelector(".info"), document.querySelector(".barrow")];
+  const BACK_PARTS = [el.helpBtn, el.soundBtn, el.field, el.weapons, $("btnrow"), el.lostCard, document.querySelector(".info"), document.querySelector(".timerow")];
   function setBackInert(on) {
     for (const n of BACK_PARTS) {
       if (!n) continue;
@@ -962,7 +967,6 @@
   function closeHelp() {
     if (overlay !== "help" || cardLocked()) return;
     writeKey(KEY_HELP, "1");
-    if (el.helpMig) el.helpMig.hidden = true;
     closeCard("help");
   }
   // ===== さいしょから（§19） =====
@@ -1013,12 +1017,35 @@
     syncPhase();
     ensureLoop();
   }
+  // 時間切れの「もういちど」：その星を最初の形から（かけら・Lv・武器はそのまま。残り時間も戻る。入れ替えの予約はここで当たる）
+  function doRetry(viaUi) {
+    if (!state || state.phase !== "lost") return { ok: false, reason: "phase" };
+    if (overlay) return { ok: false, reason: "card" };
+    if (viaUi && now() - lostAt < CARD_LOCK_MS) return { ok: false, reason: "lock" };
+    const r = safeCall(() => L.retry(state), null);
+    if (!r || !r.ok) return { ok: false, reason: (r && r.reason) || "error" };
+    state = r.state;
+    const evs = Array.isArray(r.events) ? r.events : [];
+    for (const e of evs) pendingEvents.push(e);
+    suggestSlot = -1;
+    msUntil = -1;
+    handleEvents(evs);
+    if (el.lostCard && el.lostCard.contains(document.activeElement)) { try { document.activeElement.blur(); } catch (e) { /* 無視 */ } }
+    sfx.play("start");
+    if (!evs.some((e) => e && e.kind === "swap")) setHint("もういちど！", 1800);
+    saveNow();
+    syncRock();
+    R_call("frame", state, [], 0);
+    updateUi();
+    ensureLoop();
+    return { ok: true };
+  }
   function endOk() {
     if (overlay !== "end" || cardLocked()) return;
     // 「このまま あそぶ」：星 31 の最初から（logic の説明どおり loadSave(makeSave(state))）
     const t = state.t;
     const s = safeCall(() => L.loadSave(L.makeSave(state)), null);
-    if (s) state = setClock(s, t);
+    if (s) { state = setClock(s, t); syncRock(); }
     closeCard("end");
     sfx.play("start");
     setHint("ほし " + state.star + " から つづけるよ");
@@ -1045,6 +1072,7 @@
   if (el.restartNo) el.restartNo.addEventListener("click", cancelRestart);
   if (el.restartYes) el.restartYes.addEventListener("click", doRestart);
   if (el.endOk) el.endOk.addEventListener("click", endOk);
+  if (el.retryBtn) el.retryBtn.addEventListener("click", () => { sfx.unlock(); doRetry(true); });
   if (el.soundBtn) el.soundBtn.addEventListener("click", toggleSound);
   if (el.back) el.back.addEventListener("click", () => { saveNow(); clearLater(); });
   document.addEventListener("keydown", (e) => {
@@ -1113,15 +1141,16 @@
   function snapshot() {
     const s = state || {};
     const st = safeCall(() => render.stats(), {}) || {};
+    const pr = state ? safeCall(() => L.progressOf(state), null) : null;
     return {
       phase: phaseNow(), star: s.star | 0, kakera: Number(s.kakera) || 0,
       slots: Array.isArray(s.slots) ? s.slots.map((x) => ({ id: x.id, lv: x.lv })) : [],
       bench: benchOf(s).map((x) => ({ id: x.id, lv: x.lv })),
       offer: s.offer ? s.offer.slice() : null,
       swap: swapOf(s).map((p) => ({ slot: p.slot, id: p.id })),
-      turrets: Array.isArray(s.turrets) ? s.turrets.map((T) => ({ x: T.x, y: T.y, ang: T.ang })) : [],
-      progress: state ? safeCall(() => L.progressOf(state), null) : null,
-      overlay, particles: st.particles | 0, shots: Array.isArray(s.shots) ? s.shots.length : 0,
+      progress: pr, left: Number(s.left) || 0, limit: Number(s.limit) || 0,
+      ship: s.ship ? { x: s.ship.x, y: s.ship.y, ang: s.ship.ang, dir: s.ship.dir } : null,
+      overlay, lost: lostShown, particles: st.particles | 0, shots: Array.isArray(s.shots) ? s.shots.length : 0,
       frames: st.frames | 0, slowFrames: st.slowFrames | 0, rockRedraws: st.rockRedraws | 0,
       saveCount, calm, timers: timers.size, stale, stepMs: stepMsNow(),
       // ここから下は契約に足したもの（テスト・デバッグ用）
@@ -1129,8 +1158,9 @@
       hint: el.hint ? el.hint.textContent : "", suggest: suggestSlot, swapSel: overlay === "swap" ? swapSel : null,
       totals: s.totals ? Object.assign({}, s.totals) : null,
       drawMs: Number(st.drawMs) || 0, cellPx: Number(st.cellPx) || 0,
-      view: st.view || null,   // render の見せている範囲（zoom・rockPx など。§18.1 A の確かめ用）
-      boltFx: st.bolt || null, evolveLine: st.evolve || null   // v40：最後のいなずまの絵（dur・segs・other）・しんか の 2 行目
+      view: st.view || null,   // render の見せている向き（x・y・rot）
+      urgent: !!(el.hud && el.hud.getAttribute("data-urgent") === "1"),
+      boltFx: st.bolt || null, evolveLine: st.evolve || null
     };
   }
   function advance(sec) {
@@ -1141,51 +1171,52 @@
       const n = Math.round(s / STEP);
       for (let i = 0; i < n; i++) {
         stepOnce(STEP, null);
-        if (!running()) break;   // エンディングのカードが出たら止まる
+        if (!running()) break;                                   // エンディングのカードが出たら止まる
+        if (state.phase === "lost" || state.phase === "choose") break;   // 時間切れ・2択のあいだは進まない
       }
     } finally { silent -= 1; }
     saveNow();
+    syncRock();
     R_call("frame", state, [], 0);
     updateUi();
     return snapshot();
   }
   // テスト用：logic の state の形をそのまま入れる。星・かけら・武器・ひかえ・予約は loadSave と同じ検証に通す。
-  // 小惑星（rock）が同じ星の形で正しければ、マスの残り・位置・phase・hold もそのまま使う（星の途中から試せる）
+  // obj.left（残り秒）・obj.phase（'fly'・'lost'・'clear'）と、同じ星の格子（rock.w・rock.h・mats・hp）が正しければ、マスの残りもそのまま使う
   function setStateApi(obj) {
     const base = normalize(obj);
     if (!base) return false;
     let s = base;
     try {
+      if (Number.isFinite(obj.left)) s = Object.assign({}, s, { left: Math.max(0, Math.min(s.limit, obj.left)) });
       const r = obj.rock;
-      const okRock = r && typeof r === "object" && r.cols === base.rock.cols && r.rows === base.rock.rows &&
-        Array.isArray(r.mats) && Array.isArray(r.hp) && r.mats.length === r.cols * r.rows && r.hp.length === r.mats.length &&
-        r.mats.every((m) => Number.isInteger(m) && m >= 0 && m <= 4) && r.hp.every((h) => typeof h === "number" && Number.isFinite(h)) &&
-        Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.vy);
+      const okRock = r && typeof r === "object" && r.w === base.rock.w && r.h === base.rock.h &&
+        Array.isArray(r.mats) && Array.isArray(r.hp) && r.mats.length === r.w * r.h && r.hp.length === r.mats.length &&
+        r.mats.every((m) => Number.isInteger(m) && m >= 0 && m <= 5) && r.hp.every((h) => typeof h === "number" && Number.isFinite(h));
       if (okRock) {
         const left = r.mats.filter((m) => m > 0).length;
-        const rock = Object.assign({}, base.rock, { mats: r.mats.slice(), hp: r.hp.slice(), x: r.x, y: r.y, vy: r.vy, left, scan: null });
-        s = Object.assign({}, base, { rock });
-        const ph = ["fly", "bounce", "clear"].includes(obj.phase) ? obj.phase : base.phase;
-        if (base.phase !== "choose") s.phase = ph;
-        if (Number.isFinite(obj.wait)) s.wait = Math.max(0, obj.wait);
-        if (Number.isFinite(obj.tryAt) && obj.tryAt <= s.t) s.tryAt = obj.tryAt;
-        if (Array.isArray(obj.cd) && obj.cd.every(Number.isFinite)) s.cd = base.slots.map((_, k) => (Number.isFinite(obj.cd[k]) ? obj.cd[k] : s.t));
-        if (!safeCall(() => L.step(s, 0), null)) s = base;
+        const rock = Object.assign({}, base.rock, { mats: r.mats.slice(), hp: r.hp.slice(), left, dirty: [], gen: (base.rock.gen | 0) + 1 });
+        s = Object.assign({}, s, { rock });
       }
+      if (["fly", "lost", "clear"].includes(obj.phase) && s.phase !== "choose") s = Object.assign({}, s, { phase: obj.phase });
+      if (s.phase === "lost") s = Object.assign({}, s, { left: 0 });
+      if (!safeCall(() => L.step(s, 0), null)) s = base;
     } catch (e) { s = base; }
     if (obj.hold === true) s = Object.assign({}, s, { hold: true });
     applyState(s);
+    R_call("reset");
     return true;
   }
   function applyState(s) {
     state = s;
     suggestSlot = -1;
-    msUntil = -1; nearTold = false;
+    msUntil = -1;
     if (overlay === "choose" && state.phase !== "choose") closeCard("choose");
     if (overlay === "swap" && !benchOf(state).length) closeCard("swap");
     if (state.phase === "choose") openCard("choose");
     else if (overlay === "swap") fillSwap();
     saveNow();
+    syncRock();
     R_call("frame", state, [], 0);
     updateUi();
   }
@@ -1197,55 +1228,56 @@
     unlock() { return doUnlock(); },
     choose(k) { return doChoose(Number(k), false); },
     reserveSwap(slot, id) { return doReserve(slot, id); },
+    retry() { return doRetry(false); },
     setState: setStateApi,
     save() { return saveNow(); }
   });
 
   // ===== デバッグ命令（?debug=1 のときだけ。§7.4） =====
-  // gostar の表 ARMS：その星の始めに見合う武器（砲台の武器と Lv ／ ひかえ）。作り直しの logic.js（2026-10-23）で測り直した：
-  // simulate('greedy', { seed: 1, maxStar: n, start: { star: n, slots, bench, kakera } }) を星 1 から 1 つずつつないで回し、
-  // 星 n をクリアしたときの武器を星 n+1 の行にした（毎回 greedy を回すと重いので、表を引くだけ）。表より先の星は最後の行の武器で Lv99。
+  // gostar の表 ARMS：その星の始めに見合う武器（自機の武器と Lv ／ ひかえ）。リニューアルの logic.js（2026-11-09）で測り直した：
+  // simulate('greedy', { seed: 1, maxStar: n }) の final（星 n をクリアした直後の武器）を 1 つずつ集め、星 n+1 の行にした（表を引くだけ）。
+  // 表より先の星は最後の行の武器で Lv99。
   const ARMS = [
     "shot:1",
-    "shot:6",
-    "shot:8 beam:7",
-    "shot:8 beam:11 spread:11",
-    "shot:13 beam:14 spread:16",
-    "shot:16 beam:17 spread:19 bolt:3",
-    "shot:17 beam:18 spread:23 bolt:21",
-    "shot:23 beam:23 spread:24 bolt:24",
-    "shot:27 beam:27 spread:28 bolt:27",
-    "shot:27 beam:28 spread:32 bolt:32",
-    "shot:33 beam:34 spread:35 bolt:34",
-    "shot:36 beam:37 spread:38 bolt:37",
-    "shot:38 beam:38 spread:41 bolt:41 | fire:1",
-    "shot:42 beam:43 spread:43 bolt:43 | fire:1",
-    "shot:45 beam:46 spread:47 bolt:46 | fire:1",
-    "shot:48 beam:50 spread:48 bolt:51 | fire:1",
-    "shot:52 beam:52 spread:52 bolt:53 | fire:1",
-    "shot:55 beam:55 spread:55 bolt:56 | fire:1",
-    "shot:57 beam:58 spread:58 bolt:59 | fire:1",
-    "shot:60 beam:61 spread:62 bolt:62 | fire:1",
-    "shot:64 beam:64 spread:65 bolt:65 | fire:1",
-    "shot:67 beam:67 spread:67 bolt:68 | fire:1 bomb:1",
-    "shot:68 beam:70 spread:71 bolt:71 | fire:1 bomb:1",
-    "shot:73 beam:73 spread:73 bolt:74 | fire:1 bomb:1",
-    "shot:76 beam:76 spread:76 bolt:77 | fire:1 bomb:1",
-    "shot:78 beam:80 spread:78 bolt:81 | fire:1 bomb:1",
-    "shot:82 beam:82 spread:83 bolt:83 | fire:1 bomb:1",
-    "shot:85 beam:85 spread:85 bolt:86 | fire:1 bomb:1",
-    "bomb:84 beam:88 spread:88 bolt:88 | fire:1 shot:87",
-    "bomb:85 beam:91 spread:91 bolt:92 | fire:1 shot:87",
-    "bomb:89 beam:94 spread:95 bolt:95 | fire:1 shot:87",
-    "bomb:91 beam:95 spread:96 bolt:96 | fire:1 shot:87",
-    "bomb:92 beam:96 spread:97 bolt:97 | fire:1 shot:87",
-    "bomb:94 beam:97 spread:97 bolt:97 | fire:1 shot:87",
-    "bomb:94 beam:98 spread:98 bolt:99 | fire:1 shot:87",
-    "bomb:95 beam:98 spread:99 bolt:99 | fire:1 shot:87",
-    "bomb:96 beam:99 spread:99 bolt:99 | fire:1 shot:87",
-    "bomb:97 beam:99 spread:99 bolt:99 | fire:1 shot:87",
-    "bomb:97 beam:99 spread:99 bolt:99 | fire:1 shot:87",
-    "bomb:98 beam:99 spread:99 bolt:99 | fire:1 shot:87"
+    "shot:7 beam:7",
+    "shot:11 beam:8",
+    "shot:12 beam:8 bolt:13",
+    "shot:14 beam:14 bolt:15",
+    "shot:18 beam:17 bolt:18",
+    "shot:18 beam:17 bolt:21 fire:22",
+    "shot:23 beam:22 bolt:23 fire:24",
+    "shot:26 beam:25 bolt:26 fire:27",
+    "shot:30 beam:28 bolt:28 fire:28",
+    "shot:33 beam:32 bolt:32 fire:32",
+    "shot:36 beam:34 bolt:35 fire:35",
+    "shot:39 beam:37 bolt:37 fire:38",
+    "shot:42 beam:39 bolt:41 fire:38 | spread:1",
+    "shot:44 beam:43 bolt:43 fire:43 | spread:1",
+    "shot:47 beam:45 bolt:46 spread:45 | fire:43",
+    "shot:51 beam:48 bolt:48 spread:47 | fire:43",
+    "shot:53 beam:51 bolt:52 spread:51 | fire:43",
+    "shot:56 beam:54 bolt:54 spread:54 | fire:43",
+    "shot:59 beam:56 bolt:57 spread:57 | fire:43",
+    "shot:63 beam:58 bolt:61 spread:61 | fire:43",
+    "shot:65 beam:63 bolt:63 spread:63 | fire:43",
+    "shot:67 beam:65 bolt:66 spread:65 | fire:43 bomb:1",
+    "shot:71 beam:67 bolt:67 spread:67 | fire:43 bomb:1",
+    "shot:73 beam:71 bolt:72 spread:71 | fire:43 bomb:1",
+    "shot:76 beam:74 bolt:74 spread:74 | fire:43 bomb:1",
+    "shot:80 beam:75 bolt:76 spread:76 | fire:43 bomb:1",
+    "shot:83 beam:78 bolt:78 bomb:73 | fire:43 spread:76",
+    "shot:85 beam:82 bolt:82 bomb:76 | fire:43 spread:76",
+    "shot:88 beam:85 bolt:86 bomb:78 | fire:43 spread:76",
+    "shot:92 beam:87 bolt:87 bomb:83 | fire:43 spread:76",
+    "shot:94 beam:88 bolt:88 bomb:84 | fire:43 spread:76",
+    "shot:94 beam:90 bolt:91 bomb:85 | fire:43 spread:76",
+    "shot:95 beam:91 bolt:92 bomb:85 | fire:43 spread:76",
+    "shot:95 beam:92 bolt:93 bomb:86 | fire:43 spread:76",
+    "shot:96 beam:92 bolt:93 bomb:87 | fire:43 spread:76",
+    "shot:96 beam:93 bolt:94 bomb:87 | fire:43 spread:76",
+    "shot:97 beam:94 bolt:94 bomb:87 | fire:43 spread:76",
+    "shot:97 beam:94 bolt:94 bomb:88 | fire:43 spread:76",
+    "shot:98 beam:94 bolt:95 bomb:88 | fire:43 spread:76"
   ];
   function armsFor(n) {
     const lvMax = L.LEVEL_MAX || 99;
@@ -1282,21 +1314,20 @@
     setBackInert(false);
     unlockCardButtons();
   }
-  // マスを書き換えた写し（logic の state はイミュータブルなので新しいオブジェクトを作る）
+  // マスや時間を書き換えた写し（logic の state はイミュータブルなので新しいオブジェクトを作る）
   function withRock(fn, extra) {
     if (!state || state.phase === "end") throw new Error("いまは つかえない");
     if (state.phase !== "fly") throw new Error("fly のときだけ（いまは " + state.phase + "）");
-    const rock = Object.assign({}, state.rock, { mats: state.rock.mats.slice(), hp: state.rock.hp.slice(), scan: null });
+    const rock = Object.assign({}, state.rock, { mats: state.rock.mats.slice(), hp: state.rock.hp.slice(), dirty: [] });
     fn(rock);
+    rock.gen = (rock.gen | 0) + 1;
     const s = Object.assign({}, state, { rock, shots: [], burns: [] }, extra || {});
     if (!safeCall(() => L.step(s, 0), null)) throw new Error("変えられなかった");
     state = s;
+    R_call("reset");
+    syncRock();
     R_call("frame", state, [], 0);
     updateUi();
-  }
-  function bottomRowOf(rock) {
-    for (let r = rock.rows - 1; r >= 0; r--) for (let c = 0; c < rock.cols; c++) if (rock.mats[r * rock.cols + c]) return r;
-    return -1;
   }
   function rateTable() {
     const s = state;
@@ -1319,7 +1350,7 @@
       D.command("ff", (a) => {
         const sec = Math.max(0, Math.min(FF_MAX_SEC, a && a.sec !== undefined ? Number(a.sec) || 0 : 30));
         return { sec, state: advance(sec) };
-      }, { desc: "早送り（advance と同じ。カードが出ている間は進まない）", args: "{ sec }（既定 30、最大 3600）" });
+      }, { desc: "早送り（advance と同じ。カードが出ている間・時間切れの間は進まない）", args: "{ sec }（既定 30、最大 3600）" });
       D.command("addk", (a) => {
         if (!state) throw new Error("まだ はじまっていない");
         const n = Math.floor(Number(a && a.n) || 0);
@@ -1329,37 +1360,38 @@
         updateUi();
         return { kakera: state.kakera, text: fmt(state.kakera) };
       }, { desc: "かけらを足す（KAKERA_MAX まで）", args: "{ n }" });
-      D.command("gostar", (a) => gostar(a), { desc: "その星の始めへ（砲台の武器・Lv・ひかえは自動プレイでその星まで来たときの値。表 ARMS）", args: "{ star }" });
+      D.command("gostar", (a) => gostar(a), { desc: "その星の始めへ（自機の武器・Lv・ひかえは自動プレイでその星まで来たときの値。表 ARMS）", args: "{ star }" });
       D.command("win", () => {
-        // 真ん中の砲台（x が場の真ん中に一番近い台）から一番近いマスを 1 つだけ残す（砲台は撃ってよい）
-        const ts = Array.isArray(state && state.turrets) ? state.turrets : [];
-        const mid = (L.FIELD_W || 360) / 2;
-        let T = null;
-        for (const t of ts) if (t && Number.isFinite(t.x) && (!T || Math.abs(t.x - mid) < Math.abs(T.x - mid))) T = t;
-        if (!T) T = { x: mid, y: L.TURRET_Y || 500 };
+        // 自機から一番近いマスを 1 つだけ残す（自機は撃ってよい。クリアの確認）
+        const sh = state && state.ship ? state.ship : { x: 0, y: 0 };
         withRock((rock) => {
-          const C = L.CELL || 7;
+          const C = L.CELL || 8;
           let keep = -1, kd = Infinity;
           for (let i = 0; i < rock.mats.length; i++) {
             if (!rock.mats[i]) continue;
-            const x = rock.x + ((i % rock.cols) + 0.5) * C, y = rock.y + (Math.floor(i / rock.cols) + 0.5) * C;
-            const d = (x - T.x) * (x - T.x) + (y - T.y) * (y - T.y);
+            const x = ((i % rock.w) + 0.5) * C, y = (Math.floor(i / rock.w) + 0.5) * C;
+            const d = (x - sh.x) * (x - sh.x) + (y - sh.y) * (y - sh.y);
             if (d < kd) { kd = d; keep = i; }
           }
           for (let i = 0; i < rock.mats.length; i++) if (i !== keep) { rock.mats[i] = 0; rock.hp[i] = 0; }
           rock.left = keep >= 0 ? 1 : 0;
+          if (keep >= 0) { rock.cx = ((keep % rock.w) + 0.5) * C; rock.cy = (Math.floor(keep / rock.w) + 0.5) * C; }
         });
         return { left: state.rock.left };
-      }, { desc: "いまの星のマスを 1 つだけ残す（真ん中の砲台から一番近いマス。クリアの確認）", args: "なし" });
+      }, { desc: "いまの星のマスを 1 つだけ残す（自機に一番近いマス。クリアの確認）", args: "なし" });
       D.command("lose", () => {
-        // 一番下を BARRIER_Y ちょうどに置き、砲台は撃たない（hold）。次の step で必ずはね返る（T-19。§7.4）
-        withRock((rock) => {
-          const br = bottomRowOf(rock);
-          const C = L.CELL || 7;
-          rock.y = (L.BARRIER_Y || 470) - (br + 1) * C;
-        }, { hold: true });
-        return { progress: L.progressOf(state), hold: state.hold === true };
-      }, { desc: "小惑星の一番下をバリアの線ちょうどに置き、砲台を止める（hold。次の step ではね返る）", args: "なし" });
+        // 残り時間を 0.1 秒にして、自機は撃たない（hold）。次の step で時間切れ（lost）になる
+        withRock(() => {}, { left: 0.1, hold: true });
+        return { left: state.left, hold: state.hold === true };
+      }, { desc: "残り時間を 0.1 秒にして自機を止める（hold）。次の step で時間切れ（#lostCard）", args: "なし" });
+      D.command("timeleft", (a) => {
+        // 残り時間を決める（30 秒を切ったときの色・最後の秒の確認）
+        const sec = Number(a && a.sec);
+        if (!Number.isFinite(sec) || sec < 0) throw new Error("sec は 0 以上の数");
+        withRock(() => {}, { left: Math.min(sec, state.limit) });
+        return { left: state.left, limit: state.limit };
+      }, { desc: "残り時間（秒）を決める（0〜その星の limit）", args: "{ sec }" });
+      D.command("retry", () => doRetry(false), { desc: "時間切れのカードの「もういちど」と同じ（lost のときだけ）", args: "なし" });
       D.command("lv", (a) => {
         if (!state) throw new Error("まだ はじまっていない");
         const k = Math.floor(Number(a && a.slot));
@@ -1397,7 +1429,7 @@
         return { slot: k, from: out.id, to: inn.id, lv: inn.lv, swapped: true };
       }, { desc: "予約して、その場で入れ替える（絵と音の確認）", args: "{ slot, id }" });
       D.command("bench", (a) => {
-        // その武器を ひかえ に Lv 1 で入れる（持っている武器・知らない武器は飛ばす。砲台と合わせて 6 つまで）
+        // その武器を ひかえ に Lv 1 で入れる（持っている武器・知らない武器は飛ばす。自機の武器と合わせて 6 つまで）
         if (!state) throw new Error("まだ はじまっていない");
         const ids = Array.isArray(a && a.ids) ? a.ids : typeof (a && a.ids) === "string" ? [a.ids] : [];
         const have = new Set(state.slots.map((x) => x.id).concat(benchOf(state).map((x) => x.id)));
@@ -1414,27 +1446,20 @@
         const on = !(a && (a.on === false || a.on === 0 || a.on === "0"));
         state = Object.assign({}, state, { hold: on });
         return { hold: state.hold };
-      }, { desc: "砲台が撃つのを止める・戻す（性能・はね返しの確認）", args: "{ on }" });
+      }, { desc: "自機が撃つのを止める・戻す（性能・時間切れの確認）", args: "{ on }" });
       D.command("rates", () => rateTable(), { desc: "武器ごとのつよさ・相性・星の混ざり方", args: "なし" });
     }, null);
   }
 
-  // ===== 起動（§7.1・§8.3・§8.4） =====
+  // ===== 起動（§7.1・§8.3・計画書 §1.6） =====
   (function boot() {
     best = safeCall(() => L.validateBest(readKey(KEY_BEST)), 0) || 0;
     const raw = readKey(KEY_SAVE);
     const ver = raw === null ? null : safeCall(() => L.saveVersionOf(raw), null);
-    let migrated = false;
     let loaded = null;
     let extra = { t: 0, ending: false };
-    if (ver === 1) {
-      // 古い保存（v:1）：① 元の文字を bak へ（あれば上書きしない。写せなければ保存を止める＝元を消さない）② かけらだけ引き継いだ星 1
-      // ③ すぐ v:2 で保存 ④ ヒントと遊び方をもう一度。asteroid.best・asteroid.help は書きかえない
-      loaded = safeCall(() => L.loadSave(raw), null);
-      if (loaded) {
-        migrated = true;
-        if (!keepBroken(raw)) saveBlocked = true;
-      }
+    if (raw !== null && ver !== null && ver < (L.SAVE_VERSION || 3)) {
+      // 古い版（v:1・v:2）の保存：読まない・bak にも写さない（ユーザー決定「最初から」）。新しく始めて、すぐ v:3 で上書きする
     } else if (raw !== null) {
       loaded = safeCall(() => L.loadSave(raw), null);
       if (loaded) extra = extraOf(raw);
@@ -1443,7 +1468,7 @@
       setClock(loaded, extra.t);
       state = loaded;
     } else {
-      if (raw !== null) {
+      if (raw !== null && !(ver !== null && ver < (L.SAVE_VERSION || 3))) {
         // 読めない・新しい版の保存：元を bak へ写してから新しく始める（写せなければ上書きしない＝元を消さない）
         if (!keepBroken(raw)) saveBlocked = true;
         later(() => setHint(HINT_BROKEN, 5000), 0);
@@ -1452,16 +1477,11 @@
       state = safeCall(() => L.newGame((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0), null) || safeCall(() => L.newGame(1), null);
       if (!state) { console.error("ほしくだき: newGame が動きません"); return; }
     }
-    if (migrated) {
-      // 知らせは遊び方カードの先頭に 1 行（カードの外の #hint は幕の下に隠れるので出さない。UX 4）。カードを閉じたら消す（この回だけ）
-      if (el.helpMig) { el.helpMig.textContent = HINT_MIGRATED + "。"; el.helpMig.hidden = false; }
-      if (saveBlocked) tellSaveFail(5000);
-    }
     if (state.cleared && best < (L.ENDING_STAR || 30)) writeBest(L.ENDING_STAR || 30);
     const info = safeCall(() => L.starInfo(state.star), null);
     if (info && info.boss) bossUntil = state.t + BOSS_BANNER_SEC;
     const firstTime = readKey(KEY_HELP) !== "1";
-    if (firstTime || migrated) openCard("help");
+    if (firstTime) openCard("help");
     if (extra.ending && state.cleared) {
       // エンディングのカードの途中で閉じた：もう一度出す（星はもう 31。「このまま あそぶ」はここから）
       const t = state.t;
@@ -1470,6 +1490,7 @@
       openCard("end");
     } else if (state.phase === "choose") openCard("choose");
     saveNow();
+    syncRock();
     R_call("frame", state, [], 0);
     updateUi();
     sfx.play("start");
