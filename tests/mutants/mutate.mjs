@@ -432,7 +432,7 @@ const M = [
   ['MK36 ほしくだき：時間切れのあと、おすすめの行をいつも 1 行目にする', '表示', 'games/asteroid/main.js', '          sfx.play("lost");\n          suggestSlot = cheapestSlot();', '          sfx.play("lost");\n          suggestSlot = 0;'],
   ['MK37 ほしくだき：クリアで asteroid.best に通しの数でなく段の中の星を書く', 'データ消失', 'games/asteroid/main.js', 'writeBest(Number.isFinite(Number(e.num)) ? e.num : safeCall(() => L.numIn(e.star, e.tier | 0), e.star));', 'writeBest(e.star);'],
   ['MK38 ほしくだき：エンディングのボタンで次の段へ進めない（afterEnding を呼ばない）', 'ルール', 'games/asteroid/main.js', 'const r = safeCall(() => L.afterEnding(state), null);', 'const r = null;'],
-  ['MK39 ほしくだき：場を押すと進む（#field のクリックで step を進める）', '操作', 'games/asteroid/main.js', '  if (el.helpOk) el.helpOk.addEventListener("click", closeHelp);', '  if (el.field) el.field.addEventListener("click", () => { stepOnce(STEP, null); updateUi(); });\n  if (el.helpOk) el.helpOk.addEventListener("click", closeHelp);'],
+  ['MK39 ほしくだき：場を押すと進む（#field は pointer-events: none なので、ボタンとリンク以外のクリックを document で受けて step を進める）', '操作', 'games/asteroid/main.js', '  if (el.helpOk) el.helpOk.addEventListener("click", closeHelp);', '  document.addEventListener("click", (e) => { if (!(e.target && e.target.closest && e.target.closest("button, a"))) { stepOnce(STEP, null); updateUi(); } });\n  if (el.helpOk) el.helpOk.addEventListener("click", closeHelp);'],
   ['MK40 ほしくだき：さいしょからで asteroid.save.bak を消さない', 'データ消失', 'games/asteroid/main.js', 'goneBak = removeKey(KEY_BAK);', 'goneBak = true;'],
   ['MK41 ほしくだき：表に戻ったとき保存がほかで変わっていても開き直さない（X-20）', '保存', 'games/asteroid/main.js', 'if (!stale && !changedElsewhere()) return false;', 'return false;'],
   // ---- あまいものあつめ（games/amai/）。ふち・運ぶ・押す・うごかせない・再生・保存・ずかん・絵の選び方・中断・古いページの仕組みを変えたときだけ流す（契約 §7.4）----
