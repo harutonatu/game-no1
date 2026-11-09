@@ -25,7 +25,7 @@ def head(hx, hy, rx=10.5, ry=6.2):
 
 def face(hx, hy, eyes='open', mouth='smile'):
     """目（こぶの中。白目 W・黒目 K・まぶた G）と大きな口。eyes：open・happy（にっこり）・closed（ねむる）・down（下を見る）。
-    mouth：smile（大きな にっこり）・open（うたう。中は R、した P）・small（ねむる）。"""
+    mouth：smile（大きな にっこり）・open（うたう。中は R、した P）・grin（にっこり あけた口）・small（ねむる）。"""
     for ex, ey in ((hx + EYE[0][0], hy + EYE[0][1]), (hx + EYE[1][0], hy + EYE[1][1])):
         x0, y0 = int(ex - 2), int(ey - 1)
         if eyes in ('open', 'down'):
@@ -38,13 +38,17 @@ def face(hx, hy, eyes='open', mouth='smile'):
         elif eyes == 'happy':
             fill({(x0, y0 + 2), (x0 + 1, y0 + 1), (x0 + 2, y0 + 1), (x0 + 3, y0 + 2)}, 'K')
         else:   # closed（まぶたを とじた 太い へ の字）
-            fill({(x0 - 1, y0 + 1), (x0, y0 + 2), (x0 + 1, y0 + 2), (x0 + 2, y0 + 2), (x0 + 3, y0 + 2), (x0 + 4, y0 + 1)}, 'K')
-            fill({(x0, y0 + 1), (x0 + 1, y0 + 1), (x0 + 2, y0 + 1), (x0 + 3, y0 + 1)}, 'D')
+            fill({(x0 - 1, y0), (x0, y0 + 1), (x0 + 1, y0 + 2), (x0 + 2, y0 + 2), (x0 + 3, y0 + 1), (x0 + 4, y0)}, 'K')
     # 鼻の あな
     put(hx + 7, hy - 1, 'K'); put(hx + 9, hy - 1, 'K')
     if mouth == 'open':
         mo = poly([(hx - 2, hy + 1.5), (hx + 10.5, hy + .5), (hx + 8, hy + 5.5), (hx + 2, hy + 5.5)])
-        fill(mo, 'R'); fill(cells(mo, lambda x, y: (x, y + 1) not in mo and x < hx + 7), 'P'); fill(edge(mo), 'K')
+        fill(mo, 'R'); fill(edge(mo), 'K')
+        inn = mo - edge(mo); fill(cells(inn, lambda x, y: (x, y + 1) not in inn and x < hx + 7), 'P')
+    elif mouth == 'grin':   # にっこり あけた口（中 R・した P）
+        mo = poly([(hx - 1, hy + 1.5), (hx + 9.5, hy + .5), (hx + 7, hy + 4.5), (hx + 2, hy + 4.5)])
+        fill(mo, 'R'); fill(edge(mo), 'K')
+        inn = mo - edge(mo); fill(cells(inn, lambda x, y: (x, y + 1) not in inn and hx + 1 < x < hx + 7), 'P')
     elif mouth == 'small':
         fill(arc(hx + 3.5, hy - .5, 5, 3, 30, 150, 2), 'K')
     else:

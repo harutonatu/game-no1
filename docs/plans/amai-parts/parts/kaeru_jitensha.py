@@ -26,7 +26,7 @@ def draw(cx, by, flip=False):
     # 頭 → 顔
     hx, hy = sx + 7, sy - 16
     head = kaeru.head(hx, hy)
-    kaeru.face(hx, hy, eyes='open', mouth='smile')
+    kaeru.face(hx, hy, eyes='open', mouth='grin')
     # 手前の足（ももを 前へ、ひざで まげて 前の ペダルを ふむ）
     kaeru.limb(sx + 3, sy - 3, pfx + 1, sy - 4, 4.8)
     kaeru.limb(pfx + 1, sy - 4, pfx, pfy - 1.5, 4)

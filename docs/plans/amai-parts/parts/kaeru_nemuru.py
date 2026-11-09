@@ -30,14 +30,14 @@ def draw(cx, by, flip=False):
     fill(edge(bl), 'K')
     # 鼻ちょうちん（W・ふち S）
     bub = ell(hx + 11.5, hy - .5, 2.6, 2.6)
-    fill(bub, 'S'); fill(edge(bub), 'K'); put(int(hx + 12), int(hy - 1), 'W')
+    fill(bub, 'W'); fill(edge(bub), 'K'); put(int(hx + 12), int(hy - 1), 'S')
     # 足の先（もうふから 出る）
     kaeru.foot(cx + 13, by, 1, l=3.4)
     end(flip, cx)
     s = -1 if flip else 1
     sh = 3 if flip else 0
     under = at(cx + s * 13, by - 34)
-    c = 'B' if under not in ('B', 'S') else 'W'
+    c = 'B' if under != 'B' else 'W'
     zzz(cx + s * 12 - sh, by - 33, 4, c)
     zzz(cx + s * 17 - sh, by - 40, 5, c)
     zzz(cx + s * 23 - sh, by - 46, 6, c)
