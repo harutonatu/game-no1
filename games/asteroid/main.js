@@ -190,7 +190,7 @@
   let restarting = false;      // さいしょから（§19）：保存を消したあとは、古い状態を二度と書かない
   let sleeping = false;
   let rafId = 0, lastT = null, acc = 0;
-  let pendingEvents = [];      // ボタンで起きた出来事（upgrade の evolve・choose の turrets）。次のフレームで render に渡す
+  let pendingEvents = [];      // ボタンで起きた出来事（upgrade の evolve など）。次のフレームで render に渡す
   let saveCount = 0, saveBlocked = false, saveSince = 0, saveFailTold = false;
   let best = 0;
   let hintTimer = 0, cardUnlockTimer = 0, cardShownAt = -Infinity, focusBack = null;
@@ -263,6 +263,7 @@
       const o = JSON.parse(raw);
       o.t = Math.max(0, Math.floor(Number(state.t) || 0));
       if (state.phase === "end") o.ending = true;
+      else if (state.phase === "clear" && state.star >= L.starsOf(state.tier)) o.ending = true;   // 最後の星の演出中に閉じても、開き直すとカードが出る
       text = JSON.stringify(o);
     } catch (e) { text = raw; }
     const ok = writeKey(KEY_SAVE, text);
@@ -459,7 +460,7 @@
           let tline = "";
           if (hasTime) {
             const prev = Number.isFinite(Number(e.best)) && e.best !== null ? Number(e.best) : null;
-            tline = fmtTime(e.time) + "・" + (prev === null ? "はじめて" : Number(e.time) < prev ? "ベスト！" : "ベスト " + fmtTime(prev));
+            tline = fmtTime(e.time) + "・" + (prev === null ? "はじめて クリア！" : Number(e.time) < prev ? "ベスト！" : "ベスト " + fmtTime(prev));
           }
           setText(part(banner, "time"), tline);
           const lf = Number(e.left);
@@ -564,6 +565,8 @@
       setHidden(el.lostCard, !showLost);
       if (showLost) {
         lostAt = now();
+        const gapEl = $("lostGap");
+        if (gapEl) { const gap = Math.max(1, 100 - pct); setText(gapEl, "あと " + gap + "% だった！"); setHidden(gapEl, false); }
         lockCardButtons(el.lostCard);
         if (el.retryBtn && !overlay) { try { el.retryBtn.focus({ preventScroll: true }); } catch (e) { /* 無視 */ } }
       }
@@ -903,7 +906,7 @@
       if (done === 0) {
         setText(el.endTitle, "ちきゅうを まもりきった！");
         setText(el.endText, (L.ENDING_STAR || 50) + "この ほしを くだいて、ちきゅうを まもったよ！");
-        setText(el.endMore, "つぎは ひかりが すくない「ハード」だよ");
+        setText(el.endMore, "つぎは ひかる マス（かけらの もと）が すくない「ハード」だよ");
         setText(el.endOk, "ハードを はじめる");
       } else {
         setText(el.endTitle, tierName(done) + "クリア！");
@@ -1172,7 +1175,7 @@
       logicPhase: s.phase || null, t: Number(s.t) || 0, tries: s.tries | 0, cleared: !!s.cleared, hold: s.hold === true, best, sleeping,
       hint: el.hint ? el.hint.textContent : "", suggest: suggestSlot, swapSel: overlay === "swap" ? swapSel : null,
       totals: s.totals ? Object.assign({}, s.totals) : null,
-      drawMs: Number(st.drawMs) || 0, cellPx: Number(st.cellPx) || 0,
+      drawMs: Number(st.drawMs) || 0, cellPx: Number(st.cellPx) || 0, dpr: Number(st.dpr) || 0, rockFullRedraws: Number(st.rockFullRedraws) || 0,
       view: st.view || null,   // render の見せている向き（x・y・rot）
       urgent: !!(el.hud && el.hud.getAttribute("data-urgent") === "1"),
       boltFx: st.bolt || null, evolveLine: st.evolve || null
@@ -1307,7 +1310,7 @@
   function armsFor(n, tier) {
     const lvMax = L.LEVEL_MAX || 99;
     const over = n > ARMS.length || tier > 0;
-    const row = ARMS[Math.max(0, Math.min(ARMS.length, n) - 1)];
+    const row = ARMS[over ? ARMS.length - 1 : Math.max(0, n - 1)];
     const parse = (txt, lvTo) => (txt || "").trim().split(/\s+/).filter(Boolean).map((p) => {
       const [id, lv] = p.split(":");
       return { id, lv: Math.min(lvMax, lvTo === undefined ? Number(lv) || 1 : lvTo) };

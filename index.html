@@ -882,6 +882,7 @@
   // それ以外（読めない・数でない・Infinity・0 以下）は空（＝まだ記録なし）
   function asteroidBest() {
     try {
+      if (localStorage.getItem("asteroid.v3") !== "1") return "";   // まだ新しい版を開いていない＝古いベストは消える予定
       const raw = localStorage.getItem("asteroid.best");
       if (raw === null || String(raw).trim() === "") return "";
       const x = Number(raw);

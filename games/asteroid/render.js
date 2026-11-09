@@ -12,7 +12,7 @@
  *
  * - 世界の単位：1 マス CELL = 8。マス i（c = i % w, r = i / w）の中心は ((c+0.5)·8, (r+0.5)·8)。拡大は固定（1 単位 = 1 CSS px）。
  * - カメラ：自機を画面の中心より少し右下に置き、小惑星の（残っているマスの）重心がいつも画面の左の向きになるように回す。
- *   回る速さに上限（ROT_MAX rad/秒。動きを減らす設定では ROT_MAX_CALM）。rot は「世界 → 画面」の回転の角度。
+ *   回る速さに上限（ROT_MAX rad/秒。動きを減らす設定では回さず、星の始めの向きで固定。背景の星はもともと回らない）。rot は「世界 → 画面」の回転の角度。
  * - 性能（§3）：小惑星は 64×64 マスの区画ごとのオフスクリーン canvas（1 単位 = dpr px）に描いておき、
  *   rock.dirty のマス（とそのまわり 1 マス）だけ塗り直す。ふちの光る線もそのまわりだけ。読んだら rock.dirty = []。
  *   rock.dirty が来ないのに rock.gen が変わったときは、全マスを見比べて変わったマスを探す（念のため）。
@@ -35,8 +35,7 @@
   const HIT_FX_BUDGET = 24;       // 1 コマに出す「当たった光」の上限
   const TILE = 64;                // 区画の大きさ（マス）。64 × 8 × 2 = 1024 px（§3「1056 を超えるなら区画に分ける」）
   const MAX_CELLS = 140;          // 格子の 1 辺の上限（計画は最大 132）
-  const ROT_MAX = 0.9;            // カメラの回る速さの上限（rad/秒）
-  const ROT_MAX_CALM = 0.3;
+  const ROT_MAX = 0.5;            // カメラの回る速さの上限（rad/秒）。動きを減らす設定では回さない（星の始めの向きで固定）
   const ROT_EASE = 2.2;           // 差に対する回る速さ（1/秒）。上限と小さい方
   const ANCHOR_X = 0.62, ANCHOR_Y = 0.56;   // 自機の画面の位置（幅・高さに対する割合）
   const FONT = '"Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif';
@@ -109,6 +108,7 @@
     const C = () => { const c = num(Lg().CELL, 8); return c > 0 ? c : 8; };
 
     let cssW = 360, cssH = 640, dpr = 1;
+    let dprCap = Infinity, heavySince = null;   // 描画が重いときの逃げ道：内部の解像度の上限（一度下げたら戻さない）
     let bg = null;
     let frames = 0, slowFrames = 0, lastFrameAt = null, paused = false;
     const drawTimes = [];
@@ -155,7 +155,7 @@
     function resize(w, h, d) {
       cssW = Math.max(1, Math.round(num(w, cssW)));
       cssH = Math.max(1, Math.round(num(h, cssH)));
-      dpr = clamp(num(d, dpr), 1, MAX_DPR);
+      dpr = Math.min(clamp(num(d, dpr), 1, MAX_DPR), dprCap);
       const pw = Math.max(1, Math.round(cssW * dpr)), ph = Math.max(1, Math.round(cssH * dpr));
       if (canvas.width !== pw) canvas.width = pw;
       if (canvas.height !== ph) canvas.height = ph;
@@ -429,7 +429,7 @@
     function adoptRock(rock) {
       const mats = matsOf(rock);
       const w = clamp(Math.floor(num(rock.w, 0)), 0, MAX_CELLS), h = clamp(Math.floor(num(rock.h, 0)), 0, MAX_CELLS);
-      rockRef = rock; rockW = w; rockH = h; rockN = w * h;
+      rockRef = rock.key; rockW = w; rockH = h; rockN = w * h;
       rockGen = num(rock.gen, -1);
       known = new Uint8Array(rockN);
       crackK = new Uint8Array(rockN);
@@ -469,7 +469,7 @@
       const w = clamp(Math.floor(num(rock.w, 0)), 0, MAX_CELLS), h = clamp(Math.floor(num(rock.h, 0)), 0, MAX_CELLS);
       const gen = num(rock.gen, -1);
       const star = num(state.star, 1);
-      if (rock !== rockRef || w !== rockW || h !== rockH || star !== rockStar || gen < rockGen || !known) {
+      if (rock.key !== rockRef || w !== rockW || h !== rockH || star !== rockStar || gen < rockGen || !known) {
         rockStar = star;
         adoptRock(rock);
       }
@@ -515,9 +515,9 @@
       // 世界の向き a の線が画面で左（π）を向く回転：rot + a = π
       const want = Math.PI - Math.atan2(dy, dx);
       if (snap || !camReady) { rot = want; camReady = true; return; }
+      if (calm) return;   // 動きを減らす：向きは星の始めのまま（酔い対策）
       const diff = angDiff(want, rot);
-      const vmax = calm ? ROT_MAX_CALM : ROT_MAX;
-      const step = Math.min(vmax * dt, Math.abs(diff) * Math.min(1, ROT_EASE * dt));
+      const step = Math.min(ROT_MAX * dt, Math.abs(diff) * Math.min(1, ROT_EASE * dt));
       rot = angDiff(rot + Math.sign(diff) * step, 0);
     }
     // 世界 → 画面（device px）の変換を ctx に入れる
@@ -741,7 +741,7 @@
       spawnLeft = SPAWN_BUDGET; hitFxLeft = HIT_FX_BUDGET;
       // 先に形を合わせる（events の粒の色は「壊れる前に描いてあった材質」から取りたいので、break の色は adopt 前の known）
       const rock = state.rock;
-      const fresh = !!rock && typeof rock === "object" && (rock !== rockRef || !known);
+      const fresh = !!rock && typeof rock === "object" && (rock.key !== rockRef || !known);
       if (fresh) syncRock(state);
       onEvents(state, events);
       if (!fresh) syncRock(state);
@@ -755,6 +755,20 @@
       frames++;
       drawTimes.push(now() - t0);
       if (drawTimes.length > 120) drawTimes.shift();
+      checkHeavy();
+    }
+    // 描画の時間（直近 15 コマの中央）が 12ms をこえたまま 1 秒たったら、内部の解像度を 2 → 1.5 → 1 と下げる（CSS の大きさは変えない）
+    function checkHeavy() {
+      if (dpr <= 1 || drawTimes.length < 15) { heavySince = null; return; }
+      const last = drawTimes.slice(-15).sort((a, b) => a - b);
+      if (last[7] <= 12) { heavySince = null; return; }
+      const t = now();
+      if (heavySince === null) { heavySince = t; return; }
+      if (t - heavySince < 1000) return;
+      dprCap = dpr > 1.5 ? 1.5 : 1;
+      heavySince = null;
+      drawTimes.length = 0;
+      resize(cssW, cssH, dprCap);
     }
     function advanceFx(dt) {
       let w = 0;
@@ -1110,7 +1124,7 @@
         fullMs: Math.round(lastFullMs * 100) / 100,
         drawMs: s.length ? Math.round(s[(s.length / 2) | 0] * 100) / 100 : 0,
         drawMsMax: s.length ? Math.round(s[s.length - 1] * 100) / 100 : 0,
-        calm,
+        calm, dpr,
         bolt: lastBolt ? Object.assign({}, lastBolt) : null,
         evolve: evolveText ? evolveText.b : null
       };

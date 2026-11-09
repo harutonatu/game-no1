@@ -1449,8 +1449,9 @@
       s.phase = "clear"; s.wait = CLEAR_SEC; s.shots = []; s.burns = []; s.hold = false;
       const time = Math.max(0.1, Math.round((s.limit - s.left) * 10) / 10);
       const bt = isObj(s.bestT) ? s.bestT : {};
-      const prev = isNum(bt[s.star]) ? bt[s.star] : null;
-      if (prev === null || time < prev) s.bestT = trimBest(Object.assign({}, bt, { [s.star]: time }));
+      const btKey = numIn(s.star, s.tier);   // 通しの番号（ふつうの星 5 とハードの星 5 は別の記録）
+      const prev = isNum(bt[btKey]) ? bt[btKey] : null;
+      if (prev === null || time < prev) s.bestT = trimBest(Object.assign({}, bt, { [btKey]: time }));
       evs.push({ kind: "clear", star: s.star, tier: tierOk(s.tier), num: numIn(s.star, s.tier), bonus, time, best: prev, left: Math.round(s.left * 10) / 10 });
     } else if (s.left <= 1e-9) {
       const broken = progressS(s).broken;
@@ -2144,7 +2145,7 @@
     RETRY_EASE, CLEAR_SEC, BEAM_SEC, BOMB_FLIGHT, BULLET_SPEED, BULLET_LIFE, CARRY_MIN, LIMIT_MUL, LIMIT_BASE, IRON_BLOB_MIN,
     newGame, starInfo, step, dpsOf, upCostOf, upgrade, slotCostOf, unlock, choose, swapChoicesOf, reserveSwap, retry, afterEnding, progressOf, formatKakera, formatTime,
     makeSave, loadSave, saveVersionOf, validateBest, simulate,
-    hpMul, valMul, dmg, upCost, affOf, shapeOf, cellHp, cellHpAt, cellValue, matOf, limitOf, limitTry, rateOf, pierceOf, numIn
+    hpMul, valMul, dmg, upCost, affOf, shapeOf, cellHp, cellHpAt, cellValue, matOf, limitOf, limitTry, rateOf, pierceOf, numIn, starsOf
   };
   return Object.freeze(api);
 });

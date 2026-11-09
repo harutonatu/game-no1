@@ -201,7 +201,7 @@
   }
   .lostcard b { font: 800 20px/1.3 var(--font-display); color: var(--gold); }
   .lostcard .lostsub { font: 700 14px/1.3 var(--font-text); color: var(--ink); }
-  .lostcard button { box-sizing: border-box; width: 100%; min-height: 48px; margin-top: 2px; border-radius: 12px; border: 2px solid var(--gold); background: rgba(242, 193, 78, 0.18); color: var(--gold); font: 800 17px var(--font-display); }
+  .lostcard button { box-sizing: border-box; width: 100%; min-height: 48px; margin-top: 2px; border-radius: 12px; border: 2px solid var(--gold); background: var(--gold); color: #1a1200; font: 800 17px var(--font-display); }
   .lostcard button:active:not([aria-disabled="true"]) { filter: brightness(1.3); }
   .lostcard button[aria-disabled="true"] { opacity: 0.55; }
 
@@ -462,6 +462,8 @@
   #unlockBtn:not([aria-disabled="true"]) { border-style: solid; background: var(--gold); color: #1a1200; animation: glow 1.6s ease-in-out infinite; }
   #unlockBtn[aria-disabled="true"] { color: #d9cfae; border-color: var(--line); }
   #unlockBtn:active:not([aria-disabled="true"]) { filter: brightness(1.1); }
+  /* 時間切れの札が出ている間は「もういちど」を一番目立たせる：あたらしい ぶき は枠だけ（金ぬりと光りを止める） */
+  body[data-phase="lost"] #unlockBtn:not([aria-disabled="true"]) { background: var(--panel); color: var(--gold); border-style: dashed; animation: none; }
   @keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 216, 77, 0); } 50% { box-shadow: 0 0 0 4px rgba(255, 216, 77, 0.45); } }
 
   /* ===== 武器の絵（data-w）とマスの印（data-mat）。形と模様でも分かる（色覚 §6.2） ===== */
@@ -768,11 +770,12 @@
   </header>
 
   <main class="fieldzone" id="fieldzone" aria-label="うちゅう">
-    <p class="banner" id="clearBanner" hidden><span data-part="main">ほし 1 クリア！</span><span class="sub" data-part="time"></span><span class="sub" data-part="dist"></span><span class="sub bonus" data-part="sub"></span></p>
-    <p class="banner" id="msBanner" hidden><span data-part="main">はんぶん こわした！</span><span class="sub" data-part="sub"></span></p>
-    <p class="banner" id="bossBanner" hidden><span data-part="main">おおきな ほしが きた！</span></p>
+    <p class="banner" id="clearBanner" role="status" aria-live="polite" hidden><span data-part="main">ほし 1 クリア！</span><span class="sub" data-part="time"></span><span class="sub" data-part="dist"></span><span class="sub bonus" data-part="sub"></span></p>
+    <p class="banner" id="msBanner" role="status" aria-live="polite" hidden><span data-part="main">はんぶん こわした！</span><span class="sub" data-part="sub"></span></p>
+    <p class="banner" id="bossBanner" role="status" aria-live="polite" hidden><span data-part="main">おおきな ほしが きた！</span></p>
     <div class="lostcard" id="lostCard" role="group" aria-labelledby="lostTitle" hidden>
       <b id="lostTitle">まにあわなかった！</b>
+      <span class="lostsub" id="lostGap" hidden></span>
       <span class="lostsub">つよくして もういちど</span>
       <button type="button" data-cmd="retry">もういちど</button>
     </div>
@@ -874,6 +877,8 @@
       <li>じきは じぶんで とびまわって うつよ。みているだけで いいよ。</li>
       <li>ほしを ぜんぶ こわすと クリア。ちきゅうに つくまでに まにあわないと、もういちど。</li>
       <li>したの ボタンで ぶきを つよく しよう。</li>
+      <li>オレンジや きいろの ひかる マスを こわすと、まわりの ひかる マスも いっしょに くだけて かけらが たくさん でるよ。</li>
+      <li>◎は いまの ほしに つよい ぶき。てつ（＋の もよう）・こおり（ななめの せん）にも ちゅうい。</li>
     </ol>
     <div class="btns">
       <button type="button" id="helpOk" class="primary">わかった</button>
@@ -906,7 +911,7 @@
       <g class="sh" fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"><path d="M24 40 L8 50 L24 56 L20 48 Z"/></g>
     </svg>
     <p id="endText">50この ほしを くだいて、ちきゅうを まもったよ！</p>
-    <p class="endmore" id="endMore">つぎは ひかりが すくない「ハード」だよ</p>
+    <p class="endmore" id="endMore">つぎは ひかる マス（かけらの もと）が すくない「ハード」だよ</p>
     <p class="small" id="endStats"></p>
     <div class="btns"><button type="button" id="endOk" class="primary">ハードを はじめる</button></div>
   </div>
