@@ -26,6 +26,6 @@ def draw(cx, by, flip=False):
     end(flip, cx)
     s = -1 if flip else 1
     sh = 5 if flip else 0
-    note(cx - s * 20 - sh, by - 44, 'R')
-    note(cx + s * 16 - sh, by - 42, 'B')
+    note(cx - s * 15 - sh, by - 45, 'R')    # 音符は 空が S でも B でも 見える色（R・Y）
+    note(cx + s * 14 - sh, by - 43, 'Y')
     return head, body
