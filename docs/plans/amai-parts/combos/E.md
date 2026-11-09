@@ -7,3 +7,4 @@
 | 155 | XXL | nekomachihon | まちで ねこが ほんを よむ | "" | まち | ねこ | ほんを よむ | x=29 y=46 ground=Y |
 | 160 | XXL | inukouenjitensha | こうえんで いぬが じてんしゃに のる | "" | こうえん | いぬ | じてんしゃに のる | x=31 y=46 |
 | 165 | XXL | usagihanabatakeutau | はなばたけで うさぎが うたう | haru | はなばたけ | うさぎ | うたう | x=29 y=46 |
+| 170 | XXL | kumayuuenchiutau | ゆうえんちで くまが うたう | "" | ゆうえんち | くま | うたう | x=30 y=46 |
