@@ -27,6 +27,8 @@
 | 作業ブランチ | `feature/amai-more2`（v63 を公開。master と同じ。計画書 [docs/plans/amai-more2.md](plans/amai-more2.md)）。前は `feature/amai-select`（v61）。計画書 [docs/plans/amai-select.md](plans/amai-select.md)。経緯・決定は [docs/plans/amai-redraw.md](plans/amai-redraw.md)（v59）・[docs/plans/amai-more.md](plans/amai-more.md)（v60）。あまいものあつめの手直しの経緯は [docs/plans/amai-rework.md](plans/amai-rework.md)、約束は [docs/ari-contract.md](ari-contract.md) |
 | 残しているブランチ | `feature/amai-redraw`・`feature/amai-more`・`feature/amai-select`（どれも消してよい。絵の台本 `docs/plans/amai-redraw/*.py` は master にも入っている） |
 | 動いている担当 | なし |
+| 公開待ち（2026-11-07） | **花輪を 2 つ並べる直し**（ふつうの花輪と金の花輪の両方を持つ絵は 1 つずつ並べる。計画書 [docs/plans/amai-wreath2.md](plans/amai-wreath2.md)）。ブランチ `claude/handoff-docs-h6njba` にコミット済み・版は v70 のまま。ユーザー決定「花輪の修正は次のゲームをアップするときにアップします。公開のタイミングを少し待ちましょう。」→ 次の公開（ほしくだきのリニューアル）と一緒に版を上げて関門を流す |
+| 検討中（2026-11-07） | **ほしくだきのリニューアル**（ユーザー「ほしくだきをリニューアルしたいです」・気になる所「見た目」・「別の遊びにする」）。ユーザーのイメージ：「線画でできた小惑星がすごく大きくって、その周りを飛びながら小惑星を壊すタイプ」（最初の録画。課題 AS-07 の読み取り）。PM の 3 案（ひっぱりショット・まわりこみ砲台・ひかるとこをタップ）は「ちかうなー」 |
 
 v51 のあとに公開したもの（あまいものあつめの手直し。ユーザーが実機で触って指摘 → 直す、をくり返した）：
 

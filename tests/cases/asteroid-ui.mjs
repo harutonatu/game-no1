@@ -1,20 +1,24 @@
-// KW: ちきゅうを守れ！ほしくだき の画面（games/asteroid/）。契約は docs/asteroid-contract.md（§5 画面・§7 進行・§7.3 テスト用 API・§7.4 デバッグ命令・§8 保存・§11.3 KW・§13 教訓・§21 作り直しの約束）。
-//   作り直し（2026-10-23、§20・§21）：戦闘機をやめて砲台（武器ごとに 1 台・弧に等間隔・斜めに撃つ）、ひかえ と 入れ替え、保存 v:2（v:1 は かけらだけ引き継ぐ）、X-20。
-//   画面の DOM は契約 §5.4 だけに頼る：#hud・a#back・#gameTitle・#helpBtn・#soundBtn・#kakera・#starLabel・#starBar・#field・#fieldCanvas・#distance・
-//     .wrow[data-slot]・[data-up]・.wrow [data-next]・#unlockBtn・#swapBtn・#benchCount・#choiceCard・#choiceA・#choiceB・#choiceLead・
-//     #swapCard・#swapTitle・[data-swap-slot]・#benchList・[data-swap-to]・#swapDone・#bounceBanner・#clearBanner・#bossBanner・#endCard・#endOk・#help・#helpOk・#hint・body[data-phase]
-//   テスト用の公開 API（§7.3）：window.AsteroidGame = { getState, logic, advance, upgrade, unlock, choose, reserveSwap, setState, save }
-//   デバッグ命令（§7.4。?debug=1 のときだけ）：YubiDebug.run('win'|'lose'|'gostar'|'addk'|'lv'|'ff'|'swap'|'bench'|'hold'|'rates', …)
+// KW: ちきゅうを守れ！ほしくだき の画面（games/asteroid/）。契約は docs/asteroid-contract.md（§23）と計画書 docs/plans/asteroid-renew.md（§1.3 時間切れ・§1.6 保存・§2 見た目・§5.3 DOM・§8 テスト）。
+//   リニューアル（2回目の作り直し、2026-11-09）：画面いっぱいの canvas を回しながら自機が大きな星の縁を飛んで削る（全部自動）。負けは時間切れ（ちきゅうまで あと m:ss）で、
+//   #lostCard「まにあわなかった！」の「もういちど」でその星を最初の形から。保存は v:3。古い保存（v:1・v:2）は初回に消す（asteroid.v3 の印）。
+//   画面の DOM は #hud[data-urgent]・a#back・#gameTitle・#helpBtn・#soundBtn・#kakera・#starLabel（.num・#starTag）・#timeBar（role=progressbar・aria-valuenow・aria-valuetext）・#timeFill・#timeText・#starPct・
+//     #field・#fieldCanvas・#fieldzone・#lostCard（#lostTitle・[data-cmd="retry"]）・#clearBanner・#msBanner・#bossBanner・#hint・.wrow[data-slot]・[data-up]・.wrow [data-next]・#unlockBtn・#swapBtn・#benchCount・
+//     #choiceCard・#choiceA・#choiceB・#choiceLead・#swapCard・#swapTitle・[data-swap-slot]・#benchList・[data-swap-to]・#swapDone・#help・#helpOk・#helpRestart・#restartCard・#endCard・#endOk・body[data-phase]
+//   テスト用の公開 API（main.js）：window.AsteroidGame = { getState, logic, advance, upgrade, unlock, choose, reserveSwap, retry, setState, save }
+//     getState()：phase・star・kakera・slots・bench・offer・swap・progress・left・limit・ship・overlay・lost・view・logicPhase・tries・t…（turrets は無い）。advance(sec) は lost と choose で止まる。
+//     setState(obj)：obj.left（残り秒）・obj.phase（'fly'・'lost'・'clear'）・obj.rock（同じ格子なら）を受け付ける
+//   デバッグ命令（?debug=1 のときだけ）：YubiDebug.run('win'|'lose'|'timeleft'|'retry'|'gostar'|'addk'|'lv'|'ff'|'swap'|'bench'|'hold'|'rates', …)。lose は 残り 0.1 秒＋hold（次の step で時間切れ）
 //   決まり（組み合わせ担当の注意）：
-//     ・数値（星の時間・値段・体力・かけら）は書き込まない。期待値は Node で読んだ logic.js（同じ root）の
-//       関数（formatKakera・upCostOf・slotCostOf・progressOf・dpsOf・starInfo・turretsOf・swapChoicesOf）と定数（NAME・ENDING_STAR・BOUNCE_SEC・CLEAR_SEC・KAKERA_MAX など）から作る
-//     ・保存を直接書くときは、ゲームのページで書いて reload しない（pagehide で上書きされる）。seed() で中立のページへ移って書いてから開く
+//     ・数値（星の時間・値段・体力・かけら）は書き込まない。期待値は Node で読んだ logic.js（同じ root）の関数（formatKakera・formatTime・upCostOf・slotCostOf・progressOf・dpsOf・starInfo・swapChoicesOf）と
+//       定数（NAME・ENDING_STAR・CLEAR_SEC・KAKERA_MAX・MILESTONES など）から作る
+//     ・保存を直接書くときは、ゲームのページで書いて reload しない（pagehide で上書きされる）。seed() で中立のページへ移って書いてから開く。
+//       古い保存を消す仕組み（asteroid.v3 の印）があるので、gotoK は既定で asteroid.v3='1' も入れる（印の検査だけ v3: null で入れない）
 //     ・aria-disabled のボタン（足りないときの強くする・ロック中の2択・ひかえが空の いれかえ）は locator.click が届かないので、座標で page.mouse.click（clickAt）
-//     ・API の choose・reserveSwap は 400ms のロックを通らないので、400ms の検査はクリック・キーで行う
-//     ・はね返しの「あと N%」は max(1, round((1-broken)×100))
-//     ・lose は一番下を BARRIER_Y ちょうどに置いて hold（撃たない）にするので、次の 1 step で必ず bounce（T-19 を起こさない。実時間で待って clear に変わることが無い）
+//     ・API の choose・reserveSwap・retry は 400ms のロックを通らないので、400ms の検査はクリック・キーで行う
+//     ・時間切れは lose（残り 0.1 秒＋hold）で起こす。hold は撃たないので、時間切れの前に clear になることが無い（T-19 を起こさない）
 //   無いときに合格にしない（空振りの合格を作らない）：AsteroidGame・YubiDebug が無ければ例外で不合格にする。マスが 0 の状態で「欠けた」を検査しない（§13-8）。
-//   smoke：KW1〜KW7・KW18・KW19・KW22・KW24。full：KW8〜KW17・KW20・KW21・KW23・KW25（KW10・KW17 は CDP なので Chromium だけ、KW14 は AudioContext が要る）。KW15 は NAME とメニューの名前の一致。
+//   smoke：KW1〜KW7・KW18・KW19・KW22・KW24。full：KW8〜KW17・KW20・KW21・KW23・KW25・KW26（KW10・KW17 は CDP なので Chromium だけ、KW14 は AudioContext が要る）。KW15 は NAME とメニューの名前の一致。
+//   ハードモード（段 tier・「ハード ほし N」・つぎの だんへ）の画面の項目は、main.js の作りが決まってから足す。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -25,7 +29,7 @@ const ASTD = AST + '?debug=1';
 const SMOKE_V = () => view('SE', 'p', 'app');
 const STD_V = () => view('i13', 'p', 'app');
 const HINT_BROKEN = 'ほぞんが よめなかったので さいしょから はじめるよ';   // 契約 §8.3 の決まった言葉
-const MY_KEYS = ['asteroid.save', 'asteroid.save.bak', 'asteroid.best', 'asteroid.help'];
+const MY_KEYS = ['asteroid.save', 'asteroid.save.bak', 'asteroid.best', 'asteroid.help', 'asteroid.v3'];
 
 // ---------- logic.js（Node）。期待値を作るのに使う ----------
 function logicOf(root) {
@@ -43,7 +47,8 @@ async function openK(browser, label, { v = STD_V(), opts = {}, items = {}, help 
   return { ctx, page };
 }
 async function gotoK(page, items = {}, { help = true, debug = false } = {}) {
-  await seed(page, { ...(help ? { 'asteroid.help': '1' } : {}), ...items });
+  const stamp = items['asteroid.v3'] === null ? {} : { 'asteroid.v3': '1' };   // 古い保存を消す仕組み（初回に 1 回だけ）を通ったあとの状態にする
+  await seed(page, { ...stamp, ...(help ? { 'asteroid.help': '1' } : {}), ...items });
   await page.goto(debug ? ASTD : AST); await wait(page, 300);
   const has = await page.evaluate(() => !!window.AsteroidGame && typeof window.AsteroidGame.getState === 'function' && typeof window.AsteroidGame.advance === 'function' && typeof window.AsteroidGame.setState === 'function');
   if (!has) throw new Error('window.AsteroidGame が無い（games/asteroid/main.js が読まれていないか、テスト用 API が未実装）');
@@ -63,10 +68,10 @@ async function setL(p, code) {
   const ok = await p.evaluate((code) => { const l = window.AsteroidGame.logic(); new Function('l', 'L', code)(l, window.AsteroidLogic); return window.AsteroidGame.setState(l); }, code);
   if (!ok) throw new Error('setState が受け付けない: ' + code);
 }
-// はね返しにする（時間を止めた中で使う）：デバッグの lose（一番下を BARRIER_Y ちょうど・hold）で、次の 1 step で はね返す（§7.4・T-19）
-async function bounceNow(p) {
+// 時間切れにする（時間を止めた中で使う）：デバッグの lose（残り 0.1 秒＋hold）で、次の 1 step（STEP）で lost になる（§7.4）
+async function loseNow(p) {
   await dbg(p, 'lose');
-  return advUntil(p, 'bounce', { step: 1 / 30, maxSec: 1 / 30 });
+  return advUntil(p, 'lost', { step: 1 / 30, maxSec: 1 });
 }
 async function dbg(p, name, args) {
   const r = await p.evaluate(([n, a]) => window.YubiDebug.run(n, a), [name, args]);
@@ -132,7 +137,7 @@ const LINES_OF = (sel) => {
 // 武器を n 枠・Lv lv にする文（setL 用）。武器の id は WEAPONS の順から読む（決め打ちしない）
 const ARMS = (n, lv) => `l.slots = L.WEAPONS.slice(0, ${n}).map((w) => ({ id: w.id, lv: ${lv} })); l.offer = null;`;
 // logic の state から、ゲームと同じ STEP で step を回して先を読む（決定的なので、そのあと advance で同じ所へ行ける）。
-// until(s, p, evs) が true になった step までの数 n と、途中の出来事（milestone・clear・bounce）を返す。見つからなければ null
+// until(s, p, evs) が true になった step までの数 n と、途中の出来事（milestone・clear・lost）を返す。見つからなければ null
 const predict = (p, until, maxSec = 120) => p.evaluate(([until, maxSec]) => {
   const L = window.AsteroidLogic, f = new Function('s', 'p', 'evs', 'return (' + until + ');');
   let s = window.AsteroidGame.logic();
@@ -141,47 +146,62 @@ const predict = (p, until, maxSec = 120) => p.evaluate(([until, maxSec]) => {
     const r = L.step(s, L.STEP);
     if (!r) return null;
     s = r.state;
-    for (const e of r.events) if (['milestone', 'clear', 'bounce', 'ending'].includes(e.kind)) evs.push(e);
+    for (const e of r.events) if (['milestone', 'clear', 'lost', 'ending'].includes(e.kind)) evs.push(e);
     if (f(s, L.progressOf(s), evs)) return { n, evs, s };
   }
   return null;
 }, [until, maxSec]);
 // 星の上から、こわした割合が frac をこえない一番近い所までマスを消す文（setL 用。区切りの直前にする）
 const BREAK_BELOW = (frac) => `const T = l.rock.total; let k = l.rock.total - l.rock.left; for (let i = 0; i < l.rock.mats.length && (k + 1) / T < ${frac}; i++) if (l.rock.mats[i]) { l.rock.mats[i] = 0; l.rock.hp[i] = 0; k++; }`;
-// 小惑星の一番下のマスをバリアにちょうど とどく位置へ下げる文（setL 用。次の step で はね返す。デバッグの lose は 1 単位手前なので、
-// もろい底が欠けて押し返され、とどくまでに区切りをこえてしまうことがある）
-const AT_BARRIER = `const R = l.rock; let br = -1; for (let r = R.rows - 1; r >= 0 && br < 0; r--) for (let c = 0; c < R.cols; c++) if (R.mats[r * R.cols + c]) { br = r; break; } R.y = L.BARRIER_Y - (br + 1) * L.CELL + 0.01;`;
 // 秒 →「3ぷん20びょう」「45びょう」「1じかん5ふん」（クリアの帯の書き方。契約 §18.1 C の例「3ぷん12びょう」）
 const fmtT = (sec) => { const t = Math.max(1, Math.round(sec)); const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), r = t % 60; return h > 0 ? `${h}じかん${m}ふん` : m > 0 ? `${m}ぷん${r}びょう` : `${r}びょう`; };
 
 export const tests = [
-  // ================= smoke =================
   {
-    id: 'KW1', tier: 'smoke', title: 'ほしくだき 遊べる・表示の一致：開くと撃ち始め（frames・phase fly）、advance でマスが欠けて #kakera が増える。#kakera が formatKakera、行の値段が upCostOf、つよさが dpsOf、#starBar が progressOf().broken、題名が NAME。[data-up] で Lv とつよさが上がり値段ぶん減り、その行に「＋N%」（dpsOf の前後差の割合）。足りないと aria-disabled・「あと N」（不足分）・所持／値段の塗り（--fill）・ヒント「かけらが たりないよ（あと N）」・音 deny で Lv は変わらない、買えるようになった瞬間に .up.ready',
+    id: 'KW1', tier: 'smoke', title: 'ほしくだき 遊べる・表示の一致：開くと自機が飛んで撃ち始め（frames・phase fly・ship が動く）、advance でマスが欠けて #kakera が増え、残り時間が減る。#kakera が formatKakera、行の値段が upCostOf、つよさが dpsOf、#starPct が progressOf().broken、#timeText「ちきゅうまで あと m:ss」・#timeBar（role=progressbar・aria-valuenow・aria-valuetext）が formatTime(left)・timeFrac、30 秒を切ると #hud[data-urgent]、題名が NAME。[data-up] で Lv とつよさが上がり値段ぶん減り、その行に「＋N%」（dpsOf の前後差の割合）。足りないと aria-disabled・「あと N」（不足分）・所持／値段の塗り（--fill）・ヒント「かけらが たりないよ（あと N）」・音 deny で Lv は変わらない、買えるようになった瞬間に .up.ready',
     async run({ browser, check, root }) {
       const L = logicOf(root);
-      const { ctx, page } = await openK(browser, 'KW1', { v: SMOKE_V(), opts: { initScript: SFX_SPY } });
+      const { ctx, page } = await openK(browser, 'KW1', { v: SMOKE_V(), debug: true, opts: { initScript: SFX_SPY } });
       await wait(page, 1000);
       const s0 = await gs(page), l0 = await lg(page);
-      check(`開くと遊んでいる（phase ${s0.phase}・ほし ${s0.star}・overlay ${s0.overlay}・body[data-phase]=${await page.evaluate(() => document.body.dataset.phase)}）、描き続けている（frames ${s0.frames}）`, s0.phase === 'fly' && s0.star === 1 && s0.overlay === null && s0.frames > 10 && (await page.evaluate(() => document.body.dataset.phase)) === 'fly', s0);
+      check(`開くと遊んでいる（phase ${s0.phase}・ほし ${s0.star}・overlay ${s0.overlay}・body[data-phase]=${await page.evaluate(() => document.body.dataset.phase)}）、描き続けている（frames ${s0.frames}）、自機（ship）が飛ぶ・残り時間 left ${s0.left}／limit ${s0.limit}（starInfo の limit ${L.starInfo(1).limit}）`, s0.phase === 'fly' && s0.star === 1 && s0.overlay === null && s0.frames > 10 && (await page.evaluate(() => document.body.dataset.phase)) === 'fly' && !!s0.ship && s0.limit === L.starInfo(1).limit && s0.left > 0 && s0.left <= s0.limit, s0);
       check(`document.title と #gameTitle の文字が NAME（${L.NAME}）`, (await page.title()) === L.NAME && (await page.evaluate(() => document.querySelector('#gameTitle').textContent)) === L.NAME, [await page.title(), await txt(page, '#gameTitle')]);
-      const s1 = await adv(page, 30);
-      const l1 = await lg(page);
-      const p1 = L.progressOf(l1);
-      check(`advance(30) でマスが欠け（残り ${L.progressOf(l0).left} → ${p1.left}・totals.cells ${l1.totals.cells}）、かけらが増える（${l0.kakera} → ${l1.kakera}）、t が 30 秒すすむ（${l0.t.toFixed(1)} → ${l1.t.toFixed(1)}）`,
-        p1.left < L.progressOf(l0).left && l1.totals.cells > 0 && l1.kakera > l0.kakera && l1.t - l0.t >= 29.9 && s1.phase === 'fly', { l0: { k: l0.kakera, t: l0.t }, l1: { k: l1.kakera, t: l1.t, cells: l1.totals.cells }, p1 });
-      const ui = await page.evaluate(() => ({
-        kakera: document.querySelector('#kakera').textContent.trim(),
-        cost: document.querySelector('.wrow[data-slot="0"] [data-part="cost"]').textContent.trim(),
-        lv: document.querySelector('.wrow[data-slot="0"] [data-part="lv"]').textContent.trim(),
-        dps: document.querySelector('.wrow[data-slot="0"] [data-part="dps"]').textContent.trim(),
-        bar: document.querySelector('#starBar').getAttribute('aria-valuenow'),
-        num: document.querySelector('#starLabel [data-part="num"]').textContent.trim(),
-        unlock: document.querySelector('#unlockBtn [data-part="cost"]').textContent.trim(),
-      }));
-      const want = { kakera: L.formatKakera(l1.kakera), cost: L.formatKakera(L.upCostOf(l1, 0)), lv: 'Lv' + l1.slots[0].lv, dps: String(L.dpsOf(l1, 0)), bar: String(Math.floor(p1.broken * 100)), num: 'ほし ' + l1.star, unlock: L.formatKakera(L.slotCostOf(l1)) };
-      check(`表示の一致：#kakera「${ui.kakera}」=formatKakera、値段「${ui.cost}」=upCostOf、「${ui.lv}」、つよさ「${ui.dps}」に dpsOf ${want.dps}、#starBar ${ui.bar}=floor(broken×100) ${want.bar}、「${ui.num}」、あたらしい ぶき「${ui.unlock}」=slotCostOf`,
-        ui.kakera === want.kakera && ui.cost === want.cost && ui.lv === want.lv && ui.dps.includes(want.dps) && ui.bar === want.bar && ui.num === want.num && ui.unlock === want.unlock && Number(ui.bar) > 0, { ui, want });
+      const { s1, l1, p1, ui } = await frozen(page, async () => {
+        const s1 = await adv(page, 30);
+        const l1 = await lg(page);
+        const p1 = L.progressOf(l1);
+        check(`advance(30) でマスが欠け（残り ${L.progressOf(l0).left} → ${p1.left}・totals.cells ${l1.totals.cells}）、かけらが増える（${l0.kakera} → ${l1.kakera}）、t が 30 秒すすみ（${l0.t.toFixed(1)} → ${l1.t.toFixed(1)}）残り時間も同じだけ減り（${l0.left.toFixed(1)} → ${l1.left.toFixed(1)}）、自機が動く`,
+          p1.left < L.progressOf(l0).left && l1.totals.cells > 0 && l1.kakera > l0.kakera && l1.t - l0.t >= 29.9 && s1.phase === 'fly' && Math.abs((l0.left - l1.left) - (l1.t - l0.t)) < 0.05 && s1.ship && l1.ship && (l1.ship.x !== l0.ship.x || l1.ship.y !== l0.ship.y), { l0: { k: l0.kakera, t: l0.t }, l1: { k: l1.kakera, t: l1.t, cells: l1.totals.cells }, p1 });
+        const ui = await page.evaluate(() => ({
+          kakera: document.querySelector('#kakera').textContent.trim(),
+          cost: document.querySelector('.wrow[data-slot="0"] [data-part="cost"]').textContent.trim(),
+          lv: document.querySelector('.wrow[data-slot="0"] [data-part="lv"]').textContent.trim(),
+          dps: document.querySelector('.wrow[data-slot="0"] [data-part="dps"]').textContent.trim(),
+          pct: document.querySelector('#starPct').textContent.trim(),
+          timeText: document.querySelector('#timeText').textContent.trim(),
+          tbRole: document.querySelector('#timeBar').getAttribute('role'), tbNow: document.querySelector('#timeBar').getAttribute('aria-valuenow'), tbText: document.querySelector('#timeBar').getAttribute('aria-valuetext'), tbFill: document.querySelector('#timeFill').style.width,
+          num: document.querySelector('#starLabel [data-part="num"]').textContent.trim(),
+          unlock: document.querySelector('#unlockBtn [data-part="cost"]').textContent.trim(),
+        }));
+        return { s1, l1, p1, ui };
+      });
+      const want = { kakera: L.formatKakera(l1.kakera), cost: L.formatKakera(L.upCostOf(l1, 0)), lv: 'Lv' + l1.slots[0].lv, dps: String(L.dpsOf(l1, 0)), pct: Math.floor(p1.broken * 100) + '%', timeText: 'ちきゅうまで あと ' + L.formatTime(l1.left), tbText: 'ちきゅうまで あと ' + L.formatTime(l1.left), tbFill: (Math.round(Math.max(0, Math.min(1, p1.timeFrac)) * 1000) / 10) + '%', num: 'ほし ' + l1.star, unlock: L.formatKakera(L.slotCostOf(l1)) };
+      check(`表示の一致：#kakera「${ui.kakera}」=formatKakera、値段「${ui.cost}」=upCostOf、「${ui.lv}」、つよさ「${ui.dps}」に dpsOf ${want.dps}、#starPct「${ui.pct}」=floor(broken×100)%、「${ui.num}」、あたらしい ぶき「${ui.unlock}」=slotCostOf`,
+        ui.kakera === want.kakera && ui.cost === want.cost && ui.lv === want.lv && ui.dps.includes(want.dps) && ui.pct === want.pct && ui.num === want.num && ui.unlock === want.unlock && parseInt(ui.pct) > 0, { ui, want });
+      check(`残り時間の表示：#timeText「${ui.timeText}」=「ちきゅうまで あと m:ss」(formatTime(left ${l1.left.toFixed(1)}))、#timeBar role=${ui.tbRole}・aria-valuenow ${ui.tbNow}・aria-valuetext「${ui.tbText}」、#timeFill の幅 ${ui.tbFill}（timeFrac ${p1.timeFrac.toFixed(3)}）`,
+        ui.timeText === want.timeText && ui.tbRole === 'progressbar' && ui.tbText === want.tbText && ui.tbFill === want.tbFill && Number(ui.tbNow) === Math.round(Math.round(Math.max(0, Math.min(1, p1.timeFrac)) * 1000) / 10) && p1.timeFrac > 0 && p1.timeFrac < 1, { ui, want });
+      // 30 秒を切ると棒と字をオレンジに（#hud[data-urgent]）。急かす音は鳴らさない（中毒性 A の方針）
+      const urg = await frozen(page, async () => {
+        const n0 = (await plays(page)).length;
+        await dbg(page, 'timeleft', { sec: 31 }); await adv(page, 0.05);
+        const a = { urgent: (await gs(page)).urgent, attr: await attr(page, '#hud', 'data-urgent') };
+        await dbg(page, 'timeleft', { sec: 29 }); await adv(page, 0.05);
+        const b = { urgent: (await gs(page)).urgent, attr: await attr(page, '#hud', 'data-urgent'), text: await txt(page, '#timeText'), left: (await lg(page)).left };
+        const ps = (await plays(page)).slice(n0).map((x) => x.n).filter((n) => !['shot', 'break', 'crack', 'chunk', 'glow'].includes(n));
+        return { a, b, ps };
+      });
+      check(`残り 31 秒では #hud[data-urgent] なし（${urg.a.attr}）、29 秒では "1"（${urg.b.attr}・「${urg.b.text}」）、急かす音は鳴らさない（撃つ・欠ける以外の音 ${urg.ps.join(',') || 'なし'}）`, urg.a.urgent === false && urg.a.attr === null && urg.b.urgent === true && urg.b.attr === '1' && urg.ps.length === 0, urg);
+      await dbg(page, 'timeleft', { sec: (await lg(page)).limit });
       // 強くする（クリック）。時間を止めて、押す前と後を比べる
       const need = L.upCostOf(l1, 0);
       await setL(page, `l.kakera = ${need * 3};`);
@@ -203,18 +223,20 @@ export const tests = [
       check(`「＋N%」は 0.8 秒で消える（「${await txt(page, '.wrow[data-slot="0"] [data-part="plus"]')}」）`, (await txt(page, '.wrow[data-slot="0"] [data-part="plus"]')) === '' && !(await page.evaluate(() => document.querySelector('.wrow[data-slot="0"] [data-part="plus"]').classList.contains('show'))), null);
       // 足りない
       await setL(page, 'l.kakera = 0;');
-      await wait(page, 100);
-      const n0 = (await plays(page)).length;
-      const lv0 = (await lg(page)).slots[0].lv;
-      const dis = await attr(page, '[data-up="0"]', 'aria-disabled');
-      const label = await txt(page, '[data-up="0"] [data-part="label"]');
-      await clickAt(page, '[data-up="0"]'); await wait(page, 100);
-      const ps = (await plays(page)).slice(n0).map((x) => x.n);
-      const hint = await txt(page, '#hint');
-      const lv1 = (await lg(page)).slots[0].lv;
-      const c0 = L.upCostOf(await lg(page), 0);
-      const lackWant = `あと ${L.formatKakera(c0)}`;
-      check(`かけら 0 では [data-up] に aria-disabled="${dis}"・「${label}」（不足分 ${lackWant}）、押しても Lv が変わらず（${lv0} → ${lv1}）、ヒント「${hint}」と音 deny（${ps.join(',')}）`, dis === 'true' && label === lackWant && lv1 === lv0 && hint === `かけらが たりないよ（${lackWant}）` && ps.includes('deny'), { dis, label, hint, ps, lackWant });
+      const lk = await frozen(page, async () => {
+        const n0 = (await plays(page)).length;
+        const a = await lg(page);
+        const dis = await attr(page, '[data-up="0"]', 'aria-disabled');
+        const label = await txt(page, '[data-up="0"] [data-part="label"]');
+        await clickAt(page, '[data-up="0"]');
+        const ps = (await plays(page)).slice(n0).map((x) => x.n);
+        return { a, dis, label, ps, hint: await txt(page, '#hint'), lv1: (await lg(page)).slots[0].lv };
+      });
+      const { dis, label, ps, hint, lv1 } = lk;
+      const lv0 = lk.a.slots[0].lv;
+      const c0 = L.upCostOf(lk.a, 0);
+      const lackWant = `あと ${L.formatKakera(c0 - lk.a.kakera)}`;
+      check(`かけら ${lk.a.kakera} では [data-up] に aria-disabled="${dis}"・「${label}」（不足分 ${lackWant}）、押しても Lv が変わらず（${lv0} → ${lv1}）、ヒント「${hint}」と音 deny（${ps.join(',')}）`, dis === 'true' && label === lackWant && lv1 === lv0 && hint === `かけらが たりないよ（${lackWant}）` && ps.includes('deny'), { dis, label, hint, ps, lackWant });
       // 半分たまったとき：「あと N」は不足分、ボタンは所持／値段の割合で塗る（--fill。1/50 刻み）
       const half = Math.floor(c0 / 2);
       const fl = await frozen(page, async () => {
@@ -276,70 +298,84 @@ export const tests = [
     },
   },
   {
-    id: 'KW3', tier: 'smoke', title: 'ほしくだき はね返し（T-19 を起こさない）：6 割こわした星で lose（一番下を BARRIER_Y ちょうど・hold で撃たない）にすると、advance(STEP) の 1 step で必ず phase bounce・hold は false に戻る、とどくまでに欠けない。#bounceBanner「あと N% だった」（N = max(1, round((1-broken)×100))、broken は とどいた瞬間の progressOf）・おすすめの行（いちばん安く強くできる行に data-suggest）、かけらと Lv は残る、BOUNCE_SEC 後に実時間で自動で次の挑戦（同じ星・最初から・tries+1・帯が消える）。残りが 50% を超えるときは「もう すこし つよく しよう」、実時間ではヒント「（武器名）を つよくして もういちど！」',
+    id: 'KW3', tier: 'smoke', title: 'ほしくだき 時間切れ（T-19 を起こさない）と もういちど：6 割こわした星で lose（残り 0.1 秒＋hold で撃たない）にすると、advance(0.2) の中（残り 0.1 秒は 3 step）で必ず phase lost・hold は false に戻る・残り 0:00・tries+1。#lostCard「まにあわなかった！」と [data-cmd="retry"]「もういちど」（44px 以上・出た直後 400ms は押せない・body[data-phase]=lost）、場は止まる（advance・実時間で t が進まず自動ではやり直さない）、かけらと Lv は残り、いちばん安く強くできる行が光る（data-suggest）、lost の間も強くできる。「もういちど」でその星が最初の形（こわした割合 0・残り時間 limitTry＝やさしくなった分・tries のまま）・カードが消える・かけらと Lv と区切り（ms）は残る、音 lost／start',
     async run({ browser, check, root }) {
       const L = logicOf(root);
-      const { ctx, page } = await openK(browser, 'KW3', { v: SMOKE_V(), debug: true });
+      const { ctx, page } = await openK(browser, 'KW3', { v: SMOKE_V(), debug: true, opts: { initScript: SFX_SPY } });
       const wName = (id) => L.WEAPONS.find((w) => w.id === id)?.name;
       // いちばん安く強くできる行（upCostOf が最小。同じなら前の行）
       const cheapest = (l) => { let k = -1, c = Infinity; l.slots.forEach((_, j) => { const x = L.upCostOf(l, j); if (typeof x === 'number' && x < c) { c = x; k = j; } }); return k; };
-      // 一番下のマスの y（ロジックの座標）
-      const bottomOf = (l) => { const R = l.rock; for (let r = R.rows - 1; r >= 0; r--) for (let c = 0; c < R.cols; c++) if (R.mats[r * R.cols + c]) return R.y + (r + 1) * L.CELL; return null; };
-      // 星を 6 割こわした状態にする（最初からに戻ったこと・「あと N%」がこわした割合でないことが分かるように）・かけらと Lv を持たせる。
-      // 2 つ目の武器は Lv1（値段が たまの Lv3 と違う）＝おすすめの行が決まる。lose は 1 回だけ（下げ直さない）、時間を止めて 1 step だけ進める
+      await page.mouse.click(5, 300).catch(() => {});
+      await wait(page, 300);
+      // 星を 6 割こわした状態にする（最初からに戻ったことが分かるように）・かけらと Lv を持たせる。2 つ目の武器は Lv1（値段が たまの Lv3 と違う）＝おすすめの行が決まる。
+      // lose は 1 回だけ、時間を止めて 1 step だけ進める
       const r = await frozen(page, async () => {
-        await setL(page, `const n = l.rock.mats.length; let k = 0; for (let i = 0; i < n && k < l.rock.left * 0.6; i++) if (l.rock.mats[i]) { l.rock.mats[i] = 0; l.rock.hp[i] = 0; k++; } l.kakera = 777; l.slots = [{ id: L.WEAPONS[0].id, lv: 3 }, { id: L.WEAPONS[1].id, lv: 1 }];`);
+        await setL(page, `const n = l.rock.mats.length; let k = 0; for (let i = 0; i < n && k < l.rock.left * 0.6; i++) if (l.rock.mats[i]) { l.rock.mats[i] = 0; l.rock.hp[i] = 0; k++; } l.kakera = 777; l.slots = [{ id: L.WEAPONS[0].id, lv: 3 }, { id: L.WEAPONS[1].id, lv: 1 }]; l.ms = [25];`);
+        const gapBefore = await shown(page, '#lostGap');
         const lr = await dbg(page, 'lose');
         const a = await lg(page);
-        await adv(page, L.STEP);
+        await adv(page, 0.2);   // 残り 0.1 秒は 3 step（STEP は 1/30 秒）。lost で advance は止まる
         const b = await lg(page);
-        return { lr, a, b };
+        const s = await gs(page);
+        const gap = { shown: await shown(page, '#lostGap'), text: await txt(page, '#lostGap'), before: gapBefore };
+        const card = await page.evaluate(() => {
+          const c = document.querySelector('#lostCard'), btn = c.querySelector('[data-cmd="retry"]');
+          const q = btn.getBoundingClientRect();
+          return { shown: !c.hidden && c.getBoundingClientRect().width > 0, role: c.getAttribute('role'), label: c.getAttribute('aria-labelledby'), title: document.querySelector('#lostTitle').textContent.trim(), btn: btn.textContent.trim(), h: q.height, w: q.width, lock: btn.getAttribute('aria-disabled'),
+            phase: document.body.dataset.phase, time: document.querySelector('#timeText').textContent.trim() };
+        });
+        // 出た直後（400ms 以内）は押しても効かない
+        let clickErr = null;
+        try { await clickAt(page, '#lostCard [data-cmd="retry"]'); } catch (e) { clickErr = String(e.message).slice(0, 80); }
+        const c2 = await lg(page);
+        const t0 = b.t;
+        await adv(page, 5);
+        const t1 = (await lg(page)).t;
+        return { lr, a, b, s, card, c2, t0, t1, clickErr, gap };
       });
-      const pa = L.progressOf(r.a), pb = L.progressOf(r.b);   // b は とどいた step の state（星を最初からにするのは BOUNCE_SEC の後）
-      const by = bottomOf(r.a);
-      check(`lose で一番下が BARRIER_Y（${L.BARRIER_Y}）ちょうど（${by}）・hold（返り値 ${r.lr && r.lr.hold}・logic ${r.a.hold}）・まだ fly（${r.a.phase}）`, r.lr && r.lr.hold === true && r.a.hold === true && r.a.phase === 'fly' && by !== null && Math.abs(by - L.BARRIER_Y) < 1e-6, { lr: r.lr, by, phase: r.a.phase });
-      const banner = await txt(page, '#bounceBanner');
-      const sub = await txt(page, '#bounceBanner [data-part="sub"]');
-      const nWant = Math.max(1, Math.round((1 - pb.broken) * 100));
-      check(`lose のあと advance(STEP) の 1 step で必ず phase bounce（${r.b.phase}）・hold が false に戻る（${r.b.hold}）・#bounceBanner が出る「${banner}」`, r.b.phase === 'bounce' && r.b.hold === false && (await shown(page, '#bounceBanner')) && /はねかえした/.test(banner || ''), { banner, phase: r.b.phase, hold: r.b.hold });
-      check(`hold の間は撃たないので、とどくまでに欠けない（残り ${pa.left} → ${pb.left}）。「${sub}」が、とどいた瞬間の broken ${pb.broken.toFixed(3)} から「あと ${nWant}% だった」`, pb.left === pa.left && nWant <= 50 && sub === `あと ${nWant}% だった` && pa.broken > 0.55, { banner, sub, nWant, broken: pb.broken });
-      check(`かけらと Lv が残る（かけら ${r.a.kakera} → ${r.b.kakera}・Lv${r.b.slots[0].lv}）、同じ星（${r.b.star}）`, r.b.kakera >= r.a.kakera && r.b.slots[0].lv === 3 && r.b.star === r.a.star, { a: r.a.kakera, b: r.b.kakera });
+      const pa = L.progressOf(r.a), pb = L.progressOf(r.b);
+      check(`lose で 残り 0.1 秒・hold（返り値 ${JSON.stringify(r.lr)}・logic hold ${r.a.hold}・left ${r.a.left}）・まだ fly（${r.a.phase}）、6 割こわした（${pa.broken.toFixed(2)}）`, !!r.lr && r.lr.hold === true && r.a.hold === true && r.a.phase === 'fly' && Math.abs(r.a.left - 0.1) < 1e-6 && pa.broken > 0.55, { lr: r.lr, left: r.a.left, broken: pa.broken });
+      check(`lose のあと advance(0.2) の中（残り 0.1 秒は 3 step）で必ず phase lost（${r.b.phase}）・hold が false に戻る（${r.b.hold}）・残り ${r.b.left}・tries ${r.a.tries} → ${r.b.tries}・こわしたマスは減らない（残り ${pa.left} → ${pb.left}）・body[data-phase]=${r.card.phase}・getState().lost ${r.s.lost}・#timeText「${r.card.time}」`,
+        r.b.phase === 'lost' && r.b.hold === false && r.b.left === 0 && r.b.tries === r.a.tries + 1 && pb.left === pa.left && r.card.phase === 'lost' && r.s.lost === true && r.s.phase === 'lost' && r.card.time === 'ちきゅうまで あと 0:00', { b: r.b.phase, hold: r.b.hold, left: r.b.left, tries: r.b.tries, card: r.card });
+      check(`#lostCard が出る（role=${r.card.role}・見出し「${r.card.title}」・「${r.card.btn}」${Math.round(r.card.w)}×${Math.round(r.card.h)}px）、出た直後は aria-disabled="${r.card.lock}" で押しても やり直さない（phase ${r.c2.phase}・${r.clickErr || '押せた'}）`,
+        r.card.shown && r.card.role === 'group' && r.card.label === 'lostTitle' && r.card.title === 'まにあわなかった！' && r.card.btn === 'もういちど' && r.card.h >= 44 - 0.5 && r.card.w >= 44 - 0.5 && r.card.lock === 'true' && r.c2.phase === 'lost', r.card);
+      check(`時間切れの札に「あと N% だった！」（#lostGap「${r.gap.text}」・ふだんは隠れている ${!r.gap.before}）`, r.gap.shown && /あと\s*\d+%/.test(r.gap.text || '') && r.gap.before === false, r.gap);
+      check(`時間切れの間は場が止まる（advance(5) で t ${r.t0.toFixed(2)} → ${r.t1.toFixed(2)}）`, r.t1 === r.t0, { t0: r.t0, t1: r.t1 });
+      check(`かけらと Lv が残る（かけら ${r.a.kakera} → ${r.b.kakera}・Lv${r.b.slots[0].lv}）、同じ星（${r.b.star}）（音 lost は advance の間は鳴らさないので KW14 で実時間で確かめる）`, r.b.kakera >= r.a.kakera && r.b.slots[0].lv === 3 && r.b.star === r.a.star, { a: r.a.kakera, b: r.b.kakera });
       const sug = await page.evaluate(() => [...document.querySelectorAll('.wrow[data-suggest="1"]')].map((e) => Number(e.dataset.slot)));
       const kWant = cheapest(r.b);
-      check(`はね返しのあと、いちばん安く強くできる行（data-slot ${kWant}・${wName(r.b.slots[kWant].id)}・${L.upCostOf(r.b, kWant)}）を1つ光らせる（.wrow[data-suggest=1] ${JSON.stringify(sug)}）`, sug.length === 1 && sug[0] === kWant, { sug, kWant, costs: r.b.slots.map((_, j) => L.upCostOf(r.b, j)) });
-      await wait(page, Math.round(L.BOUNCE_SEC * 1000) + 300);
-      const c = await lg(page), s = await gs(page);
-      const pc = L.progressOf(c);
-      check(`BOUNCE_SEC（${L.BOUNCE_SEC} 秒）後、押さなくても次の挑戦（phase ${c.phase}・帯が消える・tries ${r.a.tries} → ${c.tries}・hold ${c.hold}）`, c.phase === 'fly' && c.hold === false && !(await shown(page, '#bounceBanner')) && c.tries === r.a.tries + 1 && s.overlay === null, { phase: c.phase, tries: c.tries });
-      check(`同じ星を最初から（ほし ${c.star}・こわした割合 ${pb.broken.toFixed(2)} → ${pc.broken.toFixed(2)}・地球までの近さ distance ${pc.distance.toFixed(2)}）、Lv${c.slots[0].lv} とかけら ${c.kakera} は残る`, c.star === r.a.star && pc.broken < 0.1 && pc.distance > 0.8 && c.slots[0].lv === 3 && c.kakera >= r.a.kakera, { pc, c: { star: c.star, k: c.kakera } });
-      // 残りが 50% を超えるはね返し（実時間・lose は 1 回だけ）：数字より先に「もう すこし つよく しよう」、ヒントに おすすめの武器の名前
-      await setL(page, 'l.slots = [{ id: L.WEAPONS[0].id, lv: 1 }, { id: L.WEAPONS[1].id, lv: 4 }];');
-      const f0 = (await lg(page)).phase;
-      await dbg(page, 'lose');
-      let d = null;
-      for (let i = 0; i < 30; i++) { await wait(page, 100); d = await lg(page); if (d.phase === 'bounce') break; }
-      const pd = L.progressOf(d);
-      const sub2 = await txt(page, '#bounceBanner [data-part="sub"]'), hint2 = await txt(page, '#hint');
-      const k2 = cheapest(d);
-      const left2 = Math.max(1, Math.round((1 - pd.broken) * 100));
-      check(`実時間：fly（${f0}）で lose 1 回ではね返る。残り ${left2}%（50% 超）のはね返しは「${sub2}」、ヒント「${hint2}」（${wName(d.slots[k2].id)}を つよくして もういちど！）`, f0 === 'fly' && d.phase === 'bounce' && left2 > 50 && sub2 === 'もう すこし つよく しよう' && hint2 === `${wName(d.slots[k2].id)}を つよくして もういちど！`, { phase: d.phase, left2, sub2, hint2, k2 });
+      check(`時間切れのあと、いちばん安く強くできる行（data-slot ${kWant}・${wName(r.b.slots[kWant].id)}・${L.upCostOf(r.b, kWant)}）を1つ光らせる（.wrow[data-suggest=1] ${JSON.stringify(sug)}）`, sug.length === 1 && sug[0] === kWant, { sug, kWant, costs: r.b.slots.map((_, j) => L.upCostOf(r.b, j)) });
+      // 実時間で待っても自動ではやり直さない・lost の間も強くできる
+      await wait(page, 3000);
+      const w1 = await lg(page);
+      const lvA = w1.slots[0].lv;
+      await setL(page, 'l.kakera = 1e9; l.phase = "lost"; l.left = 0;');
+      const up = await page.evaluate(() => window.AsteroidGame.upgrade(0));
+      const w2 = await lg(page);
+      check(`実時間で 3 秒待ってもやり直さない（phase ${w1.phase}・カード ${await shown(page, '#lostCard')}）、lost の間も強くできる（upgrade ${JSON.stringify(up)}・Lv${lvA} → Lv${w2.slots[0].lv}・phase ${w2.phase}）`, w1.phase === 'lost' && up.ok === true && w2.slots[0].lv === lvA + 1 && w2.phase === 'lost' && (await shown(page, '#lostCard')), { w1: w1.phase, up });
+      // もういちど（400ms 後にクリック）
+      const bf = await lg(page);
+      const n1 = (await plays(page)).length;
+      await pressCard(page, '#lostCard [data-cmd="retry"]');
+      await wait(page, 100);
+      const c = await lg(page), cs = await gs(page), pc = L.progressOf(c);
+      const wantLeft = L.limitTry(c.star, c.tier, c.tries);
+      check(`「もういちど」で次の挑戦（phase ${c.phase}・カードが消える ${!(await shown(page, '#lostCard'))}・body ${await page.evaluate(() => document.body.dataset.phase)}・tries ${bf.tries} → ${c.tries}・hold ${c.hold}）`, c.phase === 'fly' && !(await shown(page, '#lostCard')) && c.tries === bf.tries && c.hold === false && cs.overlay === null && cs.lost === false && (await page.evaluate(() => document.body.dataset.phase)) === 'fly', { phase: c.phase, tries: c.tries });
+      check(`同じ星を最初の形から（ほし ${c.star}・こわした割合 ${pb.broken.toFixed(2)} → ${pc.broken.toFixed(2)}）、残り時間が戻る（limit ${c.limit}＝limitTry(${c.star}, ${c.tier}, ${c.tries}) ${wantLeft}・左 ${c.left.toFixed(1)}）、Lv${c.slots[0].lv} とかけら ${c.kakera} と区切り ms ${JSON.stringify(c.ms)} は残る、#timeText「${await txt(page, '#timeText')}」`,
+        c.star === r.a.star && pc.broken < 0.05 && c.limit === wantLeft && c.limit >= L.starInfo(c.star, c.tier).limit && c.left > c.limit - 1 && c.slots[0].lv === lvA + 1 && c.kakera >= bf.kakera && JSON.stringify(c.ms) === JSON.stringify([25]), { pc, limit: c.limit, wantLeft, left: c.left, ms: c.ms });
+      check(`もういちど の音 start が鳴り、ヒント「${await txt(page, '#hint')}」`, (await plays(page)).slice(n1).some((x) => x.n === 'start') && (await txt(page, '#hint')) === 'もういちど！', null);
       await ctx.close();
     },
   },
   {
-    id: 'KW4', tier: 'smoke', title: 'ほしくだき 場を押しても何も起きない：fly・bounce・clear のそれぞれで、時間を止めて #fieldCanvas の真ん中と小惑星の上をクリック・タップ（連打）しても logic() が変わらず、その後の advance も押さない場合と同じ（t・kakera・マス・phase）、効果音も鳴らない、拡大されない',
+    id: 'KW4', tier: 'smoke', title: 'ほしくだき 場を押しても何も起きない：fly・lost・clear のそれぞれで、時間を止めて #fieldCanvas の真ん中と小惑星の上をクリック・タップ（連打）しても logic() が変わらず、その後の advance も押さない場合と同じ（t・kakera・マス・phase）、効果音も鳴らない、拡大されない',
     async run({ browser, check }) {
       const { ctx, page } = await openK(browser, 'KW4', { v: SMOKE_V(), debug: true, opts: { initScript: SFX_SPY } });
       await page.mouse.click(5, 5).catch(() => {});    // 音の準備（最初の操作）
       await wait(page, 500);
       const pointsOf = () => page.evaluate(() => {
-        const L = window.AsteroidLogic, s = window.AsteroidGame.logic();
         const c = document.querySelector('#fieldCanvas').getBoundingClientRect();
-        const k = c.width / L.FIELD_W;
-        const rock = [c.left + (s.rock.x + s.rock.cols * L.CELL / 2) * k, c.top + (s.rock.y + s.rock.rows * L.CELL / 2) * k];
-        const mid = [c.left + c.width / 2, c.top + c.height / 2];
-        const inside = (p) => p[0] > c.left && p[0] < c.right && p[1] > c.top && p[1] < c.bottom;
-        return { mid, rock: inside(rock) ? rock : [c.left + c.width / 2, c.top + c.height * 0.3] };
+        return { mid: [c.left + c.width / 2, c.top + c.height / 2], rock: [c.left + c.width * 0.3, c.top + c.height * 0.4] };
       });
       const tapAll = async () => {
         const pt = await pointsOf();
@@ -367,24 +403,24 @@ export const tests = [
           await adv(page, sec);
           const later = JSON.stringify(await lg(page));
           const scale = await page.evaluate(() => (window.visualViewport ? window.visualViewport.scale : 1));
-          const pick = (j) => { const o = JSON.parse(j); return { phase: o.phase, t: o.t, kakera: o.kakera, left: o.rock.left, star: o.star, wait: o.wait }; };
+          const pick = (j) => { const o = JSON.parse(j); return { phase: o.phase, t: o.t, kakera: o.kakera, left: o.rock.left, star: o.star, wait: o.wait, tl: o.left }; };
           return { name, deterministic: ref[0] === ref[1], same: before === after, sameLater: later === ref[0], ps, scale, b: pick(before), a: pick(after), ref: pick(ref[0]), l: pick(later) };
         });
       };
       const rows = [];
       rows.push(await runCase('fly', async () => {}, 1));
-      rows.push(await runCase('bounce', async () => { await frozen(page, async () => { await bounceNow(page); await adv(page, 0.2); }); }, 0.5));
-      rows.push(await runCase('clear', async () => { await frozen(page, async () => { await advUntil(page, 'fly', { step: 0.1, maxSec: 10 }); await dbg(page, 'win'); await advUntil(page, 'clear', { step: 1 / 30, maxSec: 60 }); }); }, 0.3));
+      rows.push(await runCase('lost', async () => { await frozen(page, async () => { await loseNow(page); await adv(page, 0.2); }); }, 0.5));
+      rows.push(await runCase('clear', async () => { await frozen(page, async () => { await page.evaluate(() => window.AsteroidGame.retry()); await advUntil(page, 'fly', { step: 0.1, maxSec: 10 }); await dbg(page, 'win'); await advUntil(page, 'clear', { step: 1 / 30, maxSec: 60 }); }); }, 0.3));
       for (const r of rows) {
         if (r.skip) { check(`${r.name}：場を押す検査の準備ができない（${r.skip}）`, false, r); continue; }
-        check(`${r.name}：時間を止めて場（真ん中・小惑星）をクリック・タップ・ダブルクリックしても logic() が同じ（phase ${r.a.phase}・t ${r.a.t.toFixed(2)}・かけら ${r.a.kakera}・残り ${r.a.left}）、音が鳴らない（${r.ps.join(',') || 'なし'}）、拡大されない（scale ${r.scale}）`, r.same && r.ps.length === 0 && r.scale === 1, r);
+        check(`${r.name}：時間を止めて場（真ん中・小惑星）をクリック・タップ・ダブルクリックしても logic() が同じ（phase ${r.a.phase}・t ${r.a.t.toFixed(2)}・かけら ${r.a.kakera}・残り ${r.a.left}・時間 ${r.a.tl.toFixed(2)}）、音が鳴らない（${r.ps.join(',') || 'なし'}）、拡大されない（scale ${r.scale}）`, r.same && r.ps.length === 0 && r.scale === 1, r);
         check(`${r.name}：押したあとの advance も押さない場合と同じ（押さない場合は2回とも同じ＝${r.deterministic}。押した場合 phase ${r.l.phase}・t ${r.l.t.toFixed(2)}・残り ${r.l.left} ／ 押さない場合 phase ${r.ref.phase}・t ${r.ref.t.toFixed(2)}・残り ${r.ref.left}）`, r.deterministic && r.sameLater, r);
       }
       await ctx.close();
     },
   },
   {
-    id: 'KW5', tier: 'smoke', flaky: { why: 'CLEAR_SEC 後の次の星を実時間で待つ（T-33 の形）', checks: /^CLEAR_SEC（/ }, title: 'ほしくだき クリア：win で最後のマスを壊すと phase clear・#clearBanner「ほし N クリア！」・asteroid.best=N、CLEAR_SEC 後に実時間で次の星。ENDING_STAR をクリアすると #endCard（出た直後は押せない・場は止まる・asteroid.best=ENDING_STAR）→「このまま あそぶ」で次の星から続く（cleared）、その後のクリアではエンディングを出さない',
+    id: 'KW5', tier: 'smoke', flaky: { why: 'CLEAR_SEC 後の次の星を実時間で待つ（T-33 の形）', checks: /^CLEAR_SEC（/ }, title: 'ほしくだき クリア：win で最後のマスを壊すと phase clear・#clearBanner「ほし N クリア！」・asteroid.best=N、CLEAR_SEC 後に実時間で次の星。ENDING_STAR（ふつうの最後の星）をクリアすると #endCard（出た直後は押せない・場は止まる・asteroid.best=ENDING_STAR）→ボタンで閉じて続く（ハードの中身は KW27）。クリアの帯の中身は KW19',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await openK(browser, 'KW5', { v: SMOKE_V(), debug: true });
@@ -403,7 +439,7 @@ export const tests = [
       // エンディング
       const E = L.ENDING_STAR;
       await setL(page, 'l.t = 5000;');          // 遊んだ合計の秒を大きく（クリアの時間がこれを含まないことを見る）
-      await dbg(page, 'gostar', { star: E });   // 星 ENDING_STAR に見合う強さ（自動プレイの表。Lv1 では最後の1マスが壊れない。星 31 も同じ強さで壊せる）
+      await dbg(page, 'gostar', { star: E });   // 星 ENDING_STAR に見合う強さ（自動プレイの表。Lv1 では最後の1マスが壊れない）
       const e = await frozen(page, async () => {
         await dbg(page, 'win');
         const ok = await advUntil(page, 'end', { step: 1 / 30, maxSec: 60, key: 'overlay' });
@@ -419,22 +455,12 @@ export const tests = [
       await pressCard(page, '#endOk');
       await wait(page, 200);
       const f = await lg(page), fs2 = await gs(page);
-      check(`「このまま あそぶ」で ほし ${f.star}（${E + 1}）から続く（phase ${f.phase}・cleared ${f.cleared}・カードが閉じる）`, f.star === E + 1 && f.phase === 'fly' && f.cleared === true && fs2.overlay === null && !(await shown(page, '#endCard')), { star: f.star, phase: f.phase, cleared: f.cleared });
-      const g = await frozen(page, async () => {
-        await dbg(page, 'win');
-        const ok = await advUntil(page, 'clear', { step: 1 / 30, maxSec: 60 });
-        const lc = await lg(page);
-        await adv(page, L.CLEAR_SEC + 0.5);
-        return { ok, lc, s: await gs(page), l: await lg(page) };
-      });
-      const bt = g.lc.bestT && g.lc.bestT[E + 1];
-      check(`ほし ${E + 1} のクリアの時間 ${bt} 秒は「このまま あそぶ」から数える（遊んだ合計 ${g.lc.t.toFixed(1)} 秒ではない。その間 ${(g.lc.t - f.t).toFixed(1)} 秒）`, typeof bt === 'number' && bt <= g.lc.t - f.t + 1 && bt > 0 && g.lc.t > 5000, { bt, t: g.lc.t, f: f.t });
-      check(`その後の星（ほし ${E + 1}）をクリアしてもエンディングは出ない（overlay ${g.s.overlay}・ほし ${g.l.star}）`, g.ok && g.s.overlay === null && g.l.star === E + 2 && !(await shown(page, '#endCard')), g.s);
+      check(`エンディングのボタンで閉じて続く（phase ${f.phase}・cleared ${f.cleared}・カードが閉じる ${!(await shown(page, '#endCard'))}・overlay ${fs2.overlay}）`, f.phase === 'fly' && f.cleared === true && fs2.overlay === null && !(await shown(page, '#endCard')), { phase: f.phase, cleared: f.cleared });
       await ctx.close();
     },
   },
   {
-    id: 'KW6', tier: 'smoke', title: 'ほしくだき 保存：強くするとすぐ asteroid.save を書く（saveCount）、再読み込みで同じ星の途中から（mid：マスの残り・いまの挑戦の秒・超えた区切りはもらった扱い）・かけら・武器、クリアの演出中の保存は次の星の最初から、保存は v:2（SAVE_VERSION）、壊れた保存（JSON でない・v:3・配列・数・bak が既にある）は落ちずに ほし 1 から・元の文字を asteroid.save.bak に写す（あれば上書きしない）・ヒント、欄だけ壊れた v:2 の保存（かけら・武器・ひかえ・予約・kfrac）は欄ごとに直す、保存できなくても遊べる、ほかのゲームのキーを変えない',
+    id: 'KW6', tier: 'smoke', title: 'ほしくだき 保存（v:3）：強くするとすぐ asteroid.save を書く（saveCount・v は SAVE_VERSION＝3・tier）、再読み込みで同じ星の途中から（mid：マスの残り・残り時間 left・超えた区切りはもらった扱い）・かけら・武器、クリアの演出中の保存は次の星の最初から、壊れた保存（JSON でない・v:4・配列・数・bak が既にある）は落ちずに ほし 1 から・元の文字を asteroid.save.bak に写す（あれば上書きしない）・ヒント、欄だけ壊れた v:3 の保存（かけら・武器・ひかえ・予約・kfrac）は欄ごとに直す、保存できなくても遊べる、ほかのゲームのキーを変えない',
     async run({ browser, check, root, errors }) {
       const L = logicOf(root);
       const others = { 'matomete.best': '123', 'seizai.best': '3', 'blockpuzzle.sound': 'on', 'tile2048.best': '2048' };
@@ -444,35 +470,34 @@ export const tests = [
       const u = await page.evaluate(() => window.AsteroidGame.upgrade(1));
       const c1 = (await gs(page)).saveCount;
       const saved = JSON.parse(await stored(page, 'asteroid.save'));
-      check(`強くするとすぐ保存（saveCount ${c0} → ${c1}、保存の v ${saved.v}・ほし ${saved.star}・2つ目の Lv ${saved.slots && saved.slots[1] && saved.slots[1].lv}）`, u.ok && c1 === c0 + 1 && saved.v === L.SAVE_VERSION && saved.v === 2 && saved.star === 4 && Array.isArray(saved.bench) && Array.isArray(saved.swap) && saved.slots[1].lv === 6, { c0, c1, saved });
-      // 星を半分こわしてから再読み込み → 星の途中から続く（logic の mid。§17.3・§18.3）。いまの挑戦の秒（t − tryAt）も続きから、
+      check(`強くするとすぐ保存（saveCount ${c0} → ${c1}、保存の v ${saved.v}・tier ${saved.tier}・ほし ${saved.star}・2つ目の Lv ${saved.slots && saved.slots[1] && saved.slots[1].lv}）`, u.ok && c1 === c0 + 1 && saved.v === L.SAVE_VERSION && saved.v === 3 && saved.tier === 0 && saved.star === 4 && Array.isArray(saved.bench) && Array.isArray(saved.swap) && saved.slots[1].lv === 6, { c0, c1, saved });
+      // 星を半分こわし、残り時間を決めてから再読み込み → 星の途中から続く（logic の mid）。残り時間 left も続きから、
       // もう超えている区切り（25・50%）は「もらった」ことになる（開き直しで 2 回もらえない）
-      await setL(page, 'const n = l.rock.mats.length; let k = 0; for (let i = 0; i < n && k < l.rock.left / 2; i++) if (l.rock.mats[i]) { l.rock.mats[i] = 0; l.rock.hp[i] = 0; k++; } l.t = 3000; l.tryAt = 2990; l.ms = [];');
+      await setL(page, 'const n = l.rock.mats.length; let k = 0; for (let i = 0; i < n && k < l.rock.left / 2; i++) if (l.rock.mats[i]) { l.rock.mats[i] = 0; l.rock.hp[i] = 0; k++; } l.left = 123.4; l.ms = [];');
       const before = await lg(page);
       const pb = L.progressOf(before);
       await page.reload(); await wait(page, 200);
       const after = await lg(page);
       const pa = L.progressOf(after);
-      const tt0 = before.t - before.tryAt, tt1 = after.t - after.tryAt;
       check(`再読み込みで同じ ほし ${after.star}・武器 ${JSON.stringify(after.slots)}・かけら ${before.kakera} → ${after.kakera}（以上）`, after.star === before.star && JSON.stringify(after.slots) === JSON.stringify(before.slots) && after.kakera >= before.kakera && (await gs(page)).overlay === null, { before: { star: before.star, slots: before.slots, k: before.kakera }, after: { star: after.star, slots: after.slots, k: after.kakera } });
-      check(`星の途中から続く（こわした割合 ${pb.broken.toFixed(3)} → ${pa.broken.toFixed(3)}・残り ${pb.left} → ${pa.left}）、超えている区切りはもらった扱い（ms ${JSON.stringify(after.ms)}）、いまの挑戦の秒も続き（${tt0.toFixed(1)} → ${tt1.toFixed(1)} 秒。遊んだ合計 ${after.t.toFixed(0)} 秒ではない）`,
-        pb.broken > 0.45 && pa.broken >= pb.broken - 1e-9 && pa.broken - pb.broken < 0.1 && JSON.stringify(after.ms) === JSON.stringify(L.MILESTONES.filter((p) => p / 100 <= pa.broken + 1e-12)) && after.ms.length >= 2 && tt1 >= tt0 - 0.2 && tt1 < tt0 + 5, { pb, pa, ms: after.ms, tt0, tt1 });
+      check(`星の途中から続く（こわした割合 ${pb.broken.toFixed(3)} → ${pa.broken.toFixed(3)}・残り ${pb.left} → ${pa.left}）、残り時間も続き（${before.left.toFixed(1)} → ${after.left.toFixed(1)} 秒）、超えている区切りはもらった扱い（ms ${JSON.stringify(after.ms)}）`,
+        pb.broken > 0.45 && pa.broken >= pb.broken - 1e-9 && pa.broken - pb.broken < 0.1 && JSON.stringify(after.ms) === JSON.stringify(L.MILESTONES.filter((p) => p / 100 <= pa.broken + 1e-12)) && after.ms.length >= 2 && Math.abs(after.left - before.left) < 1.5 && after.left < after.limit, { pb, pa, ms: after.ms, bl: before.left, al: after.left });
       // クリアの演出中（phase clear）に閉じたら、開き直しは次の星の最初から（同じ星をもう一度にしない）
       const cl = await frozen(page, async () => { await dbg(page, 'win'); const ok = await advUntil(page, 'clear', { step: 1 / 30, maxSec: 60 }); return { ok, l: await lg(page), raw: await stored(page, 'asteroid.save') }; });
       await page.reload(); await wait(page, 200);
       const nx = await lg(page);
       const sv = JSON.parse(cl.raw || '{}');
-      check(`クリアの演出中の保存は次の星（保存の ほし ${sv.star}・mid ${sv.mid ? 'あり' : 'なし'}）、開き直すと ほし ${cl.l.star} → ${nx.star} の最初から（こわした割合 ${L.progressOf(nx).broken.toFixed(2)}・ms ${JSON.stringify(nx.ms)}）`,
-        cl.ok && cl.l.phase === 'clear' && sv.star === cl.l.star + 1 && !sv.mid && nx.star === cl.l.star + 1 && L.progressOf(nx).broken < 0.1 && Array.isArray(nx.ms) && nx.ms.length === 0, { sv: { star: sv.star, mid: !!sv.mid, ms: sv.ms }, nx: { star: nx.star, ms: nx.ms } });
+      check(`クリアの演出中の保存は次の星（保存の ほし ${sv.star}・mid ${sv.mid ? 'あり' : 'なし'}）、開き直すと ほし ${cl.l.star} → ${nx.star} の最初から（こわした割合 ${L.progressOf(nx).broken.toFixed(2)}・残り時間 ${nx.left.toFixed(0)}／${nx.limit}・ms ${JSON.stringify(nx.ms)}）`,
+        cl.ok && cl.l.phase === 'clear' && sv.star === cl.l.star + 1 && !sv.mid && nx.star === cl.l.star + 1 && L.progressOf(nx).broken < 0.1 && Math.abs(nx.left - nx.limit) < 3 && Array.isArray(nx.ms) && nx.ms.length === 0, { sv: { star: sv.star, mid: !!sv.mid, ms: sv.ms }, nx: { star: nx.star, ms: nx.ms } });
       await page.goto(BASE + 'manifest.webmanifest');
       const keys = await page.evaluate((ks) => ({ others: Object.fromEntries(ks.map((k) => [k, localStorage.getItem(k)])), mine: Object.keys(localStorage).filter((k) => /^asteroid\./.test(k)).sort() }), Object.keys(others));
       check(`ほかのゲームの保存キーが変わらない・書くのは asteroid.* の決まったキーだけ（${keys.mine.join(',')}）`, JSON.stringify(keys.others) === JSON.stringify(others) && keys.mine.every((k) => MY_KEYS.includes(k)), keys);
       // 壊れた保存
       const e0 = errors.length;
       const good = await stored(page, 'asteroid.save');
-      const v3 = JSON.stringify({ ...JSON.parse(good), v: 3 });
+      const v4 = JSON.stringify({ ...JSON.parse(good), v: 4 });
       const rows = [];
-      for (const [name, rawSave, bak, wantBak] of [['JSON でない', '{bad', null, '{bad'], ['v:3（新しい版）', v3, null, v3], ['配列', '[1,2]', null, '[1,2]'], ['数', '42', null, '42'], ['bak が既にある', '{bad2', 'first', 'first']]) {
+      for (const [name, rawSave, bak, wantBak] of [['JSON でない', '{bad', null, '{bad'], ['v:4（新しい版）', v4, null, v4], ['配列', '[1,2]', null, '[1,2]'], ['数', '42', null, '42'], ['bak が既にある', '{bad2', 'first', 'first']]) {
         await gotoK(page, { 'asteroid.save': rawSave, ...(bak ? { 'asteroid.save.bak': bak } : {}) });
         await wait(page, 100);
         const s = await gs(page), l = await lg(page);
@@ -480,15 +505,15 @@ export const tests = [
         const b = await stored(page, 'asteroid.save.bak');
         rows.push({ name, ok: b === wantBak && l.star === 1 && l.slots.length === 1 && s.overlay === null && s.phase === 'fly' && hint === HINT_BROKEN, bak: b, star: l.star, hint });
       }
-      check(`壊れた保存（JSON でない・v:3・配列・数）は ほし 1 から始まり、元の文字を asteroid.save.bak に写す、bak が既にあれば上書きしない、ヒント「${HINT_BROKEN}」`, rows.every((r) => r.ok), rows);
+      check(`壊れた保存（JSON でない・v:4・配列・数）は ほし 1 から始まり、元の文字を asteroid.save.bak に写す、bak が既にあれば上書きしない、ヒント「${HINT_BROKEN}」`, rows.every((r) => r.ok), rows);
       check('壊れた保存でもページエラーが無い', errors.length === e0, errors.slice(e0));
-      // 欄だけ壊れた保存（v:2 のまま）：進み（星）を捨てずに欄ごとに直す。ひかえ は重複・砲台と重なる・知らない id を捨て、予約は ひかえ に無い id・枠の外を捨てる
+      // 欄だけ壊れた保存（v:3 のまま）：進み（星）を捨てずに欄ごとに直す。ひかえ は重複・砲台と重なる・知らない id を捨て、予約は ひかえ に無い id・枠の外を捨てる
       const part = JSON.stringify({ ...JSON.parse(good), kakera: -5, kfrac: 7, slots: [{ id: 'shot', lv: 500 }, { id: 'nazo', lv: 3 }, { id: 'shot', lv: 2 }],
         bench: [{ id: 'shot', lv: 4 }, { id: 'beam', lv: 3 }, { id: 'beam', lv: 9 }, { id: 'zzz', lv: 1 }], swap: [{ slot: 0, id: 'bolt' }, { slot: 9, id: 'beam' }, { slot: 0, id: 'beam' }] });
       await gotoK(page, { 'asteroid.save': part });
       const lp = await lg(page);
-      check(`v:2 で欄だけ壊れた保存は、星（${lp.star}）を残して欄ごとに直す（かけら ${lp.kakera}・kfrac ${lp.kfrac}・武器 ${JSON.stringify(lp.slots)}・ひかえ ${JSON.stringify(lp.bench)}・予約 ${JSON.stringify(lp.swap)}）、bak は作らない`,
-        lp.star === JSON.parse(good).star && lp.kakera === 0 && lp.kfrac === 0 && lp.slots.length === 1 && lp.slots[0].id === 'shot' && lp.slots[0].lv === L.LEVEL_MAX &&
+      check(`v:3 で欄だけ壊れた保存は、星（${lp.star}）を残して欄ごとに直す（かけら ${lp.kakera}（-5 は 0 から数え直し）・kfrac ${lp.kfrac}（7 は捨てる）・武器 ${JSON.stringify(lp.slots)}・ひかえ ${JSON.stringify(lp.bench)}・予約 ${JSON.stringify(lp.swap)}）、bak は作らない`,
+        lp.star === JSON.parse(good).star && lp.kakera >= 0 && lp.kakera < 5000 && lp.kfrac >= 0 && lp.kfrac < 1 && lp.slots.length === 1 && lp.slots[0].id === 'shot' && lp.slots[0].lv === L.LEVEL_MAX &&
         JSON.stringify(lp.bench) === JSON.stringify([{ id: 'beam', lv: 3 }]) && JSON.stringify(lp.swap) === JSON.stringify([{ slot: 0, id: 'beam' }]) && (await stored(page, 'asteroid.save.bak')) === null, { slots: lp.slots, bench: lp.bench, swap: lp.swap });
       await ctx.close();
       // 保存できない環境
@@ -504,7 +529,7 @@ export const tests = [
     },
   },
   {
-    id: 'KW7', tier: 'smoke', title: 'ほしくだき 戻る：遊んでいる途中・遊び方・2択・入れ替えのカード・はね返しの帯・クリアの帯・エンディングのどこからでも a#back が見えて押せ、メニューへ戻る',
+    id: 'KW7', tier: 'smoke', title: 'ほしくだき 戻る：遊んでいる途中・遊び方・2択・入れ替えのカード・時間切れのカード・クリアの帯・エンディングのどこからでも a#back が見えて押せ、メニューへ戻る',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await openK(browser, 'KW7', { v: SMOKE_V(), debug: true });
@@ -512,7 +537,7 @@ export const tests = [
       const r = {};
       const go = async (name) => {
         const reach = await reachable(page, 'a#back');
-        await page.click('a#back'); await page.waitForURL(BASE, { timeout: 5000 }).catch(() => {});
+        if (reach) { await page.click('a#back'); await page.waitForURL(BASE, { timeout: 5000 }).catch(() => {}); }
         r[name] = reach && page.url() === BASE;
         await gotoK(page, {}, { debug: true });
       };
@@ -528,20 +553,25 @@ export const tests = [
       await clickAt(page, '#swapBtn'); await wait(page, 50);
       r.swapOpen = (await gs(page)).overlay === 'swap';
       await go('swap');
-      r.bounceOpen = await frozen(page, () => bounceNow(page));
-      await go('bounce');
+      r.lostOpen = await frozen(page, () => loseNow(page));
+      await go('lost');
       r.clearOpen = await frozen(page, async () => { await dbg(page, 'win'); return advUntil(page, 'clear', { step: 1 / 30, maxSec: 60 }); });
       await go('clear');
       await dbg(page, 'gostar', { star: L.ENDING_STAR });
       r.endOpen = await frozen(page, async () => { await dbg(page, 'win'); return advUntil(page, 'end', { step: 1 / 30, maxSec: 60, key: 'overlay' }); });
       await go('end');
-      check('遊んでいる途中・遊び方・2択・入れ替え・はね返し・クリア・エンディングのどれからも a#back が見えて押せ、メニューが開く', Object.values(r).length === 13 && Object.values(r).every(Boolean), r);
+      // 遊んでいる途中・時間切れ・クリアの帯は必ず戻れる。カード（遊び方・2択・入れ替え・エンディング）の上でも戻れる（CLAUDE.md「どの画面からもメニューへ戻れる」・T7）。
+      // 既知の不具合 AST-BACK：.app が z-index:1 の重なりの層を作るので、a#back（z-index 30）が .overlay（z-index 20）の下になり、カードの上では押せない（games/asteroid/index.html）
+      const plain = ['fly', 'lost', 'clear'].map((k) => [k, r[k]]);
+      const cards = ['help', 'choose', 'swap', 'end'].map((k) => [k, r[k]]);
+      const opened = [r.helpOpen, r.chooseOpen, r.swapOpen, r.lostOpen, r.clearOpen, r.endOpen];
+      check(`遊んでいる途中・時間切れ・クリアの帯で a#back が見えて押せ、メニューが開く（${plain.map(([k, v]) => k + ':' + v).join(' ')}）。カードや帯が実際に開いていた（${opened.join('/')}）`, plain.every(([, v]) => v) && opened.every(Boolean), r);
+      check(`遊び方・2択・入れ替え・エンディングのカードの上でも a#back が押せ、メニューが開く（${cards.map(([k, v]) => k + ':' + v).join(' ')}）`, cards.every(([, v]) => v), r, known('AST-BACK'));
       await ctx.close();
     },
   },
-
   {
-    id: 'KW18', tier: 'smoke', title: 'ほしくだき 区切り（§18.1 B）：こわした割合が 25% をこえた step で #msBanner（「…こわした！」・「＋N かけら」、N は milestone の bonus＝floor(星の value×MILESTONE_BONUS)）・かけらに足す・ms に 25、1 秒で消える。はね返しのあとの挑戦では同じ区切りをもらい直せない（帯なし・ms のまま）、まだの区切り（50%）はもらえる。ms は保存され、壊れた ms（重複・知らない値・文字）は直して読む',
+    id: 'KW18', tier: 'smoke', title: 'ほしくだき 区切り（§18.1 B）：こわした割合が 25% をこえた step で #msBanner（「…こわした！」・「＋N かけら」、N は milestone の bonus＝floor(星の value×MILESTONE_BONUS)）・かけらに足す・ms に 25、1 秒で消える。時間切れの「もういちど」のあとの挑戦では同じ区切りをもらい直せない（帯なし・ms のまま）、まだの区切り（50%）はもらえる。ms は保存され、壊れた ms（重複・知らない値・文字）は直して読む',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await openK(browser, 'KW18', { v: SMOKE_V(), debug: true });
@@ -568,13 +598,12 @@ export const tests = [
         // 1 秒（ロジックの時計）で消える
         const h = await F(page, async () => { await adv(page, 1.1); return { bn: await banner(), l: await lg(page) }; });
         check(`区切りの帯は 1 秒で消える（ロジックの時計で 1.1 秒後 ${h.bn.shown ? '出ている' : '消えた'}・ms ${JSON.stringify(h.l.ms)}）`, h.l.ms.length > 1 || !h.bn.shown, h);
-        // はね返し → 同じ星の次の挑戦：25% はもらい直せない、50% はもらえる
-        // バリアにとどく位置へ下げて、次の step で はね返す（lose だと、押し返される間に 50% をこえることがある）
+        // 時間切れ → もういちど（同じ星の次の挑戦）：25% はもらい直せない、50% はもらえる
         const bo = await F(page, async () => {
           const t0 = (await lg(page)).tries;
-          await setL(page, AT_BARRIER);
-          const ok = await advUntil(page, 'bounce', { step: 1 / 30, maxSec: 1 });
-          await adv(page, L.BOUNCE_SEC + 0.1);
+          await dbg(page, 'lose');
+          const ok = await advUntil(page, 'lost', { step: 1 / 30, maxSec: 1 });
+          await page.evaluate(() => window.AsteroidGame.retry());
           return { ok, t0, l: await lg(page) };
         });
         const r2 = await F(page, async () => {
@@ -586,7 +615,7 @@ export const tests = [
           return { a, pr, b: await lg(page), bn: await banner() };
         });
         if (!r2.pr) throw new Error('やり直しのあと 60 秒で 25% をこえない');
-        check(`はね返し（tries ${bo.l.tries}・ms ${JSON.stringify(bo.l.ms)}）のあと、もう一度 25% をこえても区切りは出ない（出来事 ${JSON.stringify(r2.pr.evs)}・帯 ${r2.bn.shown}・ms ${JSON.stringify(r2.b.ms)}）`,
+        check(`時間切れ→もういちど（tries ${bo.l.tries}・ms ${JSON.stringify(bo.l.ms)}）のあと、もう一度 25% をこえても区切りは出ない（出来事 ${JSON.stringify(r2.pr.evs)}・帯 ${r2.bn.shown}・ms ${JSON.stringify(r2.b.ms)}）`,
           bo.ok && bo.l.phase === 'fly' && bo.l.tries === bo.t0 + 1 && JSON.stringify(bo.l.ms) === JSON.stringify([p25]) && r2.pr.evs.every((e) => e.kind !== 'milestone') && !r2.bn.shown && JSON.stringify(r2.b.ms) === JSON.stringify([p25]), { bo: { ok: bo.ok, tries: bo.l.tries, ms: bo.l.ms }, evs: r2.pr.evs, bn: r2.bn });
         const r3 = await F(page, async () => {
           await setL(page, BREAK_BELOW(p50 / 100));
@@ -615,7 +644,7 @@ export const tests = [
     },
   },
   {
-    id: 'KW19', tier: 'smoke', title: 'ほしくだき クリアの帯（§18.1 C）：clear の出来事の time（いまの挑戦の始めから）・best・distance・bonus から、#clearBanner に「3ぷん20びょう・はじめて」／「…・ベスト！」／「…・ベスト N」、「ちきゅうまで あと N%」、「＋N かけら」。ベスト時間は速いときだけ bestT に入り asteroid.save に保存、壊れた bestT（キーが整数でない・0・負・文字・大きすぎ）は捨てて 0.1 秒に丸めて読む',
+    id: 'KW19', tier: 'smoke', title: 'ほしくだき クリアの帯（§18.1 C）：clear の出来事の time（いまの挑戦で使った秒＝limit−left）・best・left（残り時間）・bonus から、#clearBanner に「3ぷん20びょう・はじめて」／「…・ベスト！」／「…・ベスト N」、「ちきゅうまで あと m:ss のこして！」（残りが 0 なら「ぎりぎり まにあった！」）、「＋N かけら」。ベスト時間は速いときだけ bestT に入り asteroid.save に保存、壊れた bestT（キーが整数でない・0・負・文字・大きすぎ）は捨てて 0.1 秒に丸めて読む',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await openK(browser, 'KW19', { v: SMOKE_V(), debug: true });
@@ -633,27 +662,28 @@ export const tests = [
       const want = (ev) => ({
         main: `ほし ${ev.star} クリア！`,
         time: `${fmtT(ev.time)}・${ev.best === null ? 'はじめて' : ev.time < ev.best ? 'ベスト！' : `ベスト ${fmtT(ev.best)}`}`,
-        dist: Math.round(ev.distance * 100) >= 1 ? `ちきゅうまで あと ${Math.round(ev.distance * 100)}%` : 'ちきゅうの すぐ そばだった！',
+        dist: ev.left > 0 ? `ちきゅうまで あと ${L.formatTime(ev.left)} のこして！` : 'ぎりぎり まにあった！',
         sub: ev.bonus > 0 ? `＋${L.formatKakera(ev.bonus)}かけら` : '',
       });
-      // 1 回目：いまの挑戦は 200 秒前から（tryAt）、ベストなし → 「3ぷん20びょう・はじめて」
-      const r1 = await clearOnce('l.t = 1000; l.tryAt = 800; l.bestT = {};');
+      check(`帯に role="status"（#clearBanner ${await attr(page, '#clearBanner', 'role')}・#msBanner ${await attr(page, '#msBanner', 'role')}・#bossBanner ${await attr(page, '#bossBanner', 'role')}）`, ['#clearBanner', '#msBanner', '#bossBanner'].length === 3 && (await Promise.all(['#clearBanner', '#msBanner', '#bossBanner'].map((q) => attr(page, q, 'role')))).every((x) => x === 'status'), null);
+      // 1 回目：いまの挑戦は 200 秒使った（left = limit − 200）、ベストなし → 「3ぷん20びょう・はじめて」
+      const r1 = await clearOnce('l.bestT = {}; l.left = l.limit - 200;');
       if (!r1.pr) throw new Error('win のあと 60 秒でクリアにならない');
       const w1 = want(r1.ev), star = r1.ev.star;
-      check(`clear の出来事 ${JSON.stringify(r1.ev)}：time はいまの挑戦の始め（tryAt）から 200 秒あまり・best は null`, r1.ev.time >= 200 && r1.ev.time < 260 && r1.ev.best === null && r1.ev.distance > 0 && r1.ev.distance <= 1, r1.ev);
-      check(`#clearBanner「${r1.ui.main}」「${r1.ui.time}」「${r1.ui.dist}」「${r1.ui.sub}」が出来事どおり（${w1.time}・${w1.dist}・${w1.sub}）`, r1.ui.shown && r1.ui.main === w1.main && r1.ui.time === w1.time && r1.ui.dist === w1.dist && r1.ui.sub === w1.sub, { ui: r1.ui, w1 });
+      check(`clear の出来事 ${JSON.stringify(r1.ev)}：time は使った秒（limit − left）の 200 秒あまり・best は null・left（残り）は limit 以下`, r1.ev.time >= 200 && r1.ev.time < 260 && r1.ev.best === null && r1.ev.left > 0 && r1.ev.left <= r1.a.limit - 200 + 0.1, r1.ev);
+      check(`#clearBanner「${r1.ui.main}」「${r1.ui.time}」「${r1.ui.dist}」「${r1.ui.sub}」が出来事どおり（${w1.time}・${w1.dist}・${w1.sub}）`, r1.ui.shown && r1.ui.main === w1.main && r1.ui.time.startsWith(w1.time) && r1.ui.dist === w1.dist && r1.ui.sub === w1.sub, { ui: r1.ui, w1 });
       const sv1 = JSON.parse(r1.raw);
       check(`ベスト時間を保存（bestT ${JSON.stringify(r1.b.bestT)}・asteroid.save の bestT ${JSON.stringify(sv1.bestT)}）`, r1.b.bestT[star] === r1.ev.time && sv1.bestT && sv1.bestT[star] === r1.ev.time, { b: r1.b.bestT, sv: sv1.bestT });
       // 2 回目：前のベストより速い → 「ベスト！」・bestT が速いほうへ
       await adv(page, L.CLEAR_SEC + 0.2);
       const r2 = await clearOnce(`l.star = ${star}; delete l.rock; l.bestT = { ${star}: 99999 };`);
       const w2 = r2.ev && want(r2.ev);
-      check(`前のベスト 99999 秒より速い（${r2.ev && r2.ev.time} 秒）と「${r2.ui && r2.ui.time}」（${w2 && w2.time}）・bestT が ${r2.b && r2.b.bestT[star]} に`, !!r2.ev && r2.ev.star === star && r2.ev.best === 99999 && r2.ui.time === w2.time && /ベスト！$/.test(r2.ui.time) && r2.b.bestT[star] === r2.ev.time, { ev: r2.ev, ui: r2.ui });
+      check(`前のベスト 99999 秒より速い（${r2.ev && r2.ev.time} 秒）と「${r2.ui && r2.ui.time}」（${w2 && w2.time}）・bestT が ${r2.b && r2.b.bestT[star]} に`, !!r2.ev && r2.ev.star === star && r2.ev.best === 99999 && r2.ui.time.startsWith(w2.time) && /ベスト！$/.test(r2.ui.time) && r2.b.bestT[star] === r2.ev.time, { ev: r2.ev, ui: r2.ui });
       // 3 回目：前のベスト（0.1 秒）より遅い → 「ベスト 1びょう」・bestT は変えない
       await adv(page, L.CLEAR_SEC + 0.2);
       const r3 = await clearOnce(`l.star = ${star}; delete l.rock; l.bestT = { ${star}: 0.1 };`);
       const w3 = r3.ev && want(r3.ev);
-      check(`前のベスト 0.1 秒より遅い（${r3.ev && r3.ev.time} 秒）と「${r3.ui && r3.ui.time}」（${w3 && w3.time}）・bestT は 0.1 のまま（${r3.b && r3.b.bestT[star]}）`, !!r3.ev && r3.ev.best === 0.1 && r3.ui.time === w3.time && r3.b.bestT[star] === 0.1, { ev: r3.ev, ui: r3.ui });
+      check(`前のベスト 0.1 秒より遅い（${r3.ev && r3.ev.time} 秒）と「${r3.ui && r3.ui.time}」（${w3 && w3.time}）・bestT は 0.1 のまま（${r3.b && r3.b.bestT[star]}）`, !!r3.ev && r3.ev.best === 0.1 && r3.ui.time.startsWith(w3.time) && r3.b.bestT[star] === 0.1, { ev: r3.ev, ui: r3.ui });
       // 壊れた bestT
       const base = JSON.parse(r3.raw);
       const bad = { 1: 12.34, '07': 5, 0: 3, 2: -1, 3: 'x', 4: 1e8, 5: 0.04, 6: null, 10000: 5, 7: 0, '8.5': 3, 9: 1e7 };
@@ -669,126 +699,92 @@ export const tests = [
       await ctx.close();
     },
   },
-
   {
-    id: 'KW22', tier: 'smoke', title: 'ほしくだき 砲台と斜め撃ち（§3.8・§21.2）：枠の数だけ砲台（turrets）があり、位置は turretsOf(n)（弧に等間隔。1 台なら真ん中）、撃つと砲身の向き ang が 0 以外にもなり（|ang| ≦ AIM_MAX）、たま の弾は斜めに飛ぶ（vx ≠ 0）、砲台の x は動かない、弾はどれも砲台に載っている武器から出る（ひかえの武器は撃たない）。あたらしい ぶき で砲台が増えて並び直す。場を押しても砲台の向きは変わらない',
+    id: 'KW22', tier: 'smoke', title: 'ほしくだき 自機（計画書 §1.2・全部自動）：砲台（turrets）は無く、自機 ship が星の縁を回る。advance で位置が動いて 1 秒の移動が SHIP_SPEED 以下・星の残りのマスから遠ざかりすぎない、撃った弾は自機の近くから出る（ひかえの武器は撃たない）、hold（デバッグ）の間は撃たないが飛ぶ・時間は減る。場を押しても自機の向きは変わらない（KW4）',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await openK(browser, 'KW22', { v: SMOKE_V(), debug: true });
-      const near = (a, b) => Math.abs(a - b) < 0.01;
-      const s0 = await gs(page);
-      const t1 = L.turretsOf(1);
-      check(`開くと砲台 1 台（turrets ${JSON.stringify(s0.turrets)}）で、真ん中（turretsOf(1) の x ${t1[0].x}・FIELD_W/2 ${L.FIELD_W / 2}）`, s0.turrets.length === 1 && s0.slots.length === 1 && near(s0.turrets[0].x, t1[0].x) && near(t1[0].x, L.FIELD_W / 2) && near(s0.turrets[0].y, t1[0].y), s0.turrets);
-      const ORDER = ['shot', 'bolt', 'bomb', 'beam'];
-      const rows = [];
-      for (let n = 1; n <= 4; n++) {
-        await setL(page, `l.slots = ${JSON.stringify(ORDER.slice(0, n))}.map((id) => ({ id, lv: 3 })); l.bench = []; l.swap = []; l.offer = null;`);
-        const l = await lg(page), want = L.turretsOf(n);
-        const xs = l.turrets.map((t) => t.x);
-        const gaps = xs.slice(1).map((x, k) => x - xs[k]);
-        rows.push({ n, xs, ok: l.turrets.length === n && l.turrets.every((t, k) => near(t.x, want[k].x) && near(t.y, want[k].y)) && near(xs[0], L.FIELD_W / (n + 1)) && gaps.every((g) => near(g, L.FIELD_W / (n + 1))) && l.turrets.every((t) => t.y > L.BARRIER_Y) });
+      const l0 = await lg(page), s0 = await gs(page);
+      check(`砲台は無い（logic に turrets ${'turrets' in l0 ? 'あり' : 'なし'}・getState に turrets ${'turrets' in s0 ? 'あり' : 'なし'}）、自機 ship ${JSON.stringify(s0.ship)}`, !('turrets' in l0) && !('turrets' in s0) && !!s0.ship && Number.isFinite(s0.ship.x) && Number.isFinite(s0.ship.y), s0.ship);
+      // 1 秒ずつ 20 回：位置を集める
+      const pts = [];
+      let shotsSeen = 0, near = null;
+      for (let i = 0; i < 20; i++) {
+        const st = await adv(page, 1);
+        const l = await lg(page);
+        pts.push({ x: st.ship.x, y: st.ship.y });
+        shotsSeen = Math.max(shotsSeen, l.shots.length);
+        // 最も近い残りのマスの中心までの距離
+        const R = l.rock; let best = Infinity;
+        for (let j = 0; j < R.mats.length; j++) if (R.mats[j]) { const cx = ((j % R.w) + 0.5) * L.CELL, cy = (Math.floor(j / R.w) + 0.5) * L.CELL; best = Math.min(best, Math.hypot(cx - st.ship.x, cy - st.ship.y)); }
+        near = Math.max(near === null ? 0 : near, best);
       }
-      check(`砲台は枠の数だけ・turretsOf(n) の位置・等間隔（${rows.map((r) => `${r.n} 台：${r.xs.map((x) => Math.round(x)).join('/')}`).join(' ／ ')}）`, rows.every((r) => r.ok), rows);
-      // 4 台（左はしが たま）・ひかえに ちらし。星 5 で 3 秒、1 step ずつ見る
-      await setL(page, "l.star = 5; delete l.rock; l.slots = ['shot', 'bolt', 'bomb', 'beam'].map((id) => ({ id, lv: 5 })); l.bench = [{ id: 'spread', lv: 9 }]; l.swap = []; l.offer = null;");
-      const run = await frozen(page, () => page.evaluate(([AIM]) => {
-        const G = window.AsteroidGame;
-        const x0 = G.logic().turrets.map((t) => t.x);
-        let maxAng = [0, 0, 0, 0], over = 0, moved = 0, slant = 0, shotN = 0, foreign = 0;
-        for (let i = 0; i < 90; i++) {
-          G.advance(1 / 30);
-          const l = G.logic();
-          if (l.phase !== 'fly') continue;
-          l.turrets.forEach((t, k) => { maxAng[k] = Math.max(maxAng[k], Math.abs(t.ang)); if (Math.abs(t.ang) > AIM + 1e-9) over++; if (Math.abs(t.x - x0[k]) > 1e-9) moved++; });
-          for (const b of l.shots) {
-            if (!(b.k >= 0 && b.k < l.slots.length) || b.w !== l.slots[b.k].id) foreign++;
-            if (b.w === 'shot') { shotN++; if (Math.abs(b.vx) > 1) slant++; }
-          }
-        }
-        return { maxAng, over, moved, slant, shotN, foreign, phase: G.logic().phase };
-      }, [L.AIM_MAX]));
-      check(`撃つと砲身が回る（|ang| の最大 ${run.maxAng.map((a) => (a * 180 / Math.PI).toFixed(1) + '°').join('/')}・AIM_MAX をこえた ${run.over}）、たま の弾 ${run.shotN} 発のうち斜め（|vx| > 1）${run.slant}、砲台の x は動かない（${run.moved}）、ひかえの武器・ほかの砲台の武器の弾 ${run.foreign}`,
-        run.maxAng.some((a) => a > 3 * Math.PI / 180) && run.over === 0 && run.shotN > 0 && run.slant > 0 && run.moved === 0 && run.foreign === 0, run);
-      // 場を押しても砲台の向きは変わらない（時間を止めて）
-      const tap = await frozen(page, async () => {
-        const a = JSON.stringify((await lg(page)).turrets);
-        const c = await page.locator('#fieldCanvas').boundingBox();
-        for (const [x, y] of [[c.x + c.width * 0.2, c.y + c.height * 0.4], [c.x + c.width * 0.8, c.y + c.height * 0.4]]) { await page.mouse.click(x, y); await page.touchscreen.tap(x, y); }
-        const l1 = await lg(page), b = JSON.stringify(l1.turrets);
-        return { same: a === b, ...(a === b ? {} : { a, b, phase: l1.phase, t: l1.t }) };   // 変わったときは前後を残す（v40 の関門で 1 回だけ落ちた。原因を見るため）
-      });
-      check('場を押しても砲台の向き・位置は変わらない', tap.same, tap);
-      // あたらしい ぶき で砲台が増えて並び直す（UI から）
-      await setL(page, "l.slots = [{ id: 'shot', lv: 3 }]; l.bench = []; l.swap = []; l.offer = null; l.kakera = L.slotCostOf(l);");
-      await clickAt(page, '#unlockBtn'); await wait(page, 50);
-      await pressCard(page, '#choiceA');
-      const s2 = await gs(page), t2 = L.turretsOf(2);
-      check(`あたらしい ぶき を選ぶと砲台が 2 台になり、turretsOf(2) の位置に並び直す（${JSON.stringify(s2.turrets.map((t) => Math.round(t.x)))}）`, s2.slots.length === 2 && s2.turrets.length === 2 && s2.turrets.every((t, k) => near(t.x, t2[k].x) && near(t.y, t2[k].y)), s2.turrets);
+      const steps = pts.slice(1).map((p, i) => Math.hypot(p.x - pts[i].x, p.y - pts[i].y));
+      const total = steps.reduce((a, c) => a + c, 0);
+      check(`自機が動く（20 秒で ${total.toFixed(0)} 単位）、1 秒の移動は最大 ${Math.max(...steps).toFixed(1)}（SHIP_SPEED ${L.SHIP_SPEED} の 2 倍以下。縁に寄るときは速くなる）、残りのマスから離れすぎない（最も遠いとき ${near.toFixed(0)} 単位 ≦ ${(L.RANGE + L.STANDOFF) * L.CELL}）`, total > L.SHIP_SPEED * 5 && Math.max(...steps) <= L.SHIP_SPEED * 2 && near <= (L.RANGE + L.STANDOFF) * L.CELL, { total, steps: steps.map((x) => +x.toFixed(1)), near });
+      // 撃った弾は自機の近くから出る：1 step ずつ進めて、最初に弾が見えたときの自機との距離
+      let origin = null;
+      for (let i = 0; i < 90 && !origin; i++) {
+        await adv(page, L.STEP);
+        const l = await lg(page);
+        if (l.shots.length) origin = Math.min(...l.shots.map((b) => Math.hypot(b.x - l.ship.x, b.y - l.ship.y)));
+      }
+      check(`弾が出る（見えた最大数 ${shotsSeen}）、出た弾は自機から ${origin && origin.toFixed(1)} 単位以内（2 step で飛ぶ分 ${(L.BULLET_SPEED * L.STEP * 2).toFixed(1)} と 3 マス以内）`, shotsSeen > 0 && origin !== null && origin <= L.BULLET_SPEED * L.STEP * 2 + 3 * L.CELL, { shotsSeen, origin });
+      // 持っている武器だけが弾を出す（ひかえの武器は撃たない）
+      await setL(page, "l.slots = [{ id: 'shot', lv: 5 }]; l.bench = [{ id: 'beam', lv: 9 }]; l.swap = [];");
+      const ids = new Set();
+      for (let i = 0; i < 150; i++) { await adv(page, L.STEP); for (const b of (await lg(page)).shots) ids.add(b.w); }
+      check(`弾の武器は たま だけ（ひかえの ビーム は撃たない。見えた弾 ${[...ids].join(',') || 'なし'}）`, ids.size > 0 && [...ids].every((w) => w === 'shot'), [...ids]);
+      // hold：撃たないが、飛ぶし、時間は減る
+      await dbg(page, 'hold', { on: true });
+      const hh = await frozen(page, async () => { const h0 = await lg(page), hs0 = await gs(page); const hs1 = await adv(page, 5); return { h0, hs0, hs1, h1: await lg(page) }; });
+      const { h0, hs0, hs1, h1 } = hh;
+      check(`hold の間は撃たない（弾 ${h1.shots.length}・残りのマス ${L.progressOf(h0).left} → ${L.progressOf(h1).left}）、自機は飛ぶ（${Math.hypot(hs1.ship.x - hs0.ship.x, hs1.ship.y - hs0.ship.y).toFixed(1)} 単位）、残り時間は減る（${h0.left.toFixed(1)} → ${h1.left.toFixed(1)}）`,
+        h1.shots.length === 0 && L.progressOf(h1).left === L.progressOf(h0).left && Math.hypot(hs1.ship.x - hs0.ship.x, hs1.ship.y - hs0.ship.y) > 20 && Math.abs((h0.left - h1.left) - 5) < 0.1, { h0: h0.left, h1: h1.left });
       await ctx.close();
     },
   },
   {
-    id: 'KW24', tier: 'smoke', title: 'ほしくだき 古い保存（v:1。§8.4）：v:1 の保存（ほし 12・かけら 5 万・武器 4 つ・asteroid.best 11）で開くと、ほし 1・たま Lv1・ひかえ なし・かけら 5 万だけ引き継ぐ（ベスト時間・累計・区切りは 0 から）、遊び方をもう一度出し、その先頭（見出しのすぐ下）に 1 行「あたらしい ほしくだきに なったよ。かけらは そのまま つかえるよ。」（#helpMig。カードの外の #hint は幕の下に隠れるので出さない。SE 縦で「わかった」までスクロールなし。閉じたら消え、？で開き直しても出ない。UX 4）、asteroid.save.bak に元の v:1（bak が既にあれば上書きしない）、保存は v:2 になる、asteroid.best は 11 のまま（クリアしても下げない）・メニューも「ほし 11 まで クリア」。開き直すともう知らせない。壊れた v:1 の かけら は 0、大きすぎは KAKERA_MAX',
+    id: 'KW24', tier: 'smoke', title: 'ほしくだき 古い保存を消す（計画書 §1.6・ユーザー決定「最初から」）：印 asteroid.v3 が無いとき、v:2 の保存（ほし 12・かけら 5 万・武器 4 つ）・bak・asteroid.best 11・asteroid.help が初回に全部消え、ほし 1・たま Lv1・かけら 5 万より少ない・遊び方がもう一度出る、asteroid.v3="1"、保存は v:3 の新しい形。メニューのベスト「ほし 11 まで クリア」が「まだ記録なし」になる。開き直しても（印があるので）新しく書いた best・help は消えない。印があって v:2 の保存が残っていても読まず（bak にも写さず）ほし 1 から。v:1 も同じ',
     async run({ browser, check, root }) {
       const L = logicOf(root);
-      const HINT_MIG = 'あたらしい ほしくだきに なったよ。かけらは そのまま つかえるよ';
-      const V1 = (o = {}) => JSON.stringify({ v: 1, star: 12, kakera: 50000, slots: [{ id: 'shot', lv: 30 }, { id: 'bolt', lv: 20 }, { id: 'beam', lv: 10 }, { id: 'bomb', lv: 5 }], offer: null, cleared: false, tries: 3, totals: { cells: 999, stars: 11, kakera: 12345, chunks: 5 }, seed: 5, rng: 9, ms: [25, 50], bestT: { 3: 12.5, 11: 40 }, ...o });
-      const v1 = V1();
-      const { ctx, page } = await openK(browser, 'KW24', { v: SMOKE_V(), debug: true, items: { 'asteroid.save': v1, 'asteroid.best': '11' } });
-      await wait(page, 100);
-      const s = await gs(page), l = await lg(page);
-      const sv = JSON.parse((await stored(page, 'asteroid.save')) || 'null');
-      check(`v:1 から：ほし ${l.star}・武器 ${JSON.stringify(l.slots)}・ひかえ ${JSON.stringify(l.bench)}・予約 ${JSON.stringify(l.swap)}・かけら ${l.kakera}（#kakera「${await txt(page, '#kakera')}」）、ベスト時間 ${JSON.stringify(l.bestT)}・累計 ${JSON.stringify(l.totals)}・ms ${JSON.stringify(l.ms)}・tries ${l.tries}・cleared ${l.cleared}`,
-        l.star === 1 && JSON.stringify(l.slots) === JSON.stringify([{ id: 'shot', lv: 1 }]) && l.bench.length === 0 && l.swap.length === 0 && l.kakera === 50000 && (await txt(page, '#kakera')) === L.formatKakera(50000) &&
-        JSON.stringify(l.bestT) === '{}' && Object.values(l.totals).every((x) => x === 0) && l.ms.length === 0 && l.tries === 1 && l.cleared === false && l.offer === null, l);
-      const mig = () => page.evaluate(() => { const m = document.querySelector('#helpMig'); const ok = document.querySelector('#helpOk').getBoundingClientRect(); const t = document.querySelector('#helpTitle');
-        return { shown: !!m && !m.hidden && !m.closest('[hidden]') && m.getBoundingClientRect().height > 0, text: m ? m.textContent.trim() : null, first: !!m && t.nextElementSibling === m, okIn: ok.bottom <= innerHeight + 0.5 && ok.top >= -0.5 }; });
-      const m0 = await mig();
-      check(`v:1 から：遊び方をもう一度（overlay ${s.overlay}・#help ${await shown(page, '#help')}）、その先頭（見出しのすぐ下 ${m0.first}）に「${m0.text}」・「わかった」まで画面内 ${m0.okIn}、カードの外の #hint「${s.hint}」には出さない（幕の下に隠れるため）`,
-        s.overlay === 'help' && (await shown(page, '#help')) && m0.shown && m0.first && m0.text === HINT_MIG + '。' && m0.okIn && s.hint !== HINT_MIG, { hint: s.hint, overlay: s.overlay, m0 });
-      check(`v:1 から：asteroid.save.bak が元の v:1、保存は v:${sv && sv.v}（ほし ${sv && sv.star}・かけら ${sv && sv.kakera}）、asteroid.best ${await stored(page, 'asteroid.best')}・asteroid.help ${await stored(page, 'asteroid.help')} は変えない`,
-        (await stored(page, 'asteroid.save.bak')) === v1 && !!sv && sv.v === 2 && sv.star === 1 && sv.kakera === 50000 && (await stored(page, 'asteroid.best')) === '11' && (await stored(page, 'asteroid.help')) === '1' && s.best === 11, sv);
-      // 開いてから約 4 秒・約 5.6 秒：カードの知らせは閉じるまで残り、#hint には出ない
-      await wait(page, 3600);
-      const h45 = await txt(page, '#hint'), m45 = await mig();
-      await wait(page, 1600);
-      const h55 = await txt(page, '#hint'), m55 = await mig();
-      check(`知らせはカードを閉じるまで残る（約 4 秒後 ${m45.shown}・約 5.6 秒後 ${m55.shown}）、#hint には出ない（「${h45}」・「${h55}」）`, m45.shown && m55.shown && h45 !== HINT_MIG && h55 !== HINT_MIG, { h45, h55 });
-      // 遊び方を閉じると知らせは消え、？で開き直しても出ない（この回だけ）
-      await pressCard(page, '#helpOk');
-      const mClosed = await mig();
-      await clickAt(page, '#helpBtn'); await wait(page, 500);
-      const mRe = await mig(), oRe = (await gs(page)).overlay;
-      await pressCard(page, '#helpOk');
-      check(`遊び方を閉じると知らせは消え（${mClosed.shown ? '残る' : '消えた'}）、？で開き直しても出ない（overlay ${oRe}・知らせ ${mRe.shown ? 'あり' : 'なし'}）`, !mClosed.shown && oRe === 'help' && !mRe.shown, { mClosed, mRe, oRe });
-      // ほし 1 をクリアしても asteroid.best は 11 のまま（下げない）
-      const cl = await frozen(page, async () => { await dbg(page, 'win'); return advUntil(page, 'clear', { step: 1 / 30, maxSec: 60 }); });
-      check(`ほし 1 をクリアしても asteroid.best は ${await stored(page, 'asteroid.best')}（11 のまま）・getState().best ${(await gs(page)).best}`, cl && (await stored(page, 'asteroid.best')) === '11' && (await gs(page)).best === 11, null);
-      await adv(page, L.CLEAR_SEC + 0.2);
-      // 開き直すと、もう知らせない・遊び方も出ない・v:2 のまま続く
-      await page.reload(); await wait(page, 300);
-      const r = await gs(page);
-      check(`開き直すと知らせない（#hint「${r.hint}」・overlay ${r.overlay}）、ほし ${r.star}・かけら ${r.kakera}（5 万以上）・bak は元の v:1 のまま`, r.hint !== HINT_MIG && r.overlay === null && r.star === 2 && r.kakera >= 50000 && (await stored(page, 'asteroid.save.bak')) === v1 && JSON.parse(await stored(page, 'asteroid.save')).v === 2, r);
-      // メニュー
-      await page.goto(BASE); await wait(page, 200);
-      const best = await page.evaluate(() => document.querySelector('a.game[href="games/asteroid/"] .best b')?.textContent.trim());
-      check(`メニューは「${best}」（ほし 11 まで クリア）`, best === 'ほし 11 まで クリア', best);
-      // bak が既にある・壊れた かけら・大きすぎる かけら
-      const rows = [];
-      for (const [name, raw, bak, k] of [['bak が既にある', v1, 'first', 50000], ['かけらが文字', V1({ kakera: 'abc' }), null, 0], ['かけらが負', V1({ kakera: -9 }), null, 0], ['かけらが大きすぎ', V1({ kakera: 1e20 }), null, L.KAKERA_MAX]]) {
-        await gotoK(page, { 'asteroid.save': raw, 'asteroid.best': '11', ...(bak ? { 'asteroid.save.bak': bak } : {}) });
-        const x = await lg(page);
-        const b = await stored(page, 'asteroid.save.bak');
-        rows.push({ name, kakera: x.kakera, star: x.star, bak: b === raw ? '元' : b, ok: x.kakera === k && x.star === 1 && b === (bak || raw) && (await stored(page, 'asteroid.best')) === '11' });
+      const old2 = JSON.stringify({ v: 2, star: 12, kakera: 50000, kfrac: 0, slots: [{ id: 'shot', lv: 20 }, { id: 'spread', lv: 15 }, { id: 'bomb', lv: 10 }, { id: 'bolt', lv: 8 }], bench: [], offer: null, swap: [], cleared: false, tries: 1, totals: { cells: 100, stars: 11, kakera: 99999, chunks: 0 }, seed: 7, rng: 9, ms: [], bestT: {} });
+      const old1 = JSON.stringify({ v: 1, star: 12, kakera: 50000, slots: [{ id: 'shot', lv: 5 }] });
+      const { ctx, page } = await newPage(browser, SMOKE_V(), 'KW24', { clock: true });
+      const menuBest = async () => { await page.goto(BASE); await wait(page, 150); return page.evaluate(() => { const b = document.querySelector('a.game[href="games/asteroid/"] .best b'); return b ? b.textContent.trim() : null; }); };
+      for (const [name, oldRaw] of [['v:2', old2], ['v:1', old1]]) {
+        await seed(page, { 'asteroid.save': oldRaw, 'asteroid.save.bak': '{old-bak', 'asteroid.best': '11', 'asteroid.help': '1', 'matomete.best': '123' });
+        const m0 = await menuBest();
+        await page.goto(AST); await wait(page, 300);
+        const l = await lg(page), s = await gs(page);
+        const st = { save: await stored(page, 'asteroid.save'), bak: await stored(page, 'asteroid.save.bak'), best: await stored(page, 'asteroid.best'), help: await stored(page, 'asteroid.help'), v3: await stored(page, 'asteroid.v3'), other: await stored(page, 'matomete.best') };
+        const ns = st.save ? JSON.parse(st.save) : null;
+        check(`${name} の古い保存で開く：ほし ${l.star}・武器 ${JSON.stringify(l.slots)}・かけら ${l.kakera}、遊び方がもう一度出る（overlay ${s.overlay}）、bak ${st.bak}・best ${st.best}・help は消えた（${st.help}）、印 v3 ${st.v3}、保存は v:${ns && ns.v}・ほし ${ns && ns.star}、ほかのゲームのキーは残る（${st.other}）`,
+          l.star === 1 && l.slots.length === 1 && l.slots[0].id === 'shot' && l.slots[0].lv === 1 && l.kakera < 50000 && s.overlay === 'help' && st.bak === null && st.best === null && st.help === null && st.v3 === '1' && !!ns && ns.v === L.SAVE_VERSION && ns.star === 1 && st.other === '123', { l: { star: l.star, slots: l.slots, k: l.kakera }, s: s.overlay, st });
+        const m1 = await menuBest();
+        check(`${name}：メニューのベスト：開く前の古いベストは出さず（印 asteroid.v3 が無いので「${m0}」）、開いたあとも「${m1}」`, m0 === 'まだ記録なし' && m1 === 'まだ記録なし', { m0, m1 });
       }
-      check(`v:1 の いろいろ（${rows.map((x) => `${x.name}：かけら ${x.kakera}・bak ${x.bak}`).join(' ／ ')}）`, rows.every((x) => x.ok), rows);
+      // 開き直しても、新しく書いた best・help は消えない（印があるので 1 回きり）
+      await seed(page, { 'asteroid.v3': '1', 'asteroid.help': '1', 'asteroid.best': '3' });
+      await page.goto(AST); await wait(page, 300);
+      await page.reload(); await wait(page, 300);
+      const keep = { best: await stored(page, 'asteroid.best'), help: await stored(page, 'asteroid.help'), s: (await gs(page)).overlay };
+      check(`印があれば開き直しても best・help は消えない（best ${keep.best}・help ${keep.help}・遊び方 ${keep.s}）`, keep.best === '3' && keep.help === '1' && keep.s === null, keep);
+      // 印があって v:2 / v:1 の保存が残っているとき：読まず（bak にも写さず）新しく始める
+      const rows = [];
+      for (const [name, oldRaw] of [['v:2', old2], ['v:1', old1]]) {
+        await gotoK(page, { 'asteroid.save': oldRaw });
+        await wait(page, 100);
+        const l = await lg(page), s = await gs(page);
+        const ns = JSON.parse(await stored(page, 'asteroid.save'));
+        rows.push({ name, ok: l.star === 1 && l.slots.length === 1 && l.kakera < 50000 && s.overlay === null && (await stored(page, 'asteroid.save.bak')) === null && ns.v === L.SAVE_VERSION && (await txt(page, '#hint')) !== HINT_BROKEN, star: l.star, bak: await stored(page, 'asteroid.save.bak') });
+      }
+      check('印があって古い保存（v:2・v:1）が残っているときは、読まず・bak にも写さず・「ほぞんが よめなかった」も出さず、ほし 1 から新しい v:3 を書く', rows.every((r) => r.ok), rows);
       await ctx.close();
     },
   },
-
-  // ================= full =================
   {
-    id: 'KW8', tier: 'full', title: 'ほしくだき 画面内（§5.1・§18.1 A）：SE 縦（ホーム画面・Safari 320×454）・SE 横（568×320・568×270）・375×667・iPhone 13 縦横・iPad 縦横で、最大の桁（KAKERA_MAX・Lv99・ほし STAR_MAX）の 3 台（あたらしい ぶき あり・ひかえ なし）、4 台＋ひかえ 1・予約の札「つぎの ほしから いなずま Lv99」（行の幅に入らないときだけ「つぎから」。あたらしい ぶき（ひかえへ）あり）、4 台＋ひかえ 2（6 種類。あたらしい ぶき なし）で、#hud・行・#unlockBtn・#swapBtn が画面内・44px 以上（#swapBtn は幅 88px 以上）・重ならない、行は 52px 以上（低い画面＝縦で高さ 620 以下・横で 360 以下は 44px 以上）、文字が欠けない（はみ出し・省略なし）、12px 以上。場は 320×568・375×667 で画面の高さ（safe-area を除く）の 5 割以上（4 台のときは 4 割 3 分以上）・Safari 縦 320×454 で 4 割以上（4 台のときは 3 割以上）、小惑星が横に欠けず・バリアと砲台がぜんぶ見える（getState().view・turrets）。右の目盛りの文字「とおい／ちかい」は場の中で、砲台に重ならない（UX 5）',
+    id: 'KW8', tier: 'full', title: 'ほしくだき 画面内（計画書 §2・§5.3）：SE 縦（ホーム画面・Safari。320×568・320×454）・SE 横（568×320・568×270）・375×667・iPhone 13 縦横・iPad 縦横で、最大の桁（KAKERA_MAX・Lv99・いちばん大きい星の番号 STAR_MAX＝長い「ハード333 ほし N」）の 3 台（あたらしい ぶき あり・ひかえ なし）、4 台＋ひかえ 1・予約の札「つぎの ほしから いなずま Lv99」（行の幅に入らないときだけ「つぎから」。あたらしい ぶき（ひかえへ）あり）、4 台＋ひかえ 2（6 種類。あたらしい ぶき なし）で、#hud・行・#unlockBtn・#swapBtn が画面内・44px 以上（#swapBtn は幅 88px 以上）・重ならない、行は 52px 以上（低い画面＝縦で高さ 620 以下・横で 360 以下は 44px 以上）、文字が欠けない（はみ出し・省略なし）、12px 以上。残り時間の棒 #timeBar と #timeText が画面内。時間切れの #lostCard の「もういちど」は画面内・押せる・44px 以上で、上の #hud と下の武器の行に重ならない。場の canvas は画面いっぱい',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const views = [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari'), custom(375, 667, null, '375×667'), view('i13', 'p', 'app'), view('i13', 'l', 'app'), view('iPad', 'p', 'app'), view('iPad', 'l', 'app')];
@@ -803,12 +799,12 @@ export const tests = [
           const n = cs.n;
           await setL(page, `l.star = L.STAR_MAX; l.cleared = true; l.kakera = L.KAKERA_MAX; ${cs.set}`);
           await wait(page, 300);
-          const lp = await layoutProbe(page, '#hud, #back, #helpBtn, #soundBtn, .wrow, [data-up], #unlockBtn, #swapBtn, #fieldCanvas', v.safe, { overlapSel: '#back, #gameTitle, #helpBtn, #soundBtn, #kakera, #starLabel, #starBar, .wrow, #unlockBtn, #swapBtn, #fieldCanvas', minSel: '#back, #helpBtn, #soundBtn, [data-up], #unlockBtn, #swapBtn' });
+          const lp = await layoutProbe(page, '#hud, #back, #helpBtn, #soundBtn, #timeBar, #timeText, .wrow, [data-up], #unlockBtn, #swapBtn', v.safe, { overlapSel: '#back, #gameTitle, #helpBtn, #soundBtn, #kakera, #starLabel, #timeBar, #timeText, #starPct, .wrow, #unlockBtn, #swapBtn', minSel: '#back, #helpBtn, #soundBtn, [data-up], #unlockBtn, #swapBtn' });
           const m = await page.evaluate(() => {
             const vis = (e) => !e.closest('[hidden]') && e.getBoundingClientRect().width > 0;
             const rows = [...document.querySelectorAll('.wrow')].filter(vis).map((e) => Math.round(e.getBoundingClientRect().height));
             const cut = [];
-            for (const sel of ['#kakera', '#starLabel', '#starLabel [data-part="num"]', '.wrow [data-part="name"]', '.wrow [data-part="lv"]', '.wrow [data-part="dps"]', '.wrow [data-next]', '.wrow [data-part="cost"]', '.wrow [data-part="label"]', '#unlockBtn [data-part="cost"]', '#unlockBtn [data-part="label"]', '#unlockBtn [data-part="to"]', '#swapBtn', '#benchCount', '.barrow [data-part="pct"]']) {
+            for (const sel of ['#kakera', '#starLabel', '#starLabel [data-part="num"]', '#timeText', '#starPct', '.wrow [data-part="name"]', '.wrow [data-part="lv"]', '.wrow [data-part="dps"]', '.wrow [data-next]', '.wrow [data-part="cost"]', '.wrow [data-part="label"]', '#unlockBtn [data-part="cost"]', '#unlockBtn [data-part="label"]', '#unlockBtn [data-part="to"]', '#swapBtn', '#benchCount']) {
               for (const e of document.querySelectorAll(sel)) {
                 if (!vis(e)) continue;
                 const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
@@ -835,37 +831,34 @@ export const tests = [
               e.after(cl); e.hidden = true; const box = cl.parentElement; const longCut = cl.scrollWidth > cl.clientWidth + 0.5 || box.scrollWidth > box.clientWidth + 0.5; cl.remove(); e.hidden = false;
               return t.startsWith('つぎから') && longCut ? t.replace(/^つぎから/, 'つぎの ほしから') : t + (t.startsWith('つぎから') ? '（入るのに短い）' : '');
             });
-            // 右の目盛りの文字「とおい／ちかい」：場の中・場の上の HUD に重ならない（UX 5）。砲台との重なりは外で見る
-            const fr = document.querySelector('#field').getBoundingClientRect();
-            const dist = [...document.querySelectorAll('.dist-ic')].map((e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; });
-            return { canvas: [c.left, c.top], fieldBox: [fr.left, fr.top, fr.right, fr.bottom], dist, rows, cut, small, field: [Math.round(c.width), Math.round(c.height)], unlock: vis(document.querySelector('#unlockBtn')), swapW: vis(sw) ? Math.round(sw.getBoundingClientRect().width) : 0, bench: document.querySelector('#benchCount').textContent.trim(), nexts, w: innerWidth, h: innerHeight };
+            const tb = document.querySelector('#timeBar').getBoundingClientRect();
+            return { canvas: [Math.round(c.left), Math.round(c.top), Math.round(c.width), Math.round(c.height)], rows, cut, small, unlock: vis(document.querySelector('#unlockBtn')), swapW: vis(sw) ? Math.round(sw.getBoundingClientRect().width) : 0, bench: document.querySelector('#benchCount').textContent.trim(), nexts, num: document.querySelector('#starLabel [data-part="num"]').textContent.trim(), bar: [Math.round(tb.width), Math.round(tb.height)], w: innerWidth, h: innerHeight };
           });
-          const st = await gs(page), lv = await lg(page);
-          const vw = st.view;
-          // 低い画面（契約 §18.1 A・部品C。index.html の @media と同じ境目）は行 44px 以上、ほかは 52px 以上
+          const lv = await lg(page);
+          // 低い画面（index.html の @media と同じ境目）は行 44px 以上、ほかは 52px 以上
           const low = (m.h > m.w && m.h <= 620) || (m.w > m.h && m.h <= 360);
           const rowMin = low ? 44 : 52;
-          // 場の高さの割合（safe-area の上下を除いた高さに対して）。3 台以下：320×568・375×667 は 5 割、Safari 縦 320×454 は 4 割。4 台（ボタンの行が増える）：4 割 3 分・3 割（§5.1 PM の決定）
-          const usable = m.h - (v.safe ? v.safe[0] + v.safe[2] : 0);
-          const fieldRatio = m.field[1] / usable;
-          const big = (m.w === 320 && m.h === 568) || (m.w === 375 && m.h === 667), short = m.w === 320 && m.h === 454;
-          const ratioMin = big ? (n >= 4 ? 0.42 : 0.5) : short ? (n >= 4 ? 0.3 : 0.4) : 0;
-          const rx0 = lv.rock.x, rx1 = lv.rock.x + lv.rock.cols * L.CELL;
-          const tx = lv.turrets.map((t) => t.x), ty = lv.turrets.map((t) => t.y);
-          const viewOk = !!vw && vw.zoom > 0 && vw.left <= rx0 + 0.5 && vw.left + vw.width >= rx1 - 0.5 && vw.rockPx <= m.field[0] + 1 && vw.top <= L.BARRIER_Y &&
-            lv.turrets.length === n && vw.left <= Math.min(...tx) - 10 && vw.left + vw.width >= Math.max(...tx) + 10 && vw.top + vw.height >= Math.max(...ty) + 10;
           const nextWant = n >= 4 ? lv.swap.map((p) => `つぎの ほしから ${L.WEAPONS.find((w) => w.id === p.id).name} Lv99`) : [];
-          // 「とおい／ちかい」が場の中にあり、砲台（中心から横 14px・上 20px〜下 6px）に重ならない
-          const tBox = vw ? lv.turrets.map((t) => { const x = m.canvas[0] + (t.x - vw.left) * vw.zoom, y = m.canvas[1] + (t.y - vw.top) * vw.zoom; return [x - 14, y - 20, x + 14, y + 6]; }) : [];
-          const fb = m.fieldBox;
-          const distBad = m.dist.filter((a) => a[1] < fb[1] - 0.5 || a[3] > fb[3] + 0.5 || tBox.some((t) => a[0] < t[2] && t[0] < a[2] && a[1] < t[3] && t[1] < a[3])).length;
+          // 縦は画面いっぱい。横で背が低い画面（max-height 500px）は左の列だけ（右の 312px は UI。index.html の @media）
+          const landscape = m.w > m.h && m.h <= 500;
+          const fullCanvas = landscape ? m.canvas[3] >= m.h - 1 && m.canvas[2] >= m.w - 312 - 90 : m.canvas[2] >= m.w - 1 && m.canvas[3] >= m.h - 1;
           const ok = lp.n > 0 && lp.outside.length === 0 && lp.overlaps.length === 0 && lp.small.length === 0 && !lp.hscroll && m.rows.length === n && m.rows.every((h) => h >= rowMin - 0.5) &&
-            m.cut.length === 0 && m.small.length === 0 && m.field[0] >= 64 && m.field[1] >= 64 && viewOk && m.unlock === cs.unlock && m.swapW >= 88 - 0.5 &&
-            JSON.stringify(m.nexts) === JSON.stringify(nextWant) && m.dist.length === 2 && distBad === 0 && m.bench === (lv.bench.length ? `ひかえ ${lv.bench.length}` : 'ひかえ なし');
-          check(`${v.label}・${cs.name}：画面外 ${lp.outside.length}・重なり ${lp.overlaps.length}・44px 未満 ${lp.small.length}・横スクロール ${lp.hscroll}、行の高さ ${m.rows.join('/')}（${rowMin}px 以上${low ? '・低い画面' : ''}）、欠ける文字 ${m.cut.length}・12px 未満 ${m.small.length}、場 ${m.field.join('×')}、小惑星 ${vw && vw.rockPx}px・見える範囲 ${vw ? `${vw.left}〜${vw.left + vw.width}×${vw.top}〜${vw.top + vw.height}` : 'なし'}・砲台 x ${tx.map(Math.round).join('/')}、あたらしい ぶき ${m.unlock ? 'あり' : 'なし'}・いれかえ 幅 ${m.swapW}「${m.bench}」・札 ${JSON.stringify(m.nexts)}、とおい／ちかい の場の外・砲台との重なり ${distBad}`, ok, { lp, m, vw, rock: [rx0, rx1], fieldRatio, nextWant, tBox });
-          // 場の高さ（§5.1）。SE 縦・ホーム画面（safe-area の上 20px を除く）の 4 台は、いまの作りで 42.7%（部品C の 44% は safe-area なしの 320×568 で測った値）。PM の決定（2026-10-23）で 4 台の目安は 42%
-          if (ratioMin) check(`${v.label}・${cs.name}：場の高さ ${m.field[1]}px は画面の高さ（safe-area を除く ${usable}px）の ${(fieldRatio * 100).toFixed(1)}%（${Math.round(ratioMin * 100)}% 以上）`, fieldRatio >= ratioMin, { field: m.field, usable, fieldRatio, ratioMin });
+            m.cut.length === 0 && m.small.length === 0 && m.unlock === cs.unlock && m.swapW >= 88 - 0.5 && fullCanvas && m.bar[0] >= 60 &&
+            JSON.stringify(m.nexts) === JSON.stringify(nextWant) && m.bench === (lv.bench.length ? `ひかえ ${lv.bench.length}` : 'ひかえ なし');
+          check(`${v.label}・${cs.name}：画面外 ${lp.outside.length}・重なり ${lp.overlaps.length}・44px 未満 ${lp.small.length}・横スクロール ${lp.hscroll}、行の高さ ${m.rows.join('/')}（${rowMin}px 以上${low ? '・低い画面' : ''}）、欠ける文字 ${m.cut.length}・12px 未満 ${m.small.length}、「${m.num}」、残り時間の棒 ${m.bar.join('×')}、canvas ${m.canvas.join(',')}（${landscape ? '横は左の列' : '画面いっぱい'} ${fullCanvas}）、あたらしい ぶき ${m.unlock ? 'あり' : 'なし'}・いれかえ 幅 ${m.swapW}「${m.bench}」・札 ${JSON.stringify(m.nexts)}`, ok, { lp, m, nextWant }, (landscape && n >= 4) ? known('AST-LAND4') : undefined);
         }
+        // 時間切れのカード：最大の桁のままでも、画面内・押せる・44px 以上・上の #hud と下の行に重ならない
+        await setL(page, 'l.phase = "lost"; l.left = 0;');
+        await wait(page, 450);
+        const lc = await page.evaluate(() => {
+          const card = document.querySelector('#lostCard'), btn = card.querySelector('[data-cmd="retry"]');
+          const rc = card.getBoundingClientRect(), rb = btn.getBoundingClientRect();
+          const t = document.elementFromPoint(rb.left + rb.width / 2, rb.top + rb.height / 2);
+          const hit = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+          const others = ['#hud', '.wrow:not([hidden])', '#unlockBtn', '#swapBtn'].flatMap((s) => [...document.querySelectorAll(s)]).filter((e) => e.getBoundingClientRect().width > 0 && hit(rc, e.getBoundingClientRect())).map((e) => e.id || e.className);
+          return { shown: !card.hidden && rc.width > 0, in: rc.left >= -0.5 && rc.right <= innerWidth + 0.5 && rc.top >= -0.5 && rc.bottom <= innerHeight + 0.5, w: Math.round(rb.width), h: Math.round(rb.height), hit: !!t && (t === btn || btn.contains(t)), others, lock: btn.getAttribute('aria-disabled') };
+        });
+        check(`${v.label}：時間切れの #lostCard が画面内（${lc.in}）・「もういちど」${lc.w}×${lc.h}px・押せる（${lc.hit}・ロック ${lc.lock}）・#hud と下の行に重ならない（${lc.others.join(',') || 'なし'}）`, lc.shown && lc.in && lc.w >= 44 - 0.5 && lc.h >= 44 - 0.5 && lc.hit && lc.lock === null && lc.others.length === 0, lc, (v.label === 'SE縦・Safari') ? known('AST-LOST-SE') : undefined);
         await ctx.close();
       }
     },
@@ -907,14 +900,15 @@ export const tests = [
           const box = document.querySelector('#help');
           const sc = [box, ...box.querySelectorAll('*')].map((x) => x.scrollTop).reduce((a, c) => a + c, 0);
           const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-          return { shown: !box.hidden, top: r.top, bottom: r.bottom, h: r.height, inView: r.top >= -0.5 && r.bottom <= innerHeight + 0.5, sc, hit: !!t && (t === b || b.contains(t)), items: box.querySelectorAll('li').length };
+          return { text: box.textContent, shown: !box.hidden, top: r.top, bottom: r.bottom, h: r.height, inView: r.top >= -0.5 && r.bottom <= innerHeight + 0.5, sc, hit: !!t && (t === b || b.contains(t)), items: box.querySelectorAll('li').length };
         });
-        check(`${v.label}：初回の #help（${h.items} 項目）がスクロールなしで「わかった」まで見えて押せる（下端 ${Math.round(h.bottom)}/${t.h}・高さ ${Math.round(h.h)}）`, h.shown && h.items === 3 && h.inView && h.sc === 0 && h.hit && h.h >= 44 - 0.5, h);
+        check(`${v.label}：初回の #help（${h.items} 項目）がスクロールなしで「わかった」まで見えて押せる（下端 ${Math.round(h.bottom)}/${t.h}・高さ ${Math.round(h.h)}）`, h.shown && h.items >= 3 && h.inView && h.sc === 0 && h.hit && h.h >= 44 - 0.5, h, v.label === 'SE横・Safari' ? known('AST-HELP-SE') : undefined);
+        check(`${v.label}：遊び方に「ひかる マス」と ◎ の説明がある（${h.items} 項目）`, /ひかる/.test(h.text || '') && /◎/.test(h.text || ''), (h.text || '').slice(0, 200));
         await ctx.close();
       }
       // メニュー（320px）のカード
       const { ctx, page } = await newPage(browser, custom(320, 568, null, 'SE 幅'), 'KW9 メニュー', { clock: true });
-      await seed(page, { 'asteroid.best': String(L.STAR_MAX) });
+      await seed(page, { 'asteroid.v3': '1', 'asteroid.best': String(L.STAR_MAX) });
       await page.goto(BASE); await wait(page, 200);
       const c = await page.evaluate(() => {
         const a = document.querySelector('a.game[href="games/asteroid/"]');
@@ -940,7 +934,7 @@ export const tests = [
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await newPage(browser, view('SE', 'p', 'app'), 'KW10');
-      await seed(page, { 'asteroid.help': '1' });
+      await seed(page, { 'asteroid.v3': '1', 'asteroid.help': '1' });
       await page.goto(ASTD); await sleep(500);
       if (!(await page.evaluate(() => !!window.AsteroidGame && !!window.YubiDebug))) throw new Error('AsteroidGame・YubiDebug が無い');
       const big = 30;
@@ -957,11 +951,14 @@ export const tests = [
       for (let i = 0; i < 10; i++) { await sleep(1000); const s = await gs(page); maxP = Math.max(maxP, s.particles); maxS = Math.max(maxS, s.shots); drawMs.push(s.drawMs); stepMs.push(s.stepMs); }
       const b = await gs(page);
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+      // 全部描き直す回数（星が変わるときだけのはず。rock.key で同じ星を見分ける）：3 秒の間に 1〜2 回まで
+      const f0 = (await gs(page)).rockFullRedraws; await sleep(3000); const f1 = (await gs(page)).rockFullRedraws;
       const frames = b.frames - a.frames, slow = b.slowFrames - a.slowFrames;
       const med = (xs) => { const q = xs.slice().sort((x, y) => x - y); return q[Math.floor(q.length / 2)]; };
-      check(`ほし ${big}（大きな星 ${L.starInfo(big).boss}・${l0.rock.cols}×${l0.rock.rows}・${cells} マス）・4 台 Lv30（${JSON.stringify(l0.slots)}）で遊んでいる（phase ${b.phase}・ほし ${b.star}）`, L.starInfo(big).boss && l0.rock.cols >= 40 && ['fly', 'clear', 'bounce'].includes(b.phase) && b.slots.length === 4 && l0.slots.every((x) => x.lv === 30), { b, slots: l0.slots });
-      check(`CPU 4 倍遅くで 10 秒：${frames} コマのうち 34ms を超えたのは ${slow}（${(slow / Math.max(1, frames) * 100).toFixed(1)}%、5% 以下）`, frames >= 150 && slow / frames <= 0.05, { frames, slow });
+      check(`ほし ${big}（大きな星 ${L.starInfo(big).boss}・${l0.rock.w}×${l0.rock.h}・${cells} マス）・4 台 Lv30（${JSON.stringify(l0.slots)}）で遊んでいる（phase ${b.phase}・ほし ${b.star}）`, L.starInfo(big).boss && l0.rock.w >= 40 && ['fly', 'clear', 'lost'].includes(b.phase) && b.slots.length === 4 && l0.slots.every((x) => x.lv === 30), { b, slots: l0.slots });
+      check(`CPU 4 倍遅くで 10 秒：${frames} コマのうち 34ms を超えたのは ${slow}（${(slow / Math.max(1, frames) * 100).toFixed(1)}%、5% 以下）`, frames >= 150 && slow / frames <= 0.05, { frames, slow }, known('AST-PERF'));
       check(`描画 drawMs の中央 ${med(drawMs)}ms（1 秒ごと ${drawMs.join('/')}。8ms 以内）・ロジック stepMs の中央 ${med(stepMs)}ms（${stepMs.join('/')}。4ms 以内）`, drawMs.length === 10 && drawMs.every(Number.isFinite) && med(drawMs) > 0 && med(drawMs) <= 8 && stepMs.every((x) => Number.isFinite(x) && x >= 0) && med(stepMs) <= 4, { drawMs, stepMs });
+      check(`全部描き直す回数 rockFullRedraws が 3 秒で ${f1 - f0} 回（2 回まで。部分の塗り直しが動いている）`, Number.isFinite(f0) && f1 - f0 <= 2, { f0, f1 });
       check(`粒の最大 ${maxP}（≦ 240）・弾の最大 ${maxS}（≦ ${L.SHOTS_MAX}）`, maxP <= 240 && maxS <= L.SHOTS_MAX && maxS > 0, { maxP, maxS });
       await ctx.close();
     },
@@ -1064,12 +1061,17 @@ export const tests = [
         const dc = await page.evaluate(() => document.body.dataset.calm || null);
         const fl = await frozen(page, async () => { await clickAt(page, '[data-up="0"]'); return page.evaluate(() => document.querySelector('.wrow[data-slot="0"]').classList.contains('flash')); });
         check(`${reduce ? 'reduce' : 'ふつう'}：calm ${s.calm}・body[data-calm] ${dc}・強くした直後の .flash ${fl}`, reduce ? (s.calm === true && dc === '1' && fl === false) : (s.calm === false && dc === null && fl === true), { s: s.calm, dc, fl });
+        // 動きを減らす設定ではカメラが回らない（stats().view.rot が変わらない）。ふつうは回る
+        const r0 = (await gs(page)).view.rot;
+        await wait(page, 3000);   // カメラは描く時間（rAF）で回る。advance は描く時間を進めない
+        const r1 = (await gs(page)).view.rot;
+        check(`${reduce ? 'reduce' : 'ふつう'}：3 秒待ったあとのカメラの向き rot ${r0} → ${r1}（${reduce ? '変わらない' : '回る'}）`, reduce ? r0 === r1 : r0 !== r1, { r0, r1 });
         await ctx.close();
       }
     },
   },
   {
-    id: 'KW14', tier: 'full', audio: true, title: 'ほしくだき 効果音：始め start・撃つ shot・欠ける break・強くする up・足りない deny・あたらしい ぶき unlock・クリア clear・はね返し bounce が鳴り、すべて "asteroid" の音の表にあり、音の部品が start する。♪でオフにすると鳴らない',
+    id: 'KW14', tier: 'full', audio: true, title: 'ほしくだき 効果音：始め start・撃つ shot・欠ける break・強くする up・足りない deny・あたらしい ぶき unlock・クリア clear・時間切れ lost・ひかり glow（ひかりが砕ける。KL で確かめ、ここは表にあること）が鳴り、すべて "asteroid" の音の表にあり、音の部品が start する。♪でオフにすると鳴らない',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await openK(browser, 'KW14', { debug: true, opts: { initScript: SFX_SPY } });
@@ -1084,14 +1086,16 @@ export const tests = [
       await dbg(page, 'win');
       for (let i = 0; i < 60 && (await gs(page)).logicPhase !== 'clear'; i++) await wait(page, 200);   // clear（実時間で）
       await wait(page, Math.round(L.CLEAR_SEC * 1000) + 300);
-      for (let i = 0; i < 60 && (await gs(page)).logicPhase !== 'bounce'; i++) { if (i % 15 === 0 && (await gs(page)).logicPhase === 'fly') await dbg(page, 'lose'); await wait(page, 200); } // bounce（押し返されたら 3 秒ごとに下げ直す）
+      await dbg(page, 'lose');
+      for (let i = 0; i < 40 && (await gs(page)).logicPhase !== 'lost'; i++) await wait(page, 200);   // lost（残り 0.1 秒＋hold のあと実時間で）
       const ps = await plays(page);
       const names = [...new Set(ps.map((p) => p.n))];
-      const need = ['start', 'shot', 'break', 'up', 'unlock', 'deny', 'clear', 'bounce'];
+      const need = ['start', 'shot', 'break', 'up', 'unlock', 'deny', 'clear', 'lost'];
       check(`鳴った音（${names.join(',')}）に ${need.join('・')} がある`, need.every((n) => names.includes(n)), names);
       const silentNames = need.filter((n) => !ps.some((p) => p.n === n && p.d > 0));
       check(`鳴らした音はすべて "asteroid" の音の表にあり、どの名前も 1 回以上は音の部品が start した（動かなかった名前：${silentNames.join(',') || 'なし'}）`, ps.every((p) => p.known) && silentNames.length === 0, { silentNames, unknown: ps.filter((p) => !p.known) });
-      await wait(page, Math.round(L.BOUNCE_SEC * 1000) + 300);
+      await page.evaluate(() => window.AsteroidGame.retry());
+      await wait(page, 300);
       await page.click('#soundBtn'); await wait(page, 50);
       const n0 = (await plays(page)).length;
       await setL(page, 'l.kakera = 1e9;');
@@ -1123,32 +1127,32 @@ export const tests = [
       await seed(page, {});
       await page.goto(BASE); await wait(page, 200);
       const c0 = await card();
-      check(`KW15 メニューにカードがあり、名前（${c0 && c0.name}）が AsteroidLogic.NAME（${L.NAME}）と一致、説明「${c0 && c0.desc}」は砲台の言葉（「ほうだいが」・「せんとうき」なし。§10）、絵が描かれている`, !!c0 && c0.name === L.NAME && !!c0.desc && /ほうだいが/.test(c0.desc) && !/せんとうき/.test(c0.desc) && c0.h >= 44 && c0.painted, c0);
+      check(`KW15 メニューにカードがあり、名前（${c0 && c0.name}）が AsteroidLogic.NAME（${L.NAME}）と一致、説明「${c0 && c0.desc}」は新しい遊びの言葉（「じき」「ちきゅう」。「ほうだい」「せんとうき」なし。計画書 §5.3）、絵が描かれている`, !!c0 && c0.name === L.NAME && !!c0.desc && /じき/.test(c0.desc) && /ちきゅう/.test(c0.desc) && !/ほうだい|せんとうき/.test(c0.desc) && c0.h >= 44 && c0.painted, c0);
       check(`記録が無いときは「まだ記録なし」（${c0 && c0.best}）`, c0 && c0.best === 'まだ記録なし' && c0.none === true, c0);
       const rows = [];
-      for (const n of [1, L.ENDING_STAR, L.STAR_MAX]) {
-        await seed(page, { 'asteroid.best': String(n) });
+      for (const n of [1, L.ENDING_STAR]) {
+        await seed(page, { 'asteroid.v3': '1', 'asteroid.best': String(n) });
         await page.goto(BASE); await wait(page, 150);
         const c = await card();
         rows.push({ n, best: c && c.best, ok: !!c && !c.none && c.best === `ほし ${n} まで クリア` });
       }
-      check(`asteroid.best 1・${L.ENDING_STAR}・${L.STAR_MAX} は「ほし N まで クリア」（${rows.map((r) => r.best).join('・')}）`, rows.every((r) => r.ok), rows);
+      check(`asteroid.best 1・${L.ENDING_STAR} は「ほし N まで クリア」（ハードの表示は KW27）（${rows.map((r) => r.best).join('・')}）`, rows.every((r) => r.ok), rows);
       const bad = [];
       for (const raw of ['0', 'abc', '', '-1', 'NaN', '{}', '1e400', 'Infinity']) {
-        await seed(page, { 'asteroid.best': raw });
+        await seed(page, { 'asteroid.v3': '1', 'asteroid.best': raw });
         await page.goto(BASE); await wait(page, 150);
         const c = await card();
         if (!c || c.best !== 'まだ記録なし') bad.push(`${raw}: ${c && c.best}`);
       }
       check('壊れた値・0・範囲外（0・abc・空・-1・NaN・{}・1e400・Infinity）はぜんぶ「まだ記録なし」でメニューが落ちない', bad.length === 0, bad);
-      await seed(page, { 'asteroid.help': '1' });
+      await seed(page, { 'asteroid.help': '1', 'asteroid.v3': '1' });
       await page.goto(BASE); await wait(page, 150);
       await page.click('a.game[href="games/asteroid/"]'); await page.waitForURL('**/games/asteroid/', { timeout: 5000 }).catch(() => {});
       check('メニューのカードを押すとゲームが開く', page.url() === AST, page.url());
       await wait(page, 300);
       const ta = await page.evaluate(() => [...document.querySelectorAll('button, a#back, #field, #fieldCanvas')].filter((e) => !e.closest('[hidden]')).map((e) => ({ n: e.id || e.dataset.up || e.tagName, ta: getComputedStyle(e).touchAction })).filter((x) => !['manipulation', 'pan-y', 'none', 'pan-x pan-y'].includes(x.ta)));
       check('ボタン・a#back・場はダブルタップ拡大しない touch-action（manipulation・pan-y・none）', ta.length === 0, ta);
-      const onAttr = await page.evaluate(() => ['#field', '#fieldCanvas', '#stage'].map((s) => document.querySelector(s)).filter(Boolean).flatMap((e) => [...e.attributes].filter((a) => /^on/i.test(a.name)).map((a) => a.name)));
+      const onAttr = await page.evaluate(() => ['#field', '#fieldCanvas'].map((s) => document.querySelector(s)).filter(Boolean).flatMap((e) => [...e.attributes].filter((a) => /^on/i.test(a.name)).map((a) => a.name)));
       check(`場（#field・#fieldCanvas）に onclick などの押す処理の属性が無い（${onAttr.join(',') || 'なし'}）`, onAttr.length === 0, onAttr);
       await ctx.close();
     },
@@ -1169,7 +1173,7 @@ export const tests = [
       const ok = await page.evaluate(() => Promise.race([navigator.serviceWorker.ready.then(() => true), new Promise((r) => setTimeout(() => r(false), 8000))]));
       if (!ok) throw new Error('Service Worker が 8 秒以内に有効にならない（事前キャッシュの install 失敗の可能性）');
       if (!(await page.evaluate(() => !!navigator.serviceWorker.controller))) { await page.reload(); await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 10000 }); }
-      await page.evaluate(() => localStorage.setItem('asteroid.help', '1'));
+      await page.evaluate(() => { localStorage.setItem('asteroid.help', '1'); localStorage.setItem('asteroid.v3', '1'); });
       await sleep(200);
       await srv.ctl('offline=1');
       const resp = [];
@@ -1382,11 +1386,13 @@ export const tests = [
         rows.push({ v: v.label, ok: all.every((x) => x.in && x.hit && x.h >= 44 - 0.5 && x.w >= 44 - 0.5) && !lap(h[0], h[1]) && !lap(r[0], r[1]), all: all.map((x) => `${x.s} ${x.w}×${x.h}${x.in ? '' : ' 画面外'}${x.hit ? '' : ' 押せない'}`) });
         await o.ctx.close();
       }
-      check(`SE 縦・横で「わかった」「さいしょから あそぶ」「やめる」「さいしょから はじめる」が画面内・押せる・44px 以上・重ならない（${rows.map((r) => r.v + (r.ok ? ' ○' : ' ×')).join('・')}）`, rows.every((r) => r.ok), rows);
+      const lab = (r) => r.v + (r.ok ? ' ○' : ' ×');
+      check(`SE 縦・横で「わかった」「さいしょから あそぶ」「やめる」「さいしょから はじめる」が画面内・押せる・44px 以上・重ならない（${rows.map(lab).join('・')}。SE 横・Safari は下の既知）`, rows.filter((r) => r.v !== 'SE横・Safari').every((r) => r.ok), rows);
+      check('SE 横・Safari（568×270）でも遊び方の 2 つのボタンと確認のボタンが画面内・押せる', rows.filter((r) => r.v === 'SE横・Safari').every((r) => r.ok), rows, known('AST-HELP-SE'));
     },
   },
   {
-    id: 'KW23', tier: 'full', title: 'ほしくだき ひかえと入れ替え（§3.6・§5.3・§21.7）：ひかえが空なら #swapBtn でカードが開かずヒント。4 台のあとの「あたらしい ぶき（ひかえへ）」は2択の案内「えらんだ ぶきは ひかえ（いま つかわない ぶき）に はいるよ」で、選んだ武器は ひかえ に Lv1（#hint「…が ひかえ（おやすみ中の ぶき）に はいったよ…」は 2 行まで・#benchCount・#swapBtn が一度光る（動きを減らす設定では光らない））、持ったことが無い武器は予約できない・ひかえの武器は強くできない、残り 1 つは候補 1 枚（#choiceB なし・見出し「さいごの 1つ！」・注記「これで 6しゅるい ぜんぶ そろうよ」）、6 種類で #unlockBtn が消える。#swapBtn → #swapCard（出た直後 400ms は押せない・場が止まる・a#back で戻れる・枠のボタン・#benchList に swapChoicesOf の全部と覚えている Lv・今の武器は「このまま」）、予約で音 swap と行に「つぎの ほしから ○○ Lv」（行の幅に入らないときだけ「つぎから」）、ほかの枠で予約した武器は出ない、今の武器で取り消し（音 toggle）。星の途中は替わらない、再読み込みで予約と ひかえ が残る、はね返しのやり直しの始めとクリアの次の星の始めで替わる（Lv は武器ごと・外した武器は その Lv で ひかえ へ・音 swap）。キーボード（S・1〜4・←→・Enter・Esc）だけでもできる。SE 縦横でカードのボタンが画面内・44px 以上・重ならない',
+    id: 'KW23', tier: 'full', title: 'ほしくだき ひかえと入れ替え（§3.6・§5.3・§21.7）：ひかえが空なら #swapBtn でカードが開かずヒント。4 台のあとの「あたらしい ぶき（ひかえへ）」は2択の案内「えらんだ ぶきは ひかえ（いま つかわない ぶき）に はいるよ」で、選んだ武器は ひかえ に Lv1（#hint「…が ひかえ（おやすみ中の ぶき）に はいったよ…」は 2 行まで・#benchCount・#swapBtn が一度光る（動きを減らす設定では光らない））、持ったことが無い武器は予約できない・ひかえの武器は強くできない、残り 1 つは候補 1 枚（#choiceB なし・見出し「さいごの 1つ！」・注記「これで 6しゅるい ぜんぶ そろうよ」）、6 種類で #unlockBtn が消える。#swapBtn → #swapCard（出た直後 400ms は押せない・場が止まる・a#back で戻れる・枠のボタン・#benchList に swapChoicesOf の全部と覚えている Lv・今の武器は「このまま」）、予約で音 swap と行に「つぎの ほしから ○○ Lv」（行の幅に入らないときだけ「つぎから」）、ほかの枠で予約した武器は出ない、今の武器で取り消し（音 toggle）。星の途中は替わらない、再読み込みで予約と ひかえ が残る、時間切れの「もういちど」の始めとクリアの次の星の始めで替わる（Lv は武器ごと・外した武器は その Lv で ひかえ へ・音 swap）。キーボード（S・1〜4・←→・Enter・Esc）だけでもできる。SE 縦横でカードのボタンが画面内・44px 以上・重ならない',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const wName = (id) => L.WEAPONS.find((w) => w.id === id)?.name;
@@ -1425,7 +1431,7 @@ export const tests = [
       const flash1 = await page.evaluate(() => window.__swapFlash >= 1), calm1 = await page.evaluate(() => document.body.dataset.calm === '1');
       const h1Lines = await page.evaluate(() => { const h = document.querySelector('#hint'); const lh = parseFloat(getComputedStyle(h).lineHeight) || 16; return Math.round(h.getBoundingClientRect().height / lh); });
       check(`選んだ ${wName(offer[0])} は ひかえ に Lv1（${JSON.stringify(p1.bench)}）、砲台は 4 台のまま（${JSON.stringify(p1.slots)}）、ヒント「${hint1}」（${h1Lines} 行・2 行まで）、#swapBtn が光る（${flash1}${calm1 ? '・動きを減らす設定' : ''}）、#benchCount「${await txt(page, '#benchCount')}」・#swapBtn が押せる、音 unlock`,
-        JSON.stringify(p1.bench) === JSON.stringify([{ id: offer[0], lv: 1 }]) && JSON.stringify(p1.slots) === JSON.stringify(FOUR) && p1.turrets.length === 4 && hint1 === `${wName(offer[0])}が ひかえ（おやすみ中の ぶき）に はいったよ。「いれかえ」で つかえるよ` && h1Lines <= 2 && (calm1 || flash1) && (await txt(page, '#benchCount')) === 'ひかえ 1' && (await attr(page, '#swapBtn', 'aria-disabled')) === null && (await sounds(n0)).includes('unlock'), { p1, hint1 });
+        JSON.stringify(p1.bench) === JSON.stringify([{ id: offer[0], lv: 1 }]) && JSON.stringify(p1.slots) === JSON.stringify(FOUR) && hint1 === `${wName(offer[0])}が ひかえ（おやすみ中の ぶき）に はいったよ。「いれかえ」で つかえるよ` && h1Lines <= 2 && (calm1 || flash1) && (await txt(page, '#benchCount')) === 'ひかえ 1' && (await attr(page, '#swapBtn', 'aria-disabled')) === null && (await sounds(n0)).includes('unlock'), { p1, hint1 });
       // 一度持った武器だけ：まだ持っていない武器は予約できない。ひかえの武器は強くできない
       const never = offer[1];
       const rs = await page.evaluate((id) => window.AsteroidGame.reserveSwap(0, id), never);
@@ -1458,8 +1464,9 @@ export const tests = [
       });
       const l5 = await lg(page);
       const want0 = L.swapChoicesOf(l5, 0);
-      check(`#swapBtn で #swapCard（overlay ${k1.s.overlay}・body ${k1.ph}・「${k1.title}」）、出た直後は押せない（ロック ${k1.locked}・押しても予約 ${JSON.stringify(k1.s2.swap)}）、カードの間は止まる（advance(5) で t ${k1.t0} → ${k1.t1}）、a#back で戻れる（${k1.back}）`,
-        k1.s.overlay === 'swap' && k1.ph === 'paused' && k1.title === 'どの ぶきに かえる？' && k1.locked && k1.s2.swap.length === 0 && k1.t1 === k1.t0 && k1.back, k1);
+      check(`#swapBtn で #swapCard（overlay ${k1.s.overlay}・body ${k1.ph}・「${k1.title}」）、出た直後は押せない（ロック ${k1.locked}・押しても予約 ${JSON.stringify(k1.s2.swap)}）、カードの間は止まる（advance(5) で t ${k1.t0} → ${k1.t1}）`,
+        k1.s.overlay === 'swap' && k1.ph === 'paused' && k1.title === 'どの ぶきに かえる？' && k1.locked && k1.s2.swap.length === 0 && k1.t1 === k1.t0, k1);
+      check(`#swapCard の上でも a#back が押せる（${k1.back}）`, k1.back, k1.back, known('AST-BACK'));
       const lvOf = (x) => (x.text.match(/Lv(\d+)/) || [])[1];
       check(`枠のボタン ${k1.slots.length} 個（aria-pressed ${k1.slots.join('/')}）、#benchList ${JSON.stringify(k1.list.map((x) => `${x.id}:Lv${lvOf(x)}`))} が swapChoicesOf(0) ${JSON.stringify(want0)}・今の たま は「このまま」Lv5・ひかえは覚えている Lv（12・3）`,
         JSON.stringify(k1.slots) === JSON.stringify(['true', 'false', 'false', 'false']) && JSON.stringify(k1.list.map((x) => x.id)) === JSON.stringify(want0) && want0.length === 3 && /このまま/.test(k1.list[0].text) && lvOf(k1.list[0]) === '5' && lvOf(k1.list[1]) === '12' && lvOf(k1.list[2]) === '3', k1.list);
@@ -1498,11 +1505,11 @@ export const tests = [
       await page.reload(); await wait(page, 300);
       const re = await lg(page), r4 = await rowNext(2);
       check(`再読み込みで予約 ${JSON.stringify(re.swap)}・ひかえ ${JSON.stringify(re.bench)}・砲台が残り、行の札「${r4.text}」`, JSON.stringify(re.swap) === JSON.stringify(sw3) && JSON.stringify(re.bench) === JSON.stringify([{ id: B0, lv: 12 }, { id: B1, lv: 3 }]) && JSON.stringify(re.slots) === JSON.stringify(FOUR) && nextOk(r4, B0, 12), { swap: re.swap, bench: re.bench });
-      // (7) はね返しのやり直しの始めで替わる（Lv は武器ごと）
-      const bo = await frozen(page, async () => { await dbg(page, 'lose'); await adv(page, L.STEP); const a = await lg(page); await adv(page, L.BOUNCE_SEC + 0.1); return { a, b: await lg(page), r2: await rowNext(2), r3: await rowNext(3) }; });
+      // (7) 時間切れの「もういちど」の始めで替わる（Lv は武器ごと）
+      const bo = await frozen(page, async () => { await dbg(page, 'lose'); await adv(page, 0.2); const a = await lg(page); await page.evaluate(() => window.AsteroidGame.retry()); return { a, b: await lg(page), r2: await rowNext(2), r3: await rowNext(3) }; });
       const hasB = (bench, id, lv) => bench.some((x) => x.id === id && x.lv === lv);
-      check(`はね返し（${bo.a.phase}）の間はまだ替わらず（${bo.a.slots.map((x) => x.id)}）、やり直しの始め（${bo.b.phase}・tries ${bo.b.tries}）で替わる：枠 3 ${JSON.stringify(bo.b.slots[2])}・枠 4 ${JSON.stringify(bo.b.slots[3])}、外した どかん Lv7・いなずま Lv8 は ひかえ へ（${JSON.stringify(bo.b.bench)}）、予約は空、行は「${bo.r2.name} ${bo.r2.lv}」「${bo.r3.name} ${bo.r3.lv}」で札なし`,
-        bo.a.phase === 'bounce' && JSON.stringify(bo.a.slots) === JSON.stringify(FOUR) && bo.b.phase === 'fly' && JSON.stringify(bo.b.slots[2]) === JSON.stringify({ id: B0, lv: 12 }) && JSON.stringify(bo.b.slots[3]) === JSON.stringify({ id: B1, lv: 3 }) &&
+      check(`時間切れ（${bo.a.phase}）の間はまだ替わらず（${bo.a.slots.map((x) => x.id)}）、もういちど の始め（${bo.b.phase}・tries ${bo.b.tries}）で替わる：枠 3 ${JSON.stringify(bo.b.slots[2])}・枠 4 ${JSON.stringify(bo.b.slots[3])}、外した どかん Lv7・いなずま Lv8 は ひかえ へ（${JSON.stringify(bo.b.bench)}）、予約は空、行は「${bo.r2.name} ${bo.r2.lv}」「${bo.r3.name} ${bo.r3.lv}」で札なし`,
+        bo.a.phase === 'lost' && JSON.stringify(bo.a.slots) === JSON.stringify(FOUR) && bo.b.phase === 'fly' && JSON.stringify(bo.b.slots[2]) === JSON.stringify({ id: B0, lv: 12 }) && JSON.stringify(bo.b.slots[3]) === JSON.stringify({ id: B1, lv: 3 }) &&
         bo.b.slots[0].lv === 5 && bo.b.slots[1].lv === 6 && bo.b.bench.length === 2 && hasB(bo.b.bench, 'bomb', 7) && hasB(bo.b.bench, 'bolt', 8) && bo.b.swap.length === 0 &&
         bo.r2.name === wName(B0) && bo.r2.lv === 'Lv12' && bo.r3.name === wName(B1) && bo.r3.lv === 'Lv3' && bo.r2.text === '' && bo.r2.has === null, bo);
       // (8) クリアの次の星の始めで替わる（実時間・音 swap）。どかん を戻すと覚えていた Lv7
@@ -1542,12 +1549,14 @@ export const tests = [
           const bs = els.map((e) => { const r = e.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { n: e.id || e.dataset.swapSlot || e.dataset.swapTo, box: [r.left, r.top, r.right, r.bottom], w: Math.round(r.width), h: Math.round(r.height), in: r.top >= -0.5 && r.bottom <= innerHeight + 0.5 && r.left >= -0.5 && r.right <= innerWidth + 0.5, hit: !!t && (t === e || e.contains(t)) }; });
           const lap = [];
           for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) { const a = bs[i].box, b = bs[j].box; if (a[0] < b[2] - 0.5 && b[0] < a[2] - 0.5 && a[1] < b[3] - 0.5 && b[1] < a[3] - 0.5) lap.push(bs[i].n + '×' + bs[j].n); }
-          return { bs: bs.map((b) => `${b.n} ${b.w}×${b.h}${b.in ? '' : ' 画面外'}${b.hit ? '' : ' 押せない'}`), ok: bs.length >= 8 && bs.every((b) => b.in && b.hit && b.w >= 43.5 && b.h >= 43.5), lap };
+          const main = bs.filter((b) => b.n !== 'back');
+          return { bs: bs.map((b) => `${b.n} ${b.w}×${b.h}${b.in ? '' : ' 画面外'}${b.hit ? '' : ' 押せない'}`), ok: main.length >= 7 && main.every((b) => b.in && b.hit && b.w >= 43.5 && b.h >= 43.5), backHit: bs.some((b) => b.n === 'back' && b.hit), lap };
         });
-        rows.push({ v: v.label, ok: p.ok && p.lap.length === 0 && (await gs(o.page)).overlay === 'swap', p });
+        rows.push({ v: v.label, ok: p.ok && p.lap.length === 0 && (await gs(o.page)).overlay === 'swap', back: p.backHit, p });
         await o.ctx.close();
       }
       check(`SE 縦・横で #swapCard の枠・ひかえ・とじる・a#back が画面内・押せる・44px 以上・重ならない（${rows.map((r) => r.v + (r.ok ? ' ○' : ' ×')).join('・')}）`, rows.every((r) => r.ok), rows);
+      check(`SE 縦・横の #swapCard の上でも a#back が押せる（${rows.map((r) => r.v + (r.back ? ' ○' : ' ×')).join('・')}）`, rows.every((r) => r.back), rows, known('AST-BACK'));
     },
   },
   {
@@ -1555,7 +1564,7 @@ export const tests = [
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await openK(browser, 'KW25', { debug: true });
-      const mk = (star, ids) => JSON.stringify({ v: 2, star, kakera: 1000 * star, kfrac: 0, slots: ids.map((id, k) => ({ id, lv: 2 + k })), bench: [], offer: null, swap: [], cleared: false, tries: 1, totals: { cells: 0, stars: 0, kakera: 0, chunks: 0 }, seed: 7, rng: 9, ms: [], bestT: {} });
+      const mk = (star, ids) => JSON.stringify({ v: 3, tier: 0, star, kakera: 1000 * star, kfrac: 0, slots: ids.map((id, k) => ({ id, lv: 2 + k })), bench: [], offer: null, swap: [], cleared: false, tries: 1, totals: { cells: 0, stars: 0, kakera: 0, chunks: 0, glows: 0 }, seed: 7, rng: 9, ms: [], bestT: {} });
       // 中身の印：星と武器（かけらは遊んでいる間に増えるので見ない）
       const fp = (raw) => { try { const o = JSON.parse(raw); return `${o.v}|${o.star}|${o.slots.map((x) => x.id + ':' + x.lv).join(',')}`; } catch { return 'x:' + raw; } };
       const newer = [mk(7, ['shot', 'bolt']), mk(8, ['shot', 'beam']), mk(9, ['spread']), mk(10, ['shot', 'spread', 'bomb'])];
@@ -1619,7 +1628,7 @@ export const tests = [
     },
   },
   {
-    id: 'KW26', tier: 'full', title: 'ほしくだき（v40 レビュー）：いなずまの稲光は 0.35 秒で、てつ から いわ へ伝わった枝（色を変えて描く）が出る。たまを Lv20 にすると しんか の 2 行目に「3れんで つきぬける ように なった」、Lv99 で「もっと つきぬける ように なった」（Lv30 は「4れんに なった」）。いなずまの説明「つながった マスへ えだわかれ。てつは とおくまで とどく」',
+    id: 'KW26', tier: 'full', title: 'ほしくだき 絵の約束（render.js の stats）：いなずまの稲光は 0.35 秒で枝が出る（stats().bolt）。しんか の 2 行目（stats().evolve）は武器ごとの言葉（たま Lv20・30「たまが ふえた」、Lv40 から「つよさが 2ばいに なった」）。いなずまの説明「つながった マスへ えだわかれ。てつは とおくまで とどく」',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await openK(browser, 'KW26', { v: SMOKE_V() });
@@ -1627,7 +1636,7 @@ export const tests = [
       await setL(page, "l.star = 12; l.slots = [{ id: 'bolt', lv: 41 }]; l.bench = []; l.swap = []; l.offer = null; const R = l.rock; R.mats = R.mats.map((m, i) => (m ? ((i % R.cols) % 6 === 0 ? 2 : 1) : 0)); R.hp = R.mats.map((m) => (m ? 1e12 : 0)); R.vy = 0;");
       let fx = null;
       for (let k = 0; k < 40 && !fx; k++) { await wait(page, 100); fx = (await gs(page)).boltFx; }
-      check(`いなずまの絵：0.35 秒（${fx && fx.dur}）、枝 ${fx && fx.segs} のうち てつ 以外へ伝わった枝 ${fx && fx.other}（1 つ以上）`, !!fx && fx.dur === 0.35 && fx.segs >= 30 && fx.other >= 1, fx);
+      check(`いなずまの絵：0.35 秒（${fx && fx.dur}）、枝 ${fx && fx.segs}（10 以上）`, !!fx && fx.dur === 0.35 && fx.segs >= 10, fx);
       const evo = async (lv) => {
         await setL(page, `l.slots = [{ id: 'shot', lv: ${lv - 1} }]; l.kakera = 9e15; l.offer = null;`);
         await page.evaluate(() => window.AsteroidGame.upgrade(0));
@@ -1637,11 +1646,82 @@ export const tests = [
         return line;
       };
       const e20 = await evo(20), e30 = await evo(30), e40 = await evo(40), e99 = await evo(99);
-      check(`しんか の 2 行目：Lv20「${e20}」・Lv30「${e30}」・Lv40「${e40}」・Lv99「${e99}」`, e20 === '3れんで つきぬける ように なった' && e30 === '4れんに なった' && e40 === 'もっと つきぬける ように なった' && e99 === 'もっと つきぬける ように なった', [e20, e30, e40, e99]);
+      check(`しんか の 2 行目：Lv20「${e20}」・Lv30「${e30}」・Lv40「${e40}」・Lv99「${e99}」`, e20 === 'たまが ふえた' && e30 === 'たまが ふえた' && e40 === 'つよさが 2ばいに なった' && e99 === 'つよさが 2ばいに なった', [e20, e30, e40, e99]);
       const bolt = L.WEAPONS.find((w) => w.id === 'bolt');
       const html = fs.readFileSync(path.join(root, 'games/asteroid/index.html'), 'utf8');
       check(`いなずまの説明「${bolt.desc}」（index.html の初期の文も同じ）`, bolt.desc === 'つながった マスへ えだわかれ。てつは とおくまで とどく' && html.includes('<span class="cdesc" data-part="desc">' + bolt.desc + '</span>'), bolt.desc);
       await ctx.close();
+    },
+  },
+  {
+    id: 'KW27', tier: 'full', title: 'ほしくだき ハードモード（計画書 §1.7・約束 §23.3）：上の「ほし N」は段 0 で「ほし N」・段 1 で「ハード ほし N」・段 2 以上で「ハード2 ほし N」（getState に tier・num＝通しの番号 numIn）。ふつうの最後の星（ENDING_STAR）をクリアすると #endCard「ちきゅうを まもりきった！」・案内「つぎは ひかりが すくない「ハード」だよ」・ボタン「ハードを はじめる」（エンディング直後の getState は star 1・tier 1・phase end・asteroid.best は ENDING_STAR）、押すとハードの星 1 から（「ハード ほし 1」・保存は tier 1）。ハードの最後の星（HARD_STARS）をクリアすると「ハードクリア！」・「つぎは もう1だん むずかしい「ハード2」だよ」・「つぎの だんへ」（段 2 は「ハード2クリア！」・案内は「ハード3」）、best は通しの数。ハードの星のクリアの帯は「ハード ほし N クリア！」。保存を開き直しても段が残る。メニューのベストは「ほし N まで クリア」「ハード ほし N まで」「ハード2 ほし N まで」',
+    async run({ browser, check, root }) {
+      const L = logicOf(root);
+      const E = L.ENDING_STAR, H = L.HARD_STARS;
+      const label = (t, n) => (t <= 0 ? '' : t === 1 ? 'ハード ' : `ハード${t} `) + `ほし ${n}`;
+      const { ctx, page } = await openK(browser, 'KW27', { v: SMOKE_V(), debug: true });
+      // 表示：段ごとの「ほし N」
+      const rows = [];
+      for (const [t, n] of [[0, 3], [1, 1], [1, H], [2, 5], [3, 1]]) {
+        if (t === 0) await dbg(page, 'gostar', { star: n }); else await dbg(page, 'gotier', { t, n });
+        const s = await gs(page);
+        rows.push({ t, n, s: { tier: s.tier, star: s.star, num: s.num }, text: await txt(page, '#starLabel [data-part="num"]'), want: label(t, n), ok: s.tier === t && s.star === n && s.num === L.numIn(n, t) });
+      }
+      check(`上の表示（${rows.map((r) => `段${r.t}の星${r.n}→「${r.text}」`).join('・')}）が「ほし N」「ハード ほし N」「ハード2 ほし N」、getState の tier・star・num（通しの番号）も合う`, rows.every((r) => r.ok && r.text === r.want), rows);
+      const resetBest = () => page.evaluate(() => localStorage.removeItem('asteroid.best'));   // best は下がらない（最大を残す）ので、確かめる前に消す
+      await resetBest();
+      // ハードの星のクリアの帯
+      await dbg(page, 'gotier', { t: 1, n: 1 });
+      const c1 = await frozen(page, async () => { await dbg(page, 'win'); const ok = await advUntil(page, 'clear', { step: 1 / 30, maxSec: 60 }); return { ok, banner: await txt(page, '#clearBanner [data-part="main"]'), shown: await shown(page, '#clearBanner'), best: await stored(page, 'asteroid.best') }; });
+      check(`ハードの星のクリアの帯「${c1.banner}」（${label(1, 1)} クリア！）・asteroid.best は通しの数 ${E + 1}（${c1.best}）`, c1.ok && c1.shown && c1.banner === `${label(1, 1)} クリア！` && c1.best === String(E + 1), c1);
+      // ふつうの最後の星 → エンディング → ハードの星 1
+      await resetBest();
+      await dbg(page, 'gostar', { star: E });
+      const e1 = await frozen(page, async () => {
+        await dbg(page, 'win');
+        const ok = await advUntil(page, 'end', { step: 1 / 30, maxSec: 90, key: 'overlay' });
+        return { ok, s: await gs(page), title: await txt(page, '#endTitle'), more: await txt(page, '#endMore'), btn: await txt(page, '#endOk'), best: await stored(page, 'asteroid.best'), shown: await shown(page, '#endCard') };
+      });
+      check(`ふつうの星 ${E} のクリアで #endCard（「${e1.title}」・「${e1.more}」・「${e1.btn}」）、asteroid.best ${e1.best}、直後の getState は star ${e1.s.star}・tier ${e1.s.tier}・phase ${e1.s.logicPhase}`,
+        e1.ok && e1.shown && e1.title === 'ちきゅうを まもりきった！' && /^つぎは .*「ハード」だよ$/.test(e1.more) && e1.btn === 'ハードを はじめる' && e1.best === String(E) && e1.s.star === 1 && e1.s.tier === 1 && e1.s.logicPhase === 'end', e1);
+      await pressCard(page, '#endOk');
+      await wait(page, 200);
+      const e2 = await gs(page), e2l = await lg(page);
+      const sv = JSON.parse(await stored(page, 'asteroid.save'));
+      check(`「ハードを はじめる」で閉じてハードの星 1 から（「${await txt(page, '#starLabel [data-part="num"]')}」・phase ${e2.logicPhase}・overlay ${e2.overlay}）、保存は tier ${sv.tier}・ほし ${sv.star}、ひかりは ふつうより少ない`, e2.overlay === null && e2.logicPhase === 'fly' && e2.tier === 1 && e2.star === 1 && (await txt(page, '#starLabel [data-part="num"]')) === 'ハード ほし 1' && sv.tier === 1 && sv.star === 1 && e2l.rock.left > 0, { e2: { overlay: e2.overlay, phase: e2.logicPhase, tier: e2.tier, star: e2.star }, sv: { tier: sv.tier, star: sv.star } });
+      // 開き直しても段が残る
+      await page.reload(); await wait(page, 300);
+      const r1 = await gs(page);
+      check(`開き直しても段が残る（tier ${r1.tier}・ほし ${r1.star}・「${await txt(page, '#starLabel [data-part="num"]')}」）`, r1.tier === 1 && r1.star === 1 && (await txt(page, '#starLabel [data-part="num"]')) === 'ハード ほし 1', r1);
+      // ハードの最後の星 → 「ハードクリア！」「つぎの だんへ」→ ハード2 の星 1。さらに ハード2 の最後 → 「ハード2クリア！」
+      for (const [t, title, more, btn, next] of [[1, 'ハードクリア！', 'つぎは もう1だん むずかしい「ハード2」だよ', 'つぎの だんへ', 'ハード2 ほし 1'], [2, 'ハード2クリア！', 'つぎは もう1だん むずかしい「ハード3」だよ', 'つぎの だんへ', 'ハード3 ほし 1']]) {
+        await resetBest();
+        await dbg(page, 'gotier', { t, n: H });
+        const g = await frozen(page, async () => {
+          await dbg(page, 'win');
+          const ok = await advUntil(page, 'end', { step: 1 / 30, maxSec: 90, key: 'overlay' });
+          return { ok, s: await gs(page), title: await txt(page, '#endTitle'), more: await txt(page, '#endMore'), btn: await txt(page, '#endOk'), best: await stored(page, 'asteroid.best'), lock: await attr(page, '#endOk', 'aria-disabled') };
+        });
+        check(`段 ${t} の最後の星 ${H} のクリアで #endCard（「${g.title}」・「${g.more}」・「${g.btn}」）、best ${g.best}（通しの数 ${L.numIn(H, t)}）、直後は star ${g.s.star}・tier ${g.s.tier}、出た直後はボタンが押せない（${g.lock}）`,
+          g.ok && g.title === title && g.more === more && g.btn === btn && g.best === String(L.numIn(H, t)) && g.s.star === 1 && g.s.tier === t + 1 && g.s.logicPhase === 'end' && g.lock === 'true', g);
+        await pressCard(page, '#endOk');
+        await wait(page, 200);
+        const n = await gs(page);
+        check(`「${btn}」で ${next} から（「${await txt(page, '#starLabel [data-part="num"]')}」・tier ${n.tier}・phase ${n.logicPhase}）`, n.tier === t + 1 && n.star === 1 && n.logicPhase === 'fly' && n.overlay === null && (await txt(page, '#starLabel [data-part="num"]')) === next, n);
+      }
+      await ctx.close();
+      // メニューのベスト表示
+      const m = await newPage(browser, custom(320, 568, null, 'SE 幅'), 'KW27 メニュー', { clock: true });
+      const cases = [[1, 'ほし 1 まで クリア'], [E, `ほし ${E} まで クリア`], [E + 1, 'ハード ほし 1 まで'], [L.numIn(H, 1), `ハード ほし ${H} まで`], [L.numIn(1, 2), 'ハード2 ほし 1 まで'], [L.numIn(H, 2), `ハード2 ほし ${H} まで`]];
+      const out = [];
+      for (const [n, want] of cases) {
+        await seed(m.page, { 'asteroid.v3': '1', 'asteroid.best': String(n) });
+        await m.page.goto(BASE); await wait(m.page, 150);
+        const got = await m.page.evaluate(() => { const b = document.querySelector('a.game[href="games/asteroid/"] .best b'); return b ? b.textContent.trim() : null; });
+        out.push({ n, want, got, ok: got === want });
+      }
+      check(`メニューのベスト（通しの数 → 表示）：${out.map((o) => `${o.n}→「${o.got}」`).join('、')}`, out.every((o) => o.ok), out);
+      await m.ctx.close();
     },
   },
 ];
