@@ -37,15 +37,16 @@ def face(hx, hy, eyes='open', mouth='smile'):
             fill({(x0, y0 - 1), (x0 + 1, y0 - 1), (x0 + 2, y0 - 1), (x0 + 3, y0 - 1)}, 'D')   # まぶた の線
         elif eyes == 'happy':
             fill({(x0, y0 + 2), (x0 + 1, y0 + 1), (x0 + 2, y0 + 1), (x0 + 3, y0 + 2)}, 'K')
-        else:   # closed
-            fill({(x0, y0 + 1), (x0 + 1, y0 + 2), (x0 + 2, y0 + 2), (x0 + 3, y0 + 1)}, 'K')
+        else:   # closed（まぶたを とじた 太い へ の字）
+            fill({(x0 - 1, y0 + 1), (x0, y0 + 2), (x0 + 1, y0 + 2), (x0 + 2, y0 + 2), (x0 + 3, y0 + 2), (x0 + 4, y0 + 1)}, 'K')
+            fill({(x0, y0 + 1), (x0 + 1, y0 + 1), (x0 + 2, y0 + 1), (x0 + 3, y0 + 1)}, 'D')
     # 鼻の あな
     put(hx + 7, hy - 1, 'K'); put(hx + 9, hy - 1, 'K')
     if mouth == 'open':
         mo = poly([(hx - 2, hy + 1.5), (hx + 10.5, hy + .5), (hx + 8, hy + 5.5), (hx + 2, hy + 5.5)])
         fill(mo, 'R'); fill(cells(mo, lambda x, y: (x, y + 1) not in mo and x < hx + 7), 'P'); fill(edge(mo), 'K')
     elif mouth == 'small':
-        fill({(hx + 4, hy + 2), (hx + 5, hy + 3), (hx + 6, hy + 3), (hx + 7, hy + 2)}, 'K')
+        fill(arc(hx + 3.5, hy - .5, 5, 3, 30, 150, 2), 'K')
     else:
         fill(arc(hx + 2.5, hy - 2, 8, 4.5, 20, 160, 2), 'K')
 
