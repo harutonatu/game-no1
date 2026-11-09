@@ -22,14 +22,14 @@
 
 | 項目 | 内容 |
 |---|---|
-| 公開版 | `master`＝**v71・2026-11-09**。ゲームは**メニューに 13 本**（あまいものあつめが最後のカード） |
+| 公開版 | `master`＝**v72・2026-11-09**（v71 のすぐあとに別の会話が公開）。ゲームは**メニューに 13 本**（あまいものあつめが最後のカード） |
 | 実機の確認 | v58 はあまいものあつめが動くことを確認（感想「蟻が早く動くので爽快感があります」「絵が単純です」→ AM-14 を v59 で直した）。**v59 は「いいね」（ユーザー 2026-11-03）。v60 は「とてもいいです」（ユーザー 2026-11-03）。v61 の花輪は「花輪に見えないね　もっとお花を大きくして」→ v62 で直した。v62 はまだ** |
 | 作業ブランチ | `feature/amai-more2`（v63 を公開。master と同じ。計画書 [docs/plans/amai-more2.md](plans/amai-more2.md)）。前は `feature/amai-select`（v61）。計画書 [docs/plans/amai-select.md](plans/amai-select.md)。経緯・決定は [docs/plans/amai-redraw.md](plans/amai-redraw.md)（v59）・[docs/plans/amai-more.md](plans/amai-more.md)（v60）。あまいものあつめの手直しの経緯は [docs/plans/amai-rework.md](plans/amai-rework.md)、約束は [docs/ari-contract.md](ari-contract.md) |
 | 残しているブランチ | `feature/amai-redraw`・`feature/amai-more`・`feature/amai-select`（どれも消してよい。絵の台本 `docs/plans/amai-redraw/*.py` は master にも入っている） |
 | 動いている担当 | なし |
 | v71 で公開したもの（2026-11-09） | **ほしくだきのリニューアル**（約束 §23・計画書 [docs/plans/asteroid-renew.md](plans/asteroid-renew.md)。画面より大きな線画の星のまわりを自機が自動で飛んで削る・時間切れでやり直し・ふつう 50 面・エンディング後はハード〔段〕・色は見本 D・古い保存は消して最初から）と、**花輪を 2 つ並べる直し**（[docs/plans/amai-wreath2.md](plans/amai-wreath2.md)）。レビュー 6 観点の必須を直し、関門 3 つとも全部合格（揺れなし）。ユーザー「今のほしくだきを入れ替えて公開」「公開して」 |
 | 実機で見てほしい所（v71） | ほしくだき：大きな星（40〜50）でカクつかないか（`?debug=1` で getState().dpr が 2 のままか）・回る画面で酔わないか・時間切れの緊張・ハードの流れ。あまいものあつめ：ふつうと金の花輪が並んで見えるか |
-| 別の会話（2026-11-09〜） | あまいものあつめの絵の部品（動物・ふるまい・場所を増やす）。ブランチ `feature/amai-parts`、計画書 docs/plans/amai-parts.md。公開はユーザーの「公開して」のあと、その時点の master を merge して |
+| v72 で公開したもの（2026-11-09。別の会話） | あまいものあつめに 151〜200 面の絵 50 枚（新しい動物 ぺんぎん・ぞう・ぶた・かえる／ふるまい ほんを よむ・うたう・じてんしゃに のる／場所 まち・ゆうえんち・ほしぞら。部品を台本で描いて組み立てる案 B'）、くり返しは 201 面から、paramsFor の古い保存の直し（MA71）。関門 3 つとも全部合格。課題 AM-31〜35。計画書 [docs/plans/amai-parts.md](plans/amai-parts.md)。ブランチ `feature/amai-parts` |
 
 v51 のあとに公開したもの（あまいものあつめの手直し。ユーザーが実機で触って指摘 → 直す、をくり返した）：
 
