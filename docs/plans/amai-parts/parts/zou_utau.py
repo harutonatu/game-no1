@@ -19,14 +19,15 @@ def draw(cx, by, flip=False):
     zou.blob(body)
     fill(cells(body, lambda x, y: (x, y - 2) not in body and (x, y - 1) in body and (x - 2, y) in body and (x + 2, y) in body), 'W')
     zou.leg(cx + 5, by - 7, by)
-    # 耳（頭のうしろ・左へ大きく）→ 頭 → 顔
-    zou.ear(hx - 12, hy + 1.5, 8, 10, -8)
+    # 耳（顔の横の 大きな丸い耳。頭のうしろに重ねる）→ 頭 → 顔
+    zou.ear(hx - 11, hy, 8.5, 9)
     head = zou.head(hx, hy)
     zou.face(hx, hy, eyes='happy', mouth='open')
     # マイク（口の前）と、それを持つ 手前の手
-    maiku.draw(hx + 9, hy + 5.5, by, -1)
-    a = line(cx + 5, by - 16, hx + 10, by - 15, 4.4); zou.blob(a)
-    zou.blob(ell(hx + 11, by - 15.5, 2.4, 2.4))
+    mk = maiku.draw(hx + 8.5, hy + 7, by, -1)
+    gx, gy = mk["grip"]
+    a = line(cx + 5, by - 16, gx - 1, gy + 1, 4.4); zou.blob(a)
+    zou.blob(ell(gx, gy + .5, 2.4, 2.4))
     # 鼻（口の上から 前へ、上へ くるん）
     zou.trunk([(hx + 5, hy + 2), (hx + 9, hy - 1), (hx + 11, hy - 6), (hx + 10, hy - 11), (hx + 7, hy - 12)], 5, 3)
     end(flip, cx)

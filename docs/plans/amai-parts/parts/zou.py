@@ -7,13 +7,19 @@ def blob(m, dark=False):
     shape(m, 'S', sh='B', sw=2 if dark else 1)
 
 
-def ear(cx, cy, rx=6.5, ry=8.5, ang=-10):
-    """大きな耳（中は P）。"""
+def ear(cx, cy, rx=8, ry=8.5, ang=0, side=-1, inner=None):
+    """顔の横の 大きな丸い耳（頭のうしろに重ねる）。S のまるい板に、ふちに そった B の しわと、内がわの B の かげ。
+    inner＝'P' などを わたすと 耳の中を その色に（空が P の場所では わたさない。ドーナツに見えるので）。
+    side＝-1 は 中の色を左（頭から はなれた 見える側）へ よせる、+1 は右へ。"""
     m = ell(cx, cy, rx, ry, ang)
     shape(m, 'S', sh='B', sw=1)
-    inn = ell(cx + .8, cy + .5, rx - 3, ry - 3.4, ang) - edge(m)
-    fill(inn, 'W'); fill(cells(inn, lambda x, y: (x - 1, y) not in inn or (x, y + 1) not in inn), 'V')
-    fill(ell(cx + 1.4, cy + .6, max(1, rx - 4.6), max(1.5, ry - 5), ang) & inn - edge(inn), 'P')
+    inn = ell(cx + rx * side * .2, cy + ry * .1, rx * .5, ry * .62, ang) - edge(m)
+    if inner:
+        fill(inn, inner); fill(cells(inn, lambda x, y: (x + side, y) not in inn or (x, y + 1) not in inn), 'V')
+    else:
+        dither(cells(inn, lambda x, y: (x + side * 2, y) not in inn), 'B')
+    crease = arc(cx + .5, cy + .5, rx - 2.2, ry - 2.2, 110, 250, 4)
+    fill(crease - edge(m) - inn, 'B')
     return m
 
 
