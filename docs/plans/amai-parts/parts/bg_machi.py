@@ -71,4 +71,4 @@ def draw(hz=29, flip=False):
     hx = (50, 60) if not flip else (3, 13)
     building(bx[0], bx[1], 3, hz)
     house(hx[0], hx[1], hz - 13, hz)
-    return {"gy": 45, "floor": "OC"}
+    return {"gy": 45, "floor": "OC", "shade": "C"}

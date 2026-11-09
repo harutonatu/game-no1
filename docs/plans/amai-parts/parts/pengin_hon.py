@@ -17,3 +17,5 @@ def draw(cx, by, flip=False):
     pengin.foot(cx - 3, by - 1.5); pengin.foot(cx + 7, by - 1.2)
     end(flip, cx)
     return head, body
+
+SHADOW = (2, 13, 1.6)   # かげ：体のまん中からのずれ・横の半径・縦の半径
