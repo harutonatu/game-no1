@@ -1,5 +1,6 @@
 # 場所の背景：ほしぞら（よる。あおい空・地平の近くは むらさき・月・星・おか・小道）。場所の物は 月 と 星 の 2 つ。
-# draw(hz, flip) … hz＝おかの上の線。flip なら 月を右に。
+# draw(flip, sky, ground, hz) … flip なら 月を右に。sky＝よるの空の色（ふだん B。地平の近くは V、sky が V なら B）、
+#   ground＝手前の小道の色（ふだん C。粒は lib.accent の色）。hz＝おかの上の線。
 # 返り値：{"gy": 主役の足の下の目安, "floor": かげを落としてよい地面の色, "shade": かげの色}
 from lib import *
 
@@ -23,10 +24,11 @@ def star(cx, cy, r=3, c='Y'):
     return m
 
 
-def draw(hz=32, flip=False):
+def draw(flip=False, sky=None, ground=None, hz=32):
+    sky = sky or 'B'; ground = ground or 'C'; acc = accent(ground)
     sky_ = rect(0, 0, 63, hz + 2)
-    base_fill(sky_, 'B')
-    base_fill(cells(sky_, lambda x, y: y > hz - 7 and (x + y) % 2 == 0 or y > hz - 3), 'V')
+    base_fill(sky_, sky)
+    base_fill(cells(sky_, lambda x, y: y > hz - 7 and (x + y) % 2 == 0 or y > hz - 3), 'B' if sky == 'V' else 'V')
     for (x, y) in sky_:
         if y < hz - 4 and (x * 7 + y * 13) % 71 == 0: deco(x, y, 'W')
         elif y < hz - 4 and (x * 11 + y * 5) % 97 == 0: deco(x, y, 'Y')
@@ -40,13 +42,13 @@ def draw(hz=32, flip=False):
     for (x, y) in hill:
         if (x, y - 1) in hill and (x * 5 + y * 3) % 13 == 0 and y < 40: deco(x, y, 'G')
     path = {(x, y) for (x, y) in ALL if y >= 41 + .8 * math.sin(x / 6)}
-    base_fill(path, 'C')
+    base_fill(path, ground)
     fill(cells(path, lambda x, y: (x, y - 1) not in path), 'K')
     for (x, y) in path:
-        if (x, y - 1) in path and (x * 7 + y * 3) % 9 == 0: deco(x, y, 'O')
+        if (x, y - 1) in path and (x * 7 + y * 3) % 9 == 0: deco(x, y, acc)
     # 月 と 星
     mx = 55 if flip else 9
     moon(mx, 8, 5.5)
     sx = 8 if flip else 54
     star(sx, 7, 3.6)
-    return {"gy": 46, "floor": "COD", "shade": "K"}
+    return {"gy": 46, "floor": ground + acc + "D", "shade": "K"}

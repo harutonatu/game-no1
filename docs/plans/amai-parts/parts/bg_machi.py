@@ -1,6 +1,7 @@
 # 場所の背景：まち（空・ビル・家・道・歩道）。場所の物は ビル と 家 の 2 つ。
-# draw(hz, flip) … hz＝道の奥の線（ビルと家の足もと）。flip なら ビルと家の左右を入れかえる。
-# 返り値：{"gy": 主役の足の下の目安, "floor": かげを落としてよい地面の色}
+# draw(flip, sky, ground, hz) … flip なら ビルと家の左右を入れかえる。sky＝空の色（ふだん S）、ground＝主役の立つ歩道の色
+#   （ふだん O。模様は lib.accent の色）。hz＝道の奥の線（ビルと家の足もと）。
+# 返り値：{"gy": 主役の足の下の目安, "floor": かげを落としてよい地面の色, "shade": かげの色}
 from lib import *
 
 
@@ -44,12 +45,13 @@ def house(x0, x1, wall_top, gy):
     return wall | roof
 
 
-def draw(hz=29, flip=False):
+def draw(flip=False, sky=None, ground=None, hz=29):
+    sky = sky or 'S'; ground = ground or 'O'; acc = accent(ground)
     sky_ = rect(0, 0, 63, hz)
-    base_fill(sky_, 'S')
+    base_fill(sky_, sky)
     for (cx, cy) in ((30, 4), (47, 9)):
         c = ell(cx, cy, 5, 1.6) | ell(cx - 2, cy - 1, 3, 1.5) | ell(cx + 2, cy - 1.2, 2.5, 1.4)
-        fill(c, 'W'); fill(cells(c, lambda x, y: (x, y + 1) not in c and (x + y) % 2 == 0), 'S')
+        fill(c, 'W'); fill(cells(c, lambda x, y: (x, y + 1) not in c and (x + y) % 2 == 0), sky)
     # 道（奥）と 歩道（手前）
     road = rect(0, hz + 1, 63, hz + 6)
     base_fill(road, 'V')
@@ -61,14 +63,14 @@ def draw(hz=29, flip=False):
     curb = rect(0, hz + 7, 63, hz + 7)
     fill(curb, 'K')
     walk = rect(0, hz + 8, 63, 47)
-    base_fill(walk, 'O')
+    base_fill(walk, ground)
     for (x, y) in walk:
         r = y - hz - 8
-        if r % 4 == 3: deco(x, y, 'C')
-        elif (x + (r // 4) * 3) % 7 == 0: deco(x, y, 'C')
+        if r % 4 == 3: deco(x, y, acc)
+        elif (x + (r // 4) * 3) % 7 == 0: deco(x, y, acc)
     # ビル と 家
     bx = (3, 15) if not flip else (45, 57)
     hx = (50, 60) if not flip else (3, 13)
     building(bx[0], bx[1], 3, hz)
     house(hx[0], hx[1], hz - 13, hz)
-    return {"gy": 45, "floor": "OC", "shade": "C"}
+    return {"gy": 45, "floor": ground + acc, "shade": acc}

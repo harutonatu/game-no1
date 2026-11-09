@@ -159,6 +159,40 @@ def deco(x, y, c):
         g[y][x] = c; decos.add((x, y))
 
 
+# ---- 背景の部品で使う道具（2026-11-09 に足した。9 場所で そろえる）----
+# 地の色ごとの「模様の色」（地面の草・板の目地・雲のかげ など）。背景の sky= / ground= で地の色を変えたときに使う。
+ACCENT = {'G': 'D', 'D': 'G', 'Y': 'O', 'O': 'C', 'C': 'O', 'W': 'S', 'S': 'W', 'B': 'S', 'P': 'V', 'V': 'P',
+          'K': 'V', 'R': 'O'}
+
+
+def accent(c):
+    return ACCENT.get(c, 'K')
+
+
+def hsh(x, y, k=0):
+    """マスごとの 決まった ばらつき（0〜999）。乱数の代わり（同じ入力から毎回同じ絵）。"""
+    v = (x * 73856093) ^ (y * 19349663) ^ (k * 83492791)
+    return (v ^ (v >> 13)) % 1000
+
+
+def cloud(cx, cy, w=5, c='W', shade=None):
+    """雲（3 つのだ円）。shade を わたすと 下のはしに市松の かげ。返り値は雲のマス。"""
+    m = ell(cx, cy, w, 1.6) | ell(cx - w * .4, cy - 1, w * .6, 1.5) | ell(cx + w * .4, cy - 1.2, w * .5, 1.4)
+    fill(m, c)
+    if shade:
+        fill(cells(m, lambda x, y: (x, y + 1) not in m and (x + y) % 2 == 0), shade)
+    return m
+
+
+def sun(cx, cy, r=3, c='Y', rim='O'):
+    """太陽（まる c・ふち rim・8 本の光）。"""
+    m = ell(cx, cy, r, r)
+    fill(m, c); fill(edge(m), rim)
+    for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0), (.75, .75), (-.75, -.75), (.75, -.75), (-.75, .75)):
+        put(int(cx + dx * (r + 1.6)), int(cy + dy * (r + 1.6)), rim)
+    return m
+
+
 # ---- 重ね（レイヤー）。動物の部品を左右ぎゃくにするため ----
 def begin():
     global g
