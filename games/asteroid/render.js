@@ -486,7 +486,8 @@
           if (setKnown(i, clamp(mats[i] | 0, 0, 5))) changed.push(i);
           else if (crackK && rock.hp) { const ck = crackOf(i, rock.hp); if (ck !== crackK[i]) { crackK[i] = ck; changed.push(i); } }
         }
-        safe(() => { rock.dirty = []; }, null);
+        // 読んだら空にする（同じ配列をロジックが持ち続けていても、新しい配列に替えていても大丈夫なように）
+        if (Array.isArray(d)) d.length = 0; else safe(() => { rock.dirty = []; }, null);
       }
       if (gen !== rockGen) {
         if (!gotDirty) {   // dirty が来なかった：全部見比べる（念のため。17,424 マスで 0.1ms 以下）
