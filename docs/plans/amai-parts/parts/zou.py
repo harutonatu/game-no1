@@ -56,15 +56,25 @@ def head(hx, hy):
 
 
 def face(hx, hy, eyes='happy', mouth='open'):
-    """目・口・ほっぺ。eyes：happy（にっこり閉じた目）・open。mouth：open（うたう口）・smile。"""
+    """目・口・ほっぺ。eyes：happy（にっこり閉じた目）・open・down（下を見る）・sleep（ねむる）。mouth：open（うたう口）・smile・chew（もぐもぐ）・none。"""
     for ex in (hx - 2, hx + 4):
         if eyes == 'happy':
             fill({(ex - 1, hy), (ex, hy - 1), (ex + 1, hy - 1), (ex + 2, hy)}, 'K')
+        elif eyes == 'sleep':                       # ねむる：下に まがった 閉じた目（まつげ 1 本）
+            fill({(ex - 1, hy), (ex, hy + 1), (ex + 1, hy + 1), (ex + 2, hy), (ex - 1, hy + 1)}, 'K')
+        elif eyes == 'down':                        # 下を見る：まぶたの線と、下に よせた黒目
+            fill({(ex - 1, hy), (ex, hy - 1), (ex + 1, hy - 1), (ex + 2, hy)}, 'K')
+            fill(rect(ex, hy + 1, ex + 1, hy + 2), 'K')
         else:
             fill(rect(ex, hy - 1, ex + 1, hy + 1), 'K'); put(ex + 1, hy - 1, 'W')
     fill({(hx - 5, hy + 2), (hx - 4, hy + 2), (hx - 4, hy + 3), (hx + 7, hy + 2), (hx + 8, hy + 2), (hx + 7, hy + 3)}, 'P')
     if mouth == 'open':
         mo = ell(hx + 1.5, hy + 5.6, 2.6, 2.2)
         fill(mo, 'K'); fill(ell(hx + 1.5, hy + 6.6, 1.6, 1) & mo - edge(mo), 'R')
+    elif mouth == 'chew':                           # もぐもぐ：小さく あいた口
+        mo = ell(hx + 1.5, hy + 5.6, 1.8, 1.4)
+        fill(mo, 'K'); put(int(hx + 1), int(hy + 6), 'R'); put(int(hx + 2), int(hy + 6), 'R')
+    elif mouth == 'none':
+        pass
     else:
         fill({(hx, hy + 5), (hx + 1, hy + 6), (hx + 2, hy + 6), (hx + 3, hy + 5)}, 'K')
