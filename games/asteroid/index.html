@@ -88,7 +88,7 @@
     max-width: 600px;
     margin: 0 auto;
     position: relative;
-    z-index: 1;
+    /* z-index は付けない（付けると重なりの層ができ、中の .back が .overlay の下になってカードの上で押せない） */
   }
 
   /* ===== #hud ===== */
@@ -678,20 +678,34 @@
     .bench { min-height: 44px; }
   }
 
+  /* 低い縦画面（Safari 縦 320×454）：場が 90px ほどしか無いので、時間切れの札は「文字 ｜ もういちど」の 1 段（上の #hud と下の武器の行に重ならない） */
+  @media (orientation: portrait) and (max-height: 500px) {
+    .lostcard { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; row-gap: 0; align-items: center; text-align: left; width: calc(100% - 12px); padding: 6px 8px; }
+    .lostcard b { grid-column: 1; font-size: 16px; line-height: 1.2; }
+    .lostcard .lostsub { grid-column: 1; font-size: 12px; line-height: 1.25; }
+    .lostcard button { grid-column: 2; grid-row: 1 / span 3; width: 116px; min-height: 44px; margin: 0; font-size: 16px; }
+  }
+
   /* ===== 横向きで背が低い：左に #field、右の列に #hud・#weapons ===== */
   @media (orientation: landscape) and (max-height: 500px) {
     .app {
       max-width: none;
       grid-template-columns: minmax(0, 1fr) minmax(0, 312px);
+      /* #hud は上の 1 段（2 つの列にまたがる）。中は 2 列：左＝残り時間の棒・時間の字、右＝← メニュー・題名・？♪ とかけら・ほし。
+         武器（最大 4 行）は右の列の #hud の下に、場と下のボタンは左の列に置く（4 台でも全部入り、重ならない・はみ出さない） */
       grid-template-rows: auto minmax(0, 1fr) auto;
-      grid-template-areas: "field hud" "field weapons" "field btns";
+      grid-template-areas: "hud hud" "field weapons" "btns weapons";
       gap: var(--app-gap) 8px;
     }
+    .hud { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 312px); grid-auto-rows: auto; column-gap: 8px; row-gap: 0; }
+    .head { grid-column: 2; grid-row: 1; }
+    .info { grid-column: 2; grid-row: 2; }
+    .barrow { grid-column: 1; grid-row: 1; }
+    .timerow { grid-column: 1; grid-row: 2; }
     /* canvas は左の列だけ（右の列は UI。背景は同じ濃い青） */
     .field { right: calc(312px + 8px + max(8px, env(safe-area-inset-right, 0px))); }
     .fieldzone { height: 100%; }
     .weapons { margin-top: 0; margin-bottom: -3px; }
-    .hud { gap: 0; }
     .head { column-gap: 4px; }
     .back { padding: 0 6px; font-size: 14px; }
     .head-tools { gap: 4px; }
@@ -728,14 +742,20 @@
     .overlay { padding-top: calc(max(4px, env(safe-area-inset-top, 0px)) + var(--head-h) + 4px); padding-bottom: max(4px, env(safe-area-inset-bottom, 0px)); }
   }
 
-  /* 横の低い画面（Safari 横 568×270）：行の間を詰めて、1 行目の札の 6px を空ける（行どうしは 1px の枠で区切る） */
+  /* 横の低い画面（SE 横 568×320・Safari 横 568×270）：行の間を詰めて、1 行目の札の 6px を空ける（行どうしは 1px の枠で区切る）。
+     左の列は幅が 240px ほどなので「あたらしい ぶき」の「（ひかえへ）」は省く（aria-label と 2択の案内で伝える） */
+  @media (orientation: landscape) and (max-height: 360px) {
+    #unlockBtn .to { display: none; }
+  }
   @media (orientation: landscape) and (max-height: 300px) {
-    /* 4 行＋下のボタンの行が右の列に入らないので、下のボタンの行は左の列（場の下）へ */
-    .app { grid-template-areas: "field hud" "field weapons" "btns weapons"; }
-    #unlockBtn .to { display: none; }   /* 左の列は幅が 140px ほどなので「（ひかえへ）」は省く（aria-label と 2択の案内で伝える） */
     .weapons { gap: 0; }
     .endpic { width: 56px; height: 50px; }
     .card { gap: 4px; padding: 6px 12px; }
+    /* 遊び方（5 項目）が「さいしょから あそぶ」までスクロールなしで入るように詰める */
+    #help .card { padding: 4px 12px; gap: 2px; }
+    #help .card h2 { font-size: 15px; line-height: 1.2; }
+    #help .card ol.rules { gap: 0; line-height: 1.3; }
+    #help .card .btns button { padding: 2px 6px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
