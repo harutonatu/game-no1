@@ -37,26 +37,30 @@ def body_head(cx, by):
 
 def face(hx, hy, head, look='down', mouth='smile'):
     """目（しろい わっかの中に くろ目）・くちばし・ほっぺ。hx, hy は頭のまん中。look：down（下を見る）・front・closed・happy。"""
-    for ex in (hx - 3, hx + 4):
-        ring = ell(ex + 1, hy, 2.6, 2.6)
-        fill(ring, 'W')
-        if look == 'closed':
-            fill({(ex - 1, hy), (ex, hy + 1), (ex + 1, hy + 1), (ex + 2, hy)}, 'K')
-        elif look == 'happy':   # にっこり（へ の字を さかさに）
-            fill({(ex - 1, hy + 1), (ex, hy), (ex + 1, hy), (ex + 2, hy + 1)}, 'K')
-        else:
-            dy = 1 if look == 'down' else 0
-            fill(rect(ex, hy - 1 + dy, ex + 1, hy + dy), 'K'); put(ex + 1, hy - 1 + dy, 'W') if look != 'down' else None
+    def eyes():
+        for ex in (hx - 3, hx + 4):
+            ring = ell(ex + 1, hy, 2.6, 2.6)
+            fill(ring, 'W')
+            if look == 'closed':
+                fill({(ex - 1, hy), (ex, hy + 1), (ex + 1, hy + 1), (ex + 2, hy)}, 'K')
+            elif look == 'happy':   # にっこり（へ の字を さかさに）
+                fill({(ex - 1, hy + 1), (ex, hy), (ex + 1, hy), (ex + 2, hy + 1)}, 'K')
+            else:
+                dy = 1 if look == 'down' else 0
+                fill(rect(ex, hy - 1 + dy, ex + 1, hy + dy), 'K'); put(ex + 1, hy - 1 + dy, 'W') if look != 'down' else None
+    if mouth != 'open':
+        eyes()
     # ほっぺ
     fill({(hx - 6, hy + 3), (hx - 5, hy + 3), (hx - 4, hy + 3), (hx - 5, hy + 4)}, 'P')
     # くちばし（右へ。頭の外へ少し出す）
     if mouth == 'open':
         # 大きく あけた くちばし（上と下の 2 まい。あいだに あかい 口）
-        up = poly([(hx + 1.5, hy - 1.2), (hx + 7, hy - .4), (hx + 13, hy + 2.4), (hx + 1.5, hy + 3.8)])
-        lo = poly([(hx + 1.5, hy + 5.4), (hx + 11, hy + 6.8), (hx + 7, hy + 9.8), (hx + 1.5, hy + 10)])
-        fill(poly([(hx + 1.5, hy + 3), (hx + 11, hy + 3.2), (hx + 9.5, hy + 6.8), (hx + 1.5, hy + 6)]), 'K')
-        fill(poly([(hx + 2, hy + 3.6), (hx + 8.5, hy + 3.8), (hx + 7.5, hy + 6.2), (hx + 2, hy + 5.8)]), 'R')
+        up = poly([(hx + 1.5, hy + .2), (hx + 7.5, hy + .4), (hx + 13.5, hy + 3.4), (hx + 1.5, hy + 5.2)])
+        lo = poly([(hx + 1.5, hy + 6.6), (hx + 11.5, hy + 8), (hx + 7.5, hy + 11), (hx + 1.5, hy + 11.2)])
+        fill(poly([(hx + 1.5, hy + 4.2), (hx + 11.5, hy + 4.4), (hx + 10, hy + 8), (hx + 1.5, hy + 7.2)]), 'K')
+        fill(poly([(hx + 2, hy + 4.8), (hx + 9, hy + 5), (hx + 8, hy + 7.4), (hx + 2, hy + 7)]), 'R')
         shape(up, 'O', sh='C', sw=1); shape(lo, 'O', sh='C', sw=1)
+        eyes()   # 目は くちばしの上に 重ねる（目が かくれないように）
     else:
         bk = poly([(hx + 1.5, hy + .6), (hx + 6, hy + 1.6), (hx + 10.5, hy + 3.6), (hx + 6, hy + 5.6), (hx + 1.5, hy + 6.4)])
         shape(bk, 'O', sh='C', sw=1)

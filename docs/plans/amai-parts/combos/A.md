@@ -9,3 +9,4 @@
 | 181 | XXL | penginumibeutau | うみべで ぺんぎんが うたう | natsu | うみべ | ぺんぎん | うたう | x=38 y=46 ぎゃく 背景ぎゃく |
 | 161 | XXL | penginkouenjitensha | こうえんで ぺんぎんが じてんしゃに のる | "" | こうえん | ぺんぎん | じてんしゃに のる | x=32 y=46 |
 | 186 | XXL | penginhoshizorajitensha | ほしぞらで ぺんぎんが じてんしゃに のる | "" | ほしぞら | ぺんぎん | じてんしゃに のる | x=34 y=46 ぎゃく 背景ぎゃく sky=V |
+| 166 | XXL | penginmoribooru | もりで ぺんぎんが ボールで あそぶ | "" | もり | ぺんぎん | ボールで あそぶ | x=30 y=46 |
