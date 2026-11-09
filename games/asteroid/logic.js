@@ -1468,8 +1468,7 @@
   function retryMut(s, evs) {
     s.phase = "fly";
     applySwaps(s, evs);
-    resetTry(s);
-    s.ms = [];
+    resetTry(s);   // 区切り（ms）はそのまま：やり直しでもらい直せない
   }
   // 時間切れのカードの「もういちど」：その星を最初の形から（かけら・Lv・武器はそのまま。残り時間も戻る。入れ替えの予約はここで当たる）
   function retry(state) {
@@ -1735,7 +1734,6 @@
       const tmp = { slots, bench, swap };
       applySwaps(tmp, []);
       slots = tmp.slots; bench = tmp.bench; swap = [];
-      if (ph === "lost") ms = [];
     }
     const t = state.totals || {};
     const o = {
