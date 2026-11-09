@@ -23,7 +23,7 @@ def donut(x, y):
     d = ell(x, y - 3, 6, 3.4)
     fill(d, 'O'); top = cells(d, lambda xx, yy: yy <= y - 3 or (yy == y - 2 and xx % 3 == 0))
     fill(top, 'R'); fill(ell(x, y - 4, 1.8, 1), 'K')
-    for (dx, dy, c) in ((-4, -4, 'Y'), (-2, -5, 'W'), (2, -5, 'Y'), (4, -4, 'W'), (-3, -3, 'B'), (3, -3, 'G')):
+    for (dx, dy, c) in ((-4, -4, 'Y'), (-2, -5, 'B'), (0, -5, 'W'), (2, -5, 'Y'), (4, -4, 'B'), (-3, -3, 'W'), (3, -3, 'G'), (1, -3, 'B')):
         put(x + dx, y + dy, c)
     fill(edge(d), 'K')
 
