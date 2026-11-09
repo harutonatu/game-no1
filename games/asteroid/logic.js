@@ -48,7 +48,7 @@
   const SHIP_TURN = 240 * DEG;          // 自機が向きを変える速さの上限（ラジアン/秒）
   const FLIP_MIN = 10, FLIP_MAX = 20;   // まわる向きを変える間隔（秒）
   // 星の大きさ（半径のマス）：星 1 で R_BASE、星ごとに R_STEP ずつ、上限 R_MAX。ボス（BOSS_EVERY の倍数）は BOSS_SIZE 倍・BOSS_HARD 倍の重さ
-  const R_BASE = 36, R_STEP = 0.55, R_MAX = 64, BOSS_EVERY = 10, BOSS_SIZE = 1.25, BOSS_HARD = 1.3;
+  const R_BASE = 36, R_STEP = 28 / 49, R_MAX = 64, BOSS_EVERY = 10, BOSS_SIZE = 1.25, BOSS_HARD = 1.3;
   const GRID_MAX = 2 * R_MAX + 4;       // 格子の一辺の最大（132）
   // でこぼこの丸：半径 × (SHAPE.base + SHAPE.amp × ゆらぎ)、くぼみ（クレーター）を SHAPE.craters 個
   const SHAPE = deepFreeze({ base: 0.9, amp: 0.08, craters: [2, 4], crater: [0.1, 0.2] });
@@ -67,25 +67,30 @@
   const BOMB_SHIFT = 0.5;
   // 星 1 の体力の合計（ぜんぶ いわ のとき）・かけらの合計の目安
   const STAR_HP = 200000, STAR_VALUE = 70;
-  const VALUE_GROWTH = 2.35, UP_GROWTH = 1.35, LEVEL_MAX = 99, SLOTS_MAX = 4;
-  // エンディング（星 ENDING_STAR）より先の増え方
-  const HP_GROWTH2 = 1.0, VALUE_GROWTH2 = 1.03;
+  const VALUE_GROWTH = 1.77, UP_GROWTH = 1.35, LEVEL_MAX = 99, SLOTS_MAX = 4;
+  // ハード（段 tier 1 以上。計画書 §1.7）のかけらの増え方（通しの番号 30·tier + 星 ごとに × VALUE_GROWTH2）
+  const VALUE_GROWTH2 = 1.03;
+  // ハードの体力：段 t の星 n は HP_TABLE[29] × hp × tierUp^(min(t, tierMax) − 1) × grow^(n − 1)（ボスと傾きの adj は別）。
+  // 武器の Lv は 99 で止まり、ふつうの星 30 のころに強さがほぼ上まで来ているので、段ごとに少しだけ重くして tierMax で止める（どこかで詰まらない）。
+  // ひかり の かたまりの数は段 1 で 1/2・段 2 で 1/4・段 3 から 1/8（最低 1 か所）
+  const HARD = deepFreeze({ hp: 1.22, tierUp: 1.1, tierMax: 3, grow: 1.0, glow: [1, 0.5, 0.25, 0.125] });
+  const TIER_MAX = 300;
   // 最初の星だけ、かけらを多めにする（星 1・2。はじめの買い物を早くして、強くした分の速さが見えるように＝何もしないと間に合わない）
   const EARLY_VALUE = deepFreeze([3, 1.5]);
   // 星 1〜30 の体力の倍率（STAR_HP に掛ける。ボスの重さ・傾きのならし adj は別に掛ける）。greedy の自動プレイ（種 1〜4 の中央）で、
-  // 星 1〜3 が 3.5 分・ふつうの星 4 分・ボス 5 分になるように測って決めた（計画書 §6）。星 31 から先は HP_TABLE[29] × HP_GROWTH2^(n−30)
-  const HP_TABLE = deepFreeze([0.0186,0.0577,0.103,0.303,0.361,0.456,0.979,1.44,1.7,2.84,4.38,4.77,7.25,11.2,15.2,18,27.2,35.8,36.2,54.3,84.4,89.1,110,153,211,214,341,403,476,638]);
+  // 星 1〜3 が 3.5 分・ふつうの星 4 分・ボス 5 分になるように測って決めた（計画書 §6）。ハード（段 1 から）は HARD
+  const HP_TABLE = deepFreeze([0.0176,0.0508,0.0788,0.2,0.31,0.29,0.332,0.663,0.952,1.19,1.33,1.5,2.19,3.6,4.48,4.85,4.87,7.31,8.42,13.1,14.8,15.5,19.3,26,35.5,34.7,39.8,43.8,60.2,75.4,86.2,90.4,104,127,155,203,212,234,327,362,454,472,533,760,816,1040,1070,1130,1290,1310]);
   // マスの混ざり方：てつ（星 3〜9・10〜）、こおり（星 6〜）、星ごとの傾き（てつ多め／こおり多め）
   const MIX = deepFreeze({ iron: [0.25, 0.35], ice: 0.15, tilt: 0.08 });
   const MILESTONE_BONUS = 0.03, MILESTONES = deepFreeze([25, 50, 75]);
   const BEST_MAX = 200;
-  const CLEAR_BONUS = 0.2, ENDING_STAR = 30, STAR_MAX = 9999, STAR_CALC_MAX = 400, KAKERA_MAX = 9e15;
+  const CLEAR_BONUS = 0.2, ENDING_STAR = 50, HARD_STARS = 30, STAR_MAX = 9999, STAR_CALC_MAX = 400, KAKERA_MAX = 9e15;
   const SHOTS_MAX = 120, STEP = 1 / 30;
   const SAVE_VERSION = 3, SAVE_KEY = "asteroid.save", SAVE_KEY_BAK = "asteroid.save.bak", SAVE_KEY_BEST = "asteroid.best", SAVE_KEY_HELP = "asteroid.help", SAVE_KEY_V3 = "asteroid.v3";
 
   const BULLET_SPEED = 600;      // たま・ちらし・ほのお の弾
-  const BULLET_LIFE = 0.5;
-  const CARRY_MIN = 0.02;        // 余った力がはじめの強さのこの割合より小さくなったら弾は消える       // 弾が消えるまでの秒（届く距離の 2 倍くらい）
+  const BULLET_LIFE = 0.5;       // 弾が消えるまでの秒（届く距離の 2 倍くらい）
+  const CARRY_MIN = 0.02;        // 余った力がはじめの強さのこの割合より小さくなったら弾は消える
   const BOMB_FLIGHT = 0.6;       // どかん の山なりの秒
   const BEAM_SEC = 0.4;          // ビームの見た目の秒（当たりは撃った瞬間）
   const CLEAR_SEC = 1.5;
@@ -97,7 +102,7 @@
   const IRON_BLOB_MIN = 40;
   // 時間切れ（計画書 §1.3）：limit(n) = LIMIT_BASE（greedy でかかる秒の目安）× 倍率。倍率は星 1〜3 で first、星 lateFrom から late、その間はまっすぐ下げる
   const LIMIT_MUL = deepFreeze({ first: 1.8, firstStars: 3, late: 1.25, lateFrom: 10 });
-  const LIMIT_BASE = deepFreeze({ first: 210, normal: 240, boss: 300 });
+  const LIMIT_BASE = deepFreeze({ first: 210, normal: 240, boss: 300, hard: 300, hardBoss: 400 });
 
   // ---------------------------------------------------------------- 表
   const MAT_IDS = ["rock", "iron", "ice", "gold", "glow"];        // コード 1〜5（0 は空）
@@ -135,7 +140,7 @@
 
   const UP_COST = deepFreeze({ shot: 5, spread: 5, bomb: 34, bolt: 5, beam: 8, fire: 4 });
   // n 個目の武器の値段（[1] が 2 つ目。4 つ目までは枠、5・6 つ目は ひかえ）
-  const SLOT_COST = deepFreeze([null, 40, 300, 2000, 800000, 2e9]);
+  const SLOT_COST = deepFreeze([null, 40, 300, 2000, 500000, 1.5e9]);
 
   // ---------------------------------------------------------------- 小さな道具
   function deepFreeze(o) {
@@ -180,16 +185,29 @@
   }
   function starNum(n) { return isNum(n) && n >= 1 ? Math.min(Math.floor(n), STAR_MAX) : 1; }
   // 体力の倍率（星の体力の合計 ÷ STAR_HP の目安）：増え方 × 最初の星のやさしさ × ボスの重さ × 傾きのならし
-  function hpMul(n) {
-    const k = calcN(n);
-    const base = k <= ENDING_STAR ? HP_TABLE[k - 1] : HP_TABLE[ENDING_STAR - 1] * Math.pow(HP_GROWTH2, k - ENDING_STAR);
-    return base * dimsOf(starNum(n)).adj;
+  // 段と星から通しの番号へ：N = 30·tier + n（n が 30 より大きいときは、n を通しの番号として読む）。t は段、k は段の中の星（1〜30）
+  // 段 t の星の数（段 0 は ENDING_STAR、段 1 から HARD_STARS）と、通しの番号
+  function starsOf(t) { return tierOk(t) === 0 ? ENDING_STAR : HARD_STARS; }
+  function numMax() { return ENDING_STAR + HARD_STARS * TIER_MAX; }
+  function numIn(star, tier) { const t = tierOk(tier); return t === 0 ? star : ENDING_STAR + HARD_STARS * (t - 1) + star; }
+  function tierOk(t) { return isNum(t) && t >= 0 ? Math.min(Math.floor(t), TIER_MAX) : 0; }
+  function split(n, tier) {
+    const n1 = isNum(n) && n >= 1 ? Math.min(Math.floor(n), STAR_MAX) : 1, t0 = tierOk(tier);
+    const N = Math.min(t0 === 0 ? n1 : ENDING_STAR + HARD_STARS * (t0 - 1) + n1, numMax());
+    if (N <= ENDING_STAR) return { t: 0, k: N, N };
+    const t = 1 + Math.floor((N - ENDING_STAR - 1) / HARD_STARS);
+    return { t, k: N - ENDING_STAR - HARD_STARS * (t - 1), N };
   }
-  function valMul(n) { const k = calcN(n); return growMul(n, VALUE_GROWTH, VALUE_GROWTH2) * (k <= EARLY_VALUE.length ? EARLY_VALUE[k - 1] : 1) * dimsOf(starNum(n)).adj; }
+  function hpBase(t, k) {
+    if (t === 0) return HP_TABLE[k - 1];
+    return HP_TABLE[ENDING_STAR - 1] * HARD.hp * Math.pow(HARD.tierUp, Math.min(t, HARD.tierMax) - 1) * Math.pow(HARD.grow, k - 1);
+  }
+  function hpMul(n, tier) { const q = split(n, tier); return hpBase(q.t, q.k) * dimsOf(q.k, q.t).adj; }
+  function valMul(n, tier) { const q = split(n, tier); return growMul(q.N, VALUE_GROWTH, VALUE_GROWTH2) * (q.N <= EARLY_VALUE.length ? EARLY_VALUE[q.N - 1] : 1) * dimsOf(q.k, q.t).adj; }
   function matOf(code) { return MAT_IDS[code - 1] || null; }
   // マス 1 つの満タンの体力・かけら（端数こみ。かけらは addK で端数をためて足す）
-  function cellHp(n, mat) { return MAT_HP[mat] ? STAR_HP * hpMul(n) * MAT_HP[mat] / dimsOf(starNum(n)).area : null; }
-  function cellValue(n, mat) { return MAT_VALUE[mat] ? STAR_VALUE * valMul(n) * MAT_VALUE[mat] / dimsOf(starNum(n)).area : null; }
+  function cellHp(n, mat, tier) { if (!MAT_HP[mat]) return null; const q = split(n, tier); return STAR_HP * hpMul(q.k, q.t) * MAT_HP[mat] / dimsOf(q.k, q.t).area; }
+  function cellValue(n, mat, tier) { if (!MAT_VALUE[mat]) return null; const q = split(n, tier); return STAR_VALUE * valMul(q.k, q.t) * MAT_VALUE[mat] / dimsOf(q.k, q.t).area; }
   function lvOk(L) { return isNum(L) ? clamp(Math.floor(L), 1, LEVEL_MAX) : 1; }
   function shotUp(L) { return L <= SHOT_UP.from ? 0 : (L - SHOT_UP.from) / (LEVEL_MAX - SHOT_UP.from); }
   function dmg(w, L) {
@@ -237,19 +255,22 @@
     return Math.min(k, STAR_MAX);
   }
   const dimsMemo = new Map();
-  function dimsOf(n) {
-    let d0 = dimsMemo.get(n);
+  // 大きさ・ボスは段の中の星 n（1〜30）で、混ざり方・重さのならしは通しの番号で決める
+  function dimsOf(n, tier) {
+    const t = tierOk(tier), N = numIn(n, t);
+    let d0 = dimsMemo.get(N);
     if (d0) return d0;
     const boss = n % BOSS_EVERY === 0;
-    const k = Math.min(n, STAR_CALC_MAX);
+    // 大きさの番号：ふつうは星の番号、ハードは 1〜30 を 1〜50 に引きのばす（星 1 が小さく 30 が大きい）
+    const k = t === 0 ? Math.min(n, STAR_CALC_MAX) : 1 + (Math.min(n, HARD_STARS) - 1) * (ENDING_STAR - 1) / (HARD_STARS - 1);
     let rad = Math.min(R_MAX, R_BASE + R_STEP * (k - 1));
     if (boss) rad = Math.min(R_MAX, rad * BOSS_SIZE);
     rad = Math.round(rad * 10) / 10;
     const w = 2 * Math.ceil(rad) + 4;
-    const mx = mixRaw(n);
+    const mx = mixRaw(Math.min(N, STAR_CALC_MAX));
     const adj = (boss ? BOSS_HARD : 1) * (weightOf(mx.iron0, mx.ice0) / weightOf(mx.iron, mx.ice));
-    d0 = { boss, rad, w, h: w, adj, mix: mx, area: AREA_FILL * Math.PI * rad * rad };
-    if (dimsMemo.size < 2000) dimsMemo.set(n, d0);
+    d0 = { boss, rad, w, h: w, adj, mix: mx, area: AREA_FILL * Math.PI * rad * rad, tier: t };
+    if (dimsMemo.size < 2000) dimsMemo.set(N, d0);
     return d0;
   }
   function mixRaw(n) {
@@ -273,18 +294,24 @@
     return M.first + (M.late - M.first) * (n - M.firstStars) / (M.lateFrom - M.firstStars);
   }
   function limitBaseOf(n) { return n % BOSS_EVERY === 0 ? LIMIT_BASE.boss : n <= LIMIT_MUL.firstStars ? LIMIT_BASE.first : LIMIT_BASE.normal; }
-  // その星の残り時間（秒。10 秒単位）
-  function limitOf(n) { n = starNum(n); return Math.max(60, Math.round(limitBaseOf(n) * limitMulOf(n) / 10) * 10); }
-  function starInfo(n) {
+  // その星の残り時間（秒。10 秒単位）。ハードは LIMIT_BASE.hard・hardBoss × 倍率 late（ふつうの星 10 以降と同じ倍率）
+  function limitOf(n, tier) {
+    const q = split(n, tier);
+    if (q.t === 0) return Math.max(60, Math.round(limitBaseOf(q.k) * limitMulOf(q.k) / 10) * 10);
+    return Math.round((q.k % BOSS_EVERY === 0 ? LIMIT_BASE.hardBoss : LIMIT_BASE.hard) * LIMIT_MUL.late / 10) * 10;
+  }
+  // starInfo(n, tier)：段 tier（省くと 0）の星 n。n が 30 より大きいときは通しの番号として読む。tier・star（段の中の星）・num（通しの番号）・hard も返す
+  function starInfo(n, tier) {
     try {
       n = normStar(n);
       if (n === null) return null;
-      const dm = dimsOf(n);
+      const q = split(n, tier);
+      const dm = dimsOf(q.k, q.t);
       const iron = dm.mix.iron, ice = dm.mix.ice;
-      const gold = goldBlobs(n) * 4;
+      const gold = goldBlobs(q.N) * 4;
       const main = iron === 0 && ice === 0 ? null : iron >= ice ? "iron" : "ice";
       const tag = main === null ? "" : main === "iron" ? "てつが おおい" : "こおりが おおい";
-      return { w: dm.w, h: dm.h, radius: dm.rad, boss: dm.boss, mix: { iron, ice, gold }, limit: limitOf(n), tag, main };
+      return { w: dm.w, h: dm.h, radius: dm.rad, boss: dm.boss, mix: { iron, ice, gold }, limit: limitOf(q.k, q.t), tag, main, tier: q.t, star: q.k, num: q.N, hard: q.t > 0 };
     } catch (e) { return null; }
   }
 
@@ -436,20 +463,21 @@
     return 0;
   }
   const rockMemo = new Map();
-  function genRock(seed, n) {
-    const mk = (seed >>> 0) + ":" + n;
+  function genRock(seed, n, tier) {
+    const t = tierOk(tier);
+    const mk = (seed >>> 0) + ":" + n + ":" + t;
     let base = rockMemo.get(mk);
     if (!base) {
-      base = genRockRaw(seed, n);
+      base = genRockRaw(seed, n, t);
       if (rockMemo.size >= 8) rockMemo.delete(rockMemo.keys().next().value);
       rockMemo.set(mk, base);
     }
     return { w: base.w, h: base.h, mats: base.mats.slice(), hp: base.hp.slice(), total: base.total, left: base.total, value: base.value, gen: 0, dirty: [], key: n * 10000 + 1, cx: base.cx, cy: base.cy };
   }
-  function genRockRaw(seed, n) {
-    const dm = dimsOf(n);
+  function genRockRaw(seed, n, t) {
+    const dm = dimsOf(n, t);
     const w = dm.w, h = dm.h, N = w * h, rad = dm.rad;
-    const rnd = makeRng(hash2(seed, n));
+    const rnd = makeRng(t === 0 ? hash2(seed, n) : hash2((seed ^ Math.imul(t, 0x632be5ab)) >>> 0, n));
     // でこぼこの丸：半径のゆらぎ（2〜7 番目の波）を 1024 の向きの表にする
     const TB = 1024, tab = new Float64Array(TB);
     const waves = [];
@@ -499,7 +527,7 @@
     const iceWant = Math.round(cnt * dm.mix.ice);
     if (iceWant > 0) placeBlobs(mats, w, h, cells, iceWant, 2 + Math.floor(rnd() * 2), 3, okRock, rnd);
     // きん：2×2 の小さなかたまり（星 8〜）
-    const gb = goldBlobs(n);
+    const gb = goldBlobs(numIn(n, t));
     for (let b = 0, guard = 0; b < gb && guard < 400; guard++) {
       const j = cells[Math.floor(rnd() * cnt)];
       const c = j % w;
@@ -523,8 +551,10 @@
       const cand = new Proxy(pick, { get: (o, k) => (k === "length" ? arr.length : k === "has" ? o.has : arr[k]) });
       if (!placeGlow(mats, w, h, cand, size, gid, id, rnd)) id--;
     };
-    for (let k = 0; k < nGlow; k++) put(nearArr, nearC);
-    for (let k = 0; k < GLOW.deep; k++) put(deepArr, deepC);
+    const gf = HARD.glow[Math.min(t, HARD.glow.length - 1)];
+    const nNear = Math.max(1, Math.round(nGlow * gf)), nDeep = Math.round(GLOW.deep * gf);
+    for (let k = 0; k < nNear; k++) put(nearArr, nearC);
+    for (let k = 0; k < nDeep; k++) put(deepArr, deepC);
     const hp = new Array(N).fill(0);
     let value = 0, sc = 0, sr = 0;
     const mm = new Array(N).fill(0);
@@ -533,8 +563,8 @@
       if (!code) continue;
       const m = matOf(code);
       mm[i] = code;
-      hp[i] = cellHp(n, m);
-      value += cellValue(n, m) * (code === 5 ? GLOW.mul : 1);
+      hp[i] = cellHp(n, m, t);
+      value += cellValue(n, m, t) * (code === 5 ? GLOW.mul : 1);
       const c = i % w;
       sc += c; sr += (i - c) / w;
     }
@@ -579,9 +609,10 @@
   }
   // 保存の中身（検証済み）から、星の最初の状態を作る
   function makeState(o) {
-    const limit = limitOf(o.star);
+    const tier = tierOk(o.tier);
+    const limit = limitOf(o.star, tier);
     const s = {
-      star: o.star, phase: o.offer ? "choose" : "fly", t: isNum(o.t) ? o.t : 0, left: limit, limit,
+      tier, star: o.star, phase: o.offer ? "choose" : "fly", t: isNum(o.t) ? o.t : 0, left: limit, limit,
       kakera: o.kakera, kfrac: isNum(o.kfrac) ? o.kfrac : 0,
       slots: o.slots.map((x) => ({ id: x.id, lv: x.lv })), bench: (o.bench || []).map((x) => ({ id: x.id, lv: x.lv })),
       offer: o.offer ? o.offer.slice() : null, swap: (o.swap || []).map((x) => ({ slot: x.slot, id: x.id })),
@@ -590,8 +621,8 @@
       seed: o.seed, rng: o.rng, wait: 0, back: "fly",
       ms: Array.isArray(o.ms) ? o.ms.slice() : [], bestT: isObj(o.bestT) ? Object.assign({}, o.bestT) : {}, hold: false
     };
-    s.rock = genRock(s.seed, s.star);
-    s.rock.key = s.star * 10000 + Math.min(9999, s.tries);
+    s.rock = genRock(s.seed, s.star, s.tier);
+    s.rock.key = rockKey(s);
     if (o.mid !== undefined && o.mid !== null) applyMid(s, o.mid);
     s.ship = startShip(s);
     s.ms = passedMs(s.rock, s.ms);
@@ -670,6 +701,7 @@
     const L = Math.hypot(px - ex, py - ey) || 1, nx = (px - ex) / L, ny = (py - ey) / L;
     return { x: ex + nx * STANDOFF * CELL, y: ey + ny * STANDOFF * CELL, ang: Math.atan2(nx, -ny), dir: 1, flip };
   }
+  function rockKey(s) { return numIn(s.star, s.tier) * 10000 + Math.min(9999, s.tries | 0); }
   function flipGap(s) {
     const h = hash2((s.seed >>> 0) ^ Math.imul(s.star | 0, 0x9e37), Math.floor((isNum(s.t) ? s.t : 0) * 30) >>> 0);
     return FLIP_MIN + (FLIP_MAX - FLIP_MIN) * (h / 4294967296);
@@ -677,7 +709,7 @@
   function fullHp(s, i) {
     const code = s.rock.mats[i];
     if (!code) return null;
-    return cellHp(s.star, matOf(code));
+    return cellHp(s.star, matOf(code), s.tier);
   }
   function isState(s) {
     return isObj(s) && isNum(s.star) && isNum(s.kakera) && isNum(s.t) && Array.isArray(s.slots) && s.slots.length >= 1 && s.slots.length <= SLOTS_MAX &&
@@ -696,7 +728,8 @@
     if (!isNum(c.kfrac) || c.kfrac < 0 || c.kfrac >= 1) c.kfrac = 0;
     if (!isNum(c.wait)) c.wait = 0;
     if (typeof c.back !== "string") c.back = "fly";
-    if (!isNum(c.limit) || c.limit <= 0) c.limit = limitOf(c.star);
+    c.tier = tierOk(c.tier);
+    if (!isNum(c.limit) || c.limit <= 0) c.limit = limitOf(c.star, c.tier);
     if (!isNum(c.left)) c.left = c.limit;
     if (!Array.isArray(c.rock.dirty)) c.rock.dirty = [];
     if (!isNum(c.rock.gen)) c.rock.gen = 0;
@@ -776,7 +809,7 @@
     R.hp[i] -= amount * aff;
     if (R.hp[i] <= 1e-9) {
       if (code === 5) { glowBurst(s, i, ctx); return true; }
-      const v = cellValue(s.star, mat);
+      const v = cellValue(s.star, mat, s.tier);
       clearCell(s, i, ctx);
       addK(s, v);
       s.totals.cells++;
@@ -800,7 +833,7 @@
       const nb = [c > 0 ? j - 1 : -1, c < w - 1 ? j + 1 : -1, j - w, j + w];
       for (const k of nb) if (k >= 0 && k < N && !seen.has(k) && R.mats[k] === 5) { seen.add(k); cells.push(k); }
     }
-    const v = cellValue(s.star, "glow") * GLOW.mul * cells.length;
+    const v = cellValue(s.star, "glow", s.tier) * GLOW.mul * cells.length;
     for (const j of cells) clearCell(s, j, ctx);
     addK(s, v);
     s.totals.cells += cells.length;
@@ -947,7 +980,7 @@
       const cells = comps[k].cells;
       let v = 0;
       const cm = new Array(cells.length);
-      for (let q = 0; q < cells.length; q++) { const j = cells[q], code = s.rock.mats[j]; cm[q] = code; v += cellValue(s.star, matOf(code)); clearCell(s, j, null); }
+      for (let q = 0; q < cells.length; q++) { const j = cells[q], code = s.rock.mats[j]; cm[q] = code; v += cellValue(s.star, matOf(code), s.tier); clearCell(s, j, null); }
       addK(s, v);
       s.totals.cells += cells.length; s.totals.chunks++;
       ctx.evs.push({ kind: "chunk", cells, mats: cm, value: v });
@@ -1411,7 +1444,7 @@
       const bt = isObj(s.bestT) ? s.bestT : {};
       const prev = isNum(bt[s.star]) ? bt[s.star] : null;
       if (prev === null || time < prev) s.bestT = trimBest(Object.assign({}, bt, { [s.star]: time }));
-      evs.push({ kind: "clear", star: s.star, bonus, time, best: prev, left: Math.round(s.left * 10) / 10 });
+      evs.push({ kind: "clear", star: s.star, tier: tierOk(s.tier), num: numIn(s.star, s.tier), bonus, time, best: prev, left: Math.round(s.left * 10) / 10 });
     } else if (s.left <= 1e-9) {
       const broken = progressS(s).broken;
       s.left = 0;
@@ -1457,9 +1490,9 @@
     s.swap = [];
   }
   function resetTry(s) {
-    s.rock = genRock(s.seed, s.star);
-    s.rock.key = s.star * 10000 + Math.min(9999, s.tries);
-    s.limit = limitOf(s.star);
+    s.rock = genRock(s.seed, s.star, s.tier);
+    s.rock.key = rockKey(s);
+    s.limit = limitOf(s.star, s.tier);
     s.left = s.limit;
     s.shots = []; s.burns = []; s.hold = false;
     s.cd = s.slots.map(() => s.t);
@@ -1481,23 +1514,36 @@
       return { state: s, ok: true, events };
     } catch (e) { return { state, ok: false, reason: "error", events: [] }; }
   }
+  // 次の星。星 30（どの段でも）のあとは、その段のエンディング（ending { tier: クリアした段 }・phase end）で、次の段の星 1 に進んでおく
   function nextStar(s, evs) {
-    const was = s.star;
-    s.star = Math.min(STAR_MAX, s.star + 1);
+    const was = s.star, wasTier = tierOk(s.tier);
+    const end = was >= starsOf(wasTier);
+    if (end) { s.tier = Math.min(TIER_MAX, wasTier + 1); s.star = 1; } else s.star = was + 1;
     s.tries = 1;
     applySwaps(s, evs);
     resetTry(s);
     s.ms = [];
-    if (was === ENDING_STAR && !s.cleared) {
+    if (end) {
       s.cleared = true;
       s.phase = "end";
-      evs.push({ kind: "ending" });
+      evs.push({ kind: "ending", tier: wasTier, next: s.tier });
       return;
     }
     s.phase = "fly";
     if (s.star % BOSS_EVERY === 0) evs.push({ kind: "boss", star: s.star });
   }
 
+  // エンディングのカードを閉じたとき（「ハードを はじめる」「つぎの だんへ」）：phase end から、次の段の星 1 を fly で始める
+  function afterEnding(state) {
+    try {
+      if (!isState(state)) return { state, ok: false, reason: "state" };
+      if (state.phase !== "end") return { state, ok: false, reason: "phase" };
+      const s = cloneForStep(state);
+      s.phase = "fly";
+      s.cd = s.slots.map(() => s.t);
+      return { state: s, ok: true };
+    } catch (e) { return { state, ok: false, reason: "error" }; }
+  }
   function step(state, dt) {
     try {
       if (!isState(state)) return null;
@@ -1554,9 +1600,10 @@
     const R = s.rock;
     const total = R.total, left = R.left;
     const broken = total > 0 ? clamp(1 - left / total, 0, 1) : 0;
-    const lim = isNum(s.limit) && s.limit > 0 ? s.limit : limitOf(s.star);
+    const tier = tierOk(s.tier);
+    const lim = isNum(s.limit) && s.limit > 0 ? s.limit : limitOf(s.star, tier);
     const timeLeft = isNum(s.left) ? clamp(s.left, 0, lim) : lim;
-    return { broken, left, total, timeLeft, timeFrac: clamp(timeLeft / lim, 0, 1) };
+    return { broken, left, total, timeLeft, timeFrac: clamp(timeLeft / lim, 0, 1), tier, star: s.star, num: numIn(s.star, tier), hard: tier > 0 };
   }
   function progressOf(state) {
     try { return isState(state) ? progressS(state) : null; } catch (e) { return null; }
@@ -1720,16 +1767,19 @@
 
   // ---------------------------------------------------------------- 保存（v:3）
   function saveObj(state, withMid) {
-    let star = state.star, tries = state.tries, ms = Array.isArray(state.ms) ? state.ms.slice() : [];
+    let star = state.star, tier = tierOk(state.tier), cleared = !!state.cleared, tries = state.tries, ms = Array.isArray(state.ms) ? state.ms.slice() : [];
     let slots = state.slots.map((x) => ({ id: x.id, lv: x.lv }));
     let bench = (Array.isArray(state.bench) ? state.bench : []).map((x) => ({ id: x.id, lv: x.lv }));
     let swap = (Array.isArray(state.swap) ? state.swap : []).map((x) => ({ slot: x.slot, id: x.id }));
-    // クリアの演出中（phase 'clear'、または 2択の間で戻り先が 'clear'）は次の星を保存する（はじめての星 ENDING_STAR だけはその星のまま）。
+    // クリアの演出中（phase 'clear'、または 2択の間で戻り先が 'clear'）は次の星を保存する（星 30 なら次の段の星 1。エンディングのカードは開き直すと出ない）。
     // 時間切れの間（phase 'lost'、または 2択の間で戻り先が 'lost'）は、やり直しの始めに当たる予約を先に当てて書く（tries は増えたまま）。
     // どちらも、入れ替えの予約を当てた slots・bench と swap: [] で書く
     const ph = state.phase === "choose" ? state.back : state.phase;
-    const toNext = ph === "clear" && !(state.star === ENDING_STAR && !state.cleared);
-    if (toNext) { star = Math.min(STAR_MAX, state.star + 1); tries = 1; ms = []; }
+    const toNext = ph === "clear";
+    if (toNext) {
+      if (state.star >= starsOf(tier)) { star = 1; tier = Math.min(TIER_MAX, tier + 1); cleared = true; } else star = state.star + 1;
+      tries = 1; ms = [];
+    }
     if (toNext || ph === "lost") {
       const tmp = { slots, bench, swap };
       applySwaps(tmp, []);
@@ -1737,8 +1787,8 @@
     }
     const t = state.totals || {};
     const o = {
-      v: SAVE_VERSION, star, kakera: state.kakera, kfrac: isNum(state.kfrac) && state.kfrac >= 0 && state.kfrac < 1 ? state.kfrac : 0,
-      slots, bench, offer: state.offer ? state.offer.slice() : null, swap, cleared: !!state.cleared, tries,
+      v: SAVE_VERSION, tier, star, kakera: state.kakera, kfrac: isNum(state.kfrac) && state.kfrac >= 0 && state.kfrac < 1 ? state.kfrac : 0,
+      slots, bench, offer: state.offer ? state.offer.slice() : null, swap, cleared, tries,
       totals: { cells: t.cells | 0, stars: t.stars | 0, kakera: isNum(t.kakera) ? t.kakera : 0, chunks: t.chunks | 0, glows: t.glows | 0 },
       seed: state.seed, rng: state.rng, ms, bestT: isObj(state.bestT) ? Object.assign({}, state.bestT) : {}
     };
@@ -1790,7 +1840,9 @@
       const o = parseRaw(raw);
       if (!isObj(o) || o.v !== SAVE_VERSION) return null;
       const seed = isNum(o.seed) ? Math.floor(Math.abs(o.seed)) >>> 0 : 1;
-      const star = intIn(o.star, 1, STAR_MAX, 1);
+      // 段：0 以上の整数（無い・壊れた値は 0）。星は段の中の 1〜30（30 より大きい値は通しの番号として段に直す）
+      const q = split(intIn(o.star, 1, STAR_MAX, 1), intIn(o.tier, 0, TIER_MAX, 0));
+      const star = q.k, tier = q.t;
       const kakera = intIn(o.kakera, 0, KAKERA_MAX, 0);
       const kfrac = isNum(o.kfrac) && o.kfrac >= 0 && o.kfrac < 1 ? o.kfrac : 0;
       // 武器：重複は後ろを捨てる・知らない id は捨てる・lv は 1〜99。空なら たま Lv1。5 つ目からは ひかえ へ回す（捨てない）
@@ -1821,7 +1873,7 @@
       const tt = isObj(o.totals) ? o.totals : {};
       const totals = { cells: intIn(tt.cells, 0, KAKERA_MAX, 0), stars: intIn(tt.stars, 0, KAKERA_MAX, 0), kakera: intIn(tt.kakera, 0, KAKERA_MAX, 0), chunks: intIn(tt.chunks, 0, KAKERA_MAX, 0), glows: intIn(tt.glows, 0, KAKERA_MAX, 0) };
       let cleared = o.cleared === true;
-      if (star > ENDING_STAR) cleared = true;
+      if (tier > 0) cleared = true;
       const ms = Array.isArray(o.ms) ? MILESTONES.filter((p) => o.ms.includes(p)) : [];
       const bestT = {};
       if (isObj(o.bestT)) for (const k of Object.keys(o.bestT)) {
@@ -1829,7 +1881,7 @@
         if (!/^[1-9][0-9]{0,3}$/.test(k) || Number(k) > STAR_MAX || !isNum(v) || v <= 0 || v > 1e7) continue;
         bestT[Number(k)] = Math.max(0.1, Math.round(v * 10) / 10);
       }
-      const base = { star, kakera, kfrac, slots, bench, swap, offer: null, cleared, tries, totals, seed, rng, mid: o.mid, ms, bestT: trimBest(bestT) };
+      const base = { tier, star, kakera, kfrac, slots, bench, swap, offer: null, cleared, tries, totals, seed, rng, mid: o.mid, ms, bestT: trimBest(bestT) };
       if (o.offer !== null && o.offer !== undefined && seen.size < W_IDS.length) {
         const f = o.offer;
         const pool = W_IDS.filter((id) => !seen.has(id));
@@ -1862,8 +1914,9 @@
     for (let k = 1; k <= 10; k++) { const x = mixOf(Math.min(STAR_MAX, n + k)); m.rock += x.rock / 10; m.iron += x.iron / 10; m.ice += x.ice / 10; }
     return m;
   }
+  function numOf(s) { return numIn(s.star, s.tier); }
   function greedyBuy(s) {
-    const mix = mixOf(s.star);
+    const mix = mixOf(numOf(s));
     const sc = slotCostOf(s);
     if (sc !== null && s.phase !== "choose") {
       if (s.kakera >= sc) { unlockMut(s); return "unlock"; }
@@ -1912,13 +1965,13 @@
     if (order) { const ia = order.indexOf(a), ib = order.indexOf(b); if (ia !== ib) return (ia < 0 ? 99 : ia) <= (ib < 0 ? 99 : ib) ? 0 : 1; }
     if (policy === "random") return simRnd() < 0.5 ? 0 : 1;
     if (policy === "worst") {
-      const m = aheadMix(s.star);
+      const m = aheadMix(numOf(s));
       return fitOf(a, m) <= fitOf(b, m) ? 0 : 1;
     }
-    const m = starInfo(s.star).tag ? mixOf(s.star) : aheadMix(s.star);
+    const m = starInfo(numOf(s)).tag ? mixOf(numOf(s)) : aheadMix(numOf(s));
     const fa = fitOf(a, m), fb = fitOf(b, m);
     if (fa !== fb) return fa > fb ? 0 : 1;
-    const am = aheadMix(s.star);
+    const am = aheadMix(numOf(s));
     return fitOf(a, am) >= fitOf(b, am) ? 0 : 1;
   }
   function median(a) { if (!a.length) return null; const b = a.slice().sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; }
@@ -1930,6 +1983,7 @@
     const pol = ["greedy", "random", "worst", "idle"].includes(policy) ? policy : "greedy";
     opts = isObj(opts) ? opts : {};
     const maxStar = isNum(opts.maxStar) ? Math.floor(opts.maxStar) : ENDING_STAR;
+    const maxTier = isNum(opts.maxTier) ? tierOk(opts.maxTier) : 0;
     const maxSec = isNum(opts.maxSec) ? opts.maxSec : 16 * 3600;
     const seed = isNum(opts.seed) ? opts.seed : 1;
     const buyEvery = isNum(opts.buyEvery) && opts.buyEvery >= 1 ? Math.floor(opts.buyEvery) : 1;
@@ -1950,7 +2004,7 @@
       let s = newGame(seed);
       if (isObj(opts.start)) {
         const st = opts.start;
-        const o = loadSave(JSON.stringify({ v: SAVE_VERSION, star: st.star || 1, kakera: st.kakera || 0, slots: st.slots || [{ id: "shot", lv: 1 }], bench: st.bench || [], seed, rng: hash2(seed >>> 0, 0x2b), cleared: (st.star || 1) > ENDING_STAR }));
+        const o = loadSave(JSON.stringify({ v: SAVE_VERSION, tier: st.tier || 0, star: st.star || 1, kakera: st.kakera || 0, slots: st.slots || [{ id: "shot", lv: 1 }], bench: st.bench || [], seed, rng: hash2(seed >>> 0, 0x2b), cleared: (st.tier || 0) > 0 }));
         if (o) s = o;
       }
       fixParts(s);
@@ -1974,7 +2028,7 @@
         if (s.phase === "end") s.phase = "fly";
         if ((s.phase === "clear" || s.phase === "lost") && !swapAsked) {
           swapAsked = true;
-          if (doSwap && pol === "greedy") greedySwap(s, s.phase === "clear" ? Math.min(STAR_MAX, s.star + 1) : s.star, buyEvery);
+          if (doSwap && pol === "greedy") greedySwap(s, s.phase === "clear" ? numOf(s) + 1 : numOf(s), buyEvery);
           else if (doSwap && pol === "random" && s.bench.length && simRnd() < 0.3) {
             const k = Math.floor(simRnd() * s.slots.length), b = s.bench[Math.floor(simRnd() * s.bench.length)];
             reserveSwapMut(s, k, b.id);
@@ -2033,14 +2087,14 @@
           else if (e.kind === "chunk") { born += e.cells.length * 2; starChunks++; }
           else if (e.kind === "glow") { born += e.cells.length * 3; starGlows++; rep.glows++; }
           else if (e.kind === "bolt") {
-            if (s.star >= 3 && starInfo(s.star).main === "iron") { const x = s.slots.find((y) => y.id === "bolt"); const pm = preMats || s.rock.mats; let n = pm[e.from] === 2 ? 1 : 0; for (const ed of e.edges) if (pm[ed[1]] === 2) n++; rep.boltCells.push(n / shapeOf("bolt", x ? x.lv : 1)); }
+            if (numOf(s) >= 3 && starInfo(numOf(s)).main === "iron") { const x = s.slots.find((y) => y.id === "bolt"); const pm = preMats || s.rock.mats; let n = pm[e.from] === 2 ? 1 : 0; for (const ed of e.edges) if (pm[ed[1]] === 2) n++; rep.boltCells.push(n / shapeOf("bolt", x ? x.lv : 1)); }
           } else if (e.kind === "swap") { rep.swaps++; rep.swapLog.push({ star: s.star, slot: e.slot, from: e.from, to: e.to, lv: e.lv }); }
           else if (e.kind === "clear") {
-            rep.stars.push({ star: e.star, boss: e.star % BOSS_EVERY === 0, sec: +(flyT - starStart).toFixed(1), clearSec: +tryFly.toFixed(1), limit: s.limit, timeLeft: e.left,
+            rep.stars.push({ tier: e.tier, num: e.num, star: e.star, boss: e.star % BOSS_EVERY === 0, sec: +(flyT - starStart).toFixed(1), clearSec: +tryFly.toFixed(1), limit: s.limit, timeLeft: e.left,
               tries: s.tries, buys: starBuys, kakera: s.kakera, b30: b30 === null ? 1 : +b30.toFixed(3), chunks: starChunks, glows: starGlows,
               slots: s.slots.map((x) => x.id + x.lv).join(" ") });
             b30 = null; starChunks = 0; starGlows = 0;
-            if (e.star === maxStar) rep.endSec = flyT;
+            if (e.star === maxStar && e.tier === maxTier) rep.endSec = flyT;
           } else if (e.kind === "lost") {
             rep.losts.push({ star: s.star, broken: +e.broken.toFixed(3), t: +s.t.toFixed(1) });
           }
@@ -2055,7 +2109,7 @@
           if (b30 === null && flyT - starStart >= 30 - 1e-9) b30 = progressS(s).broken;
         }
         lastPhase = s.phase;
-        if (rep.endSec !== null && rep.stars.length && rep.stars[rep.stars.length - 1].star >= maxStar) break;
+        if (rep.endSec !== null) break;
       }
       rep.t = s.t;
       rep.flySec = flyT;
@@ -2063,7 +2117,7 @@
       rep.boltMedian = median(rep.boltCells);
       rep.boltCells = rep.boltCells.length;
       rep.standoff.avg = rep.standoff.n ? +(rep.standoff.sum / rep.standoff.n).toFixed(2) : null;
-      rep.final = { star: s.star, kakera: s.kakera, slots: s.slots.map((x) => ({ id: x.id, lv: x.lv })), bench: s.bench.map((x) => ({ id: x.id, lv: x.lv })), tries: s.tries, totals: Object.assign({}, s.totals), cleared: s.cleared, phase: s.phase, broken: progressS(s).broken };
+      rep.final = { tier: s.tier, star: s.star, kakera: s.kakera, slots: s.slots.map((x) => ({ id: x.id, lv: x.lv })), bench: s.bench.map((x) => ({ id: x.id, lv: x.lv })), tries: s.tries, totals: Object.assign({}, s.totals), cleared: s.cleared, phase: s.phase, broken: progressS(s).broken };
     } catch (e) {
       rep.error = String(e && e.stack || e);
     } finally {
@@ -2077,13 +2131,13 @@
     CELL, STANDOFF, SHIP_SPEED, RANGE, SHIP_TURN, FLIP_MIN, FLIP_MAX, GRID_MAX,
     R_BASE, R_STEP, R_MAX, BOSS_EVERY, BOSS_SIZE, BOSS_HARD, SHAPE, AREA_FILL, GLOW,
     BOLT_CELLS, BEAM_W, BEAM_DEPTH, SHOT_UP, BOLT_KEEP, BOLT_MIN, BOMB_SHIFT,
-    STAR_HP, STAR_VALUE, HP_TABLE, VALUE_GROWTH, HP_GROWTH2, VALUE_GROWTH2, EARLY_VALUE, UP_GROWTH, LEVEL_MAX, SLOTS_MAX, MIX,
-    CLEAR_BONUS, MILESTONE_BONUS, MILESTONES, BEST_MAX, ENDING_STAR, STAR_MAX, STAR_CALC_MAX, KAKERA_MAX, SHOTS_MAX, STEP,
+    STAR_HP, STAR_VALUE, HP_TABLE, VALUE_GROWTH, VALUE_GROWTH2, EARLY_VALUE, HARD, TIER_MAX, UP_GROWTH, LEVEL_MAX, SLOTS_MAX, MIX,
+    CLEAR_BONUS, MILESTONE_BONUS, MILESTONES, BEST_MAX, ENDING_STAR, HARD_STARS, STAR_MAX, STAR_CALC_MAX, KAKERA_MAX, SHOTS_MAX, STEP,
     SAVE_VERSION, SAVE_KEY, SAVE_KEY_BAK, SAVE_KEY_BEST, SAVE_KEY_HELP, SAVE_KEY_V3,
     CLEAR_SEC, BEAM_SEC, BOMB_FLIGHT, BULLET_SPEED, BULLET_LIFE, CARRY_MIN, LIMIT_MUL, LIMIT_BASE, IRON_BLOB_MIN,
-    newGame, starInfo, step, dpsOf, upCostOf, upgrade, slotCostOf, unlock, choose, swapChoicesOf, reserveSwap, retry, progressOf, formatKakera, formatTime,
+    newGame, starInfo, step, dpsOf, upCostOf, upgrade, slotCostOf, unlock, choose, swapChoicesOf, reserveSwap, retry, afterEnding, progressOf, formatKakera, formatTime,
     makeSave, loadSave, saveVersionOf, validateBest, simulate,
-    hpMul, valMul, dmg, upCost, affOf, shapeOf, cellHp, cellHpAt, cellValue, matOf, limitOf, rateOf, pierceOf
+    hpMul, valMul, dmg, upCost, affOf, shapeOf, cellHp, cellHpAt, cellValue, matOf, limitOf, rateOf, pierceOf, numIn
   };
   return Object.freeze(api);
 });
