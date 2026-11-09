@@ -527,6 +527,16 @@ export const x20Text = (r) => `変わっていなければ開き直さない（$
 export const KNOWN_ISSUES = {
   // ほしくだき（作り直し、2026-10-23）：SE 縦・ホーム画面（320×568、safe-area の上 20px）で 4 台のとき、場の高さが safe-area を除いた高さの 42.7%（契約 §5.1 の 4 割 3 分に 0.3 点足りない）。
   // 部品C の 44% は safe-area なしで測った値。PM の決定待ち（目安を 4 割 2 分にするか、画面を詰めるか）。KW8 の場の高さの確認だけに付ける
+  // ほしくだき（リニューアル、2026-11-09）：カード（遊び方・2択・入れ替え・エンディング）の上で a#back が押せない（.app の z-index:1 の層に入った .back が .overlay の下になる）。KW7 のカードの確かめだけに付ける。games/asteroid/index.html を直したら行を消す
+  // ほしくだき（リニューアル、2026-11-09）：横で背が低い画面（SE 横・iPhone 13 横）で武器が 4 台のとき、右の列で武器の行が「あたらしい ぶき」「いれかえ」に重なる／Safari 横（568×270）では行が画面の下にはみ出す。KW8 の横・4 台の確かめだけに付ける
+  'AST-LAND4': '横向き・武器 4 台で、右の列の武器の行がボタンに重なる・低い画面では下にはみ出す（games/asteroid/index.html の横向きの @media）',
+  // ほしくだき：SE 縦・Safari（320×454）で、時間切れの #lostCard が上の #hud と下の武器の行に重なる。KW8 のカードの確かめだけに付ける
+  'AST-LOST-SE': '小さい縦画面（320×454）で #lostCard が #hud と武器の行に重なる（games/asteroid/index.html の .lostcard）',
+  // ほしくだき：遊び方に項目が増えて（5 項目）、SE 横・Safari（568×270）で「わかった」が画面の下にはみ出す（スクロールなしで見えない）。KW9 のその画面だけに付ける
+  'AST-HELP-SE': 'SE 横・Safari（568×270）で遊び方の「わかった」が画面の下にはみ出す（games/asteroid/index.html の #help）',
+  // ほしくだき（リニューアル、2026-11-09）：CPU 4 倍遅く（CDP）・星 30（132×132）・4 台 Lv30・SE 縦で、34ms を超えるコマが 13〜38%（目安 5% 以下）。描く canvas が画面いっぱいで dpr 2 になったため。KW10 のその確かめだけに付ける。描画の担当の判断待ち
+  'AST-PERF': 'CPU 4 倍遅くで 34ms を超えるコマが 5% をこえる（13〜38%。games/asteroid/render.js）',
+  'AST-BACK': 'a#back がカードの下になり、カードの上ではメニューへ戻れない（games/asteroid/index.html の .app の z-index）',
 };
 // 既知の不具合のキー → 説明（なければ undefined）。check(名前, ok, 詳細, known(キー)) のように使う
 export const known = (key) => KNOWN_ISSUES[key];
