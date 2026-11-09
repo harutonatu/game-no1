@@ -40,5 +40,8 @@ def draw(cx, by, flip=False):
         put(X(dx), y, 'K')
     # 音符
     note(X(10) - 2, by - 46, 'R')
-    note(X(-10) - 2, by - 44, 'V')
+    if flip:   # ぎゃくの時は 場所の物（ビルなど）に かからないよう 頭の上へ
+        note(X(-1) - 2, by - 47, 'V')
+    else:
+        note(X(-10) - 2, by - 44, 'V')
     return head, body
