@@ -905,7 +905,7 @@
   // あまいものあつめ：amai.best（クリアした一番大きい面）が安全な整数で 1 以上のときだけ「N めん クリア」。
   // amai.book（{"v":1,"got":{絵の id:回数}}）の回数が 1〜9999 の整数の絵が 1 枚以上あれば「・ずかん M」を足す。壊れた book は 0 枚。
   // M は AMAI_IDS（games/amai/logic.js の PICTURE_ORDER の id と同じ並び。テスト AW16 が一致を確かめる）にある絵だけ数える。
-  // 3〜48 面を描き直す前の古い id（sakura・ichigo …）は amai.book に残っていても数えない（ずかんの「M / 150」と同じ数にする。49〜100 面の 52 枚は 2026-11-03、101〜150 面の 50 枚は 2026-11-04 に足した）
+  // 3〜48 面を描き直す前の古い id（sakura・ichigo …）は amai.book に残っていても数えない（ずかんの「M / 200」と同じ数にする。49〜100 面の 52 枚は 2026-11-03、101〜150 面の 50 枚は 2026-11-04、151〜200 面の 50 枚は 2026-11-09 に足した）
   const AMAI_IDS = [
     "ringo", "sakuranbo", "nekoyukiyamaoyatsu", "usagidaidokoronemuru", "inuumibeoyatsu", "usagikouennemuru", "kumaumibebooru",
     "nekodaidokorooyatsu", "inuyukiyamanemuru", "usagiyukiyamabooru", "nekoyukiyamabooru", "inukouennemuru", "nekokouenbooru",
@@ -932,7 +932,15 @@
     "nekomoriodoru", "pandayukiyamaodoru", "inuumibeodoru", "usagihanabatakeodoru", "inuyukiyamaodoru", "inuhanabatakeodoru",
     "usagiyukiyamaodoru", "inuhanabatakeoekaki", "pandaumibeodoru", "kumahanabatakeoekaki", "pandakouenodoru", "kumamoriodoru",
     "inuhanabatakeoyatsu", "nekohanabatakeoyatsu", "kumayukiyamaodoru", "usagihanabatakeoyatsu", "nekoyukiyamaodoru", "kumahanabatakeoyatsu",
-    "usagimoriodoru", "nekohanabatakeoekaki"
+    "usagimoriodoru", "nekohanabatakeoekaki",
+    "penginmachihon", "zouyuuenchiutau", "butahoshizorajitensha", "kaerumoriutau", "nekomachihon", "penginyuuenchiutau", "zoudaidokorohon",
+    "butamorihon", "kaeruhanabatakehon", "inukouenjitensha", "penginkouenjitensha", "zoumachijitensha", "butahanabatakeutau", "kaeruyuuenchijitensha",
+    "usagihanabatakeutau", "penginmoribooru", "zouumibeoyatsu", "butayuuenchioyatsu", "kaerukouenodoru", "kumayuuenchiutau", "penginhanabatakeodoru",
+    "zouyukiyamanemuru", "butaumibeoekaki", "kaerudaidokoronemuru", "pandamachijitensha", "penginyukiyamahon", "zoumoriutau", "butamachijitensha",
+    "kaeruhoshizorautau", "nekohoshizorahon", "penginumibeutau", "zouhoshizorahon", "butayuuenchihon", "kaerumachihon", "inuyuuenchijitensha",
+    "penginhoshizorajitensha", "zoukouenjitensha", "butadaidokoroutau", "kaeruumibejitensha", "usagihoshizorautau", "pengindaidokorobooru", "zouhanabatakeoyatsu",
+    "butakouenoyatsu", "kaeruyuuenchiodoru", "kumamoriutau", "penginmachiodoru", "zouhoshizoranemuru", "butamachioekaki", "kaeruyukiyamanemuru",
+    "pandayukiyamajitensha"
   ];
   function amaiBest() {
     try {

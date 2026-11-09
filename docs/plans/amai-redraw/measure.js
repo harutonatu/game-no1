@@ -1,7 +1,7 @@
 // 難しさと面を作る速さを測る台本（計画書 docs/plans/amai-redraw.md §8・考え方は amai-rework.md §10〜§13）。
 // 使い方：node measure.js <面 from> <面 to> <回数> [つまみの JSON] > 出力.json
 //   つまみの JSON：{"OVER":{...},"ANY_RATE":{...},"KSET":{...},"REPEAT_K":{...},"CARRY_TIERS":{...},"GEN_OPT":{...}}（logic.js の既定に上書き）
-//   くり返しの面（BASE_PICTURES＋1 面から。今は 151 面）は、1〜BASE_PICTURES 面をクリアしたずかん（全部 1 回）から始め、面ごとにずかんへ足していく（ふつうに遊んだ人の順）。
+//   くり返しの面（BASE_PICTURES＋1 面から。今は 201 面）は、1〜BASE_PICTURES 面をクリアしたずかん（全部 1 回）から始め、面ごとにずかんへ足していく（ふつうに遊んだ人の順）。
 //   遊び方：でたらめ7割＝ふちの色の箱を選ぶのが 3 割（あとはでたらめ）／ゆるい＝8 割／完全でたらめ＝0 割（1・2 面だけ 200 回）。
 //   2〜7 はこびに 1 回押す（tests の loosePlay と同じ）。1手もどしは使わない。1 面の秒＝ゆるいでクリアした回のはこびの中央 × TICK_MS。
 const path = require('path');
@@ -10,6 +10,7 @@ require(path.join(root, 'games/amai/pictures-a.js'));
 require(path.join(root, 'games/amai/pictures-b.js'));
 require(path.join(root, 'games/amai/pictures-c.js'));
 require(path.join(root, 'games/amai/pictures-d.js'));
+require(path.join(root, 'games/amai/pictures-e.js'));
 const L = require(process.env.LOGIC || path.join(root, 'games/amai/logic.js'));   // LOGIC＝試しに書き換えた logic.js（測るだけ）
 const [from, to, runs, knobs] = [+process.argv[2], +process.argv[3], +process.argv[4], process.argv[5] ? JSON.parse(process.argv[5]) : {}];
 for (const [k, v] of Object.entries(knobs)) {

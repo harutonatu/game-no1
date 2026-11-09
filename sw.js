@@ -81,6 +81,7 @@ const APP_FILES = [
   "./games/amai/pictures-b.js",
   "./games/amai/pictures-c.js",
   "./games/amai/pictures-d.js",
+  "./games/amai/pictures-e.js",
   "./common/sfx.js",
   "./common/version.js",
   "./common/debug.js",

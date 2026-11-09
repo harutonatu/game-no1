@@ -1,8 +1,10 @@
 // 使い方：node docs/plans/amai-redraw/build.js
-// 計画書 docs/plans/amai-redraw.md §4 の表（3〜48 面）・docs/plans/amai-more.md §2 の表（49〜100 面）・docs/plans/amai-more2.md §1 の表（101〜150 面）（面・段・id・場面・季節）と
+// 計画書 docs/plans/amai-redraw.md §4 の表（3〜48 面）・docs/plans/amai-more.md §2 の表（49〜100 面）・docs/plans/amai-more2.md §1 の表（101〜150 面）・
+// docs/plans/amai-parts/combos/A〜E.md の表（151〜200 面。2026-11-09 に部品で描いた 50 枚。計画書 docs/plans/amai-parts.md §8）（面・段・id・場面・季節）と
 // <id>.txt（文字の地図。1 マス＝1 粒。2026-11-05 から 3〜150 面とも背景を角砂糖でうめた docs/plans/amai-bg/out/<id>.txt を読む。
-// 元の絵（3〜48 面は amai-redraw/、49〜100 面は amai-more/、101〜150 面は amai-more2/）は bg.py の入力として残す。計画書 docs/plans/amai-bg.md）から、
-// games/amai/pictures-a.js（りんご・さくらんぼ＋3〜24 面）・pictures-b.js（25〜48 面）・pictures-c.js（49〜100 面）・pictures-d.js（101〜150 面）を書き出す（手で写さない）。
+// 元の絵（3〜48 面は amai-redraw/、49〜100 面は amai-more/、101〜150 面は amai-more2/）は bg.py の入力として残す。計画書 docs/plans/amai-bg.md。
+// 151〜200 面は背景うめ済みの docs/plans/amai-parts/out/<id>.txt を読む）から、
+// games/amai/pictures-a.js（りんご・さくらんぼ＋3〜24 面）・pictures-b.js（25〜48 面）・pictures-c.js（49〜100 面）・pictures-d.js（101〜150 面）・pictures-e.js（151〜200 面）を書き出す（手で写さない）。
 // りんご・さくらんぼは今の pictures-a.js から文字のまま写す。ファイルの頭の仕組み（UMD・AmaiPictures.add）も今のまま。
 // 書き出す前に、全部の絵を logic.js の parsePicture と段の決まり（大きさ 64×48 以下・角砂糖と色の数）で確かめ、1 枚でも外れたら何も書かない。
 "use strict";
@@ -16,11 +18,14 @@ const OUT_A = path.join(ROOT, "games/amai/pictures-a.js");
 const OUT_B = path.join(ROOT, "games/amai/pictures-b.js");
 const OUT_C = path.join(ROOT, "games/amai/pictures-c.js");
 const OUT_D = path.join(ROOT, "games/amai/pictures-d.js");
+const OUT_E = path.join(ROOT, "games/amai/pictures-e.js");
 const PLAN_MORE = path.join(ROOT, "docs/plans/amai-more.md");
 const DIR_MORE = path.join(ROOT, "docs/plans/amai-more");
 const PLAN_MORE2 = path.join(ROOT, "docs/plans/amai-more2.md");
 const DIR_MORE2 = path.join(ROOT, "docs/plans/amai-more2");
 const DIR_BG = path.join(ROOT, "docs/plans/amai-bg/out");   // 背景をうめた 148 枚（3〜150 面。amai-bg.md §4）
+const DIR_COMBOS = path.join(ROOT, "docs/plans/amai-parts/combos");   // 151〜200 面の表（担当ごとに A〜E.md）
+const DIR_PARTS = path.join(ROOT, "docs/plans/amai-parts/out");   // 部品で描いた 50 枚（151〜200 面。背景うめ済み）
 const L = require(path.join(ROOT, "games/amai/logic.js"));
 
 // 段ごとの決まり（計画書 §4）：角砂糖の下限・上限、色の数の下限・上限
@@ -29,6 +34,7 @@ const RANGE = { S: [800, 1000, 4, 5], M: [1200, 1480, 5, 7], L: [2280, 3072, 7, 
 const SPLIT = 24;   // 24 面までを pictures-a.js、25 面からを pictures-b.js
 const SPLIT_C = 48;   // 49 面からを pictures-c.js
 const SPLIT_D = 100;   // 101 面からを pictures-d.js
+const SPLIT_E = 150;   // 151 面からを pictures-e.js
 
 function fail(msg) { console.error("build.js: " + msg); process.exit(1); }
 
@@ -47,8 +53,19 @@ const rows1 = readTable(PLAN, DIR), rows2 = readTable(PLAN_MORE, DIR_MORE), rows
 if (rows1.length !== 46) fail(`amai-redraw.md §4 の表が 46 行でない（${rows1.length}）`);
 if (rows2.length !== 52) fail(`amai-more.md §2 の表が 52 行でない（${rows2.length}）`);
 if (rows3.length !== 50) fail(`amai-more2.md §1 の表が 50 行でない（${rows3.length}）`);
-const rows = rows1.concat(rows2, rows3);
-rows.forEach((r, i) => { if (r.level !== i + 3) fail(`表の面の番号が 3〜150 の順でない（${r.level}）`); });
+// 151〜200 面：combos/A〜E.md（列は 面・段・id・名前・季節・場所・動物・ふるまい・置き方。id に ` は付けない）。面の番号で並べる
+const rows4 = [];
+for (const f of ["A", "B", "C", "D", "E"]) {
+  for (const line of fs.readFileSync(path.join(DIR_COMBOS, f + ".md"), "utf8").split("\n")) {
+    const m = /^\|\s*(\d+)\s*\|\s*(S|M|L|XL|XXL)\s*\|\s*([a-z]+)\s*\|\s*([^|]+?)\s*\|\s*(""|haru|natsu|aki|fuyu)\s*\|/.exec(line);
+    if (!m) continue;
+    rows4.push({ level: Number(m[1]), tier: m[2], id: m[3], name: m[4].trim(), season: m[5] === '""' ? "" : m[5], src: DIR_PARTS });
+  }
+}
+rows4.sort((x, y) => x.level - y.level);
+if (rows4.length !== 50) fail(`combos/A〜E.md の表が 50 行でない（${rows4.length}）`);
+const rows = rows1.concat(rows2, rows3, rows4);
+rows.forEach((r, i) => { if (r.level !== i + 3) fail(`表の面の番号が 3〜200 の順でない（${r.level}）`); });
 
 // ---- 地図を読んで確かめる
 const ids = new Set(), names = new Set(["りんご", "さくらんぼ"]);
@@ -56,7 +73,7 @@ for (const r of rows) {
   if (ids.has(r.id)) fail(`id が重なる：${r.id}`);
   if (names.has(r.name)) fail(`名前が重なる：${r.name}`);
   ids.add(r.id); names.add(r.name);
-  const file = path.join(DIR_BG, r.id + ".txt");
+  const file = path.join(r.src || DIR_BG, r.id + ".txt");
   if (!fs.existsSync(file)) fail(`地図が無い：${file}`);
   r.map = fs.readFileSync(file, "utf8").split("\n").map((s) => s.trimEnd()).filter((s) => s.length);
   const p = L.parsePicture({ id: r.id, name: r.name, season: r.season, map: r.map }, false);
@@ -107,9 +124,13 @@ const b = file(`// あまいものあつめ：25〜48 面の絵（場面）。${
 const c = file(`// あまいものあつめ：49〜100 面の絵（場面）。${NOTE}`,
   rows.filter((r) => r.level > SPLIT_C && r.level <= SPLIT_D).flatMap(entry));
 const d = file(`// あまいものあつめ：101〜150 面の絵（場面）。${NOTE}`,
-  rows.filter((r) => r.level > SPLIT_D).flatMap(entry));
+  rows.filter((r) => r.level > SPLIT_D && r.level <= SPLIT_E).flatMap(entry));
+const NOTE_E = "地図は docs/plans/amai-parts/out/<id>.txt（部品で組み立て、背景も角砂糖でうめた絵。計画書 docs/plans/amai-parts.md）から build.js で書き出す（手で直さない）。1 マス＝1 粒で描いた場面の絵。文字の地図の決まりは docs/ari-contract.md §2.6。";
+const e = file(`// あまいものあつめ：151〜200 面の絵（場面）。${NOTE_E}`,
+  rows.filter((r) => r.level > SPLIT_E).flatMap(entry));
 fs.writeFileSync(OUT_A, a);
 fs.writeFileSync(OUT_B, b);
 fs.writeFileSync(OUT_C, c);
 fs.writeFileSync(OUT_D, d);
-console.log(`書き出した：pictures-a.js（2＋${rows.filter((r) => r.level <= SPLIT).length} 枚）・pictures-b.js（${rows.filter((r) => r.level > SPLIT && r.level <= SPLIT_C).length} 枚）・pictures-c.js（${rows.filter((r) => r.level > SPLIT_C && r.level <= SPLIT_D).length} 枚）・pictures-d.js（${rows.filter((r) => r.level > SPLIT_D).length} 枚）`);
+fs.writeFileSync(OUT_E, e);
+console.log(`書き出した：pictures-a.js（2＋${rows.filter((r) => r.level <= SPLIT).length} 枚）・pictures-b.js（${rows.filter((r) => r.level > SPLIT && r.level <= SPLIT_C).length} 枚）・pictures-c.js（${rows.filter((r) => r.level > SPLIT_C && r.level <= SPLIT_D).length} 枚）・pictures-d.js（${rows.filter((r) => r.level > SPLIT_D && r.level <= SPLIT_E).length} 枚）・pictures-e.js（${rows.filter((r) => r.level > SPLIT_E).length} 枚）`);

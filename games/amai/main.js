@@ -941,8 +941,8 @@
   }
 
   // ===== 面えらび（計画書 docs/plans/amai-select.md §1。契約 §3.5） =====
-  // 選べるのは 1〜ベスト＋1 面（L.levelChoices）。一覧は 1〜150 面（その先は鍵つき）。ベスト＋1 が 151 面より先なら「つづき」を 1 つ
-  const choices = () => safeCall(() => L.levelChoices(best), null) || { top: 1, list: Math.min(150, ORDER.length || 1), open: 1, more: 0 };
+  // 選べるのは 1〜ベスト＋1 面（L.levelChoices）。一覧は 1〜200 面（その先は鍵つき）。ベスト＋1 が 201 面より先なら「つづき」を 1 つ
+  const choices = () => safeCall(() => L.levelChoices(best), null) || { top: 1, list: Math.min(200, ORDER.length || 1), open: 1, more: 0 };
   function showSelect() {
     if (overlay !== null) return;
     flush();
@@ -1018,7 +1018,7 @@
   function chooseLevel(n) {
     if (overlay !== "select") return false;
     if (!safeCall(() => L.canSelect(best, n), false)) return false;
-    // クリアしたことのある 1〜150 面は、ふつう か ちょうせん かを選ぶカード（途中なら「とちゅうは きえるよ」も）
+    // クリアしたことのある 1〜200 面は、ふつう か ちょうせん かを選ぶカード（途中なら「とちゅうは きえるよ」も）
     if (canChallenge(n)) {
       selectTarget = n;
       confirmFrom = "select";
@@ -1049,9 +1049,9 @@
     }
     return startChosen(n);
   }
-  // ちょうせんで遊べる面：1〜150 面（絵が 1 枚ずつ決まっている面）で、その面の絵がずかんにある（＝クリアしたことがある）
+  // ちょうせんで遊べる面：1〜200 面（絵が 1 枚ずつ決まっている面）で、その面の絵がずかんにある（＝クリアしたことがある）
   function canChallenge(n) {
-    if (!Number.isSafeInteger(n) || n < 3 || n > Math.min(Number(L.BASE_PICTURES) || 150, ORDER.length)) return false;
+    if (!Number.isSafeInteger(n) || n < 3 || n > Math.min(Number(L.BASE_PICTURES) || 200, ORDER.length)) return false;
     if (!safeCall(() => L.canSelect(best, n), false)) return false;
     const pk = safeCall(() => L.pickPicture(n, null), null);
     const book = readBook();
