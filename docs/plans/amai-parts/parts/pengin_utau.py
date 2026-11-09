@@ -19,8 +19,9 @@ def draw(cx, by, flip=False):
     pengin.flipper(cx + 7, by - 16, gx, gy + 1, 4.8)
     pengin.foot(cx - 4, by - 1.5); pengin.foot(cx + 6, by - 1.2)
     end(flip, cx)
-    s = -1 if flip else 1
-    sh = 1 if flip else 0
-    note(cx + s * 4 - 2 - sh, by - 45, 'B')
-    note(cx - s * 22 - 2 - sh, by - 41, 'V')
+    # 音符（頭の上と、うしろ〔ぎゃくの時は 前の上。場所の物に かからないように〕）
+    if flip:
+        note(cx - 7, by - 45, 'B'); note(cx - 20, by - 42, 'V')
+    else:
+        note(cx + 2, by - 45, 'B'); note(cx - 24, by - 41, 'V')
     return head, body
