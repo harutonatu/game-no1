@@ -9,3 +9,8 @@
 | 165 | XXL | usagihanabatakeutau | はなばたけで うさぎが うたう | haru | はなばたけ | うさぎ | うたう | x=29 y=46 |
 | 170 | XXL | kumayuuenchiutau | ゆうえんちで くまが うたう | "" | ゆうえんち | くま | うたう | x=30 y=46 |
 | 175 | XXL | pandamachijitensha | まちで ぱんだが じてんしゃに のる | "" | まち | ぱんだ | じてんしゃに のる | x=32 y=46 |
+| 180 | XXL | nekohoshizorahon | ほしぞらで ねこが ほんを よむ | "" | ほしぞら | ねこ | ほんを よむ | x=35 y=46 ぎゃく 背景ぎゃく |
+| 185 | XXL | inuyuuenchijitensha | ゆうえんちで いぬが じてんしゃに のる | "" | ゆうえんち | いぬ | じてんしゃに のる | x=33 y=46 ぎゃく 背景ぎゃく |
+| 190 | XXL | usagihoshizorautau | ほしぞらで うさぎが うたう | "" | ほしぞら | うさぎ | うたう | x=33 y=46 ぎゃく 背景ぎゃく |
+| 195 | XXL | kumamoriutau | もりで くまが うたう | "" | もり | くま | うたう | x=34 y=46 ぎゃく 背景ぎゃく |
+| 200 | XXL | pandayukiyamajitensha | ゆきやまで ぱんだが じてんしゃに のる | fuyu | ゆきやま | ぱんだ | じてんしゃに のる | x=35 y=46 ぎゃく sky=B ground=S |
