@@ -25,6 +25,6 @@ def draw(cx, by, flip=False):
     end(flip, cx)
     s = -1 if flip else 1
     sh = 5 if flip else 0
-    note(cx - s * 11 - sh, by - 46, 'B')
-    note(cx + s * 25 - sh, by - 31, 'R')
+    note(cx + s * 24 - sh, by - 34, 'R')    # 音符は マイクの前（R と W。空 P でも 森の しげみでも 見える色）
+    note(cx + s * 17 - sh, by - 26, 'W')
     return head, body
