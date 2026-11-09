@@ -380,8 +380,9 @@ export const tests = [
       check('retry は lost のときだけ（fly では ok:false・reason phase）', L.retry(L.newGame(1)).ok === false && L.retry(L.newGame(1)).reason === 'phase' && L.retry(null).ok === false, null);
       const rt = L.retry(mid.s);
       const fresh = L.newGame(5);
-      check('retry：phase fly・その星の最初の形・残り時間が limit に戻る・自機は始めの位置', rt.ok && rt.state.phase === 'fly' && J(rt.state.rock.mats) === J(fresh.rock.mats) && rt.state.rock.left === fresh.rock.total && rt.state.left === rt.state.limit && rt.state.limit === L.starInfo(1).limit && near(rt.state.ship.x, fresh.ship.x, 1e-9) && near(rt.state.ship.y, fresh.ship.y, 1e-9), [rt.ok, rt.state.phase, rt.state.left]);
+      check('retry：phase fly・その星の最初の形・残り時間が戻る（2 回目は limit × 1.1。やさしくなる仕掛け）・自機は始めの位置', rt.ok && rt.state.phase === 'fly' && J(rt.state.rock.mats) === J(fresh.rock.mats) && rt.state.rock.left === fresh.rock.total && rt.state.left === rt.state.limit && rt.state.limit === Math.round(L.starInfo(1).limit * 1.1 / 10) * 10 && near(rt.state.ship.x, fresh.ship.x, 1e-9) && near(rt.state.ship.y, fresh.ship.y, 1e-9), [rt.ok, rt.state.phase, rt.state.left]);
       check('retry：かけら・Lv は残る、入れ替えの予約がここで当たる（swap の出来事・外した いなずま は Lv3 で ひかえ へ）', rt.state.kakera === k0 && rt.state.slots[0].lv === 5 && rt.state.slots[1].id === 'beam' && rt.state.slots[1].lv === 9 && J(rt.state.bench) === J([{ id: 'bolt', lv: 3 }]) && J(rt.state.swap) === J([]) && ofKind(rt.events, 'swap').length === 1, [rt.state.slots, rt.state.bench, rt.events]);
+      check('やり直すたびに残り時間が 10% ずつ増える（limitTry。最大 2 倍）', L.limitTry(1, 0, 1) === L.starInfo(1).limit && L.limitTry(1, 0, 3) === Math.round(L.starInfo(1).limit * 1.2 / 10) * 10 && L.limitTry(1, 0, 11) === L.starInfo(1).limit * 2 && L.limitTry(1, 0, 99) === L.starInfo(1).limit * 2 && J(L.RETRY_EASE) === J({ step: 0.1, max: 1 }), [L.limitTry(1, 0, 3), L.limitTry(1, 0, 99)]);
       check('retry の rock は新しい物（key が変わる・dirty は空・gen は 0）', rt.state.rock !== mid.s.rock && rt.state.rock.key !== mid.s.rock.key && J(rt.state.rock.dirty) === '[]' && rt.state.rock.gen === 0, [rt.state.rock.key, mid.s.rock.key]);
       // lost の間に強くできる（つよくして もういちど）・2 択も開ける（戻り先は lost）
       const up = L.upgrade({ ...mid.s, kakera: 1e6 }, 0);
@@ -732,7 +733,7 @@ export const tests = [
       const ov = L.loadSave(JSON.stringify({ v: 3, tier: 1, star: 45, seed: 1 }));
       check('段 1 以上で星が 30 をこえていたら、通しの番号として次の段へ直す（段 1 の 45 → 段 2 の 15）。ふつうで 50 をこえたら段 1 から', ov && ov.tier === 2 && ov.star === 15 && (() => { const q = L.loadSave(JSON.stringify({ v: 3, star: 53, seed: 1 })); return q && q.tier === 1 && q.star === 3 && q.cleared; })(), ov && [ov.tier, ov.star]);
       check('段 1 以上なら cleared は true（ふつうのエンディングは見た）', L.loadSave(JSON.stringify({ v: 3, tier: 1, star: 2, seed: 1, cleared: false })).cleared === true, null);
-      check('retry・やり直しでも段は変わらない', (() => { const l = run(L, { ...mk(L, { tier: 3, star: 4 }), left: 0.05 }, 0.2).s; const q = L.retry(l).state; return l.phase === 'lost' && q.tier === 3 && q.star === 4 && q.left === L.starInfo(4, 3).limit; })(), null);
+      check('retry・やり直しでも段は変わらない', (() => { const l = run(L, { ...mk(L, { tier: 3, star: 4 }), left: 0.05 }, 0.2).s; const q = L.retry(l).state; return l.phase === 'lost' && q.tier === 3 && q.star === 4 && q.left === L.limitTry(4, 3, 2); })(), null);
     },
   },
   {

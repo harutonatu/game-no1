@@ -102,6 +102,8 @@
   const IRON_BLOB_MIN = 40;
   // 時間切れ（計画書 §1.3）：limit(n) = LIMIT_BASE（greedy でかかる秒の目安）× 倍率。倍率は星 1〜3 で first、星 lateFrom から late、その間はまっすぐ下げる
   const LIMIT_MUL = deepFreeze({ first: 1.8, firstStars: 3, late: 1.25, lateFrom: 10 });
+  // やり直すたびに残り時間を少し足す（2 回目の挑戦から +step ずつ、最大 +max）。Lv99 で止まったあとも、どの武器の組み合わせでもいつかは間に合う
+  const RETRY_EASE = deepFreeze({ step: 0.1, max: 1.0 });
   const LIMIT_BASE = deepFreeze({ first: 210, normal: 240, boss: 300, hard: 300, hardBoss: 400 });
 
   // ---------------------------------------------------------------- 表
@@ -301,6 +303,11 @@
     return Math.round((q.k % BOSS_EVERY === 0 ? LIMIT_BASE.hardBoss : LIMIT_BASE.hard) * LIMIT_MUL.late / 10) * 10;
   }
   // starInfo(n, tier)：段 tier（省くと 0）の星 n。n が 30 より大きいときは通しの番号として読む。tier・star（段の中の星）・num（通しの番号）・hard も返す
+  // 挑戦 tries 回目の残り時間（limitOf × やさしくなる分。10 秒単位）
+  function limitTry(n, tier, tries) {
+    const e = 1 + Math.min(RETRY_EASE.max, RETRY_EASE.step * Math.max(0, (isNum(tries) ? Math.floor(tries) : 1) - 1));
+    return Math.round(limitOf(n, tier) * e / 10) * 10;
+  }
   function starInfo(n, tier) {
     try {
       n = normStar(n);
@@ -610,7 +617,7 @@
   // 保存の中身（検証済み）から、星の最初の状態を作る
   function makeState(o) {
     const tier = tierOk(o.tier);
-    const limit = limitOf(o.star, tier);
+    const limit = limitTry(o.star, tier, o.tries);
     const s = {
       tier, star: o.star, phase: o.offer ? "choose" : "fly", t: isNum(o.t) ? o.t : 0, left: limit, limit,
       kakera: o.kakera, kfrac: isNum(o.kfrac) ? o.kfrac : 0,
@@ -729,7 +736,7 @@
     if (!isNum(c.wait)) c.wait = 0;
     if (typeof c.back !== "string") c.back = "fly";
     c.tier = tierOk(c.tier);
-    if (!isNum(c.limit) || c.limit <= 0) c.limit = limitOf(c.star, c.tier);
+    if (!isNum(c.limit) || c.limit <= 0) c.limit = limitTry(c.star, c.tier, c.tries);
     if (!isNum(c.left)) c.left = c.limit;
     if (!Array.isArray(c.rock.dirty)) c.rock.dirty = [];
     if (!isNum(c.rock.gen)) c.rock.gen = 0;
@@ -1492,7 +1499,7 @@
   function resetTry(s) {
     s.rock = genRock(s.seed, s.star, s.tier);
     s.rock.key = rockKey(s);
-    s.limit = limitOf(s.star, s.tier);
+    s.limit = limitTry(s.star, s.tier, s.tries);
     s.left = s.limit;
     s.shots = []; s.burns = []; s.hold = false;
     s.cd = s.slots.map(() => s.t);
@@ -2134,10 +2141,10 @@
     STAR_HP, STAR_VALUE, HP_TABLE, VALUE_GROWTH, VALUE_GROWTH2, EARLY_VALUE, HARD, TIER_MAX, UP_GROWTH, LEVEL_MAX, SLOTS_MAX, MIX,
     CLEAR_BONUS, MILESTONE_BONUS, MILESTONES, BEST_MAX, ENDING_STAR, HARD_STARS, STAR_MAX, STAR_CALC_MAX, KAKERA_MAX, SHOTS_MAX, STEP,
     SAVE_VERSION, SAVE_KEY, SAVE_KEY_BAK, SAVE_KEY_BEST, SAVE_KEY_HELP, SAVE_KEY_V3,
-    CLEAR_SEC, BEAM_SEC, BOMB_FLIGHT, BULLET_SPEED, BULLET_LIFE, CARRY_MIN, LIMIT_MUL, LIMIT_BASE, IRON_BLOB_MIN,
+    RETRY_EASE, CLEAR_SEC, BEAM_SEC, BOMB_FLIGHT, BULLET_SPEED, BULLET_LIFE, CARRY_MIN, LIMIT_MUL, LIMIT_BASE, IRON_BLOB_MIN,
     newGame, starInfo, step, dpsOf, upCostOf, upgrade, slotCostOf, unlock, choose, swapChoicesOf, reserveSwap, retry, afterEnding, progressOf, formatKakera, formatTime,
     makeSave, loadSave, saveVersionOf, validateBest, simulate,
-    hpMul, valMul, dmg, upCost, affOf, shapeOf, cellHp, cellHpAt, cellValue, matOf, limitOf, rateOf, pierceOf, numIn
+    hpMul, valMul, dmg, upCost, affOf, shapeOf, cellHp, cellHpAt, cellValue, matOf, limitOf, limitTry, rateOf, pierceOf, numIn
   };
   return Object.freeze(api);
 });
