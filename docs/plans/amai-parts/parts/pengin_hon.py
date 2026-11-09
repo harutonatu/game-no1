@@ -13,7 +13,7 @@ def draw(cx, by, flip=False):
     pengin.flipper(cx - 8, by - 17, cx - 4, by - 9)
     hon.draw(cx + 5, by - 11, w=8, h=5, cover='R')
     # 手前の手（本の右のはしを持つ）
-    pengin.flipper(cx + 8, by - 17, cx + 13, by - 10)
+    pengin.flipper(cx + 8, by - 17, cx + 13, by - 10, 5)
     pengin.foot(cx - 3, by - 1.5); pengin.foot(cx + 7, by - 1.2)
     end(flip, cx)
     return head, body

@@ -54,5 +54,5 @@ def face(hx, hy, head, look='down', mouth='smile'):
         fill(rect(hx + 3, hy + 4, hx + 8, hy + 4) | rect(hx + 3, hy + 5, hx + 6, hy + 5), 'R')
         shape(up, 'O', sh='C', sw=1); shape(lo, 'O', sh='C', sw=1)
     else:
-        bk = poly([(hx + 1.5, hy + .8), (hx + 12.5, hy + 3.4), (hx + 1.5, hy + 6.2)])
+        bk = poly([(hx + 1.5, hy + .6), (hx + 6, hy + 1.6), (hx + 10.5, hy + 3.6), (hx + 6, hy + 5.6), (hx + 1.5, hy + 6.4)])
         shape(bk, 'O', sh='C', sw=1)
