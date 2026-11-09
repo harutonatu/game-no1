@@ -10,8 +10,18 @@ def hand(x, y, dark=False):
     h = ell(x + .5, y + .5, 2.3, 2.5); buta.blob(h, dark=dark)
 
 
+def books(x, by):
+    """よこに つんだ 本 2 さつ（下 C・上 R。ページの はし W）。x は まん中。"""
+    for (dy, w, c, ox) in ((0, 5, 'C', 0), (4, 4, 'R', 1)):
+        b = rect(x - w + ox, by - 5 - dy, x + w + ox, by - 1 - dy)
+        fill(b, 'W'); fill(cells(b, lambda xx, yy: yy in (by - 5 - dy, by - 4 - dy, by - 1 - dy) or xx <= x - w + ox + 1), c)
+        fill({(xx, by - 3 - dy) for xx in range(x - w + ox + 3, x + w + ox, 2)}, 'S')
+        fill(edge(b), 'K')
+
+
 def draw(cx, by, flip=False):
     begin()
+    books(cx - 16, by)
     # 奥の足（前へ）・しっぽ
     buta.foot_fwd(cx + 2, by - 3, cx + 12, 4.4, dark=True)
     buta.tail(cx - 9, by - 8)
