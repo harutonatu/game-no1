@@ -8,3 +8,4 @@
 | 156 | XXL | penginyuuenchiutau | ゆうえんちで ぺんぎんが うたう | "" | ゆうえんち | ぺんぎん | うたう | x=26 y=46 背景ぎゃく |
 | 181 | XXL | penginumibeutau | うみべで ぺんぎんが うたう | natsu | うみべ | ぺんぎん | うたう | x=38 y=46 ぎゃく 背景ぎゃく |
 | 161 | XXL | penginkouenjitensha | こうえんで ぺんぎんが じてんしゃに のる | "" | こうえん | ぺんぎん | じてんしゃに のる | x=32 y=46 |
+| 186 | XXL | penginhoshizorajitensha | ほしぞらで ぺんぎんが じてんしゃに のる | "" | ほしぞら | ぺんぎん | じてんしゃに のる | x=34 y=46 ぎゃく 背景ぎゃく sky=V |
