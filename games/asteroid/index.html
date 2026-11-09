@@ -164,9 +164,9 @@
   /* render.js が粒の吸い込まれに合わせて .bump を付ける（数は main.js がロジックの値そのままで書く） */
   #kakera.bump { animation: bump 0.22s ease-out; }
   @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.12); } 100% { transform: scale(1); } }
-  #starLabel { min-width: 0; display: flex; justify-content: flex-end; align-items: baseline; gap: 6px; text-align: right; color: var(--gold); }
-  #starLabel .num { font: 800 16px/1.2 var(--font-display); white-space: nowrap; }
-  #starTag { font: 700 12px/1 var(--font-text); color: var(--muted); white-space: nowrap; }
+  #starLabel { min-width: 0; overflow: hidden; display: flex; justify-content: flex-end; align-items: baseline; gap: 6px; text-align: right; color: var(--gold); }
+  #starLabel .num { font: 800 16px/1.2 var(--font-display); white-space: nowrap; flex: none; }
+  #starTag { font: 700 12px/1 var(--font-text); color: var(--muted); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* 大きな星（10 の倍数）は札を明るく。色だけに頼らず ★ も付ける */
   #starLabel[data-boss="1"] .num { color: var(--accent); }
   #starLabel[data-boss="1"] .num::before { content: "★"; }
@@ -905,10 +905,10 @@
       <g fill="#cfe0ff"><circle cx="16" cy="16" r="1.6"/><circle cx="122" cy="22" r="1.4"/><circle cx="128" cy="96" r="1.6"/><circle cx="12" cy="92" r="1.3"/><circle cx="104" cy="8" r="1.2"/></g>
       <g class="sh" fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"><path d="M24 40 L8 50 L24 56 L20 48 Z"/></g>
     </svg>
-    <p id="endText">30この ほしを くだいて、ちきゅうを まもったよ！</p>
-    <p class="endmore" id="endMore">ほしは まだまだ つづくよ</p>
+    <p id="endText">50この ほしを くだいて、ちきゅうを まもったよ！</p>
+    <p class="endmore" id="endMore">つぎは ひかりが すくない「ハード」だよ</p>
     <p class="small" id="endStats"></p>
-    <div class="btns"><button type="button" id="endOk" class="primary">このまま あそぶ</button></div>
+    <div class="btns"><button type="button" id="endOk" class="primary">ハードを はじめる</button></div>
   </div>
 </div>
 

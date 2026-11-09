@@ -74,7 +74,7 @@
     choiceCard: $("choiceCard"), choiceA: $("choiceA"), choiceB: $("choiceB"), choiceNote: $("choiceNote"),
     swapCard: $("swapCard"), swapTitle: $("swapTitle"), swapText: $("swapText"), swapSlots: $("swapSlots"), benchList: $("benchList"), swapDone: $("swapDone"),
     clearBanner: $("clearBanner"), bossBanner: $("bossBanner"), msBanner: $("msBanner"), choiceLead: $("choiceLead"),
-    endCard: $("endCard"), endText: $("endText"), endStats: $("endStats"), endOk: $("endOk"),
+    endCard: $("endCard"), endTitle: $("endTitle"), endMore: $("endMore"), endText: $("endText"), endStats: $("endStats"), endOk: $("endOk"),
     help: $("help"), helpOk: $("helpOk"), hint: $("hint"),
     helpRestart: $("helpRestart"), restartCard: $("restartCard"), restartNo: $("restartNo"), restartYes: $("restartYes")
   };
@@ -349,6 +349,11 @@
   }
   const fmt = (n) => safeCall(() => L.formatKakera(n), String(n));
   // 秒 → 「3ぷん12びょう」「45びょう」「1じかん5ふん」
+  // 段（0＝ふつう、1＝ハード、2＝ハード2 …）の呼び名と、画面の「ほし N」
+  function tierName(t) { t = t | 0; return t <= 0 ? "" : t === 1 ? "ハード" : "ハード" + t; }
+  function starText(star, tier) { const n = tierName(tier); return (n ? n + " " : "") + "ほし " + (star | 0); }
+  // 通しの番号（保存するベスト）
+  function numOfState(s) { return safeCall(() => L.numIn(s.star, s.tier | 0), null) || (s.star | 0); }
   function fmtTime(sec) {
     const t = Math.max(1, Math.round(Number(sec) || 0));
     const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), r = t % 60;
@@ -446,9 +451,9 @@
         case "glow": sfx.play("glow"); break;
         case "clear": {
           sfx.play("clear");
-          writeBest(e.star);
+          writeBest(Number.isFinite(Number(e.num)) ? e.num : safeCall(() => L.numIn(e.star, e.tier | 0), e.star));
           const banner = el.clearBanner;
-          setText(part(banner, "main"), "ほし " + (e.star | 0) + " クリア！");
+          setText(part(banner, "main"), starText(e.star, e.tier) + " クリア！");
           // 時間とベスト（初回「はじめて」・更新「ベスト！」・ふつうは前のベスト）、ちきゅうまでの残り
           const hasTime = Number.isFinite(Number(e.time)) && Number(e.time) > 0;
           let tline = "";
@@ -523,8 +528,8 @@
     const s = state;
     setText(el.kakera, fmt(s.kakera));
     // 星
-    const info = safeCall(() => L.starInfo(s.star), null) || { tag: "", boss: false };
-    setText(part(el.starLabel, "num"), "ほし " + s.star);
+    const info = safeCall(() => L.starInfo(s.star, s.tier), null) || { tag: "", boss: false };
+    setText(part(el.starLabel, "num"), starText(s.star, s.tier));
     setText(el.starTag, info.tag || "");
     setAttr(el.starLabel, "data-boss", info.boss ? "1" : null);
     const pr = safeCall(() => L.progressOf(s), null) || { broken: 0, timeLeft: 0, timeFrac: 0 };
@@ -661,7 +666,7 @@
   // いまの星の札のマス（'iron'・'ice'・いわ だけなら null）
   function starMain() {
     if (!state) return null;
-    const info = safeCall(() => L.starInfo(state.star), null);
+    const info = safeCall(() => L.starInfo(state.star, state.tier), null);
     return info && typeof info.main === "string" ? info.main : null;
   }
   // 買った行の「＋12%」（その行の dpsOf の前後差の割合。0.8 秒）
@@ -879,8 +884,8 @@
         const main = starMain();
         if (main) parts.push("この ほしは " + (MAT_NAME[main] || main) + "が おおいよ");
         else if (Array.isArray(L.MATS)) {
-          const nx = L.MATS.filter((m) => (m.id === "iron" || m.id === "ice") && m.from > state.star).sort((a, b) => a.from - b.from)[0];
-          if (nx) parts.push((nx.from === state.star + 1 ? "つぎの ほしから " : "ほし " + nx.from + " から ") + nx.name + "が でてくるよ");
+          const nx = L.MATS.filter((m) => (m.id === "iron" || m.id === "ice") && m.from > numOfState(state)).sort((a, b) => a.from - b.from)[0];
+          if (nx) parts.push((nx.from === numOfState(state) + 1 ? "つぎの ほしから " : "ほし " + nx.from + " から ") + nx.name + "が でてくるよ");
         }
         const lead = parts.join("。");
         setText(el.choiceLead, lead);
@@ -890,11 +895,22 @@
     } else if (kind === "swap") {
       fillSwap();
     } else if (kind === "end" && state) {
+      const done = Math.max(0, (state.tier | 0) - 1);   // 終えた段（logic は次の段の星 1 に進めてある）
       const sec = Math.max(0, Math.floor(Number(state.t) || 0));
       const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
       const time = h > 0 ? h + "じかん " + m + "ふん" : Math.max(1, m) + "ふん";
       const total = state.totals || {};
-      setText(el.endText, (L.ENDING_STAR || 30) + "この ほしを くだいて、ちきゅうを まもったよ！");
+      if (done === 0) {
+        setText(el.endTitle, "ちきゅうを まもりきった！");
+        setText(el.endText, (L.ENDING_STAR || 50) + "この ほしを くだいて、ちきゅうを まもったよ！");
+        setText(el.endMore, "つぎは ひかりが すくない「ハード」だよ");
+        setText(el.endOk, "ハードを はじめる");
+      } else {
+        setText(el.endTitle, tierName(done) + "クリア！");
+        setText(el.endText, (L.HARD_STARS || 30) + "この ほしを くだいたよ！");
+        setText(el.endMore, "つぎは もう1だん むずかしい「" + tierName(done + 1) + "」だよ");
+        setText(el.endOk, "つぎの だんへ");
+      }
       setText(el.endStats, "あそんだ じかん " + time + "・こわした マス " + fmt(total.cells || 0) + "こ");
     }
   }
@@ -1042,13 +1058,12 @@
   }
   function endOk() {
     if (overlay !== "end" || cardLocked()) return;
-    // 「このまま あそぶ」：星 31 の最初から（logic の説明どおり loadSave(makeSave(state))）
-    const t = state.t;
-    const s = safeCall(() => L.loadSave(L.makeSave(state)), null);
-    if (s) { state = setClock(s, t); syncRock(); }
+    // 「ハードを はじめる」「つぎの だんへ」：次の段の星 1 を始める（logic の afterEnding。state は星 1・次の段に進めてある）
+    const r = safeCall(() => L.afterEnding(state), null);
+    if (r && r.ok) { state = r.state; syncRock(); }
     closeCard("end");
     sfx.play("start");
-    setHint("ほし " + state.star + " から つづけるよ");
+    setHint(starText(state.star, state.tier) + " から つづけるよ");
     saveNow();
     updateUi();
   }
@@ -1143,7 +1158,7 @@
     const st = safeCall(() => render.stats(), {}) || {};
     const pr = state ? safeCall(() => L.progressOf(state), null) : null;
     return {
-      phase: phaseNow(), star: s.star | 0, kakera: Number(s.kakera) || 0,
+      phase: phaseNow(), star: s.star | 0, tier: s.tier | 0, num: state ? numOfState(s) : 0, kakera: Number(s.kakera) || 0,
       slots: Array.isArray(s.slots) ? s.slots.map((x) => ({ id: x.id, lv: x.lv })) : [],
       bench: benchOf(s).map((x) => ({ id: x.id, lv: x.lv })),
       offer: s.offer ? s.offer.slice() : null,
@@ -1234,54 +1249,64 @@
   });
 
   // ===== デバッグ命令（?debug=1 のときだけ。§7.4） =====
-  // gostar の表 ARMS：その星の始めに見合う武器（自機の武器と Lv ／ ひかえ）。リニューアルの logic.js（2026-11-09）で測り直した：
+  // gostar の表 ARMS：ふつうの星 n の始めに見合う武器（自機の武器と Lv ／ ひかえ）。ふつう 50 面・ハードの段のリニューアルの logic.js（2026-11-09）で測り直した：
   // simulate('greedy', { seed: 1, maxStar: n }) の final（星 n をクリアした直後の武器）を 1 つずつ集め、星 n+1 の行にした（表を引くだけ）。
-  // 表より先の星は最後の行の武器で Lv99。
+  // ハードの段（gotier）は星 50 の行を使い、自機の武器を Lv99 にする（ふつう 50 のクリア直後でほぼ上まで来ているため）。
   const ARMS = [
     "shot:1",
     "shot:7 beam:7",
     "shot:11 beam:8",
-    "shot:12 beam:8 bolt:13",
+    "shot:13 beam:10",
+    "shot:13 beam:11 bolt:13",
     "shot:14 beam:14 bolt:15",
-    "shot:18 beam:17 bolt:18",
-    "shot:18 beam:17 bolt:21 fire:22",
-    "shot:23 beam:22 bolt:23 fire:24",
-    "shot:26 beam:25 bolt:26 fire:27",
-    "shot:30 beam:28 bolt:28 fire:28",
+    "shot:17 beam:16 bolt:17",
+    "shot:18 beam:18 bolt:19",
+    "shot:18 beam:18 bolt:21 fire:22",
+    "shot:23 beam:18 bolt:23 fire:23",
+    "shot:25 beam:24 bolt:24 fire:25",
+    "shot:27 beam:26 bolt:26 fire:27",
+    "shot:28 beam:27 bolt:28 fire:30",
+    "shot:30 beam:28 bolt:32 fire:31",
     "shot:33 beam:32 bolt:32 fire:32",
-    "shot:36 beam:34 bolt:35 fire:35",
-    "shot:39 beam:37 bolt:37 fire:38",
-    "shot:42 beam:39 bolt:41 fire:38 | spread:1",
-    "shot:44 beam:43 bolt:43 fire:43 | spread:1",
-    "shot:47 beam:45 bolt:46 spread:45 | fire:43",
-    "shot:51 beam:48 bolt:48 spread:47 | fire:43",
-    "shot:53 beam:51 bolt:52 spread:51 | fire:43",
-    "shot:56 beam:54 bolt:54 spread:54 | fire:43",
-    "shot:59 beam:56 bolt:57 spread:57 | fire:43",
-    "shot:63 beam:58 bolt:61 spread:61 | fire:43",
-    "shot:65 beam:63 bolt:63 spread:63 | fire:43",
-    "shot:67 beam:65 bolt:66 spread:65 | fire:43 bomb:1",
-    "shot:71 beam:67 bolt:67 spread:67 | fire:43 bomb:1",
-    "shot:73 beam:71 bolt:72 spread:71 | fire:43 bomb:1",
-    "shot:76 beam:74 bolt:74 spread:74 | fire:43 bomb:1",
-    "shot:80 beam:75 bolt:76 spread:76 | fire:43 bomb:1",
-    "shot:83 beam:78 bolt:78 bomb:73 | fire:43 spread:76",
-    "shot:85 beam:82 bolt:82 bomb:76 | fire:43 spread:76",
-    "shot:88 beam:85 bolt:86 bomb:78 | fire:43 spread:76",
-    "shot:92 beam:87 bolt:87 bomb:83 | fire:43 spread:76",
-    "shot:94 beam:88 bolt:88 bomb:84 | fire:43 spread:76",
-    "shot:94 beam:90 bolt:91 bomb:85 | fire:43 spread:76",
-    "shot:95 beam:91 bolt:92 bomb:85 | fire:43 spread:76",
-    "shot:95 beam:92 bolt:93 bomb:86 | fire:43 spread:76",
-    "shot:96 beam:92 bolt:93 bomb:87 | fire:43 spread:76",
-    "shot:96 beam:93 bolt:94 bomb:87 | fire:43 spread:76",
-    "shot:97 beam:94 bolt:94 bomb:87 | fire:43 spread:76",
-    "shot:97 beam:94 bolt:94 bomb:88 | fire:43 spread:76",
-    "shot:98 beam:94 bolt:95 bomb:88 | fire:43 spread:76"
+    "shot:35 beam:34 bolt:34 fire:33",
+    "shot:36 beam:36 bolt:36 fire:35",
+    "shot:38 beam:37 bolt:37 fire:37 | spread:1",
+    "shot:41 beam:38 bolt:38 spread:38 | fire:37",
+    "shot:42 fire:42 bolt:41 spread:41 | beam:38",
+    "shot:44 beam:43 bolt:43 spread:43 | fire:42",
+    "shot:46 beam:45 bolt:45 spread:45 | fire:42",
+    "shot:48 beam:47 bolt:47 spread:47 | fire:42",
+    "shot:51 beam:48 bolt:48 spread:47 | fire:42",
+    "shot:53 beam:50 bolt:51 spread:48 | fire:42",
+    "shot:54 beam:52 bolt:53 spread:52 | fire:42",
+    "shot:56 beam:54 bolt:54 spread:55 | fire:42",
+    "shot:58 beam:56 bolt:57 spread:56 | fire:42",
+    "shot:61 beam:57 bolt:57 spread:57 | fire:42",
+    "shot:63 beam:59 bolt:61 spread:58 | fire:42",
+    "shot:64 beam:62 bolt:62 spread:62 | fire:42",
+    "shot:66 beam:63 bolt:64 spread:63 | fire:42 bomb:1",
+    "shot:68 beam:65 bolt:66 spread:65 | fire:42 bomb:1",
+    "shot:71 beam:66 bolt:66 spread:67 | fire:42 bomb:1",
+    "shot:73 beam:68 bolt:69 spread:68 | fire:42 bomb:1",
+    "shot:74 beam:69 bolt:71 bomb:65 | fire:42 spread:68",
+    "shot:75 beam:73 bolt:73 bomb:67 | fire:42 spread:68",
+    "shot:77 beam:75 bolt:75 bomb:68 | fire:42 spread:68",
+    "shot:79 beam:76 bolt:76 bomb:72 | fire:42 spread:68",
+    "shot:82 beam:77 bolt:78 bomb:73 | fire:42 spread:68",
+    "shot:84 beam:81 bolt:81 bomb:74 | fire:42 spread:68",
+    "shot:86 beam:82 bolt:83 bomb:76 | fire:42 spread:68",
+    "shot:87 beam:84 bolt:85 bomb:78 | fire:42 spread:68",
+    "shot:89 beam:85 bolt:86 bomb:81 | fire:42 spread:68",
+    "shot:92 beam:86 bolt:87 bomb:83 | fire:42 spread:68",
+    "shot:93 beam:88 bolt:91 bomb:84 | fire:42 spread:68",
+    "shot:95 beam:92 bolt:92 bomb:85 | fire:42 spread:68",
+    "shot:97 beam:93 bolt:94 bomb:87 | fire:42 spread:68",
+    "shot:98 beam:95 bolt:96 bomb:91 | fire:42 spread:68",
+    "shot:99 beam:97 bolt:98 bomb:93 | fire:42 spread:68"
   ];
-  function armsFor(n) {
+  function armsFor(n, tier) {
     const lvMax = L.LEVEL_MAX || 99;
-    const over = n > ARMS.length;
+    const over = n > ARMS.length || tier > 0;
     const row = ARMS[Math.max(0, Math.min(ARMS.length, n) - 1)];
     const parse = (txt, lvTo) => (txt || "").trim().split(/\s+/).filter(Boolean).map((p) => {
       const [id, lv] = p.split(":");
@@ -1292,17 +1317,20 @@
   }
   function gostar(a) {
     const n = Math.floor(Number(a && a.star));
+    const t0 = a && a.tier !== undefined ? Math.floor(Number(a.tier)) : 0;
     if (!(n >= 1 && n <= (L.STAR_MAX || 9999))) throw new Error("star は 1〜" + (L.STAR_MAX || 9999));
+    if (!(t0 >= 0 && t0 <= (L.TIER_MAX || 300))) throw new Error("tier は 0〜" + (L.TIER_MAX || 300));
+    if (t0 > 0 && n > (L.HARD_STARS || 30)) throw new Error("ハードの star は 1〜" + (L.HARD_STARS || 30));
     if (overlay && overlay !== "help") closeCardForce();
-    const arms = armsFor(n);
-    const s = normalize(Object.assign({}, state, { star: n, slots: arms.slots, bench: arms.bench, swap: [], offer: null, tries: 1, ms: [], cleared: n > (L.ENDING_STAR || 30), mid: undefined }));
+    const arms = armsFor(n, t0);
+    const s = normalize(Object.assign({}, state, { star: n, tier: t0, slots: arms.slots, bench: arms.bench, swap: [], offer: null, tries: 1, ms: [], cleared: t0 > 0 || n > (L.ENDING_STAR || 50), mid: undefined }));
     if (!s) throw new Error("星を変えられない");
     applyState(s);
     bossUntil = -1;
-    const info = safeCall(() => L.starInfo(n), null);
+    const info = safeCall(() => L.starInfo(state.star, state.tier), null);
     if (info && info.boss) bossUntil = state.t + BOSS_BANNER_SEC;
-    writeBest(n - 1);
-    return { star: state.star, slots: state.slots, bench: state.bench, info };
+    writeBest(numOfState(state) - 1);
+    return { star: state.star, tier: state.tier | 0, num: numOfState(state), slots: state.slots, bench: state.bench, info };
   }
   function closeCardForce() {
     const k = overlay;
@@ -1331,7 +1359,7 @@
   }
   function rateTable() {
     const s = state;
-    const info = safeCall(() => L.starInfo(s.star), null);
+    const info = safeCall(() => L.starInfo(s.star, s.tier), null);
     const weapons = W_IDS.map((id) => {
       const k = s.slots.findIndex((x) => x.id === id);
       const b = benchOf(s).find((x) => x.id === id);
@@ -1342,7 +1370,7 @@
         upCost: k >= 0 ? safeCall(() => L.upCostOf(s, k), null) : null, good: w.good || null, aff: w.aff || {}, rate: w.rate, dmg: w.dmg
       };
     });
-    return { star: s.star, info, kakera: s.kakera, slotCost: safeCall(() => L.slotCostOf(s), null), progress: safeCall(() => L.progressOf(s), null), swap: swapOf(s), weapons };
+    return { star: s.star, tier: s.tier | 0, info, kakera: s.kakera, slotCost: safeCall(() => L.slotCostOf(s), null), progress: safeCall(() => L.progressOf(s), null), swap: swapOf(s), weapons };
   }
   const D = window.YubiDebug;
   if (D && typeof D.command === "function") {
@@ -1360,7 +1388,8 @@
         updateUi();
         return { kakera: state.kakera, text: fmt(state.kakera) };
       }, { desc: "かけらを足す（KAKERA_MAX まで）", args: "{ n }" });
-      D.command("gostar", (a) => gostar(a), { desc: "その星の始めへ（自機の武器・Lv・ひかえは自動プレイでその星まで来たときの値。表 ARMS）", args: "{ star }" });
+      D.command("gostar", (a) => gostar(a), { desc: "その星の始めへ（自機の武器・Lv・ひかえは自動プレイでその星まで来たときの値。表 ARMS）", args: "{ star, tier（省くと 0） }" });
+      D.command("gotier", (a) => gostar({ tier: a && a.t, star: a && a.n }), { desc: "ハードの段 t の星 n の始めへ（武器は星 50 の行で Lv99。ふつうは gostar）", args: "{ t（1〜）, n（1〜30）}" });
       D.command("win", () => {
         // 自機から一番近いマスを 1 つだけ残す（自機は撃ってよい。クリアの確認）
         const sh = state && state.ship ? state.ship : { x: 0, y: 0 };
@@ -1477,8 +1506,9 @@
       state = safeCall(() => L.newGame((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0), null) || safeCall(() => L.newGame(1), null);
       if (!state) { console.error("ほしくだき: newGame が動きません"); return; }
     }
-    if (state.cleared && best < (L.ENDING_STAR || 30)) writeBest(L.ENDING_STAR || 30);
-    const info = safeCall(() => L.starInfo(state.star), null);
+    if (state.cleared && best < (L.ENDING_STAR || 50)) writeBest(L.ENDING_STAR || 50);
+    if ((state.tier | 0) > 0) writeBest(numOfState(state) - 1);   // 段 t の星 1 に居るなら、その手前までクリアしている
+    const info = safeCall(() => L.starInfo(state.star, state.tier), null);
     if (info && info.boss) bossUntil = state.t + BOSS_BANNER_SEC;
     const firstTime = readKey(KEY_HELP) !== "1";
     if (firstTime) openCard("help");

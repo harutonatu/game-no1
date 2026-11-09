@@ -878,7 +878,7 @@
     } catch (e) { return ""; }
   }
 
-  // ちきゅうを守れ！ほしくだき：asteroid.best（クリアした一番大きい星の番号）。数に直して 0〜9999 に丸めた整数が 1 以上なら「ほし N まで クリア」、
+  // ちきゅうを守れ！ほしくだき：asteroid.best（クリアした一番大きい星の通しの番号）。数に直して 0〜9999 に丸めた整数が 1〜50 なら「ほし N まで クリア」、51 以上なら「ハード ほし N まで」（段 2 以上は「ハード2 ほし N まで」）、
   // それ以外（読めない・数でない・Infinity・0 以下）は空（＝まだ記録なし）
   function asteroidBest() {
     try {
@@ -887,7 +887,11 @@
       const x = Number(raw);
       if (!Number.isFinite(x)) return "";
       const n = Math.max(0, Math.min(9999, Math.floor(x)));
-      return n >= 1 ? "ほし " + n + " まで クリア" : "";
+      if (n < 1) return "";
+      // 通しの番号：1〜50 がふつうの星、51 から 30 ずつがハードの段（games/asteroid/logic.js の ENDING_STAR・HARD_STARS と同じ）
+      if (n <= 50) return "ほし " + n + " まで クリア";
+      const t = Math.floor((n - 51) / 30) + 1, k = n - 50 - 30 * (t - 1);
+      return (t === 1 ? "ハード" : "ハード" + t) + " ほし " + k + " まで";
     } catch (e) { return ""; }
   }
 
