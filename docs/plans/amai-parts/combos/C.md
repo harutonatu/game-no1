@@ -7,3 +7,4 @@
 | 153 | XXL | butahoshizorajitensha | ほしぞらで ぶたが じてんしゃに のる | "" | ほしぞら | ぶた | じてんしゃに のる | x=30 y=46 |
 | 158 | XXL | butamorihon | もりで ぶたが ほんを よむ | "" | もり | ぶた | ほんを よむ | x=30 y=46 |
 | 163 | XXL | butahanabatakeutau | はなばたけで ぶたが うたう | haru | はなばたけ | ぶた | うたう | x=28 y=46 |
+| 168 | XXL | butayuuenchioyatsu | ゆうえんちで ぶたが おやつを たべる | "" | ゆうえんち | ぶた | おやつを たべる | x=27 y=46 sky=S |
