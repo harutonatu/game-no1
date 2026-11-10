@@ -34,7 +34,7 @@
   const SETTLE_MAX = 2000;      // settle() で進める上限
   const HINT_FADE_MS = 3500;    // 案内は少したったら薄くする（文字は残す）
   const POLL_MS = 100;          // ありんこが全部巣に入るのを待つ間の見回り
-  // とける ところまで もどす（計画書 docs/plans/amai-rescue.md・約束 §1.13）
+  // だいじょうぶな ところまで もどす（計画書 docs/plans/amai-rescue.md・約束 §1.13）
   const DOOM_LIMIT = 150;       // 予備軍を調べる 2 段目の上限（局面の数）。言い切れなければ何も言わない
   const SLICE_MS = 12;          // 調べる処理を 1 回に進める時間の目安（画面を止めない）
   const SLICE_NODES = 40;       // 1 回に開く局面の上限（時計を止めたテストの画面でも進むように、数でも区切る）
@@ -42,7 +42,7 @@
   // 案内は絵と わくの間に 1 行で出す（SE 縦の幅 288px に 12px で入る長さ。入らなければ 11px に縮める）
   const HINT_FIRST = "はこを おすと、ありんこが はこぶよ";
   const HINT_IDLE = "てまえの はこを おしてね";
-  const HINT_STUCK = "うごかせないよ。「1手もどす」を おしてね";
+  const HINT_STUCK = "うごかせないよ。したの ボタンを えらんでね";
   // ちょうせんの 1手もどすは 2026-11-10 から何回でも（約束 §0.11。前は 3 回まで）。もどすと金の花輪が付かないことを はじめに知らせる
   const hintChal = () => "ちょうせん！ わくは 2つ・もどすと きんの わは つかないよ";
   const HINT_CALM = "「うごきを へらす」せってい なので、ありんこは でないよ。でも ちゃんと はこんでるよ";
@@ -50,8 +50,9 @@
   const HINT_CARRY = "ありんこが はこんでるよ";   // 待っているだけのとき（押せる箱が無い・わくが いっぱい）に うすく出す
   const HINT_OPEN = "ふたが あいたよ";
   const HINT_THAW = "こおりが とけたよ";
-  const HINT_DOOMED = "この ままだと ぜんぶは はこべないよ";
-  const HINT_SEARCH = "とける ところを さがしてるよ";
+  const HINT_DOOMED = "この ままだと ぜんぶは はこべないかも";   // 言い切らない（運んでいる途中に押すと助かる局面が約 6% ある。約束 §1.13 R3）
+  const HINT_CHAL_LOST = "もどしたので きんの わは つかないよ";   // ちょうせんで はじめて もどしたときに 1 回だけ（約束 §0.11）
+  const HINT_SEARCH = "だいじょうぶな ところを さがしてるよ";
   const HINT_REWOUND = "ここからなら ぜんぶ はこべるよ";
   const MARK_WORD = { circle: "まる", triangle: "さんかく", star: "ほし", diamond: "ひしがた", plus: "じゅうじ", cross: "ばつ", heart: "ハート", bars: "よこせん", ring: "わ", stripes: "たてせん", moon: "つき", drop: "しずく" };
   const SEASON_WORD = { haru: "はる", natsu: "なつ", aki: "あき", fuyu: "ふゆ" };
@@ -171,13 +172,13 @@
   // ちょうせんモード（計画書 docs/plans/amai-challenge.md §1）：わく 2 つ。途中の保存はしない。1手もどすは何回でも（2026-11-10。もどすと金の花輪は付かない）
   let chal = false;             // いま ちょうせんで遊んでいる
   let noUndo = null;            // この面で 1手もどすを使っていない：true／使った：false／分からない（途中から再開・テストの局面）：null。保存しない
-  // とける ところまで もどす（§1.13）。どれも保存しない
+  // だいじょうぶな ところまで もどす（§1.13）。どれも保存しない
   let hist = [];                // 押す直前の局面（hist[k]＝k 番目の手の直前）。途中から再開した面は null（使うときに replayStates で作る）
   let doomed = false;           // 予備軍（この先どう押しても全部は運べない、と言い切れた）
   let doomTold = false;         // 予備軍のカードを出した（予備軍になった最初の 1 回だけ）
   let doomAsk = false;          // 箱を押した：次に落ち着いたら予備軍か調べる
   let rescuing = false;         // 戻し先を探している間（箱・1手もどす・やりなおしを受けない）
-  let chalUsed = false;         // ちょうせんで 1手もどす・とける ところまで もどすを使った（金の花輪を付けない。やりなおしで消える）
+  let chalUsed = false;         // ちょうせんで 1手もどす・だいじょうぶな ところまで もどすを使った（金の花輪を付けない。やりなおしで消える）
   let job = null;               // 区切って進める調べ（{ run, searcher, check, finish, abort }）
 
   // 1 はこびを回すのは、表に出ていて・古いページでなく・カードが無く・落ち着いていないときだけ（変異 MA14 の置換元。1 行の式のまま）
@@ -272,6 +273,10 @@
     const n = presses.length;
     el.undoBtn.disabled = !(n > 0) || phase === "clear" || rescuing;
     el.restartBtn.disabled = !(n > 0) || phase === "clear" || rescuing;   // 押した数 0 なら押しても何も起きない（いろびん IB-13）
+    // 戻し先を探している間は「？」「ずかん」「めん」も押せない（開くと探しが取りやめになり、ヒントだけ残るため）
+    el.helpBtn.disabled = rescuing;
+    el.bookBtn.disabled = rescuing;
+    el.selectBtn.disabled = rescuing;
     // うごかせないとき：押して意味のある方を目立たせる
     const need = phase === "stuck";
     el.undoBtn.dataset.attention = need && !el.undoBtn.disabled ? "1" : "0";
@@ -394,7 +399,7 @@
     checkDoom();
   }
 
-  // ===== とける ところまで もどす（計画書 docs/plans/amai-rescue.md・約束 §1.13） =====
+  // ===== だいじょうぶな ところまで もどす（計画書 docs/plans/amai-rescue.md・約束 §1.13） =====
   // 調べる処理は logic の makeRescue・makeRewind（手間の数で区切れる）。ここでは later(…, 0) で少しずつ進め、画面を止めない
   function startJob(j) {
     if (job && job !== j && typeof job.abort === "function") safeCall(() => job.abort());
@@ -449,10 +454,10 @@
     setHint(HINT_DOOMED, true);
     sfx.play("stuck");
     showCard(`
-      <h2 id="cardTitle">もう ぜんぶは はこべないよ</h2>
-      <p>とける ところまで もどす？</p>
+      <h2 id="cardTitle">この ままだと ぜんぶは はこべないかも</h2>
+      <p>だいじょうぶな ところまで もどす？</p>
       <div class="btns">
-        <button class="cta primary" type="button" data-cmd="rewindYes">とける ところまで もどす</button>
+        <button class="cta primary" type="button" data-cmd="rewindYes">だいじょうぶな ところまで もどす</button>
         <button class="cta" type="button" data-cmd="close">このまま つづける</button>
       </div>`, {}, "rescue");
     cardShownAt = now();
@@ -468,6 +473,11 @@
     }
     return hist ? hist.slice() : null;
   }
+  // 探しが取りやめになったとき：「さがしてるよ」を消し、うごかせないならカードを出し直す（黙って残さない）
+  function dropSearchHint() {
+    if (el.hint.textContent === HINT_SEARCH) setHint("");
+    if (state && !state.won && stable && overlay === null && phase !== "clear" && isStuckNow()) enterStuck();
+  }
   function doRewind() {
     if (!state || state.won || phase === "clear" || rescuing || !presses.length) return false;
     if (overlay !== "stuck" && overlay !== "rescue") return false;
@@ -475,32 +485,41 @@
     hideOverlay();
     flush();
     if (state.won || overlay !== null) return false;
-    const states = histStates();
-    if (!states || !states.length) { console.error("あまいものあつめ: もどす先を さがせませんでした"); return false; }
-    const searcher = safeCall(() => L.makeRewind(states, { base0Sure: !custom }), null);
-    if (!searcher) return false;
-    const np = presses.length;
+    const np = presses.length, run = runId;
     rescuing = true;
-    setHint(HINT_SEARCH, true);
+    setHint(HINT_SEARCH, true);   // 先に出す（途中から再開した面の局面の再生は重いので、次の処理の中でする）
     renderTools();
+    // 局面の履歴づくり（途中から再開した面は再生が重い）も、調べの最初の 1 歩の中でする（調べと同じく pagehide のあと続きから進む）
+    let states = null, inner = null;
     startJob({
-      searcher,
+      searcher: {
+        run(n) {
+          if (!inner) {
+            states = histStates();
+            inner = states && states.length ? L.makeRewind(states, { base0Sure: !custom }) : null;
+            if (!inner) { console.error("あまいものあつめ: もどす先を さがせませんでした"); return null; }
+            return { done: false };
+          }
+          return inner.run(n);
+        },
+      },
       check: () => presses.length === np && !!state && !state.won,
       finish(r) { rescuing = false; applyRewind(states, r.k, r.sure); },
-      abort() { rescuing = false; renderTools(); },
+      abort() { rescuing = false; renderTools(); if (run === runId) dropSearchHint(); },   // 取りやめ・局面を作れなかった：何も変えずに戻し、カードを出し直す
     });
     return true;
   }
   function applyRewind(states, k, sure) {
     const st = Number.isSafeInteger(k) && k >= 0 && k < states.length ? states[k] : null;
-    if (!st || !state || state.won || phase === "clear") { renderTools(); return; }
+    if (!st || !state || state.won || phase === "clear") { renderTools(); dropSearchHint(); return; }
     cancelPending();
     flush();
-    if (state.won || overlay !== null) { renderTools(); return; }
+    if (state.won || overlay !== null) { renderTools(); dropSearchHint(); return; }
     presses.length = k;
     if (custom) customHist.length = k;
     else hist = states.slice(0, k);
     if (noUndo === true) noUndo = false;   // もどした面には 1手もどし なし の花輪を付けない（§0.11）
+    const firstLost = chal && !chalUsed;   // ちょうせんで はじめて もどした：金の花輪が付かないことを 1 回だけ知らせる
     if (chal) chalUsed = true;             // ちょうせんで もどした：金の花輪は付けない（§0.11）
     doomed = false; doomTold = false; doomAsk = false;
     state = st;
@@ -513,7 +532,8 @@
     setHint("");
     if (safeCall(() => L.isStable(state), false)) { stable = true; afterStable(); }
     else softHint();
-    if (sure) setHint(HINT_REWOUND);
+    if (firstLost) setHint(HINT_CHAL_LOST);
+    else if (sure) setHint(HINT_REWOUND);
     blockUntil = now() + BOARD_BLOCK_MS;   // 探し終えた直後の 2 回目のタップを受けない（いろびん IB-46）
     kick();
   }
@@ -651,6 +671,7 @@
     if (custom) customHist.pop();
     else if (hist) hist.pop();
     doomed = false; doomTold = false; doomAsk = false;
+    const firstLost = chal && !chalUsed;   // ちょうせんで はじめて もどした：金の花輪が付かないことを 1 回だけ知らせる
     if (chal) chalUsed = true;   // ちょうせんで 1手もどすを使った面は、金の花輪を付けない（§0.11）
     if (noUndo === true) noUndo = false;
     state = st;
@@ -663,6 +684,7 @@
     setHint("");
     if (safeCall(() => L.isStable(state), false)) { stable = true; afterStable(); }
     else softHint();
+    if (firstLost) setHint(HINT_CHAL_LOST);
     kick();
     return true;
   }
@@ -723,7 +745,7 @@
     if (gold) {
       // ちょうせんの クリア：amai.gold に入れ、ずかんの回数を 1 増やす。ベスト・amai.clean・途中の保存（amai.save）は書かない
       // （ちょうせんは クリアしたことのある面だけなのでベストは変わらない。amai.save は ふつう の続きのまま）
-      // 1手もどす・とける ところまで もどすを使った ちょうせんは、金の花輪を付けない（ずかんの回数は増やす。2026-11-10。約束 §0.11）
+      // 1手もどす・だいじょうぶな ところまで もどすを使った ちょうせんは、金の花輪を付けない（ずかんの回数は増やす。2026-11-10。約束 §0.11）
       const rg = chalUsed ? null : safeCall(() => L.addGold(readKey(KEY_GOLD), id), null);
       if (typeof rg === "string") writeKey(KEY_GOLD, rg);
       const raw = safeCall(() => L.addToBook(readKey(KEY_BOOK), id), null);
@@ -832,9 +854,9 @@
     const why = names.length ? `${names.join("と ")}は まだ ふちに ないよ。そとの いろを さきに はこぶと みちが あくよ。` : "わくが いっぱいだよ。";
     showCard(`
       <h2 id="cardTitle">うごかせないよ</h2>
-      <p>${why}1手もどして ためしてね。</p>
+      <p>${why}したの ボタンを えらんでね。</p>
       <div class="btns">${presses.length ? `
-        <button class="cta primary" type="button" data-cmd="rewindYes">とける ところまで もどす</button>` : ""}
+        <button class="cta primary" type="button" data-cmd="rewindYes">だいじょうぶな ところまで もどす</button>` : ""}
         <button class="cta${presses.length ? "" : " primary"} half" type="button" data-cmd="undo">1手もどす</button>
         <button class="cta half" type="button" data-cmd="restart">やりなおし</button>
       </div>`, {}, "stuck");
@@ -940,7 +962,7 @@
 
   // ===== 遊び方 =====
   function showHelp() {
-    if (overlay !== null) return;   // ほかのカードの上には重ねない
+    if (overlay !== null || rescuing) return;   // ほかのカードの上には重ねない
     flush();
     if (overlay !== null) return;   // 待っていた続きがクリア・うごかせないのカードを出した：その上に重ねない
     safeCall(() => render.pause());
@@ -965,7 +987,7 @@
 
   // ===== ずかん =====
   function showBook(from) {
-    if (overlay !== null && overlay !== "clear") return;
+    if (rescuing || (overlay !== null && overlay !== "clear")) return;
     bookFrom = from === "clear" ? "clear" : "play";
     if (overlay === null) {
       flush();
@@ -1073,7 +1095,7 @@
   // 選べるのは 1〜ベスト＋1 面（L.levelChoices）。一覧は 1〜200 面（その先は鍵つき）。ベスト＋1 が 201 面より先なら「つづき」を 1 つ
   const choices = () => safeCall(() => L.levelChoices(best), null) || { top: 1, list: Math.min(Number(L.BASE_PICTURES) || 200, ORDER.length || 1), open: 1, more: 0 };
   function showSelect() {
-    if (overlay !== null) return;
+    if (overlay !== null || rescuing) return;
     flush();
     if (overlay !== null) return;   // 待っていた続きがクリア・うごかせないのカードを出した：その上に重ねない
     safeCall(() => render.pause());
@@ -1179,19 +1201,20 @@
     return startChosen(n);
   }
   // ちょうせんで遊べる面：1〜200 面（絵が 1 枚ずつ決まっている面）で、その面の絵がずかんにある（＝クリアしたことがある）
-  function canChallenge(n) {
+  function canChallenge(n, bk) {
     if (!Number.isSafeInteger(n) || n < 3 || n > Math.min(Number(L.BASE_PICTURES) || 200, ORDER.length)) return false;
     if (!safeCall(() => L.canSelect(best, n), false)) return false;
     const pk = safeCall(() => L.pickPicture(n, null), null);
-    const book = readBook();
+    const book = bk || readBook();   // bk：まとめて調べるとき、ずかんを 1 回だけ読んで渡す
     return !!(pk && book.got && Number.isSafeInteger(book.got[pk.id]) && book.got[pk.id] > 0);
   }
   // ［つぎも ちょうせん］の面：まだ金の花輪が無い・ちょうせんできる（クリアしたことのある）面のうち、from より後でいちばん近い面。
   // 無ければ 1 面から from まで（from も、もどして金が付かなかったなら候補）。1 つも無ければ 0（ボタンを出さない）
   function nextChalLevel(from) {
     const max = Math.min(Number(L.BASE_PICTURES) || 200, ORDER.length);
-    const rawGold = readKey(KEY_GOLD);
-    const ok = (n) => canChallenge(n) && !safeCall(() => L.hasGold(rawGold, L.pickPicture(n, null).id), true);
+    const book = readBook();   // ずかんと金の花輪は 1 回だけ読んで解く（1 面ごとに読むと最大 400 回になる）
+    const gold = new Set(safeCall(() => L.validateGold(readKey(KEY_GOLD)).ids, []) || []);
+    const ok = (n) => canChallenge(n, book) && !gold.has(safeCall(() => L.pickPicture(n, null).id, ""));
     for (let n = from + 1; n <= max; n++) if (ok(n)) return n;
     for (let n = 1; n <= Math.min(from, max); n++) if (ok(n)) return n;
     return 0;

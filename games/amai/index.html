@@ -438,10 +438,10 @@
   /* うごかせない：盤面（絵・わく）が見えるよう、暗くせず、下に小さなカードを出す */
   .overlay[data-kind="stuck"], .overlay[data-kind="rescue"] { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; align-items: flex-end; }
   /* 手詰まりのカードは「待っている色の箱」と盤面を見比べながら読めるように、低く小さくする（v53 のレビュー指摘） */
-  .overlay[data-kind="stuck"] .card, .overlay[data-kind="rescue"] .card { margin: 0 auto; padding: 8px 10px; gap: 4px; box-shadow: 0 0 0 2px var(--accent), 0 -8px 30px rgba(0, 0, 0, 0.55); }
+  .overlay[data-kind="stuck"] .card, .overlay[data-kind="rescue"] .card { margin: 0 auto; padding: 6px 10px; gap: 4px; box-shadow: 0 0 0 2px var(--accent), 0 -8px 30px rgba(0, 0, 0, 0.55); }
   .overlay[data-kind="stuck"] .card h2, .overlay[data-kind="rescue"] .card h2 { font-size: 15px; margin: 0; }
-  .overlay[data-kind="stuck"] .card p, .overlay[data-kind="rescue"] .card p { font-size: 13px; line-height: 1.35; margin: 0; }
-  .overlay[data-kind="stuck"] .card .btns, .overlay[data-kind="rescue"] .card .btns { margin-top: 2px; }
+  .overlay[data-kind="stuck"] .card p, .overlay[data-kind="rescue"] .card p { font-size: 13px; line-height: 1.3; margin: 0; }
+  .overlay[data-kind="stuck"] .card .btns, .overlay[data-kind="rescue"] .card .btns { margin-top: 0; gap: 6px; }   /* 主ボタンの 1 段が増えたぶん、わくの箱を隠しすぎないよう詰める（2026-11-10 UX L1・技術 L-7） */
   .overlay[data-kind="stuck"] .card .btns button, .overlay[data-kind="rescue"] .card .btns button { min-height: 44px; }
   .card {
     position: relative;
@@ -619,7 +619,16 @@
     .card { padding: 14px; gap: 8px; }
     .card ol.rules { font-size: 14px; line-height: 1.5; }
     .card .sample canvas { width: 56px; height: 56px; }
+    /* クリアのカード：名前が 3 行になる面（8・150・161 面）・もどした ちょうせんでも、全部のボタンがスクロールなしで押せるように詰める */
+    #card[data-kind="clear"] { padding: 12px 14px; gap: 6px; }
+    #card[data-kind="clear"] p.picname { font-size: 24px; line-height: 1.2; }
+    #card[data-kind="clear"] .btns { gap: 6px; }
+    #card[data-kind="clear"] .btns button { min-height: 46px; }
     #card[data-kind="help"] { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "sample title" "rules rules" "btns btns"; align-items: center; column-gap: 8px; }
+  }
+  /* Safari のバー付き（高さ 480 以下の縦）：クリアの絵は盤面にもう出ているので、カードでは省く（全部のボタンを見えるところに） */
+  @media (orientation: portrait) and (max-height: 480px) {
+    #card[data-kind="clear"] .clearpic { display: none; }
   }
   /* 横向きで背が低い：遊び方がスクロールなしで収まるよう、幅を広げ、字とすき間を詰める */
   @media (orientation: landscape) and (max-height: 500px) {

@@ -521,6 +521,7 @@ const M = [
   ['MA78 あまいものあつめ：ふつうのクリアのカードに［この めんを ちょうせん］が出ない（見つける：AW41）', '操作', 'games/amai/main.js', 'const chalThis = !custom && !chal && canChallenge(level);', 'const chalThis = false;'],
   ['MA79 あまいものあつめ：［つぎも ちょうせん］が金の花輪のある面も選ぶ（見つける：AW41）', 'ルール', 'games/amai/main.js', 'const ok = (n) => canChallenge(n, book) && !gold.has(safeCall(() => L.pickPicture(n, null).id, ""));', 'const ok = (n) => canChallenge(n, book);'],
   ['MA80 あまいものあつめ：だいじょうぶな ところまで もどしても「1手もどし なし」の花輪が付く（見つける：AW41）', 'ルール', 'games/amai/main.js', '    if (noUndo === true) noUndo = false;   // もどした面には', '    if (false) noUndo = false;   // もどした面には'],
+  ['MA81 あまいものあつめ：探している間も「？」「ずかん」「めん」を押せる見た目のまま（見つける：AW39）', '操作', 'games/amai/main.js', '    el.helpBtn.disabled = rescuing;\n    el.bookBtn.disabled = rescuing;\n    el.selectBtn.disabled = rescuing;\n', ''],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

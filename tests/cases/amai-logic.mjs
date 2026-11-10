@@ -1353,7 +1353,7 @@ export const tests = [
     },
   },
   {
-    id: 'AL24', tier: 'smoke', node: true, title: 'あまいものあつめ：とける ところまで もどす の調べ（2026-11-10。計画書 amai-rescue.md・約束 §1.13）：①80 面の最初は rescueSearch で solved、返した押す列を「落ち着いてから押す」で再生すると won ②うごかせない局面・あと 1 手で必ず うごかせない局面は dead、とける局面は solved ③上限 0・80 面の 1 手目を まちがえた局面（上限 150）は言い切れない unknown ④run(1) を小分けに呼んでも まとめたのと同じ結果 ⑤makeRewind：とける いちばん新しい k（dead を飛ばす）・budget 0 なら k＝0（base0Sure のとき sure）⑥replayStates の局面＝replay で手前まで再生した局面 ⑦壊れた局面でも例外なし',
+    id: 'AL24', tier: 'smoke', node: true, title: 'あまいものあつめ：だいじょうぶな ところまで もどす の調べ（2026-11-10。計画書 amai-rescue.md・約束 §1.13）：①80 面の最初は rescueSearch で solved、返した押す列を「落ち着いてから押す」で再生すると won ②うごかせない局面・あと 1 手で必ず うごかせない局面は dead、とける局面は solved ③上限 0・80 面の 1 手目を まちがえた局面（上限 150）は言い切れない unknown ④run(1) を小分けに呼んでも まとめたのと同じ結果 ⑤makeRewind：とける いちばん新しい k（dead を飛ばす）・budget 0 なら k＝0（base0Sure のとき sure）⑥replayStates の局面＝replay で手前まで再生した局面 ⑦壊れた局面でも例外なし',
     run({ check, root }) {
       const L = load(root);
       const settle = (s) => { for (let i = 0; i < 20000; i++) { const r = L.step(s); if (!r.moved) return s; s = r.state; } return s; };
