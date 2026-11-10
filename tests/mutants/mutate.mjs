@@ -413,7 +413,7 @@ const M = [
   ['MK17 ほしくだき：保存 v:2 も読む（古い保存を v:3 として読み込む）', '保存', 'games/asteroid/logic.js', 'if (!isObj(o) || o.v !== SAVE_VERSION) return null;', 'if (!isObj(o) || (o.v !== SAVE_VERSION && o.v !== 2)) return null;'],
   ['MK18 ほしくだき：星の途中の保存（mid）を捨てる', 'データ消失', 'games/asteroid/logic.js', 'if (withMid) { const m = midOf(state); if (m) o.mid = m; }', ''],
   ['MK19 ほしくだき：クリアの演出中の保存を同じ星にする（開き直すと同じ星をもう一度）', '保存', 'games/asteroid/logic.js', 'const toNext = ph === "clear";', 'const toNext = false;'],
-  ['MK20 ほしくだき：保存に段（tier）を書かない（ハードの途中で開き直すとふつうの星に戻る）', 'データ消失', 'games/asteroid/logic.js', 'v: SAVE_VERSION, tier, star,', 'v: SAVE_VERSION, tier: 0, star,'],
+  ['MK20 ほしくだき：保存に段（tier）を書かない（ハードの途中で開き直すとふつうの星に戻る）', 'データ消失', 'games/asteroid/logic.js', 'v: SAVE_VERSION, lvv: LVV, tier, star,', 'v: SAVE_VERSION, lvv: LVV, tier: 0, star,'],
   ['MK21 ほしくだき：保存の段を読まない', 'データ消失', 'games/asteroid/logic.js', 'const q = split(intIn(o.star, 1, STAR_MAX, 1), intIn(o.tier, 0, TIER_MAX, 0));', 'const q = split(intIn(o.star, 1, STAR_MAX, 1), 0);'],
   ['MK22 ほしくだき：通しの番号が 1 段ぶん多い（ハードのベストがずれる）', '計算', 'games/asteroid/logic.js', 't === 0 ? star : ENDING_STAR + HARD_STARS * (t - 1) + star', 't === 0 ? star : ENDING_STAR + HARD_STARS * t + star'],
   ['MK23 ほしくだき：ふつうの最後の星で終わらない（エンディングが出ない）', 'ルール', 'games/asteroid/logic.js', 'const end = was >= starsOf(wasTier);', 'const end = false;'],
