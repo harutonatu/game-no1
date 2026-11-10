@@ -802,10 +802,10 @@ export const tests = [
     },
   },
   {
-    id: 'KL22', tier: 'smoke', node: true, title: 'ほしくだき：ほのおの燃え広がり（ユーザー「燃え広がる感じが欲しい」2026-11-10。こおり へは何段も広く（1 回の火で BURN.ice マスまで）・0.25 秒ごとに 1 段・てつ へは移らない・いわ へは 1 段だけ・決まった結果）',
+    id: 'KL22', tier: 'smoke', node: true, title: 'ほしくだき：ほのおの燃え広がり（ユーザー「燃え広がる感じが欲しい」「四方に燃え広がるのが自然」2026-11-10。こおり へは何段も広く（1 回の火で BURN.ice マスまで）・0.25 秒ごとに 1 段・壊れても上下左右の 4 方向へ移る・てつ へは移らない・いわ へは BURN.other 段まで・決まった結果）',
     run({ check, root }) {
       const L = load(root);
-      check('BURN の定数（1 か所）', J(L.BURN) === J({ step: 0.25, ice: 40, other: 1, otherP: 0.35, max: 160 }), L.BURN);
+      check('BURN の定数（1 か所）', J(L.BURN) === J({ step: 0.25, ice: 40, other: 3, otherP: 0.65, max: 160 }), L.BURN);
       // こおり 20×20：1 回の火で 40 マス（＋火のもと）まで広がる。全部 こおり
       const a = fireOnce(L, block(20, 20, 'c'), 4);
       const R = a.s0.rock;
@@ -819,9 +819,18 @@ export const tests = [
       // てつ 10×10：移らない
       const iron = fireOnce(L, block(10, 10, 'i'), 3);
       check('てつ：燃え移らない（燃えるのは火のもとの 1 マスだけ）', iron.first && iron.cells.size === 1, [iron.cells.size]);
-      // いわ 10×10：1 段だけ（火のもとのとなりまで）、確率つき
+      // いわ 10×10：火のもとから BURN.other 段まで（確率つき）
       const rocks = [1, 2, 3, 4, 5, 6, 7, 8].map((seed) => fireOnce(L, block(10, 10, 'r'), 3, seed));
-      check('いわ：火のもとのとなり（1 段）までだけ移る。8 つの種のどれかで移り、全部は移らない', rocks.every((x) => x.first && [...x.cells].every((i) => manh(x.s0.rock, i, x.first.i) <= 1) && x.evs.every((e) => (e.d | 0) <= 1)) && rocks.some((x) => x.cells.size > 1) && rocks.reduce((n, x) => n + x.cells.size - 1, 0) < 8 * 4, rocks.map((x) => x.cells.size));
+      check('いわ：火のもとから BURN.other 段までだけ移る（確率つき）。8 つの種のどれかで移り、種で燃え方が変わり、いわ 100 マスの半分までしか燃えない', rocks.every((x) => x.first && [...x.cells].every((i) => manh(x.s0.rock, i, x.first.i) <= L.BURN.other) && x.evs.every((e) => (e.d | 0) <= L.BURN.other) && x.cells.size <= 50) && rocks.some((x) => x.cells.size > 1) && new Set(rocks.map((x) => x.cells.size)).size > 1, rocks.map((x) => x.cells.size));
+      // 四方へ広がる（ユーザー「ほのおの燃え広がりは一方向のみ？四方に燃え広がるのが自然だと思いました」2026-11-10）：
+      // 体力 1 の こおり では火のもとが 0.25 秒より前に燃えつきる。それでも上下左右の全部（格子の中で こおり のとなり）へ移り、上にも下にも右にも広がる（前は 1 マスへ移るだけで上へ歩いた）
+      const q4 = fireOnce(L, block(20, 20, 'c'), 4, 7, 1);
+      const R4 = q4.s0.rock, o4 = q4.first ? q4.first.i : -1;
+      const nb4 = [o4 - 1, o4 + 1, o4 - R4.w, o4 + R4.w].filter((q) => (q === o4 - 1 ? o4 % R4.w > 0 : q === o4 + 1 ? o4 % R4.w < R4.w - 1 : true) && R4.mats[q] === 3);
+      const kid4 = new Set(q4.evs.filter((e) => e.from === o4).map((e) => e.i));
+      const dy4 = [...q4.cells].map((i) => Math.floor(i / R4.w) - Math.floor(o4 / R4.w)), dx4 = [...q4.cells].map((i) => (i % R4.w) - (o4 % R4.w));
+      check('四方へ：燃えつきる前に広がれなかった火のもとからも、上下左右の こおり 全部へ移り（' + nb4.length + ' 方向）、上・下・右へ 3 マス以上広がる。燃えるのは BURN.ice + 1 マスまで',
+        nb4.length >= 3 && nb4.every((q) => kid4.has(q)) && Math.min(...dy4) <= -3 && Math.max(...dy4) >= 3 && Math.max(...dx4) >= 3 && q4.cells.size <= L.BURN.ice + 1, [nb4.length, kid4.size, Math.min(...dy4), Math.max(...dy4), Math.max(...dx4), q4.cells.size]);
       // まざった星：こおり の帯にそって燃え広がり、まわりの てつ へは移らない
       const mixRows = Array.from({ length: 12 }, (_, r) => (r === 5 || r === 6 ? 'c'.repeat(30) : 'i'.repeat(30)));
       const mx = fireOnce(L, mixRows, 4);
@@ -835,8 +844,9 @@ export const tests = [
 ];
 
 // ほのおの燃え広がり（KL22）：rows の小惑星に ほのお Lv1 で 1 回だけ火をつけ（最初の burn のあと撃たない）、sec 秒ぶんの burn の出来事を集める
-function fireOnce(L, rows, sec, seed = 7) {
-  const s = setRock(L, mk(L, { seed, slots: [{ id: 'fire', lv: 1 }] }), rows, { hp: 1e9, ship: [-5, Math.floor(rows.length / 2)] });
+// （seed ごとに rng も変える。hp を決めると、その体力で（小さいと火のもとが 0.25 秒より前に燃えつきる））
+function fireOnce(L, rows, sec, seed = 7, hp = 1e9) {
+  const s = setRock(L, mk(L, { seed, rng: 12345 + seed * 7919, slots: [{ id: 'fire', lv: 1 }] }), rows, { hp, ship: [-5, Math.floor(rows.length / 2)] });
   const u = until(L, s, (e) => e.kind === 'burn', 2);
   const first = ofKind(u.evs, 'burn')[0];
   const t0 = u.s.t;

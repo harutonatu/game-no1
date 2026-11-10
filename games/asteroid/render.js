@@ -169,8 +169,9 @@
       if (canvas.width !== pw) canvas.width = pw;
       if (canvas.height !== ph) canvas.height = ph;
       bg = null;
-      // 区画の細かさは dpr に合わせる。ただし重くて下げたときは作り直さない（細かい区画を縮めて描けば同じ絵。作り直しの引っかかりを出さない）
-      if (dpr > tileScale + 1e-6 || (dpr < tileScale - 1e-6 && dprCap === Infinity)) needFull = true;
+      // 区画の細かさは dpr に合わせる。重くて下げたときも作り直す（v74 の直し：細かい区画（2 倍）を縮めて回して描くと、画素にする所（Commit）が
+      // CPU 4 倍遅くで 1 コマ約 15ms → 作り直すと約 10ms（KW10 の trace）。作り直しは 1 回だけの引っかかり（星が変わるときと同じ）で、そのあと毎コマ軽い）
+      if (Math.abs(dpr - tileScale) > 1e-6) needFull = true;
     }
     function makeCanvas(w, h) {
       if (doc && doc.createElement) { const c = doc.createElement("canvas"); c.width = w; c.height = h; return c; }
@@ -771,11 +772,11 @@
     // 描画が重いときの逃げ道：内部の解像度を 2 → 1.5 → 1 と下げる（CSS の大きさは変えない）。
     // canvas の命令は記録されるだけで、画素にする（ラスタライズ）のはコマの終わりのブラウザの中なので、drawMs（命令の時間）には出ない。
     // そこで、コマの間隔の中央が 20ms をこえるときだけ、時々 getImageData(1 画素) で画素にするのを今させて、その時間を測る。
-    // 画素にする時間が 12ms をこえたのが 0.15 秒あけて 2 回続いたら下げる。軽ければ測る間隔を延ばす（30fps に止めている端末で何度も測らない）。
+    // 画素にする時間が 12ms をこえたのが 0.15 秒あけて 2 回続いたら（24ms をこえたら 1 回で）下げる。コマの間隔は最近 6 コマの中央。軽ければ測る間隔を延ばす（30fps に止めている端末で何度も測らない）。
     function checkHeavy() {
-      if (dpr <= 1 || paused || frameGaps.length < 10) { heavySince = null; return; }
-      const gaps = frameGaps.slice(-10).sort((a, b) => a - b);
-      if (gaps[5] <= HEAVY_GAP_MS) { heavySince = null; probeWait = PROBE_MS; return; }
+      if (dpr <= 1 || paused || frameGaps.length < 6) { heavySince = null; return; }
+      const gaps = frameGaps.slice(-6).sort((a, b) => a - b);
+      if (gaps[3] <= HEAVY_GAP_MS) { heavySince = null; probeWait = PROBE_MS; return; }
       const t = now();
       if (t - probeAt < probeWait) return;
       probeAt = t;
@@ -783,7 +784,9 @@
       const ms = now() - t;   // 画素にする時間だけ（星が変わるときの作り直しなど、命令の側の一時の重さでは下げない）
       if (ms <= HEAVY_DRAW_MS) { heavySince = null; flushMs = ms; probeWait = Math.min(4000, probeWait * 2); return; }
       probeWait = PROBE_MS;
-      if (heavySince === null) { heavySince = t; flushMs = ms; return; }
+      // 2 倍をこえて重い（1 回で 24ms 超）なら、もう 1 回は測らずにすぐ下げる（遅いコマが続く間を短く。v74 の直し）
+      if (heavySince === null && ms <= HEAVY_DRAW_MS * 2) { heavySince = t; flushMs = ms; return; }
+      if (heavySince === null) { heavySince = t - 150; flushMs = ms; }
       flushMs = Math.min(flushMs, ms);   // 重い間の小さいほう（たまたま重かった 1 回で下げすぎない）
       if (t - heavySince < 150) return;
       // 画素の数に比例するとみて、12ms に収まる見込みの解像度へ（1.5 で足りなければ 1 へまっすぐ。下げる引っかかりを 1 回にする）

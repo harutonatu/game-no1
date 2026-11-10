@@ -107,9 +107,11 @@
   const BEAM_SEC = 0.4;          // ビームの見た目の秒（当たりは撃った瞬間）
   const CLEAR_SEC = 1.5;
   // ほのおの燃え広がり（ユーザー「ほのおは、燃え広がる感じが欲しいですね。得意な氷相手だと広く燃え広がるとか？」2026-11-10。計画書 §6.1）：
-  // 燃えているマスは、燃え始めから step 秒で となり（上下左右）へ火を移す（1 回だけ）。こおり へは何段でも続けて移る（1 回の火で ice マスまで）。
-  // いわ・きん・ひかり へは火のもとから other 段目までだけ、確率 otherP で（state の rng）。てつ へは移らない（苦手）。燃えているマスは全部で max まで
-  const BURN = deepFreeze({ step: 0.25, ice: 40, other: 1, otherP: 0.35, max: 160 });
+  // 燃えているマスは、燃え始めから step 秒で となり（上下左右の 4 方向）へ火を移す（1 回だけ）。step 秒より前に壊れたときも、そのとき 4 方向へ移す
+  // （ユーザー「四方に燃え広がるのが自然」2026-11-10。前は となりの 1 マスへ移るだけで一方向へ歩いて見えた）。こおり へは何段でも続けて移る（1 回の火で ice マスまで）。
+  // いわ・きん・ひかり へは火のもとから other 段目までだけ、確率 otherP で（state の rng）。てつ へは移らない（苦手）。燃えているマスは全部で max まで。
+  // other 3・otherP 0.65：1 マスへ移るのをやめた分、いわ の星で ほのお が弱くならないように（ふつう 50 面の greedy が前と同じ 3.3〜3.4 時間・時間切れ 0。計画書 §1.2.1）
+  const BURN = deepFreeze({ step: 0.25, ice: 40, other: 3, otherP: 0.65, max: 160 });
   const EVOLVE_EVERY = 10, EVOLVE_TIERS = 3;
   const TRIES_MAX = 9999;
   // ねらい：ビームは 4° ごと（±60°）、どかんは届くふちのマスを 3 マスおき
@@ -1442,52 +1444,40 @@
     // 4. 燃える
     if (s.burns.length) {
       const per = dmg("fire", slotLv(s, "fire"));
-      const keep = [], add = [], moved = [];
+      const keep = [], add = [];
       const fn = s.fireN, cnt = {};                            // cnt：この step で予約した こおり の数（本当に火がついた分だけ fn へ足す）
       let lit = null;                                          // 燃えているマス（と、この step で火を移すマス）
-      for (const b of s.burns) {
-        if (!s.rock.mats[b.i]) continue;
-        if (!b.spread && s.t + 1e-9 >= b.at + BURN.step) {
-          b.spread = true;
-          const R = s.rock, c = b.i % R.w;
-          const nb = [];
-          if (c > 0) nb.push(b.i - 1);
-          if (c < R.w - 1) nb.push(b.i + 1);
-          if (b.i >= R.w) nb.push(b.i - R.w);
-          if (b.i + R.w < R.mats.length) nb.push(b.i + R.w);
-          if (!lit) { lit = new Set(); for (const x of s.burns) lit.add(x.i); }
-          for (const q of nb) {
-            const m = R.mats[q];
-            CELLS++;
-            if (!m || m === 2 || lit.has(q)) continue;         // 空・てつ・もう燃えているマスへは移らない
-            if (m === 3) {                                     // こおり：なかまごとに BURN.ice マスまで、何段でも
-              if ((fn[b.g] | 0) + (cnt[b.g] | 0) >= BURN.ice) continue;
-              cnt[b.g] = (cnt[b.g] | 0) + 1;
-            } else if (!(b.d < BURN.other && rngOf(s) < BURN.otherP)) continue;
-            lit.add(q);
-            add.push([q, b]);
-          }
+      const R = s.rock, W = R.w, NB = [-1, 1, -W, W];
+      // 上下左右へ火を移す（広がる時刻になったとき、または広がる前にマスが壊れたとき。v74：壊れても 4 方向へ。ユーザー「四方に燃え広がるのが自然」）。
+      // 4 方向は同じ扱い：はじめに見る向きをマスごとに回す（上限に当たったときに、いつも同じ向きだけ残らない。決まった結果のまま）
+      const spreadFrom = (b) => {
+        b.spread = true;
+        if (!lit) { lit = new Set(); for (const x of s.burns) lit.add(x.i); }
+        const c = b.i % W, o = b.i & 3;
+        for (let k = 0; k < 4; k++) {
+          const dir = (o + k) & 3;
+          if ((dir === 0 && c === 0) || (dir === 1 && c === W - 1)) continue;
+          const q = b.i + NB[dir];
+          if (q < 0 || q >= R.mats.length) continue;
+          const m = R.mats[q];
+          CELLS++;
+          if (!m || m === 2 || lit.has(q)) continue;           // 空・てつ・もう燃えているマスへは移らない
+          if (m === 3) {                                       // こおり：なかまごとに BURN.ice マスまで、何段でも
+            if ((fn[b.g] | 0) + (cnt[b.g] | 0) >= BURN.ice) continue;
+            cnt[b.g] = (cnt[b.g] | 0) + 1;
+          } else if (!(b.d < BURN.other && rngOf(s) < BURN.otherP)) continue;
+          lit.add(q);
+          add.push([q, b]);
         }
+      };
+      for (const b of s.burns) {
+        if (!R.mats[b.i]) { if (!b.spread) spreadFrom(b); continue; }   // ほかの武器で壊れた：広がる前なら 4 方向へ移す
+        if (!b.spread && s.t + 1e-9 >= b.at + BURN.step) spreadFrom(b);
         const broke = hurt(s, b.i, per * dt, "fire", ctx, true);
         if (!broke) { if (s.t < b.until) keep.push(b); continue; }
-        if (s.t < b.until) moved.push(b);
+        if (!b.spread) spreadFrom(b);                          // 広がる前に燃えつきた：4 方向へ移す（前は となりの 1 マスへ移るだけで、一方向へ歩いて見えた）
       }
       s.burns = keep;
-      for (const b of moved) {
-        const R = s.rock, c = b.i % R.w;
-        const nb = [];
-        if (b.i >= R.w) nb.push(b.i - R.w);
-        if (c > 0) nb.push(b.i - 1);
-        if (c < R.w - 1) nb.push(b.i + 1);
-        if (b.i + R.w < R.mats.length) nb.push(b.i + R.w);
-        let to = -1;
-        for (const q of nb) {
-          CELLS++;
-          if (!R.mats[q] || s.burns.some((x) => x.i === q)) continue;
-          if (to < 0 || (R.mats[q] === 3 && R.mats[to] !== 3)) to = q;
-        }
-        if (to >= 0) { s.burns.push({ i: to, until: b.until, at: b.at, spread: true, g: b.g, d: b.d }); ctx.evs.push({ kind: "burn", i: to, from: b.i, d: b.d }); }
-      }
       for (const [q, b] of add) if (s.rock.mats[q] && ignite(s, q, ctx, b) && s.rock.mats[q] === 3) fn[b.g] = (fn[b.g] | 0) + 1;
       // 燃えている火のなかまが無くなったら、こおり の数えを捨てる
       let live = null;

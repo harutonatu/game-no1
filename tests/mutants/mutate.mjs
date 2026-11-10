@@ -444,6 +444,8 @@ const M = [
   ['MK45 ほしくだき：ほのおが てつ（苦手）へも燃え移る', 'ルール', 'games/asteroid/logic.js', 'if (!m || m === 2 || lit.has(q)) continue;', 'if (!m || lit.has(q)) continue;'],
   ['MK46 ほしくだき：こおり への燃え広がりに上限が無い（1 回の火で星の こおり が全部燃える）', 'ルール', 'games/asteroid/logic.js', 'if ((fn[b.g] | 0) + (cnt[b.g] | 0) >= BURN.ice) continue;', 'if (0) continue;'],
   ['MK47 ほしくだき：v73 の保存（印なし・ハード）の Lv99 の武器を上げない（急に何回も負ける）', '保存', 'games/asteroid/logic.js', 'if (o.lvv !== LVV && tier > 0) {', 'if (false) {'],
+  // 四方への燃え広がり（ユーザー「ほのおの燃え広がりは一方向のみ？四方に燃え広がるのが自然だと思いました」2026-11-10）。流すときは ONLY=KL22
+  ['MK48 ほしくだき：燃えているマスが広がる前に燃えつきると、まわりへ移らない（火が四方へ広がらない）', 'ルール', 'games/asteroid/logic.js', 'if (!b.spread) spreadFrom(b);                          // 広がる前に燃えつきた', '                          // 広がる前に燃えつきた'],
   // ---- あまいものあつめ（games/amai/）。ふち・運ぶ・押す・うごかせない・再生・保存・ずかん・絵の選び方・中断・古いページの仕組みを変えたときだけ流す（契約 §7.4）----
   ['MA1 あまいものあつめ：ふちでない角砂糖も運ぶ（見つける：AL3・AL4）', 'ルール', 'games/amai/logic.js', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;', 'return true;'],
   ['MA2 あまいものあつめ：ななめもふちに数える（見つける：AL3）', 'ルール', 'games/amai/logic.js', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1 || o[i - W - 1] === 1 || o[i - W + 1] === 1 || o[i + W - 1] === 1 || o[i + W + 1] === 1;'],
