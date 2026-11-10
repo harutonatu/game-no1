@@ -409,7 +409,7 @@ const M = [
   ['MK13 ほしくだき：はなれたかたまりを砕かない', 'ルール', 'games/asteroid/logic.js', 'if (ctx.removed.length && s.rock.left > 0) breakLoose(s, ctx);', ''],
   ['MK14 ほしくだき：区切り（25・50・75%）を何回でももらえる', 'ルール', 'games/asteroid/logic.js', 'if (broken < pct / 100 - 1e-12 || got.includes(pct)) continue;', 'if (broken < pct / 100 - 1e-12) continue;'],
   ['MK15 ほしくだき：相性の倍率 aff がいつも 1', '計算', 'games/asteroid/logic.js', 'return isNum(a) ? a : 1;', 'return 1;'],
-  ['MK16 ほしくだき：強くする値段が 1 つ先の Lv の値段', '計算', 'games/asteroid/logic.js', 'return Math.round(UP_COST[w] * Math.pow(UP_GROWTH, L - 1));', 'return Math.round(UP_COST[w] * Math.pow(UP_GROWTH, L));'],
+  ['MK16 ほしくだき：強くする値段が 1 つ先の Lv の値段', '計算', 'games/asteroid/logic.js', 'Math.round(UP_COST[w] * Math.pow(UP_GROWTH, lo - 1) * Math.pow(HI_COST[w], hi))', 'Math.round(UP_COST[w] * Math.pow(UP_GROWTH, lo) * Math.pow(HI_COST[w], hi))'],
   ['MK17 ほしくだき：保存 v:2 も読む（古い保存を v:3 として読み込む）', '保存', 'games/asteroid/logic.js', 'if (!isObj(o) || o.v !== SAVE_VERSION) return null;', 'if (!isObj(o) || (o.v !== SAVE_VERSION && o.v !== 2)) return null;'],
   ['MK18 ほしくだき：星の途中の保存（mid）を捨てる', 'データ消失', 'games/asteroid/logic.js', 'if (withMid) { const m = midOf(state); if (m) o.mid = m; }', ''],
   ['MK19 ほしくだき：クリアの演出中の保存を同じ星にする（開き直すと同じ星をもう一度）', '保存', 'games/asteroid/logic.js', 'const toNext = ph === "clear";', 'const toNext = false;'],
@@ -437,6 +437,12 @@ const M = [
   ['MK41 ほしくだき：表に戻ったとき保存がほかで変わっていても開き直さない（X-20）', '保存', 'games/asteroid/main.js', 'if (!stale && !changedElsewhere()) return false;', 'return false;'],
   // 自機の回る向き（ユーザー「何周かごとに向きを変える」2026-11-10）。流すときは ONLY=KL6
   ['MK42 ほしくだき：自機が 1 周する前（半周）で回る向きを変える（星のまわりを回らずに引き返す）', 'ルール', 'games/asteroid/logic.js', 'if (sh.orb >= sh.laps * TAU - 1e-9) {', 'if (sh.orb >= 0.5 * TAU - 1e-9) {'],
+  // Lv の上限 255（ユーザー「武器のレベルを255まで上げられるようにして」2026-11-10）。流すときは ONLY=KL1,KL11,KL20,KL21
+  ['MK43 ほしくだき：Lv99 から先の値段が 1.35 倍ずつ（かけらの上限をこえて Lv255 まで上げられない）', '値段', 'games/asteroid/logic.js', 'Math.pow(HI_COST[w], hi)', 'Math.pow(UP_GROWTH, hi)'],
+  ['MK44 ほしくだき：ハードの硬さが Lv100〜255 の強さに合わせて上がらない（強くしなくても間に合う）', 'ルール', 'games/asteroid/logic.js', 'Math.min(HARD.lvMax, HARD.lv * (HARD_STARS * (t - 1) + k - 1))', '0'],
+  // ほのおの燃え広がり（ユーザー「ほのおは、燃え広がる感じが欲しいですね。得意な氷相手だと広く燃え広がるとか？」2026-11-10）。流すときは ONLY=KL22
+  ['MK45 ほしくだき：ほのおが てつ（苦手）へも燃え移る', 'ルール', 'games/asteroid/logic.js', 'if (!m || m === 2 || lit.has(q)) continue;', 'if (!m || lit.has(q)) continue;'],
+  ['MK46 ほしくだき：こおり への燃え広がりに上限が無い（1 回の火で星の こおり が全部燃える）', 'ルール', 'games/asteroid/logic.js', 'if (n >= BURN.ice) continue;', 'if (n >= 1e9) continue;'],
   // ---- あまいものあつめ（games/amai/）。ふち・運ぶ・押す・うごかせない・再生・保存・ずかん・絵の選び方・中断・古いページの仕組みを変えたときだけ流す（契約 §7.4）----
   ['MA1 あまいものあつめ：ふちでない角砂糖も運ぶ（見つける：AL3・AL4）', 'ルール', 'games/amai/logic.js', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;', 'return true;'],
   ['MA2 あまいものあつめ：ななめもふちに数える（見つける：AL3）', 'ルール', 'games/amai/logic.js', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1 || o[i - W - 1] === 1 || o[i - W + 1] === 1 || o[i + W - 1] === 1 || o[i + W + 1] === 1;'],
