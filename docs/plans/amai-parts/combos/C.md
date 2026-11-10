@@ -14,3 +14,13 @@
 | 188 | XXL | butadaidokoroutau | だいどころで ぶたが うたう | "" | だいどころ | ぶた | うたう | x=35 y=46 ぎゃく 背景ぎゃく |
 | 193 | XXL | butakouenoyatsu | こうえんで ぶたが おやつを たべる | "" | こうえん | ぶた | おやつを たべる | x=35 y=46 ぎゃく |
 | 198 | XXL | butamachioekaki | まちで ぶたが おえかきを する | "" | まち | ぶた | おえかきを する | x=34 y=46 ぎゃく 背景ぎゃく |
+| 221 | XXL | butayuuenchibooru | ゆうえんちで ぶたが ボールで あそぶ | "" | ゆうえんち | ぶた | ボールで あそぶ | x=30 y=46 sky=S |
+| 222 | XXL | butahoshizorabooru | ほしぞらで ぶたが ボールで あそぶ | "" | ほしぞら | ぶた | ボールで あそぶ | x=34 y=46 ぎゃく 背景ぎゃく |
+| 223 | XXL | butamachinemuru | まちで ぶたが ねむる | "" | まち | ぶた | ねむる | x=30 y=46 |
+| 224 | XXL | butayukiyamanemuru | ゆきやまで ぶたが ねむる | fuyu | ゆきやま | ぶた | ねむる | x=34 y=46 ぎゃく 背景ぎゃく |
+| 225 | XXL | butaumibeodoru | うみべで ぶたが おどる | natsu | うみべ | ぶた | おどる | x=30 y=46 |
+| 226 | XXL | butadaidokoroodoru | だいどころで ぶたが おどる | "" | だいどころ | ぶた | おどる | x=34 y=46 ぎゃく 背景ぎゃく |
+| 227 | XXL | butakouenjitensha | こうえんで ぶたが じてんしゃに のる | "" | こうえん | ぶた | じてんしゃに のる | x=27 y=46 背景ぎゃく |
+| 228 | XXL | butahanabatakehon | はなばたけで ぶたが ほんを よむ | haru | はなばたけ | ぶた | ほんを よむ | x=27 y=46 ぎゃく |
+| 229 | XXL | butamoriutau | もりで ぶたが うたう | "" | もり | ぶた | うたう | x=32 y=46 ぎゃく |
+| 230 | XXL | butayuuenchioekaki | ゆうえんちで ぶたが おえかきを する | "" | ゆうえんち | ぶた | おえかきを する | x=27 y=46 背景ぎゃく sky=S |
