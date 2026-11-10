@@ -23,4 +23,4 @@
 | 237 | XXL | kaerukouenutau | こうえんで かえるが うたう | "" | こうえん | かえる | うたう | x=34 y=46 背景ぎゃく ground=Y |
 | 238 | XXL | kaerumorihon | もりで かえるが ほんを よむ | "" | もり | かえる | ほんを よむ | x=28 y=46 背景ぎゃく ground=Y |
 | 239 | XXL | kaeruhanabatakejitensha | はなばたけで かえるが じてんしゃに のる | haru | はなばたけ | かえる | じてんしゃに のる | x=28 y=46 ぎゃく 背景ぎゃく ground=Y |
-| 240 | XXL | kaeruhoshizoraodoru | ほしぞらで かえるが おどる | "" | ほしぞら | かえる | おどる | x=35 y=46 背景ぎゃく |
+| 240 | XXL | kaeruhoshizoraodoru | ほしぞらで かえるが おどる | "" | ほしぞら | かえる | おどる | x=35 y=46 ぎゃく |
