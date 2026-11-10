@@ -488,9 +488,7 @@ const M = [
   ['MA70 あまいものあつめ：pictures-e.js（151〜200 面の絵）を事前キャッシュから外す（見つける：AW14）', 'オフライン', 'sw.js', '  "./games/amai/pictures-e.js",\n', ''],
   // ちょうせんモード（2026-11-05。計画書 docs/plans/amai-challenge.md）
   ['MA48 あまいものあつめ：ちょうせんの面でも わくが 3 つ（見つける：AL19・AL20・AW34）', 'ルール', 'games/amai/logic.js', 'slots: new Array(nslots === CHAL_SLOTS ? CHAL_SLOTS : SLOTS).fill(null)', 'slots: new Array(SLOTS).fill(null)'],
-  ['MA49 あまいものあつめ：ちょうせんで 1手もどすの のこりが減らない（見つける：AW34）', 'お助け', 'games/amai/main.js', 'if (chal) chalUndo = Math.max(0, chalUndo - 1);', ''],
-  ['MA50 あまいものあつめ：ちょうせんで のこり 0 でも 1手もどせる（見つける：AW34・AW35）', 'お助け', 'games/amai/main.js', 'const undoLeft = () => !chal || chalUndo > 0;', 'const undoLeft = () => true;'],
-  ['MA51 あまいものあつめ：ちょうせんの やりなおしで もどしの回数が戻らない（見つける：AW34）', 'お助け', 'games/amai/main.js', '    chal = ch;\n    chalUndo = CHAL_UNDO;', '    chalUndo = ch && chal && n === level ? chalUndo : CHAL_UNDO;\n    chal = ch;'],
+  // MA49〜MA51（1手もどすの のこり 3 回）は 2026-11-10 に 3 回の制限をやめたので外した（約束 §0.11）
   ['MA52 あまいものあつめ：ちょうせんの途中も amai.save に書く（見つける：AW34）', 'データ消失', 'games/amai/main.js', 'if (custom || chal || !state || state.won) return;', 'if (custom || !state || state.won) return;'],
   ['MA53 あまいものあつめ：ちょうせんでクリアしても amai.gold に書かない（見つける：AW34）', 'データ', 'games/amai/main.js', 'if (typeof rg === "string") writeKey(KEY_GOLD, rg);', ''],
   ['MA54 あまいものあつめ：ずかんで金の花輪を出さない（金だけの絵は花輪なし、両方の絵はふつうだけになる。見つける：AW34）', 'ルール', 'games/amai/main.js', 'const gold = !!(n > 0 && p && isGold(id));', 'const gold = false;'],
@@ -511,6 +509,16 @@ const M = [
   ['MA66 あまいものあつめ：運ぶときに #fx の位置を測り直さない（ありんこと道がずれて角砂糖の上に見える。見つける：AW38）', '見た目', 'games/amai/render.js', '        sizeFx();\n        const np = nestPoint();', '        const np = nestPoint();'],
   ['MA67 あまいものあつめ：絵の目印に決まりの版を混ぜない（v67 の途中の保存を今の決まりで再生する。見つける：AL22・AW37）', '保存データ互換', 'games/amai/logic.js', 'mix(0xa5); mix(RULE_V);', ''],
   ['MA68 あまいものあつめ：外が広がっても道のりを直さない（見つける：AL23）', 'ルール', 'games/amai/logic.js', '    if (n) relax(b, q, n);\n', ''],
+  // とける ところまで もどす・クリアのカードから ちょうせんへ・もどしと花輪（2026-11-10。計画書 docs/plans/amai-rescue.md・約束 §0.10・§0.11・§1.13）
+  ['MA72 あまいものあつめ：調べの上限に届いたのに「とけない」と言い切る（見つける：AL24）', 'ルール', 'games/amai/logic.js', 'else result = r === "empty" ? "dead" : "unknown";', 'else result = "dead";'],
+  ['MA73 あまいものあつめ：戻し先を調べずに 1 手前を返す（見つける：AL24・AW39）', 'お助け', 'games/amai/logic.js', 'if (r.result === "solved") return finish(cur.k, true);', 'return finish(cur.k, true);'],
+  ['MA74 あまいものあつめ：言い切れない局面でも予備軍の知らせを出す（見つける：AW40）', 'お助け', 'games/amai/main.js', 'if (r.result !== "dead" || state !== st) return;', 'if (r.result === "solved" || state !== st) return;'],
+  ['MA75 あまいものあつめ：とける ところまで もどしても押した手を切りつめない（保存と局面が食い違う。見つける：AW39）', 'データ', 'games/amai/main.js', '    presses.length = k;\n', ''],
+  ['MA76 あまいものあつめ：ちょうせんで 1手もどしても もどした印が付かない（金の花輪が付く。見つける：AW34・AW41）', 'ルール', 'games/amai/main.js', '    if (chal) chalUsed = true;   // ちょうせんで 1手もどすを使った面は、金の花輪を付けない（§0.11）\n', ''],
+  ['MA77 あまいものあつめ：もどした ちょうせんのクリアでも amai.gold に書く（見つける：AW41）', 'ルール', 'games/amai/main.js', 'const rg = chalUsed ? null : safeCall(', 'const rg = safeCall('],
+  ['MA78 あまいものあつめ：ふつうのクリアのカードに［この めんを ちょうせん］が出ない（見つける：AW41）', '操作', 'games/amai/main.js', 'const chalThis = !custom && !chal && canChallenge(level);', 'const chalThis = false;'],
+  ['MA79 あまいものあつめ：［つぎも ちょうせん］が金の花輪のある面も選ぶ（見つける：AW41）', 'ルール', 'games/amai/main.js', 'const ok = (n) => canChallenge(n) && !safeCall(() => L.hasGold(rawGold, L.pickPicture(n, null).id), true);', 'const ok = (n) => canChallenge(n);'],
+  ['MA80 あまいものあつめ：とける ところまで もどしても「1手もどし なし」の花輪が付く（見つける：AW41）', 'ルール', 'games/amai/main.js', '    if (noUndo === true) noUndo = false;   // もどした面には', '    if (false) noUndo = false;   // もどした面には'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

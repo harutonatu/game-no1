@@ -350,9 +350,6 @@
   }
   .tools .cta:active:not(:disabled) { filter: brightness(1.3); }
   .tools .cta:disabled { opacity: 0.4; }
-  /* ちょうせんの「1手もどす」：2 行目に のこりの回数（字は 12px 以上） */
-  #undoBtn .ulab, #undoBtn .urest { display: block; }
-  #undoBtn .urest { font-size: 12px; line-height: 1.15; font-weight: 700; }
   #fastBtn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
   /* うごかせないとき：押して意味のある方を目立たせる（色だけでなく、枠の太さと小さな揺れでも） */
   .tools .cta[data-attention="1"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; box-shadow: 0 0 0 3px rgba(240, 164, 58, 0.35); animation: nudge 1.6s ease-in-out infinite; }
@@ -439,13 +436,13 @@
     backdrop-filter: blur(4px);
   }
   /* うごかせない：盤面（絵・わく）が見えるよう、暗くせず、下に小さなカードを出す */
-  .overlay[data-kind="stuck"] { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; align-items: flex-end; }
+  .overlay[data-kind="stuck"], .overlay[data-kind="rescue"] { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; align-items: flex-end; }
   /* 手詰まりのカードは「待っている色の箱」と盤面を見比べながら読めるように、低く小さくする（v53 のレビュー指摘） */
-  .overlay[data-kind="stuck"] .card { margin: 0 auto; padding: 8px 10px; gap: 4px; box-shadow: 0 0 0 2px var(--accent), 0 -8px 30px rgba(0, 0, 0, 0.55); }
-  .overlay[data-kind="stuck"] .card h2 { font-size: 15px; margin: 0; }
-  .overlay[data-kind="stuck"] .card p { font-size: 13px; line-height: 1.35; margin: 0; }
-  .overlay[data-kind="stuck"] .card .btns { margin-top: 2px; }
-  .overlay[data-kind="stuck"] .card .btns button { min-height: 44px; }
+  .overlay[data-kind="stuck"] .card, .overlay[data-kind="rescue"] .card { margin: 0 auto; padding: 8px 10px; gap: 4px; box-shadow: 0 0 0 2px var(--accent), 0 -8px 30px rgba(0, 0, 0, 0.55); }
+  .overlay[data-kind="stuck"] .card h2, .overlay[data-kind="rescue"] .card h2 { font-size: 15px; margin: 0; }
+  .overlay[data-kind="stuck"] .card p, .overlay[data-kind="rescue"] .card p { font-size: 13px; line-height: 1.35; margin: 0; }
+  .overlay[data-kind="stuck"] .card .btns, .overlay[data-kind="rescue"] .card .btns { margin-top: 2px; }
+  .overlay[data-kind="stuck"] .card .btns button, .overlay[data-kind="rescue"] .card .btns button { min-height: 44px; }
   .card {
     position: relative;
     width: min(420px, 100%);
@@ -609,6 +606,10 @@
   /* ともだちに おくる（クリアのカード。いろびんと同じ形の吹き出し） */
   .card .btns { position: relative; }
   .card .btns button.share { background: transparent; }
+  /* クリアのカードの 3 段目（［この めんを ちょうせん］か［つぎの めんへ］と［ともだちに おくる］を半分ずつ。2026-11-10）：長い字は 2 行で 50 の高さに入れる */
+  .card .btns button.two { white-space: normal; font-size: 14px; line-height: 1.15; padding: 2px 6px; word-break: keep-all; }
+  #card[data-kind="clear"] .btns button.half { flex: 1 1 calc(50% - 5px); }   /* 半分のボタンは 1 段に 2 つまで（4 つが 1 段に並ばない） */
+  .card p.note.lost { margin-top: -4px; font-size: 13px; line-height: 1.35; }   /* もどしたので きんの わは つかないよ（責めない一言。小さく） */
   .card p.share-note { position: absolute; left: 0; right: 0; bottom: 100%; box-sizing: border-box; max-width: 100%; margin: 0 0 4px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 15px; line-height: 1.45; color: var(--ink); text-align: left; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; z-index: 2; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
   .card p.share-note:empty { visibility: hidden; pointer-events: none; }   /* 空のときは見えないだけ（aria-live の読み上げのため display:none にしない） */
   .card p.share-note .url { display: block; overflow-wrap: anywhere; word-break: normal; -webkit-user-select: text; user-select: text; }
@@ -634,6 +635,8 @@
     .card .btns button { flex: 1 1 0; min-height: 44px; }
     #card[data-kind="help"] .btns button { flex: 1 1 100%; }
     .card .btns button.share { padding: 2px 6px; white-space: normal; font-size: 14px; line-height: 1.15; word-break: keep-all; }   /* 「ともだちに おくる」を 2 行で 44 の高さに入れる */
+    #card[data-kind="clear"] .btns button.half { flex: 1 1 0; }   /* 横向きは 1 段に並べる（背が低いので） */
+    #card[data-kind="clear"] .btns button { padding: 2px 6px; white-space: normal; line-height: 1.15; word-break: keep-all; }   /* ボタンが 5 つのとき（［つぎも ちょうせん］など）も字をボタンに収める */
     #card[data-kind="help"] { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "title title" "sample rules" "btns btns"; align-items: center; column-gap: 12px; }
     #card[data-kind="book"], #card[data-kind="select"] { width: 100%; }
     .card .bookhead { padding: 4px 12px; }

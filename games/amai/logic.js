@@ -23,10 +23,9 @@
 
   const NAME = "あまいものあつめ";
   const SLOTS = 3;
-  // ちょうせんモード（2026-11-05。計画書 docs/plans/amai-challenge.md §1）：わく 2 つ・1手もどすは 3 回まで。
+  // ちょうせんモード（2026-11-05。計画書 docs/plans/amai-challenge.md §1）：わく 2 つ。1手もどすは 2026-11-10 から何回でも（前は 3 回まで。CHAL_UNDO はやめた。約束 §0.11）。
   // 選べるのはクリアしたことのある 1〜200 面だけ（main が決める）。面は ふつう と同じ作り方で、わく 2 つの局面で確かめる
   const CHAL_SLOTS = 2;
-  const CHAL_UNDO = 3;
   const EASY_BOXES = 5;   // 1〜2 面の箱の数の上限（1・2 面の絵は割っていない＝元の大きさなので 5 のまま。わくは 3 なので §2.1 の「必ず入る」保証は弱まる）
   // 1 はこびで 1 箱が運ぶ角砂糖の数（段 0b の測定用。1 なら今までと同じ動き）。
   // CARRY_FROM 以上の面だけ CARRY_N 個運ぶ。持ち玉の合計＝角砂糖の数は変えない（アリの数は同じ。1 回で CARRY_N 匹が運ぶイメージ）。
@@ -1068,6 +1067,162 @@
     return dfs(state0) ? path.slice() : null;
   }
 
+  // ---------------------------------------------------------------- とける ところまで もどす（計画書 docs/plans/amai-rescue.md・約束 §1.13）
+  // 「落ち着いてから押す」遊び方（§2.3 と同じ）で、局面から全部運べるかを調べる。少しずつ進められる（画面が止まらないよう、main が区切って呼ぶ）。
+  //   1 段目（とく）：生成の solveSearch と同じ ならべ方・同じ刈り方で、上限「箱の数＋RESCUE_EASY」まで。見つかれば「とける」。
+  //   2 段目（しらべつくす）：同じ ならべ方で、押せる列を全部試す（同じ局面は 1 回だけ。局面の鍵は列の長さ・わく・絵）。
+  //     全部試して見つからなければ「とけない」と言い切る（dead）。開いた局面が limit を超えたら「わからない」（unknown）。
+  // 返す：run(n) → { done, result: "solved"|"dead"|"unknown"|null, nodes }。nodes は 1 段目と 2 段目で開いた局面の合計（手間の数。時計は使わない）。
+  const RESCUE_EASY = 15;
+  const RESCUE_LIMIT = 400;   // 2 段目で開く局面の上限（既定）
+  function settleLite(s) {
+    let b = null;
+    for (;;) {
+      const r = stepImpl(s, true, b);
+      if (!r.moved) return s;
+      s = r.state;
+      b = r.board && r.board.own ? r.board : null;
+    }
+  }
+  // 局面の鍵：列の長さ・わくの箱（id と数）・絵（cells を 2 つの 32 bit の指紋にする。取り違えの見込みは 2^-64 ほど）
+  function rescueKey(s) {
+    let k = "";
+    for (const c of s.cols) k += c.length + ",";
+    for (const bx of s.slots) k += bx ? bx.id + ":" + bx.count + "," : "-,";
+    const cells = s.cells;
+    let h1 = 0x811c9dc5, h2 = 0x9747b28c;
+    for (let i = 0; i < cells.length; i++) {
+      const v = cells[i] + 2;
+      h1 = Math.imul(h1 ^ v, 0x01000193);
+      h2 = Math.imul(h2 ^ (v + i), 0x5bd1e995);
+      h2 ^= h2 >>> 15;
+    }
+    return k + (h1 >>> 0).toString(36) + "." + (h2 >>> 0).toString(36);
+  }
+  // 押せる列を、解けそうな順に（solveSearch と同じ手がかり：いま運べる箱 → 1 箱で運び切れる箱 → 持ち玉の少ない箱 → 列の番号）
+  function rescueCands(s) {
+    const R = reachByColor(boardOf(s), { n: 0 });
+    const cands = [];
+    for (let c = 0; c < COLS; c++) {
+      if (reasonFor(s, c) !== null) continue;
+      const f = s.cols[c][0];
+      cands.push({ c, wait: R[f.color] > 0 ? 0 : 1, stay: f.count > R[f.color] ? 1 : 0, count: f.count });
+    }
+    cands.sort((a, z) => (a.wait - z.wait) || (a.stay - z.stay) || (a.count - z.count) || (a.c - z.c));
+    return cands;
+  }
+  function makeRescue(state, opt) {
+    const o = opt && typeof opt === "object" ? opt : {};
+    const s0 = asState(state);
+    const limit = isInt(o.limit) && o.limit >= 0 ? o.limit : RESCUE_LIMIT;
+    let boxes = 0;
+    if (s0) for (const c of s0.cols) boxes += c.length;
+    const easyCap = boxes + RESCUE_EASY;
+    let stage = 1, nodes = 0, used = [0, 0, 0], result = s0 ? null : "unknown", stack = null, wonPath = null;
+    const seen = new Set();
+    // 局面を開く（落ち着かせて積む）。"won"＝クリアに着いた・"seen"＝2 段目で前に見た局面・"open"＝積んだ
+    function open(s, col, prune) {
+      s = settleLite(s);
+      if (s.won) return "won";
+      if (!prune) {
+        const key = rescueKey(s);
+        if (seen.has(key)) return "seen";
+        seen.add(key);
+      }
+      used[stage]++;
+      nodes++;
+      let cands = rescueCands(s);
+      if (prune) {   // 生成の solveSearch と同じ刈り方：良い順に 2 つ、どちらも運べる箱なら「待つ箱」を 1 つ足す
+        let use = cands.slice(0, 2);
+        if (use.every((a) => a.wait === 0)) { const w = cands.find((a) => a.wait === 1); if (w) use = use.concat([w]); }
+        cands = use;
+      }
+      stack.push({ s, col, cands, i: 0 });
+      return "open";
+    }
+    const pathOf = (last) => stack.slice(1).map((f) => f.col).concat(last === undefined ? [] : [last]);
+    // 1 段を n 局面まで進める。"won"・"empty"（全部試した）・"cap"（上限）・"more"（続きがある）
+    function runStage(n, prune) {
+      const cap = prune ? easyCap : limit;
+      const at = nodes;
+      if (stack === null) {
+        stack = [];
+        const r = open(s0, -1, prune);
+        if (r === "won") { wonPath = []; return "won"; }
+      }
+      while (stack.length) {
+        if (used[stage] > cap) return "cap";
+        if (nodes - at >= n) return "more";
+        const fr = stack[stack.length - 1];
+        if (fr.i >= fr.cands.length) { stack.pop(); continue; }
+        const cd = fr.cands[fr.i++];
+        const r = pressImpl(fr.s, cd.c);
+        if (r.outcome.kind !== "press") continue;
+        const v = open(r.state, cd.c, prune);
+        if (v === "won") { wonPath = pathOf(cd.c); return "won"; }
+      }
+      return "empty";
+    }
+    return {
+      run(n) {
+        const max = typeof n === "number" && n > 0 ? n : Infinity;
+        const at = nodes;
+        try {
+          while (result === null && nodes - at < max) {
+            const r = runStage(max - (nodes - at), stage === 1);
+            if (r === "won") result = "solved";
+            else if (r === "empty" || r === "cap") {
+              if (stage === 1) { stage = 2; stack = null; }
+              else result = r === "empty" ? "dead" : "unknown";
+            }
+          }
+        } catch (e) { result = "unknown"; }
+        return { done: result !== null, result, nodes, path: wonPath ? wonPath.slice() : null };
+      },
+    };
+  }
+  // 戻し先を探す（§1.13 R4）。states[k]＝k 番目の手を押す直前の局面（replayStates・main の履歴）。
+  // 新しい方（k＝n−1）から 1 まで、1 局面ずつ makeRescue（上限 limit）で調べ、「とける」と言い切れた いちばん新しい k を返す。
+  // 合計の手間が budget に届いた・どれも言い切れない：k＝0（面の最初。生成で解けると確かめた局面なので sure は opt.base0Sure）。
+  // run(n) → { done, k, sure, nodes }（done までは k は null）
+  const REWIND_LIMIT = 60;
+  const REWIND_BUDGET = 1500;
+  function makeRewind(states, opt) {
+    const o = opt && typeof opt === "object" ? opt : {};
+    const list = Array.isArray(states) ? states : [];
+    const limit = isInt(o.limit) && o.limit >= 0 ? o.limit : REWIND_LIMIT;
+    const budget = isInt(o.budget) && o.budget >= 0 ? o.budget : REWIND_BUDGET;
+    const base0Sure = o.base0Sure === true;
+    let k = list.length - 1, cur = null, nodes = 0, done = null;
+    const finish = (kk, sure) => { done = { done: true, k: kk, sure, nodes }; return done; };
+    return {
+      run(n) {
+        if (done) return done;
+        const max = typeof n === "number" && n > 0 ? n : Infinity;
+        let used = 0;
+        try {
+          while (used < max) {
+            if (k < 1) return finish(0, base0Sure);
+            if (nodes >= budget) return finish(0, base0Sure);
+            if (!cur) cur = { k, base: 0, r: makeRescue(list[k], { limit }) };
+            const want = Math.min(max - used, budget - nodes);
+            const r = cur.r.run(want);
+            const step = r.nodes - cur.base;
+            cur.base = r.nodes;
+            used += step; nodes += step;
+            if (r.done) {
+              if (r.result === "solved") return finish(cur.k, true);
+              cur = null; k--;
+            } else if (step <= 0) { cur = null; k--; }   // 進まない（壊れた局面）：次へ
+          }
+        } catch (e) { return finish(0, base0Sure); }
+        return { done: false, k: null, sure: false, nodes };
+      },
+    };
+  }
+  // すぐに最後まで調べる（テスト・デバッグ用）
+  function rescueSearch(state, opt) { return makeRescue(state, opt).run(Infinity); }
+
   function tryBuild(lv, pic, pk, prm, rng, work, pull, lids, ices, opt, noOver, soften, nslots) {
     // 1・2 面は「どう押してもクリアできる」保証を守るため、①・②を使わない（§2.1）
     const easy = lv <= 2;
@@ -1190,6 +1345,32 @@
       return { state: s, ok: true, applied };
     } catch (e) {
       return { state: s, ok: false, applied };
+    }
+  }
+
+  // 押した手のそれぞれの直前の局面（とける ところまで もどすの戻し先の候補。§1.13）。replay と同じ道で 1 回だけ再生する。
+  // 返す：{ ok, states }（states[k]＝k 番目の手を押す直前の局面。ok が false なら途中まで）
+  function replayStates(level, pick, presses, opt) {
+    const states = [];
+    try {
+      let s = createLevel(level, pick, opt).state;
+      const list = Array.isArray(presses) ? presses : [];
+      for (const m of list) {
+        if (!Array.isArray(m) || !isInt(m[0]) || !isInt(m[1])) return { ok: false, states };
+        while (s.t < m[0]) {
+          const r = stepImpl(s);
+          if (!r.moved) return { ok: false, states };
+          s = r.state;
+        }
+        if (s.t !== m[0]) return { ok: false, states };
+        const r = pressImpl(s, m[1]);
+        if (r.outcome.kind !== "press") return { ok: false, states };
+        states.push(s);
+        s = r.state;
+      }
+      return { ok: true, states };
+    } catch (e) {
+      return { ok: false, states };
     }
   }
 
@@ -1365,7 +1546,7 @@
   }
 
   const api = Object.freeze({
-    NAME, SLOTS, CHAL_SLOTS, CHAL_UNDO, COLS, TICK_MS, FAST_MS, CARRY_N, CARRY_FROM,
+    NAME, SLOTS, CHAL_SLOTS, COLS, TICK_MS, FAST_MS, CARRY_N, CARRY_FROM,
     MAX_W, MAX_H, MAX_SUGAR, MAX_COUNT, MAX_PRESSES, MAX_T,
     GEN_TRIES, GEN_WORK, BASE_PICTURES, REPEAT_FROM, GEN_OPT, OVER, ANY_RATE, CARRY_TIERS, PULL_ADD, REPEAT_K, KSET,
     PICTURE_ORDER,
@@ -1375,7 +1556,7 @@
     parsePicture, pickPicture, pictureById,
     createLevel, press, step,
     isStable, isStuck, canPress, edgeCells, hud,
-    replay, validateState,
+    replay, validateState, replayStates, makeRescue, rescueSearch, makeRewind, RESCUE_LIMIT, REWIND_LIMIT, REWIND_BUDGET,
     validateSave, makeSave, pictureSig, saveFits,
     validateBest, recordBest, validateBook, addToBook, bookCount, validateClean, addClean, hasClean, validateGold, addGold, hasGold,
     levelChoices, canSelect,

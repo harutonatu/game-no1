@@ -1111,10 +1111,10 @@ export const tests = [
   },
   // ---------- ちょうせんモード（2026-11-05。計画書 docs/plans/amai-challenge.md §1・契約 §2.9） ----------
   {
-    id: 'AL19', tier: 'smoke', node: true, title: 'あまいものあつめ：ちょうせん（わく 2 つ）の面：CHAL_SLOTS 2・CHAL_UNDO 3・createLevel(n, pick, { challenge: true }) はわく 2 つで、解を画面と同じ press・step で再生すると won（1・2・3・5・13・25・37・48・77・100・150 面）・決定的・ふつうの面は変わらない（わく 3・同じ面）・replay も challenge でわく 2・amai.gold の検査（validateGold・addGold・hasGold）',
+    id: 'AL19', tier: 'smoke', node: true, title: 'あまいものあつめ：ちょうせん（わく 2 つ）の面：CHAL_SLOTS 2・CHAL_UNDO は無い（2026-11-10 に 1手もどすの回数の制限をやめた）・createLevel(n, pick, { challenge: true }) はわく 2 つで、解を画面と同じ press・step で再生すると won（1・2・3・5・13・25・37・48・77・100・150 面）・決定的・ふつうの面は変わらない（わく 3・同じ面）・replay も challenge でわく 2・amai.gold の検査（validateGold・addGold・hasGold）',
     async run({ check, root }) {
       const L = load(root);
-      check('CHAL_SLOTS は 2・CHAL_UNDO は 3・SLOTS は 3・SAVE_KEY_GOLD は amai.gold', L.CHAL_SLOTS === 2 && L.CHAL_UNDO === 3 && L.SLOTS === 3 && L.SAVE_KEY_GOLD === 'amai.gold', { CHAL_SLOTS: L.CHAL_SLOTS, CHAL_UNDO: L.CHAL_UNDO, SLOTS: L.SLOTS, KEY: L.SAVE_KEY_GOLD });
+      check('CHAL_SLOTS は 2・CHAL_UNDO は無い（2026-11-10 から何回でも）・SLOTS は 3・SAVE_KEY_GOLD は amai.gold', L.CHAL_SLOTS === 2 && L.CHAL_UNDO === undefined && L.SLOTS === 3 && L.SAVE_KEY_GOLD === 'amai.gold', { CHAL_SLOTS: L.CHAL_SLOTS, CHAL_UNDO: L.CHAL_UNDO, SLOTS: L.SLOTS, KEY: L.SAVE_KEY_GOLD });
       await withPictures(L, (kind) => {
         check(`絵：${kind}`, true, null);
         const bad = [];
@@ -1350,6 +1350,69 @@ export const tests = [
       const near = [];
       for (const k of [10, 11]) for (let j = 0; j < C.length; j++) if (j !== k && diff(C[k].dots, C[j].dots) < 3) near.push(`${C[k].letter}-${C[j].letter}:${diff(C[k].dots, C[j].dots)}`);
       check('D・V の 5×5 の印は、ほかのどの印とも 3 点以上ちがう', near.length === 0, near);
+    },
+  },
+  {
+    id: 'AL24', tier: 'smoke', node: true, title: 'あまいものあつめ：とける ところまで もどす の調べ（2026-11-10。計画書 amai-rescue.md・約束 §1.13）：①80 面の最初は rescueSearch で solved、返した押す列を「落ち着いてから押す」で再生すると won ②うごかせない局面・あと 1 手で必ず うごかせない局面は dead、とける局面は solved ③上限 0・80 面の 1 手目を まちがえた局面（上限 150）は言い切れない unknown ④run(1) を小分けに呼んでも まとめたのと同じ結果 ⑤makeRewind：とける いちばん新しい k（dead を飛ばす）・budget 0 なら k＝0（base0Sure のとき sure）⑥replayStates の局面＝replay で手前まで再生した局面 ⑦壊れた局面でも例外なし',
+    run({ check, root }) {
+      const L = load(root);
+      const settle = (s) => { for (let i = 0; i < 20000; i++) { const r = L.step(s); if (!r.moved) return s; s = r.state; } return s; };
+      const playPath = (s, path) => { for (const c of path) { s = settle(s); const r = L.press(s, c); if (r.outcome.kind !== 'press') return null; s = r.state; } return settle(s); };
+      // ① 80 面の最初
+      const pk80 = L.pickPicture(80, null);
+      const s80 = L.createLevel(80, pk80).state;
+      const r80 = L.rescueSearch(s80, { limit: 3000 });
+      const w80 = r80.result === 'solved' && Array.isArray(r80.path) ? playPath(s80, r80.path) : null;
+      check(`①80 面の最初は solved（${r80.result}・開いた局面 ${r80.nodes}）・押す列 ${r80.path ? r80.path.length : '-'} 手を再生して won（${!!(w80 && w80.won)}）`, r80.result === 'solved' && !!(w80 && w80.won), { result: r80.result, nodes: r80.nodes });
+      // ② 手で組んだ局面（R は外、B は R に囲まれた内側。わくの B は R が運ばれるまで待つ）
+      const map = ['RRRRR', 'RBBBR', 'RRRRR'];
+      // うごかせない：わく 3 つに B（待つ）・列にまだ箱
+      const stuck = mk(L, map, { slots: [{ c: LET.B, n: 1 }, { c: LET.B, n: 1 }, { c: LET.B, n: 1 }], cols: [[{ c: LET.R, n: 12 }], [], [], []] });
+      const rs = L.rescueSearch(stuck);
+      // あと 1 手：わく 2 つに B（待つ）、手前は B だけ（どれを押しても 3 つとも待つ＝うごかせない）。R の箱は B のうしろ
+      const near = mk(L, map, { slots: [{ c: LET.B, n: 1 }, { c: LET.B, n: 1 }], cols: [[{ c: LET.B, n: 1 }, { c: LET.R, n: 12 }], [], [], []] });
+      const rn = L.rescueSearch(near);
+      // とける：手前に R（R を運ぶと B が ふちに出る）
+      const ok = mk(L, map, { slots: [{ c: LET.B, n: 1 }, { c: LET.B, n: 1 }], cols: [[{ c: LET.R, n: 12 }], [{ c: LET.B, n: 1 }], [], []] });
+      const ro = L.rescueSearch(ok);
+      const wo = ro.result === 'solved' ? playPath(ok, ro.path) : null;
+      check(`②うごかせない局面は dead（${rs.result}）・あと 1 手で うごかせない局面も dead（${rn.result}）・とける局面は solved（${ro.result}・再生して won ${!!(wo && wo.won)}）`, L.isStuck(stuck) && !L.isStuck(near) && rs.result === 'dead' && rn.result === 'dead' && ro.result === 'solved' && !!(wo && wo.won), { rs, rn, ro });
+      // ③ 言い切れない
+      const r0 = L.rescueSearch(near, { limit: 0 });
+      let wrong = null;
+      { const st = settle(s80); for (let c = 0; c < 4 && !wrong; c++) { if (L.canPress(st, c) !== null) continue; const u = settle(L.press(st, c).state); const r = L.rescueSearch(u, { limit: 150 }); if (r.result === 'unknown') wrong = { c, r }; } }
+      check(`③上限 0 なら unknown（${r0.result}）・80 面の 1 手目を まちがえた局面は上限 150 で unknown（列 ${wrong ? wrong.c : '-'}・${wrong ? wrong.r.nodes : '-'} 局面）＝何も言わない`, r0.result === 'unknown' && !!wrong, { r0, wrong: wrong && wrong.c });
+      // ④ 小分け（40 面の解の 5 手目の局面）
+      const pk40 = L.pickPicture(40, null);
+      const c40 = L.createLevel(40, pk40);
+      let s40 = c40.state;
+      for (const c of c40.info.solution.slice(0, 5)) s40 = L.press(settle(s40), c).state;
+      const whole = L.rescueSearch(s40, { limit: 150 });
+      const sr = L.makeRescue(s40, { limit: 150 });
+      let part = null, calls = 0;
+      while (calls < 100000) { part = sr.run(1); calls++; if (part.done) break; }
+      check(`④run(1) を ${calls} 回（${part && part.result}・${part && part.nodes}）＝まとめて（${whole.result}・${whole.nodes}）・押す列も同じ`, !!part && part.done && part.result === whole.result && part.nodes === whole.nodes && J(part.path) === J(whole.path), { part, whole });
+      // ⑤ 戻し先
+      const list = [ok, ok, near, stuck];
+      const rw = L.makeRewind(list, { base0Sure: true }).run();
+      const rw0 = L.makeRewind(list, { budget: 0, base0Sure: true }).run();
+      const rwN = L.makeRewind([near, near, stuck], {}).run();
+      let rwp = null; const mr = L.makeRewind(list, { base0Sure: true }); for (let i = 0; i < 100000; i++) { rwp = mr.run(1); if (rwp.done) break; }
+      check(`⑤とける いちばん新しい k＝1（${rw.k}・sure ${rw.sure}）・小分けでも同じ（${rwp && rwp.k}）・budget 0 なら k＝0 で sure（${rw0.k}・${rw0.sure}）・どれも とけない（base0Sure なし）なら k＝0 で sure でない（${rwN.k}・${rwN.sure}）`, rw.done && rw.k === 1 && rw.sure === true && rwp.k === 1 && rw0.k === 0 && rw0.sure === true && rwN.k === 0 && rwN.sure === false, { rw, rw0, rwN });
+      // ⑥ replayStates
+      let s = L.createLevel(5, L.pickPicture(5, null)).state;
+      const sol5 = L.createLevel(5, L.pickPicture(5, null)).info.solution;
+      const presses = [];
+      for (const c of sol5.slice(0, 4)) { s = settle(s); presses.push([s.t, c]); s = L.press(s, c).state; }
+      const rsx = L.replayStates(5, L.pickPicture(5, null), presses);
+      const same = rsx.ok && rsx.states.length === presses.length && rsx.states.every((st, k) => { const rp = L.replay(5, L.pickPicture(5, null), presses.slice(0, k), presses[k][0]); return rp.ok && J(rp.state.cells) === J(st.cells) && J(rp.state.cols) === J(st.cols) && J(rp.state.slots) === J(st.slots) && rp.state.t === st.t; });
+      const bad = L.replayStates(5, L.pickPicture(5, null), [[0, 9]]);
+      check(`⑥replayStates の ${presses.length} 局面＝replay で手前まで再生した局面（${same}）・押せない手なら ok false（${bad.ok}）`, same && bad.ok === false);
+      // ⑦ 壊れた局面
+      let threw = null;
+      const outs = [];
+      try { for (const x of [null, undefined, {}, 1, 'x', { cols: 1 }]) { outs.push(L.rescueSearch(x).result); outs.push(L.makeRewind(x).run().k); } outs.push(L.makeRewind([null, {}, 3]).run().k); } catch (e) { threw = e.message; }
+      check(`⑦壊れた局面でも例外なし（${threw || 'なし'}）・unknown と k＝0（${J(outs)}）`, threw === null && outs.every((v) => v === 'unknown' || v === 0), { outs });
     },
   },
 ];
