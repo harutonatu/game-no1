@@ -14,3 +14,4 @@
 | 190 | XXL | usagihoshizorautau | ほしぞらで うさぎが うたう | "" | ほしぞら | うさぎ | うたう | x=33 y=46 ぎゃく 背景ぎゃく |
 | 195 | XXL | kumamoriutau | もりで くまが うたう | "" | もり | くま | うたう | x=34 y=46 ぎゃく 背景ぎゃく |
 | 200 | XXL | pandayukiyamajitensha | ゆきやまで ぱんだが じてんしゃに のる | fuyu | ゆきやま | ぱんだ | じてんしゃに のる | x=35 y=46 ぎゃく sky=B ground=S |
+| 241 | XXL | nekomachiutau | まちで ねこが うたう | "" | まち | ねこ | うたう | x=31 y=46 背景ぎゃく ground=Y |
