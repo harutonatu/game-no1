@@ -1664,6 +1664,9 @@ export const tests = [
       };
       const e20 = await evo(20), e30 = await evo(30), e40 = await evo(40), e99 = await evo(99);
       check(`しんか の 2 行目：Lv20「${e20}」・Lv30「${e30}」・Lv40「${e40}」・Lv99「${e99}」`, e20 === 'たまが ふえた' && e30 === 'たまが ふえた' && e40 === 'つよさが 2ばいに なった' && e99 === 'つよさが 2ばいに なった', [e20, e30, e40, e99]);
+      // Lv100 から（v74。LEVEL_MAX 255）：100・150・200・250 は「LvN！ どんどん つよく なる」、255 は「いちばん つよく なった！」（2 倍ではない）
+      const e150 = await evo(150), e255 = await evo(255);
+      check(`しんか の 2 行目：Lv150「${e150}」・Lv255「${e255}」`, e150 === 'Lv150！ どんどん つよく なる' && e255 === 'いちばん つよく なった！', [e150, e255]);
       const bolt = L.WEAPONS.find((w) => w.id === 'bolt');
       const html = fs.readFileSync(path.join(root, 'games/asteroid/index.html'), 'utf8');
       check(`いなずまの説明「${bolt.desc}」（index.html の初期の文も同じ）`, bolt.desc === 'つながった マスへ えだわかれ。てつは とおくまで とどく' && html.includes('<span class="cdesc" data-part="desc">' + bolt.desc + '</span>'), bolt.desc);
