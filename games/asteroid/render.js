@@ -7,7 +7,8 @@
  *   r.resize(cssW, cssH, dpr)   canvas の大きさが変わったとき（canvas.width/height はここで決める。style は main.js）
  *   r.burst(kind, arg)          'up'|'evolve'|'swap'|'unlock'（自機がひかる）。ほかに 'clear'|'end'
  *   r.reset()                   星が変わった・retry のあと（オフスクリーンを次のコマで作り直す）
- *   r.stats() → { fps, cellPx, view: { x, y, rot }, ... }
+ *   r.setViewport({ top, bottom, left, right }) 見えている場の四角（canvas の左上が原点の CSS px）。自機はその中の横 62%・縦 50% に寄る
+ *   r.stats() → { fps, cellPx, anchor: { x, y }, view: { x, y, rot }, ... }
  *   （おまけ：r.setCalm(bool)・r.pause()・r.resume()。約束の外。使わなくてよい）
  *
  * - 世界の単位：1 マス CELL = 8。マス i（c = i % w, r = i / w）の中心は ((c+0.5)·8, (r+0.5)·8)。拡大は固定（1 単位 = 1 CSS px）。
@@ -41,7 +42,9 @@
   const MAX_CELLS = 140;          // 格子の 1 辺の上限（計画は最大 132）
   const ROT_MAX = 0.5;            // カメラの回る速さの上限（rad/秒）。動きを減らす設定では回さない（星の始めの向きで固定）
   const ROT_EASE = 2.2;           // 差に対する回る速さ（1/秒）。上限と小さい方
-  const ANCHOR_X = 0.62, ANCHOR_Y = 0.56;   // 自機の画面の位置（幅・高さに対する割合）
+  const ANCHOR_X = 0.62, ANCHOR_Y = 0.56;   // 自機の画面の位置（幅・高さに対する割合）。setViewport が渡されないときの決め
+  const VIEW_X = 0.62, VIEW_Y = 0.50;       // setViewport の「見えている場」の中での自機の位置（横・縦の割合）
+  const ANCHOR_EASE = 8;                    // 場の四角が変わったとき、自機の位置を寄せる速さ（1/秒）
   const FONT = '"Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif';
   const NAMES_FALLBACK = { shot: "たま", spread: "ちらし", bomb: "どかん", bolt: "いなずま", beam: "ビーム", fire: "ほのお" };
 
@@ -127,6 +130,32 @@
 
     // カメラ
     let camX = 0, camY = 0, rot = 0, camReady = false;
+    // 自機の画面の位置（CSS px）。anch = 今、anchTX/TY = 寄せる先。viewport（見えている場の四角。canvas の左上が原点）があればその中、なければ ANCHOR_X/Y
+    let anchX = cssW * ANCHOR_X, anchY = cssH * ANCHOR_Y, anchTX = anchX, anchTY = anchY, viewport = null;
+    function anchorTarget() {
+      if (viewport) {
+        anchTX = viewport.left + (viewport.right - viewport.left) * VIEW_X;
+        anchTY = viewport.top + (viewport.bottom - viewport.top) * VIEW_Y;
+      } else { anchTX = cssW * ANCHOR_X; anchTY = cssH * ANCHOR_Y; }
+    }
+    // 見えている場の四角（main.js が DOM から測って渡す）。null か壊れた値なら今の決め（62%・56%）に戻す
+    function setViewport(v) {
+      let nv = null;
+      if (v && typeof v === "object") {
+        const l = Number(v.left), t = Number(v.top), r = Number(v.right), b = Number(v.bottom);
+        if ([l, t, r, b].every(Number.isFinite) && r - l >= 1 && b - t >= 1) nv = { left: l, top: t, right: r, bottom: b };
+      }
+      const first = !viewport;
+      viewport = nv;
+      anchorTarget();
+      if (first || !nv) { anchX = anchTX; anchY = anchTY; }   // はじめて渡されたとき・外したときは跳ばせてよい（画面を開いた直後）
+    }
+    function stepAnchor(dt) {
+      const k = 1 - Math.exp(-ANCHOR_EASE * dt);
+      anchX += (anchTX - anchX) * k; anchY += (anchTY - anchY) * k;
+      if (Math.abs(anchTX - anchX) < 0.05) anchX = anchTX;
+      if (Math.abs(anchTY - anchY) < 0.05) anchY = anchTY;
+    }
 
     // 小惑星（描いてある形）
     let rockRef = null, rockW = 0, rockH = 0, rockN = 0, rockGen = -1, rockStar = -1;
@@ -169,6 +198,8 @@
       if (canvas.width !== pw) canvas.width = pw;
       if (canvas.height !== ph) canvas.height = ph;
       bg = null;
+      anchorTarget();
+      if (!viewport) { anchX = anchTX; anchY = anchTY; }
       // 区画の細かさは dpr に合わせる。重くて下げたときも作り直す（v74 の直し：細かい区画（2 倍）を縮めて回して描くと、画素にする所（Commit）が
       // CPU 4 倍遅くで 1 コマ約 15ms → 作り直すと約 10ms（KW10 の trace）。作り直しは 1 回だけの引っかかり（星が変わるときと同じ）で、そのあと毎コマ軽い）
       if (Math.abs(dpr - tileScale) > 1e-6) needFull = true;
@@ -534,13 +565,13 @@
     // 世界 → 画面（device px）の変換を ctx に入れる
     function worldTransform(g) {
       const cs = Math.cos(rot) * dpr, sn = Math.sin(rot) * dpr;
-      const ax = cssW * ANCHOR_X * dpr, ay = cssH * ANCHOR_Y * dpr;
+      const ax = anchX * dpr, ay = anchY * dpr;
       g.setTransform(cs, sn, -sn, cs, ax - (cs * camX - sn * camY), ay - (sn * camX + cs * camY));
     }
     // 画面に見えている世界の範囲（回した四角を囲む箱）
     function viewBox(pad) {
       const cs = Math.cos(-rot), sn = Math.sin(-rot);
-      const ax = cssW * ANCHOR_X, ay = cssH * ANCHOR_Y;
+      const ax = anchX, ay = anchY;
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       const pts = [[0, 0], [cssW, 0], [0, cssH], [cssW, cssH]];
       for (const p of pts) {
@@ -757,6 +788,7 @@
       if (fresh) syncRock(state);
       onEvents(state, events);
       if (!fresh) syncRock(state);
+      stepAnchor(dt);
       updateCamera(state, dt, fresh);
       clk += dt;
       flame += dt;
@@ -940,7 +972,7 @@
       const mats = state.rock && state.rock.mats;
       const now = num(state.t, 0);
       // 世界の座標 → 画面の座標（CSS px。worldTransform と同じ式）
-      const cs = Math.cos(rot), sn = Math.sin(rot), ax = cssW * ANCHOR_X, ay = cssH * ANCHOR_Y;
+      const cs = Math.cos(rot), sn = Math.sin(rot), ax = anchX, ay = anchY;
       const L = [];
       for (let k = 0; k < n; k++) {
         const b = burns[k];
@@ -1245,7 +1277,7 @@
     }
     function drawStarFlash(f) {
       const k = f.t / f.dur;
-      const ax = cssW * ANCHOR_X, ay = cssH * ANCHOR_Y;
+      const ax = anchX, ay = anchY;
       ctx.globalAlpha = Math.sin(Math.PI * k) * 0.8;
       ctx.strokeStyle = YELLOW; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(ax, ay, 10 + k * Math.max(cssW, cssH) * 0.6, 0, TAU); ctx.stroke();
@@ -1303,6 +1335,7 @@
       return {
         fps: gs > 0 ? Math.round(10000 / gs) / 10 : 0,
         cellPx: C(),                 // 1 マスの画面の大きさ（CSS px。拡大は固定）
+        anchor: { x: Math.round(anchX * 10) / 10, y: Math.round(anchY * 10) / 10 },   // 自機の画面の位置（CSS px）
         view: { x: Math.round(camX * 10) / 10, y: Math.round(camY * 10) / 10, rot: Math.round(rot * 1000) / 1000 },
         particles: particles.length,
         shots: lastState && Array.isArray(lastState.shots) ? Math.min(SHOTS_MAX, lastState.shots.length) : 0,
@@ -1317,7 +1350,7 @@
     }
 
     resize(num(o.cssW, canvas.clientWidth || 360), num(o.cssH, canvas.clientHeight || 640), num(o.dpr, root.devicePixelRatio || 1));
-    return { frame, resize, burst, reset, stats, setCalm, pause, resume, MAX_PARTICLES };
+    return { frame, resize, setViewport, burst, reset, stats, setCalm, pause, resume, MAX_PARTICLES };
   }
 
   root.AsteroidRender = { create, MAX_PARTICLES };

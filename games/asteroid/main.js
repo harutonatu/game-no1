@@ -224,7 +224,7 @@
   function stubRender() {
     let frames = 0, c = calm;
     return {
-      isStub: true, frame() { frames += 1; }, resize() {}, reset() {}, burst() {}, setCalm(b) { c = !!b; }, pause() {}, resume() {},
+      isStub: true, frame() { frames += 1; }, resize() {}, setViewport() {}, reset() {}, burst() {}, setCalm(b) { c = !!b; }, pause() {}, resume() {},
       stats() { return { particles: 0, shots: 0, frames, slowFrames: 0, rockRedraws: 0, calm: c, cellPx: 0, view: null }; }
     };
   }
@@ -232,14 +232,27 @@
   function fitCanvas() {
     const z = fieldSize();
     const key = z.w + "x" + z.h + "@" + z.dpr;
-    if (key === sizeShown) return;
-    sizeShown = key;
-    R_call("resize", z.w, z.h, z.dpr);
+    if (key !== sizeShown) { sizeShown = key; R_call("resize", z.w, z.h, z.dpr); }
+    fitViewport();
+  }
+  // 「見えている場」（#hud の下の端から #weapons などの上の端まで＝#fieldzone。横向きでは左の列）を測って render に渡す。
+  // 自機はその中の横 62%・縦 50% に寄る（ユーザー 2026-11-10「自機の位置、もう少し上が良いね」）。大きさ・武器の行の数が変わるたびに測り直す
+  let viewShown = "";
+  function fitViewport() {
+    const zone = $("fieldzone"), f = el.field;
+    if (!zone || !f || !zone.getBoundingClientRect) return;
+    const a = zone.getBoundingClientRect(), b = f.getBoundingClientRect();
+    const v = { left: a.left - b.left, top: a.top - b.top, right: a.right - b.left, bottom: a.bottom - b.top };
+    const key = [v.left, v.top, v.right, v.bottom].map((n) => Math.round(n)).join(",");
+    if (key === viewShown) return;
+    viewShown = key;
+    R_call("setViewport", v);
   }
   sizeShown = (() => { const z = fieldSize(); return z.w + "x" + z.h + "@" + z.dpr; })();
   window.addEventListener("resize", fitCanvas);
   window.addEventListener("orientationchange", fitCanvas);
-  if (window.ResizeObserver && el.field) { try { new ResizeObserver(fitCanvas).observe(el.field); } catch (e) { /* resize イベントだけで足りる */ } }
+  if (window.ResizeObserver && el.field) { try { const ro = new ResizeObserver(fitCanvas); ro.observe(el.field); const z = $("fieldzone"); if (z) ro.observe(z); } catch (e) { /* resize イベントだけで足りる */ } }
+  fitViewport();
   // 星が変わった・やり直した（rock.key が変わった）ら、render にオフスクリーンの作り直しを頼む（毎コマの前に呼ぶ）
   let rockKeyShown = null;
   function syncRock() {
@@ -1178,6 +1191,7 @@
       hint: el.hint ? el.hint.textContent : "", suggest: suggestSlot, swapSel: overlay === "swap" ? swapSel : null,
       totals: s.totals ? Object.assign({}, s.totals) : null,
       drawMs: Number(st.drawMs) || 0, cellPx: Number(st.cellPx) || 0, dpr: Number(st.dpr) || 0, rockFullRedraws: Number(st.rockFullRedraws) || 0,
+      anchor: st.anchor || null,   // 自機の画面の位置（CSS px）
       view: st.view || null,   // render の見せている向き（x・y・rot）
       urgent: !!(el.hud && el.hud.getAttribute("data-urgent") === "1"),
       boltFx: st.bolt || null, evolveLine: st.evolve || null

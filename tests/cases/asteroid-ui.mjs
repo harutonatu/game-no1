@@ -1755,4 +1755,35 @@ export const tests = [
       await m.ctx.close();
     },
   },
+  {
+    id: 'KW28', tier: 'full', flaky: { why: '自機の位置が寄るのを実時間（rAF）で待つ', checks: /^自機の位置/ }, title: 'ほしくだき 自機の画面の位置（ユーザー 2026-11-10「自機の位置、もう少し上が良いね」。計画書 §2・約束 §23.3）：#fieldzone（#hud の下の端から #weapons の上の端まで。横向きは左の列）を「見えている場」とし、stats().view（向き）・anchor と ship から出した自機の画面の位置が、その縦 35〜65%・横 50〜75% に入る（iPhone 縦 390×844・SE 縦 320×568・SE 横 568×320・武器 1 つと 4 つ）',
+    async run({ browser, check }) {
+      const views = [custom(390, 844, null, 'iPhone 縦 390×844'), custom(320, 568, null, 'SE 縦 320×568'), custom(568, 320, null, 'SE 横 568×320')];
+      for (const v of views) {
+        const { ctx, page } = await openK(browser, `KW28 ${v.label || ''}`, { v });
+        const where = () => page.evaluate(() => {
+          const g = window.AsteroidGame.getState(), z = document.getElementById('fieldzone').getBoundingClientRect(), c = document.getElementById('fieldCanvas').getBoundingClientRect();
+          const l = window.AsteroidGame.logic(), sh = l.ship, a = g.anchor, vw = g.view;
+          if (!a || !vw || !sh) return null;
+          const cs = Math.cos(vw.rot), sn = Math.sin(vw.rot), dx = sh.x - vw.x, dy = sh.y - vw.y;
+          const sx = a.x + cs * dx - sn * dy, sy = a.y + sn * dx + cs * dy;   // 世界 → 画面（worldTransform と同じ式）
+          const top = z.top - c.top, left = z.left - c.left;
+          return { fx: (sx - left) / z.width, fy: (sy - top) / z.height, zh: z.height, zw: z.width, sx, sy };
+        });
+        const out = [];
+        for (const n of [1, 4]) {
+          const ids = ['shot', 'spread', 'bomb', 'bolt'].slice(0, n);
+          await setL(page, `l.kakera = 1e9; l.slots = ${JSON.stringify(ids.map((id) => ({ id, lv: 1 })))};`);
+          await adv(page, 0.2);
+          const before = await where();
+          await wait(page, 1200);   // 場の四角が変わると、自機の位置は少しずつ寄る（1 秒ほどで落ち着く）
+          const w = await where();
+          out.push({ n, before: before && +before.fy.toFixed(2), fx: w && +w.fx.toFixed(2), fy: w && +w.fy.toFixed(2), zh: w && Math.round(w.zh) });
+        }
+        const ok = out.every((o) => o.fy !== null && o.fy >= 0.35 && o.fy <= 0.65 && o.fx >= 0.5 && o.fx <= 0.75);
+        check(`自機の位置（${v.label || ''}）：見えている場の中で 武器 1 つ→4 つ ${out.map((o) => `${o.n}つ 横 ${o.fx}・縦 ${o.fy}（場の高さ ${o.zh}）`).join('、')}（縦 35〜65%・横 50〜75%）`, ok, out);
+        await ctx.close();
+      }
+    },
+  },
 ];
