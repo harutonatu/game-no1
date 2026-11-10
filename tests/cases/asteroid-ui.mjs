@@ -737,7 +737,8 @@ export const tests = [
       check(`弾の武器は たま だけ（ひかえの ビーム は撃たない。見えた弾 ${[...ids].join(',') || 'なし'}）`, ids.size > 0 && [...ids].every((w) => w === 'shot'), [...ids]);
       // hold：撃たないが、飛ぶし、時間は減る
       await dbg(page, 'hold', { on: true });
-      const hh = await frozen(page, async () => { const h0 = await lg(page), hs0 = await gs(page); const hs1 = await adv(page, 5); return { h0, hs0, hs1, h1: await lg(page) }; });
+      await adv(page, 1);   // hold の前に撃った弾（飛んでいる途中）が当たり終わるのを待ってから数える（v75：RANGE 20 で弾の飛ぶ時間が延び、hold の直後に 1 マス欠けることがあった）
+      const hh =await frozen(page, async () => { const h0 = await lg(page), hs0 = await gs(page); const hs1 = await adv(page, 5); return { h0, hs0, hs1, h1: await lg(page) }; });
       const { h0, hs0, hs1, h1 } = hh;
       check(`hold の間は撃たない（弾 ${h1.shots.length}・残りのマス ${L.progressOf(h0).left} → ${L.progressOf(h1).left}）、自機は飛ぶ（${Math.hypot(hs1.ship.x - hs0.ship.x, hs1.ship.y - hs0.ship.y).toFixed(1)} 単位）、残り時間は減る（${h0.left.toFixed(1)} → ${h1.left.toFixed(1)}）`,
         h1.shots.length === 0 && L.progressOf(h1).left === L.progressOf(h0).left && Math.hypot(hs1.ship.x - hs0.ship.x, hs1.ship.y - hs0.ship.y) > 20 && Math.abs((h0.left - h1.left) - 5) < 0.1, { h0: h0.left, h1: h1.left });
