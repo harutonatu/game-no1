@@ -19,3 +19,8 @@
 | 243 | XXL | usagihoshizorajitensha | ほしぞらで うさぎが じてんしゃに のる | "" | ほしぞら | うさぎ | じてんしゃに のる | x=33 y=46 |
 | 244 | XXL | kumamachihon | まちで くまが ほんを よむ | "" | まち | くま | ほんを よむ | x=33 y=46 ぎゃく ground=Y |
 | 245 | XXL | pandayuuenchiutau | ゆうえんちで ぱんだが うたう | "" | ゆうえんち | ぱんだ | うたう | x=33 y=46 ぎゃく |
+| 246 | XXL | nekoyuuenchihon | ゆうえんちで ねこが ほんを よむ | "" | ゆうえんち | ねこ | ほんを よむ | x=32 y=46 ぎゃく |
+| 247 | XXL | inuhoshizorajitensha | ほしぞらで いぬが じてんしゃに のる | "" | ほしぞら | いぬ | じてんしゃに のる | x=30 y=46 背景ぎゃく |
+| 248 | XXL | usagimachiutau | まちで うさぎが うたう | "" | まち | うさぎ | うたう | x=26 y=46 背景ぎゃく |
+| 249 | XXL | kumahoshizorautau | ほしぞらで くまが うたう | "" | ほしぞら | くま | うたう | x=31 y=46 ぎゃく ground=O |
+| 250 | XXL | pandahoshizorajitensha | ほしぞらで ぱんだが じてんしゃに のる | "" | ほしぞら | ぱんだ | じてんしゃに のる | x=29 y=46 ぎゃく 背景ぎゃく sky=V |
