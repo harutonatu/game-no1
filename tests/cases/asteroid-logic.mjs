@@ -119,10 +119,10 @@ const block = (W, H, ch = 'r') => Array.from({ length: H }, () => ch.repeat(W));
 
 export const tests = [
   {
-    id: 'KL1', tier: 'smoke', node: true, title: 'ほしくだき（リニューアル）：定数と表（CELL 8・STANDOFF 5・SHIP_SPEED 70・RANGE 18・GRID_MAX 132・MATS に ひかり・SAVE_VERSION 3・保存キー）、廃止した砲台の API が無い、体力・かけら・強さ・値段の式、桁あふれ',
+    id: 'KL1', tier: 'smoke', node: true, title: 'ほしくだき（リニューアル）：定数と表（CELL 8・STANDOFF 7・SHIP_SPEED 70・RANGE 20・GRID_MAX 132・MATS に ひかり・SAVE_VERSION 3・保存キー）、廃止した砲台の API が無い、体力・かけら・強さ・値段の式、桁あふれ',
     run({ check, root }) {
       const L = load(root);
-      const K = { NAME: 'ちきゅうを守れ！ほしくだき', CELL: 8, STANDOFF: 5, SHIP_SPEED: 70, RANGE: 18, GRID_MAX: 132, R_BASE: 36, R_MAX: 64, BOSS_EVERY: 10, BOSS_SIZE: 1.25, LEVEL_MAX: 255, SLOTS_MAX: 4,
+      const K = { NAME: 'ちきゅうを守れ！ほしくだき', CELL: 8, STANDOFF: 7, SHIP_SPEED: 70, RANGE: 20, GRID_MAX: 132, R_BASE: 36, R_MAX: 64, BOSS_EVERY: 10, BOSS_SIZE: 1.25, LEVEL_MAX: 255, SLOTS_MAX: 4,
         BOLT_CELLS: 16, BEAM_W: 2, BEAM_DEPTH: 20, CLEAR_BONUS: 0.2, ENDING_STAR: 50, HARD_STARS: 30, STAR_MAX: 9999, STAR_CALC_MAX: 400, KAKERA_MAX: 9e15, SHOTS_MAX: 120, STEP: 1 / 30,
         SAVE_VERSION: 3, SAVE_KEY: 'asteroid.save', SAVE_KEY_BAK: 'asteroid.save.bak', SAVE_KEY_BEST: 'asteroid.best', SAVE_KEY_HELP: 'asteroid.help', SAVE_KEY_V3: 'asteroid.v3' };
       const bad = Object.entries(K).filter(([k, v]) => L[k] !== v).map(([k, v]) => ({ k, want: v, got: L[k] }));
@@ -351,7 +351,7 @@ export const tests = [
       ds.sort((a, b) => a - b);
       ds.length = Math.min(ds.length, Math.round((90 * 30 - 300) / 15));   // ふちとの距離は 90 秒のうちで見る（前と同じ）
       const inBand = ds.filter((d) => d >= L.STANDOFF - 2 && d <= L.STANDOFF + 4).length / ds.length;
-      check('ふちから離れすぎない・寄りすぎない：90 秒のうち 95% 以上で STANDOFF−2〜+4 マス（中央 4〜7 マス）', inBand >= 0.95 && ds[ds.length >> 1] >= 4 && ds[ds.length >> 1] <= 7 && ds[0] > 1, { inBand, med: ds[ds.length >> 1], min: ds[0], max: ds[ds.length - 1] });
+      check('ふちから離れすぎない・寄りすぎない：90 秒のうち 95% 以上で STANDOFF−2〜+4 マス（中央 6〜9 マス）', inBand >= 0.95 && ds[ds.length >> 1] >= 6 && ds[ds.length >> 1] <= 9 && ds[0] > 1, { inBand, med: ds[ds.length >> 1], min: ds[0], max: ds[ds.length - 1] });
       check('速さは SHIP_SPEED（70 単位/秒）', sp.every((v) => near(v, L.SHIP_SPEED, 1e-6)), [Math.min(...sp), Math.max(...sp)]);
       check('ORBIT_LAPS は [2, 3]（何周かごとに向きを変える。ユーザー「何周かごとに向きを変える」）', J(L.ORBIT_LAPS) === J([2, 3]) && L.FLIP_MIN === undefined, L.ORBIT_LAPS);
       check('1 周する前には向きを変えない：最初に向きを変えたのは、1 周（2 周目の終わり）よりあと', firstLapT !== null && firstFlipT !== null && firstFlipT > firstLapT, { firstLapT, firstFlipT });
@@ -373,16 +373,16 @@ export const tests = [
       }
       check('ship.ang は進む向き（x + cos(ang)·v, y + sin(ang)·v）', (() => { const r = L.step(s, L.STEP); return near(r.state.ship.x - s.ship.x, Math.cos(r.state.ship.ang) * L.SHIP_SPEED * L.STEP, 1e-9) && near(r.state.ship.y - s.ship.y, Math.sin(r.state.ship.ang) * L.SHIP_SPEED * L.STEP, 1e-9); })(), s.ship);
       check('星の周りを回る（90 秒で重心から見た向きが 90° 以上動く）', (() => { const a0 = Math.atan2(L.newGame(3).ship.y - s.rock.cy, L.newGame(3).ship.x - s.rock.cx), a1 = Math.atan2(s.ship.y - s.rock.cy, s.ship.x - s.rock.cx); let d = Math.abs(a1 - a0); if (d > Math.PI) d = 2 * Math.PI - d; return d > Math.PI / 2 || s.rock.left < s.rock.total; })(), null);
-      // 遠く（30 マス）からは寄ってきて、届く（RANGE 18 マス）まで撃たない
+      // 遠く（30 マス）からは寄ってきて、届く（RANGE 20 マス）まで撃たない
       let f = setRock(L, mk(L), block(10, 10), { hp: 1e9, ship: [-30, 4], ang: 0 });
       const evs = [];
       let firstFire = null;
       for (let i = 0; i < 30 * 8; i++) { const r = L.step(f, L.STEP); const M = f.M; f = r.state; f.M = M; for (const e of r.events) evs.push(e); if (firstFire === null && r.events.some((e) => e.kind === 'fire')) firstFire = nearestEdge(L, f).d / L.CELL; }
-      check('届かない所は撃たない：最初に撃ったのは、ふちまで RANGE（18 マス）以内に入ってから', firstFire !== null && firstFire <= L.RANGE + 0.5 && firstFire >= L.RANGE - 3, firstFire);
+      check('届かない所は撃たない：最初に撃ったのは、ふちまで RANGE（20 マス）以内に入ってから', firstFire !== null && firstFire <= L.RANGE + 0.5 && firstFire >= L.RANGE - 3, firstFire);
       check('遠くからは まっすぐ寄ってきて、STANDOFF のあたりで回りはじめる', near(nearestEdge(L, f).d / L.CELL, L.STANDOFF, 2.5), nearestEdge(L, f).d / L.CELL);
       // simulate の記録：ふちとの距離の平均は STANDOFF のあたり
       const sim = L.simulate('greedy', { seed: 1, maxStar: 2 });
-      check('自動プレイ（星 1・2）：ふちとの距離の平均 4.5〜7 マス、離れすぎ（+4 より遠い）は 5% 以下', !sim.error && sim.standoff.avg >= 4.5 && sim.standoff.avg <= 7 && sim.standoff.far / sim.standoff.n <= 0.05, sim.standoff);
+      check('自動プレイ（星 1・2）：ふちとの距離の平均 6.5〜9 マス、離れすぎ（+4 より遠い）は 5% 以下', !sim.error && sim.standoff.avg >= 6.5 && sim.standoff.avg <= 9 && sim.standoff.far / sim.standoff.n <= 0.05, sim.standoff);
     },
   },
   {
