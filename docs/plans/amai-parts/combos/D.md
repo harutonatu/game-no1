@@ -15,7 +15,7 @@
 | 194 | XXL | kaeruyuuenchiodoru | ゆうえんちで かえるが おどる | "" | ゆうえんち | かえる | おどる | x=29 y=46 ぎゃく 背景ぎゃく |
 | 199 | XXL | kaeruyukiyamanemuru | ゆきやまで かえるが ねむる | fuyu | ゆきやま | かえる | ねむる | x=32 y=46 ぎゃく 背景ぎゃく |
 | 231 | XXL | kaeruhoshizoraoyatsu | ほしぞらで かえるが おやつを たべる | "" | ほしぞら | かえる | おやつを たべる | x=31 y=46 |
-| 232 | XXL | kaerumachioyatsu | まちで かえるが おやつを たべる | "" | まち | かえる | おやつを たべる | x=33 y=46 ぎゃく |
+| 232 | XXL | kaerumachioyatsu | まちで かえるが おやつを たべる | "" | まち | かえる | おやつを たべる | x=34 y=46 ぎゃく 背景ぎゃく |
 | 233 | XXL | kaeruyuuenchibooru | ゆうえんちで かえるが ボールで あそぶ | "" | ゆうえんち | かえる | ボールで あそぶ | x=30 y=46 |
 | 234 | XXL | kaeruyukiyamabooru | ゆきやまで かえるが ボールで あそぶ | fuyu | ゆきやま | かえる | ボールで あそぶ | x=33 y=46 ぎゃく |
 | 235 | XXL | kaeruumibeoekaki | うみべで かえるが おえかきを する | natsu | うみべ | かえる | おえかきを する | x=30 y=46 |
