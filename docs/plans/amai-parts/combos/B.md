@@ -12,7 +12,7 @@
 | 187 | XXL | zoukouenjitensha | こうえんで ぞうが じてんしゃに のる | "" | こうえん | ぞう | じてんしゃに のる | x=33 y=46 ぎゃく 背景ぎゃく sky=W |
 | 167 | XXL | zouumibeoyatsu | うみべで ぞうが おやつを たべる | natsu | うみべ | ぞう | おやつを たべる | x=29 y=46 sky=P |
 | 192 | XXL | zouhanabatakeoyatsu | はなばたけで ぞうが おやつを たべる | haru | はなばたけ | ぞう | おやつを たべる | x=32 y=46 ぎゃく sky=W |
-| 172 | XXL | zouyukiyamanemuru | ゆきやまで ぞうが ねむる | fuyu | ゆきやま | ぞう | ねむる | x=37 y=46 ぎゃく 背景ぎゃく sky=P |
+| 172 | XXL | zouyukiyamanemuru | ゆきやまで ぞうが ねむる | fuyu | ゆきやま | ぞう | ねむる | x=34 y=46 ぎゃく 背景ぎゃく sky=P |
 | 197 | XXL | zouhoshizoranemuru | ほしぞらで ぞうが ねむる | "" | ほしぞら | ぞう | ねむる | x=29 y=46 |
 | 211 | XXL | zoumachibooru | まちで ぞうが ボールで あそぶ | "" | まち | ぞう | ボールで あそぶ | x=29 y=46 sky=P |
 | 212 | XXL | zouyuuenchibooru | ゆうえんちで ぞうが ボールで あそぶ | "" | ゆうえんち | ぞう | ボールで あそぶ | x=25 y=46 背景ぎゃく |
