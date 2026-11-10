@@ -1786,4 +1786,51 @@ export const tests = [
       }
     },
   },
+  {
+    id: 'KW29', tier: 'full', title: 'ほしくだき 迫ってくる地球（ユーザー 2026-11-10「小さい地球がどんどんどんどん大きくなる感じで、背景にちょっと書き込めないかな」。計画書 §2・約束 §23.3）：stats().earth（getState().earth）で、残り 100% の直径は約 16px・残り 50%→20%→5%→0 で大きくなる（終わりに近いほど速く。0 で 見えている場の幅の約 7 割）・中心は見えている場の右下寄り・30 秒を切ると urgent・時間切れの「もういちど」（retry）で すっと（跳ばずに）小さく戻る・地球の絵は毎コマ作り直さない（SE 縦 320×568・iPhone 縦 390×844）',
+    async run({ browser, check }) {
+      for (const v of [custom(320, 568, null, 'SE 縦 320×568'), custom(390, 844, null, 'iPhone 縦 390×844')]) {
+        const { ctx, page } = await openK(browser, `KW29 ${v.label}`, { v, debug: true });
+        const earth = () => page.evaluate(() => {
+          const g = window.AsteroidGame.getState(), z = document.getElementById('fieldzone').getBoundingClientRect(), c = document.getElementById('fieldCanvas').getBoundingClientRect();
+          return { e: g.earth, left: g.left, limit: g.limit, zone: { l: z.left - c.left, t: z.top - c.top, w: z.width, h: z.height } };
+        });
+        const at = async (frac) => {
+          const s0 = await gs(page);
+          await dbg(page, 'timeleft', { sec: s0.limit * frac });
+          await wait(page, 2500);   // 大きさは寄せる先へ少しずつ寄る（2.5 秒でほぼ着く）
+          return earth();
+        };
+        const first = await earth();
+        if (!first.e) throw new Error('getState().earth が無い（render の stats().earth が無い）');
+        const r100 = await at(1), r50 = await at(0.5), r20 = await at(0.2), r05 = await at(0.05);
+        const d = [r100, r50, r20, r05].map((r) => r.e.d);
+        const tg = [r100, r50, r20, r05].map((r) => r.e.target);
+        check(`残り 100% の直径（${v.label}）：${d[0]}px（14〜20px）`, d[0] >= 14 && d[0] <= 20, r100.e);
+        check(`残りが減ると大きくなる（${v.label}）：100%・50%・20%・5% で ${d.join('→')}px（寄せる先 ${tg.join('→')}）`, d[0] < d[1] && d[1] < d[2] && d[2] < d[3] && tg.every((t, i) => Math.abs(t - d[i]) <= Math.max(2, t * 0.05)), { d, tg });
+        const g1 = (d[1] - d[0]) / 0.5, g2 = (d[2] - d[1]) / 0.3, g3 = (d[3] - d[2]) / 0.15;
+        check(`終わりに近いほど速く大きくなる（${v.label}）：割合 1 あたり ${Math.round(g1)}・${Math.round(g2)}・${Math.round(g3)}px`, g1 < g2 && g2 < g3, { g1, g2, g3 });
+        const z = r05.zone, e5 = r05.e;
+        check(`中心は見えている場の右下寄り（${v.label}）：(${e5.x}, ${e5.y})、場 横 ${Math.round(z.l)}〜${Math.round(z.l + z.w)}・縦 ${Math.round(z.t)}〜${Math.round(z.t + z.h)}`, e5.x > z.l + z.w * 0.6 && e5.y > z.t + z.h * 0.6 && r100.e.x > z.l + z.w * 0.6 && r100.e.y > z.t + z.h * 0.6, { e5, z });
+        check(`残り 30 秒を切ると urgent（${v.label}）：残り 5%（${Math.round(r05.left)} 秒）で ${e5.urgent}・100% で ${r100.e.urgent}`, e5.urgent === (r05.left <= 30) && r100.e.urgent === false, { e5, left: r05.left });
+        // 時間切れ（残り 0）で場の幅の約 7 割
+        await loseNow(page);
+        await wait(page, 3000);
+        const r0 = await earth();
+        check(`残り 0 の直径（${v.label}）：${r0.e.d}px（場の幅 ${Math.round(r0.zone.w)} の 0.6〜0.8 倍）`, r0.e.d >= r0.zone.w * 0.6 && r0.e.d <= r0.zone.w * 0.8 && r0.e.urgent === true, r0.e);
+        // retry で小さく戻る（跳ばずに）
+        const b0 = r0.e.builds;
+        await dbg(page, 'retry');
+        await wait(page, 100);
+        const rq = await earth();
+        await wait(page, 3000);
+        const rs = await earth();
+        check(`retry で小さく戻る（${v.label}）：${r0.e.d} → 0.1 秒後 ${rq.e.d} → 3 秒後 ${rs.e.d}px（寄せる先 ${rs.e.target}）`, rq.e.target <= 20 && rq.e.d > r0.e.d * 0.5 && rs.e.d <= 22 && rq.e.urgent === false, { r0: r0.e, rq: rq.e, rs: rs.e });
+        // 地球の絵は毎コマ作り直さない（3.1 秒 ≒ 186 コマで、大きさの段・自転・色が変わったときだけ）
+        const nb = rs.e.builds - b0;
+        check(`地球の絵を作り直した回数（${v.label}）：retry の前後 3.1 秒で ${nb} 回（40 回以下。毎コマではない）`, nb <= 40, { nb });
+        await ctx.close();
+      }
+    },
+  },
 ];

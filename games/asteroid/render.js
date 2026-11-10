@@ -21,6 +21,7 @@
  *   いちばん重いのは回した区画を画面いっぱいに画素にする所（命令の時間 drawMs には出ない）。コマが遅いときだけ getImageData で測り、重ければ内部の解像度を下げる（checkHeavy）。
  * - 粒は MAX_PARTICLES = 300 まで。行き先は state.ship（動いても追いかける）。
  * - 動きを減らす設定（prefers-reduced-motion か calm）：カメラの回転をゆっくりに・粒を減らす・揺れや輪を出さない。
+ * - 迫ってくる地球（stepEarth・drawEarth）：残り時間が減るほど、見えている場の右下の地球が大きくなる（画面に固定・小惑星の下）。stats().earth
  */
 (function (root) {
   "use strict";
@@ -63,6 +64,19 @@
   const PART_COL = { 1: "#ffffff", 2: "#c8d4ea", 3: "#c8f0ff", 4: "#ffd34d", 5: "#ffc23c" };
   const YELLOW = "#ffd84d";
   const SHIP_SCALE = 1.35;   // 自機の大きさ（絵の倍率。長さ約 22 単位）
+  // 迫ってくる地球（ユーザー 2026-11-10。計画書 §2・約束 §23.3）
+  const EARTH_D0 = 16;          // 星の始め（残り 100%）の直径（CSS px）
+  const EARTH_END = 0.7;        // 残り 0 の直径 ＝ 見えている場の幅 × これ
+  const EARTH_C = 0.25;         // 大きくなり方の曲線 1 / (f + C)。小さいほど終わりに急に大きくなる（f = 0.5 で約 17%、0.2 で約 44%、0.05 で約 79%）
+  const EARTH_GROW = 3;         // 大きくなるとき寄せる速さ（1/秒）
+  const EARTH_SHRINK = 2.5;     // retry・次の星で小さく戻るとき寄せる速さ（1/秒。すっと戻る）
+  const EARTH_ALPHA = 0.72;     // 少し透明に（小惑星と自機が主役）
+  const EARTH_DISC = 0.4;       // 地球の絵（スプライト）の中の円の半径の割合（まわりは大気の光）
+  const EARTH_SPRITE_MAX = 512; // 地球の絵の 1 辺の上限（px）。大きいときは引き伸ばす（背景なので少しぼけてよい）
+  const EARTH_TURN = 120;       // 自転 1 周の秒
+  const EARTH_REBUILD = 0.25;   // 自転で絵を作り直す間隔の下限（秒）
+  const URGENT_SEC = 30;        // 残りがこの秒以下で大気をオレンジに（main.js の URGENT_SEC と同じ）
+  const EARTH_SEA = "#173f73", EARTH_LAND = "#3f8e74", EARTH_COAST = "#b8e3d2";
 
   function hash(a, b) {
     let h = (Math.imul((a | 0) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul((b | 0) + 0x632be5ab, 0xc2b2ae35)) >>> 0;
@@ -229,6 +243,129 @@
       }
       g.globalAlpha = 1;
       return c;
+    }
+
+    // ===== 迫ってくる地球（ユーザー 2026-11-10「小さい地球がどんどんどんどん大きくなる感じで、背景にちょっと書き込めないかな」。計画書 §2・約束 §23.3）=====
+    // 背景（星空）の上・小惑星の下に、画面に固定して描く（カメラと一緒に回らない）。置く所は「見えている場」の右下寄り（小惑星はいつも左）。
+    // 大きさは残りの割合 f = left / limit で決める：f = 1 で直径 EARTH_D0、f = 0 で 場の幅 × EARTH_END。途中は 1 / (f + EARTH_C) の形（終わりに近いほど速く大きくなる。跳ばない）。
+    // 今の大きさは寄せる先へ少しずつ寄る（大きくなるのは EARTH_GROW、retry・次の星で小さく戻るのは EARTH_SHRINK の速さ。急に跳ばない）。
+    // 性能（§3）：大陸は 1 回だけ帯の絵（earthStrip）に描き、地球の絵（スプライト）は 大きさの段・自転の位置・急ぎの色 が変わったときだけ作り直す（自転は EARTH_REBUILD 秒に 1 回まで）。毎コマは drawImage 1 回。
+    // 動きを減らす設定（calm）：自転しない（大きさはなめらかに変わるだけ）。残り URGENT_SEC 秒を切ったら（HUD がオレンジになるのと同じ）大気のふちをうすいオレンジに。
+    let earthD = 0, earthTarget = 0, earthReady = false, earthUrgent = false, earthX = 0, earthY = 0;
+    let earthSprite = null, earthSpriteKey = "", earthSpriteAt = -Infinity, earthSpritePhase = 0, earthBuilds = 0;
+    let earthStrip = null;
+    function earthArea() {
+      return viewport ? viewport : { left: 0, top: 0, right: cssW, bottom: cssH };
+    }
+    function earthTargetOf(state) {
+      const area = earthArea();
+      const limit = num(state.limit, 0), left = num(state.left, limit);
+      const f = limit > 0 ? clamp(left / limit, 0, 1) : 1;
+      const g = (1 / (f + EARTH_C) - 1 / (1 + EARTH_C)) / (1 / EARTH_C - 1 / (1 + EARTH_C));
+      const d1 = Math.max(EARTH_D0 * 2, (area.right - area.left) * EARTH_END);
+      return EARTH_D0 + (d1 - EARTH_D0) * clamp(g, 0, 1);
+    }
+    function stepEarth(state, dt) {
+      earthTarget = earthTargetOf(state);
+      earthUrgent = num(state.left, Infinity) <= URGENT_SEC && state.phase !== "clear";
+      if (!earthReady) { earthD = earthTarget; earthReady = true; }
+      else {
+        const k = 1 - Math.exp(-(earthTarget < earthD ? EARTH_SHRINK : EARTH_GROW) * dt);
+        earthD += (earthTarget - earthD) * k;
+        if (Math.abs(earthTarget - earthD) < 0.05) earthD = earthTarget;
+      }
+      const a = earthArea(), r = earthD / 2;
+      // 小さいうちは右下の角から少し内側。大きくなると中心も少しずつ右下へ寄り、右と下へはみ出していく（真ん中の自機の所へかぶりにくくする）
+      earthX = a.right - 26 + r * 0.05;
+      earthY = a.bottom - 26 + r * 0.1;
+    }
+    // 大陸の帯（横につながる絵。幅 = 高さ × 2）。1 回だけ作る
+    function buildEarthStrip() {
+      const H = 128, W = H * 2;
+      const c = makeCanvas(W, H);
+      if (!c) return null;
+      const g = c.getContext("2d");
+      const r = mulberry(4242);
+      const blobs = [];
+      // 大陸 5 つ（円の集まり。横に長め）＋島
+      for (let k = 0; k < 5; k++) {
+        let x = (k + 0.2 + r() * 0.6) * (W / 5), y = H * (0.3 + r() * 0.4);
+        const n = 7 + ((r() * 5) | 0), big = 11 + r() * 8;
+        for (let j = 0; j < n; j++) {
+          blobs.push({ x, y, s: big * (0.55 + r() * 0.6) });
+          x += (r() - 0.4) * big * 1.2; y += (r() - 0.5) * big * 1.2;
+          y = clamp(y, H * 0.18, H * 0.82);
+        }
+      }
+      for (let k = 0; k < 12; k++) blobs.push({ x: r() * W, y: H * (0.15 + r() * 0.7), s: 2 + r() * 3.5 });
+      const each = (fn) => { for (const b of blobs) for (const ox of [-W, 0, W]) fn(b.x + ox, b.y, b.s); };
+      // ふちの線（少し大きい円をうすい色で）→ 中を緑で塗る＝つながった大陸のまわりに細い線が残る
+      g.fillStyle = EARTH_COAST; each((x, y, s) => { g.beginPath(); g.arc(x, y, s + 1.6, 0, TAU); g.fill(); });
+      g.fillStyle = EARTH_LAND; each((x, y, s) => { g.beginPath(); g.arc(x, y, s, 0, TAU); g.fill(); });
+      // 極の氷（上と下の端に小さな白い円）
+      g.fillStyle = "rgba(225,240,255,0.7)";
+      for (let x = 0; x < W; x += 9) { const a = 3 + r() * 5, b2 = 3 + r() * 5; g.beginPath(); g.arc(x, 0, a, 0, TAU); g.fill(); g.beginPath(); g.arc(x, H, b2, 0, TAU); g.fill(); }
+      return c;
+    }
+    // 地球の絵（P × P px。円の半径は P × EARTH_DISC。まわりに大気の光）
+    function buildEarthSprite(P, phase, urgent) {
+      if (!earthStrip) earthStrip = buildEarthStrip();
+      const c = earthSprite && earthSprite.width === P ? earthSprite : makeCanvas(P, P);
+      if (!c) return null;
+      const g = c.getContext("2d");
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.clearRect(0, 0, P, P);
+      const m = P / 2, rd = P * EARTH_DISC;
+      // 大気の光（ふちの外へうすく）
+      const atm = g.createRadialGradient(m, m, rd * 0.92, m, m, m);
+      atm.addColorStop(0, urgent ? "rgba(255,160,80,0.42)" : "rgba(120,185,255,0.36)");
+      atm.addColorStop(1, urgent ? "rgba(255,160,80,0)" : "rgba(120,185,255,0)");
+      g.fillStyle = atm; g.fillRect(0, 0, P, P);
+      g.save();
+      g.beginPath(); g.arc(m, m, rd, 0, TAU); g.clip();
+      g.fillStyle = EARTH_SEA; g.fillRect(m - rd, m - rd, rd * 2, rd * 2);
+      if (earthStrip) {
+        const s = (rd * 2) / earthStrip.height, sw = earthStrip.width * s;
+        let x = m - rd - phase * sw;
+        while (x > m - rd) x -= sw;
+        for (; x < m + rd; x += sw) g.drawImage(earthStrip, x, m - rd, sw, rd * 2);
+      }
+      // 丸く見せる影（右上が明るく、左下が暗い）
+      const sh = g.createRadialGradient(m + rd * 0.35, m - rd * 0.35, rd * 0.1, m, m, rd * 1.05);
+      sh.addColorStop(0, "rgba(255,255,255,0.10)");
+      sh.addColorStop(0.55, "rgba(6,16,42,0.05)");
+      sh.addColorStop(1, "rgba(6,16,42,0.62)");
+      g.fillStyle = sh; g.fillRect(m - rd, m - rd, rd * 2, rd * 2);
+      g.restore();
+      // 白いふちの線（急ぎのときは少しオレンジ寄り）
+      g.strokeStyle = urgent ? "rgba(255,214,170,0.85)" : "rgba(236,244,255,0.85)";
+      g.lineWidth = Math.max(1, P / 110);
+      g.beginPath(); g.arc(m, m, rd, 0, TAU); g.stroke();
+      earthBuilds++;
+      return c;
+    }
+    function drawEarth() {
+      if (!earthReady || earthD < 1) return;
+      const need = (earthD / (EARTH_DISC * 2)) * dpr;
+      let P = 32;
+      while (P < need && P < EARTH_SPRITE_MAX) P *= 2;
+      // 自転：EARTH_TURN 秒で 1 周（calm は止める）。作り直すのは、帯が画面で 1 px 以上ずれて、前から EARTH_REBUILD 秒たったときだけ
+      let phase = earthSpritePhase;
+      if (!calm) {
+        const want = (clk / EARTH_TURN) % 1, shiftPx = Math.abs(want - phase) * earthD * 2;
+        if (shiftPx >= 1 && clk - earthSpriteAt >= EARTH_REBUILD) phase = want;
+      }
+      const key = P + "|" + (earthUrgent ? 1 : 0);
+      if (!earthSprite || key !== earthSpriteKey || phase !== earthSpritePhase) {
+        const c = buildEarthSprite(P, phase, earthUrgent);
+        if (!c) return;
+        earthSprite = c; earthSpriteKey = key; earthSpritePhase = phase; earthSpriteAt = clk;
+      }
+      const size = earthD / (EARTH_DISC * 2);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.globalAlpha = EARTH_ALPHA;
+      ctx.drawImage(earthSprite, earthX - size / 2, earthY - size / 2, size, size);
+      ctx.globalAlpha = 1;
     }
 
     // ===== 小惑星のオフスクリーン =====
@@ -789,6 +926,7 @@
       onEvents(state, events);
       if (!fresh) syncRock(state);
       stepAnchor(dt);
+      stepEarth(state, dt);
       updateCamera(state, dt, fresh);
       clk += dt;
       flame += dt;
@@ -845,6 +983,7 @@
       ctx.globalAlpha = 1;
       if (bg) ctx.drawImage(bg, 0, 0);
       else { ctx.fillStyle = BG_BOT; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+      drawEarth();   // 星空の上・小惑星の下（画面に固定）
       const vb = viewBox(4);
       worldTransform(ctx);
       drawRock(vb);
@@ -1345,7 +1484,9 @@
         drawMsMax: s.length ? Math.round(s[s.length - 1] * 100) / 100 : 0,
         calm, dpr, flushMs: Math.round(flushMs * 100) / 100,
         bolt: lastBolt ? Object.assign({}, lastBolt) : null,
-        evolve: evolveText ? evolveText.b : null
+        evolve: evolveText ? evolveText.b : null,
+        // 迫ってくる地球：d = 今の直径・target = 寄せる先（CSS px）・x, y = 中心（canvas の左上が原点）・urgent = 大気がオレンジ・builds = 絵を作った回数
+        earth: { d: Math.round(earthD * 10) / 10, target: Math.round(earthTarget * 10) / 10, x: Math.round(earthX), y: Math.round(earthY), urgent: earthUrgent, builds: earthBuilds }
       };
     }
 
