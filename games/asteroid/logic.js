@@ -24,7 +24,8 @@
  *       rock.key  … 星の番号 × 10000 ＋ 挑戦の回数（新しい星・やり直しで変わる。描画が作り直しに気づく目印）
  *       rock.cx・rock.cy … 残っているマスの重心（世界の座標。カメラの向きの目安）
  *       shots[] の弾には、どかん用の着地点（tc・tr：格子の座標）・ほのおのねらい（aim）・たまの通りぬけ（p・h）などを足している
- *       burns[] には at・spread（となりの こおり へ広げたか）を足している
+ *       burns[] には at・spread（となりへ広げたか）・g（同じ火のなかま。1 回の火ごとの番号）・d（火のもとから何段目か）を足している
+ *       fireG・fireN … 火のなかまの番号の数え（fireG）と、なかまごとに こおり へ燃え広がった数（fireN。{ g: 数 }）。保存しない
  *   - rock.dirty は「前に [] にしてから変わったマスの添字」をためていく（描画が読んだら [] にしてよい）。マスの数をこえたら
  *     全部の添字（0〜w·h−1）の一覧にする（描画は全部を塗り直せばよい）。rock.gen はマスが欠けた step ごとに 1 増える。
  *   - offer は 2択なら [idA, idB]、残りの武器が 1 つだけのときは [id]（長さ 1）。
@@ -70,13 +71,21 @@
   const BOMB_SHIFT = 0.5;
   // 星 1 の体力の合計（ぜんぶ いわ のとき）・かけらの合計の目安
   const STAR_HP = 200000, STAR_VALUE = 70;
-  const VALUE_GROWTH = 1.77, UP_GROWTH = 1.35, LEVEL_MAX = 99, SLOTS_MAX = 4;
+  const VALUE_GROWTH = 1.77, UP_GROWTH = 1.35, LEVEL_MAX = 255, SLOTS_MAX = 4;
+  // Lv100 から 255（ユーザー「武器のレベルを255まで上げられるようにして」2026-11-10。計画書 §6.1）：
+  // Lv1〜99 の強さ・値段の式は前のまま（ふつう 50 面の釣り合いを変えない）。Lv が from（99）をこえた分は、強さ × dmg^(Lv − 99)・値段 × cost^(Lv − 99)。
+  // 値段の伸びは武器ごと（HI_COST）：Lv99→100 の値段から、Lv254→255 の値段が KAKERA_MAX × top（8100ちょう）になるように同じ割合で伸ばす。
+  // しんか の出来事は Lv100 から every ごと（と Lv255）
+  const LV_HI = deepFreeze({ from: 99, dmg: 1.02, top: 0.9, every: 50 });
   // ハード（段 tier 1 以上。計画書 §1.7）のかけらの増え方（通しの番号 30·tier + 星 ごとに × VALUE_GROWTH2）
   const VALUE_GROWTH2 = 1.03;
   // ハードの体力：段 t の星 n は HP_TABLE[29] × hp × tierUp^(min(t, tierMax) − 1) × grow^(n − 1)（ボスと傾きの adj は別）。
   // 武器の Lv は 99 で止まり、ふつうの星 30 のころに強さがほぼ上まで来ているので、段ごとに少しだけ重くして tierMax で止める（どこかで詰まらない）。
   // ひかり の かたまりの数は段 1 で 1/2・段 2 で 1/4・段 3 から 1/8（最低 1 か所）
-  const HARD = deepFreeze({ hp: 1.22, tierUp: 1.1, tierMax: 3, grow: 1.0, glow: [1, 0.5, 0.25, 0.125] });
+  // Lv100〜255（LV_HI）：greedy はハードの星 1 つにつき約 0.83 Lv ずつ上がる（かけらが星ごとに × 1.03 で、値段が 1 Lv ごとに × 1.024〜1.038）。
+  // その強さ（LV_HI.dmg^Lv）に合わせて、ハードの星 i 個目（i = 30·(t − 1) + n − 1）の体力に LV_HI.dmg^min(lvMax, lv × i) を掛ける（強くしないと間に合わない・強くすれば間に合う）。
+  // lvMax（150）で止める（段 7 の星 8 ごろ。Lv255 の強さは 1.02^156 ≈ 22 倍で、止めたあとの体力 1.02^150 ≈ 19.5 倍より少し上）
+  const HARD = deepFreeze({ hp: 1.5, tierUp: 1.1, tierMax: 3, grow: 1.0, glow: [1, 0.5, 0.25, 0.125], lv: 0.8, lvMax: 140 });
   const TIER_MAX = 300;
   // 最初の星だけ、かけらを多めにする（星 1・2。はじめの買い物を早くして、強くした分の速さが見えるように＝何もしないと間に合わない）
   const EARLY_VALUE = deepFreeze([3, 1.5]);
@@ -97,7 +106,10 @@
   const BOMB_FLIGHT = 0.6;       // どかん の山なりの秒
   const BEAM_SEC = 0.4;          // ビームの見た目の秒（当たりは撃った瞬間）
   const CLEAR_SEC = 1.5;
-  const BURN_SPREAD_SEC = 0.5;
+  // ほのおの燃え広がり（ユーザー「ほのおは、燃え広がる感じが欲しいですね。得意な氷相手だと広く燃え広がるとか？」2026-11-10。計画書 §6.1）：
+  // 燃えているマスは、燃え始めから step 秒で となり（上下左右）へ火を移す（1 回だけ）。こおり へは何段でも続けて移る（1 回の火で ice マスまで）。
+  // いわ・きん・ひかり へは火のもとから other 段目までだけ、確率 otherP で（state の rng）。てつ へは移らない（苦手）。燃えているマスは全部で max まで
+  const BURN = deepFreeze({ step: 0.25, ice: 40, other: 1, otherP: 0.35, max: 160 });
   const EVOLVE_EVERY = 10, EVOLVE_TIERS = 3;
   const TRIES_MAX = 9999;
   // ねらい：ビームは 4° ごと（±60°）、どかんは届くふちのマスを 3 マスおき
@@ -127,7 +139,7 @@
     { id: "bomb", name: "どかん", dmg: 0.75, rate: 1.6, good: "ice", aff: { ice: 2 }, desc: "おちた ところの まわりを まとめて こわす" },
     { id: "bolt", name: "いなずま", dmg: 0.8, rate: 1.2, good: "iron", aff: { iron: 2.2, ice: 0.5 }, desc: "つながった マスへ えだわかれ。てつは とおくまで とどく" },
     { id: "beam", name: "ビーム", dmg: 0.375, rate: 2.0, good: "iron", aff: { iron: 1.8 }, desc: "まっすぐ おくまで あなを あける" },
-    { id: "fire", name: "ほのお", dmg: 3, rate: 1.0, good: "ice", aff: { ice: 3, iron: 0.75 }, desc: "もやして となりの こおりへ ひろがる" }
+    { id: "fire", name: "ほのお", dmg: 3, rate: 1.0, good: "ice", aff: { ice: 3, iron: 0.75 }, desc: "もやす。こおりへは ひろく もえひろがる" }
   ]);
   const W = {};
   for (const w of WEAPONS) W[w.id] = w;
@@ -144,6 +156,10 @@
   });
 
   const UP_COST = deepFreeze({ shot: 5, spread: 5, bomb: 34, bolt: 5, beam: 8, fire: 4 });
+  // Lv99 から先の値段の伸び（1 Lv ごとの倍率。LV_HI）
+  const HI_COST = {};
+  for (const w of WEAPONS) HI_COST[w.id] = Math.pow(KAKERA_MAX * LV_HI.top / (UP_COST[w.id] * Math.pow(UP_GROWTH, LV_HI.from - 1)), 1 / (LEVEL_MAX - 1 - LV_HI.from));
+  deepFreeze(HI_COST);
   // n 個目の武器の値段（[1] が 2 つ目。4 つ目までは枠、5・6 つ目は ひかえ）
   const SLOT_COST = deepFreeze([null, 40, 300, 2000, 500000, 1.5e9]);
 
@@ -205,7 +221,8 @@
   }
   function hpBase(t, k) {
     if (t === 0) return HP_TABLE[k - 1];
-    return HP_TABLE[ENDING_STAR - 1] * HARD.hp * Math.pow(HARD.tierUp, Math.min(t, HARD.tierMax) - 1) * Math.pow(HARD.grow, k - 1);
+    const lvUp = Math.pow(LV_HI.dmg, Math.min(HARD.lvMax, HARD.lv * (HARD_STARS * (t - 1) + k - 1)));
+    return HP_TABLE[ENDING_STAR - 1] * HARD.hp * Math.pow(HARD.tierUp, Math.min(t, HARD.tierMax) - 1) * Math.pow(HARD.grow, k - 1) * lvUp;
   }
   function hpMul(n, tier) { const q = split(n, tier); return hpBase(q.t, q.k) * dimsOf(q.k, q.t).adj; }
   function valMul(n, tier) { const q = split(n, tier); return growMul(q.N, VALUE_GROWTH, VALUE_GROWTH2) * (q.N <= EARLY_VALUE.length ? EARLY_VALUE[q.N - 1] : 1) * dimsOf(q.k, q.t).adj; }
@@ -214,12 +231,14 @@
   function cellHp(n, mat, tier) { if (!MAT_HP[mat]) return null; const q = split(n, tier); return STAR_HP * hpMul(q.k, q.t) * MAT_HP[mat] / dimsOf(q.k, q.t).area; }
   function cellValue(n, mat, tier) { if (!MAT_VALUE[mat]) return null; const q = split(n, tier); return STAR_VALUE * valMul(q.k, q.t) * MAT_VALUE[mat] / dimsOf(q.k, q.t).area; }
   function lvOk(L) { return isNum(L) ? clamp(Math.floor(L), 1, LEVEL_MAX) : 1; }
-  function shotUp(L) { return L <= SHOT_UP.from ? 0 : (L - SHOT_UP.from) / (LEVEL_MAX - SHOT_UP.from); }
+  // たまの伸び x は Lv99 で 1（Lv100 から先は LV_HI の伸びだけ）
+  function shotUp(L) { return L <= SHOT_UP.from ? 0 : Math.min(1, (L - SHOT_UP.from) / (LV_HI.from - SHOT_UP.from)); }
   function dmg(w, L) {
     if (!W[w]) return null;
     L = lvOk(L);
     const up = w === "shot" ? 1 + SHOT_UP.dmg * shotUp(L) : 1;
-    return W[w].dmg * (1 + 0.25 * (L - 1)) * Math.pow(2, Math.floor(L / EVOLVE_EVERY)) * up;
+    const lo = Math.min(L, LV_HI.from), hi = L - lo;
+    return W[w].dmg * (1 + 0.25 * (lo - 1)) * Math.pow(2, Math.floor(lo / EVOLVE_EVERY)) * up * Math.pow(LV_HI.dmg, hi);
   }
   function rateOf(w, L) { L = lvOk(L); return w === "shot" ? W[w].rate / (1 + SHOT_UP.rate * shotUp(L)) : W[w].rate; }
   function pierceOf(L) { L = lvOk(L); let n = 0; for (const x of SHOT_UP.pierce) if (L >= x) n++; return n; }
@@ -227,7 +246,8 @@
     if (!W[w]) return null;
     L = lvOk(L);
     if (L >= LEVEL_MAX) return null;
-    return Math.round(UP_COST[w] * Math.pow(UP_GROWTH, L - 1));
+    const lo = Math.min(L, LV_HI.from), hi = L - lo;
+    return Math.min(KAKERA_MAX, Math.round(UP_COST[w] * Math.pow(UP_GROWTH, lo - 1) * Math.pow(HI_COST[w], hi)));
   }
   function affOf(w, mat) {
     if (!W[w] || !MAT_HP[mat]) return null;
@@ -749,6 +769,9 @@
     if (!isObj(sh) || !isNum(sh.x) || !isNum(sh.y)) c.ship = startShip(c);
     else if (!isNum(sh.ang) || (sh.dir !== 1 && sh.dir !== -1) || !isNum(sh.orb) || !isNum(sh.laps) || sh.laps <= 0) c.ship = { x: sh.x, y: sh.y, ang: isNum(sh.ang) ? sh.ang : 0, dir: sh.dir === -1 ? -1 : 1, orb: isNum(sh.orb) ? sh.orb : 0, laps: isNum(sh.laps) && sh.laps > 0 ? sh.laps : lapsOf(c) };
     c.hold = c.hold === true;
+    if (!isObj(c.fireN)) c.fireN = {};
+    if (!Number.isInteger(c.fireG) || c.fireG < 0) c.fireG = 0;
+    if (Array.isArray(c.burns)) for (const b of c.burns) { if (!Number.isInteger(b.g)) b.g = 0; if (!Number.isInteger(b.d)) b.d = 0; }
   }
   function cloneForStep(s) {
     const c = Object.assign({}, s);
@@ -756,6 +779,7 @@
     c.ship = isObj(s.ship) ? Object.assign({}, s.ship) : null;
     c.shots = s.shots.map((x) => Object.assign({}, x));
     c.burns = s.burns.map((x) => Object.assign({}, x));
+    c.fireN = Object.assign({}, s.fireN);
     c.cd = Array.isArray(s.cd) ? s.cd.slice() : [];
     c.totals = Object.assign({}, s.totals);
     c.slots = s.slots.map((x) => ({ id: x.id, lv: x.lv }));
@@ -851,12 +875,17 @@
     CELLS += cells.length * 4;
     ctx.evs.push({ kind: "glow", cells, mats: cells.map(() => 5), value: v });
   }
-  function ignite(s, i, ctx, fromSpread) {
+  // ignite(s, i, ctx, from)：from は火を移したもとの burn（無ければ新しい火＝新しいなかま）
+  function ignite(s, i, ctx, from) {
     const lv = slotLv(s, "fire");
     const until = s.t + shapeOf("fire", lv);
     for (const b of s.burns) if (b.i === i) { if (b.until < until) b.until = until; return; }
-    s.burns.push({ i, until, at: s.t, spread: !!fromSpread });
-    ctx.evs.push({ kind: "burn", i });
+    if (s.burns.length >= BURN.max) return;
+    let g, d;
+    if (from) { g = from.g; d = from.d + 1; }
+    else { s.fireG = (s.fireG | 0) + 1; g = s.fireG; d = 0; }
+    s.burns.push({ i, until, at: s.t, spread: false, g, d });
+    ctx.evs.push({ kind: "burn", i, from: from ? from.i : -1, d });
   }
   function slotLv(s, id) { for (const x of s.slots) if (x.id === id) return x.lv; return 1; }
 
@@ -1413,9 +1442,11 @@
     if (s.burns.length) {
       const per = dmg("fire", slotLv(s, "fire"));
       const keep = [], add = [], moved = [];
+      const fn = s.fireN;
+      let lit = null;                                          // 燃えているマス（と、この step で火を移すマス）
       for (const b of s.burns) {
         if (!s.rock.mats[b.i]) continue;
-        if (!b.spread && s.t + 1e-9 >= b.at + BURN_SPREAD_SEC) {
+        if (!b.spread && s.t + 1e-9 >= b.at + BURN.step) {
           b.spread = true;
           const R = s.rock, c = b.i % R.w;
           const nb = [];
@@ -1423,7 +1454,19 @@
           if (c < R.w - 1) nb.push(b.i + 1);
           if (b.i >= R.w) nb.push(b.i - R.w);
           if (b.i + R.w < R.mats.length) nb.push(b.i + R.w);
-          for (const q of nb) if (R.mats[q] === 3) add.push(q);
+          if (!lit) { lit = new Set(); for (const x of s.burns) lit.add(x.i); }
+          for (const q of nb) {
+            const m = R.mats[q];
+            CELLS++;
+            if (!m || m === 2 || lit.has(q)) continue;         // 空・てつ・もう燃えているマスへは移らない
+            if (m === 3) {                                     // こおり：なかまごとに BURN.ice マスまで、何段でも
+              const n = fn[b.g] | 0;
+              if (n >= BURN.ice) continue;
+              fn[b.g] = n + 1;
+            } else if (!(b.d < BURN.other && rngOf(s) < BURN.otherP)) continue;
+            lit.add(q);
+            add.push([q, b]);
+          }
         }
         const broke = hurt(s, b.i, per * dt, "fire", ctx, true);
         if (!broke) { if (s.t < b.until) keep.push(b); continue; }
@@ -1443,9 +1486,12 @@
           if (!R.mats[q] || s.burns.some((x) => x.i === q)) continue;
           if (to < 0 || (R.mats[q] === 3 && R.mats[to] !== 3)) to = q;
         }
-        if (to >= 0) { s.burns.push({ i: to, until: b.until, at: b.at, spread: true }); ctx.evs.push({ kind: "burn", i: to }); }
+        if (to >= 0) { s.burns.push({ i: to, until: b.until, at: b.at, spread: true, g: b.g, d: b.d }); ctx.evs.push({ kind: "burn", i: to, from: b.i, d: b.d }); }
       }
-      for (const q of add) if (s.rock.mats[q]) ignite(s, q, ctx, true);
+      for (const [q, b] of add) if (s.rock.mats[q]) ignite(s, q, ctx, b);
+      // 燃えている火のなかまが無くなったら、こおり の数えを捨てる
+      let live = null;
+      for (const g in fn) { if (!live) { live = new Set(); for (const b of s.burns) live.add(b.g); } if (!live.has(+g)) delete fn[g]; }
     }
     // 5. はなれたかたまり
     if (ctx.removed.length && s.rock.left > 0) breakLoose(s, ctx);
@@ -1460,7 +1506,7 @@
       const bonus = Math.floor(s.rock.value * CLEAR_BONUS);
       addK(s, bonus);
       s.totals.stars++;
-      s.phase = "clear"; s.wait = CLEAR_SEC; s.shots = []; s.burns = []; s.hold = false;
+      s.phase = "clear"; s.wait = CLEAR_SEC; s.shots = []; s.burns = []; s.fireN = {}; s.hold = false;
       const time = Math.max(0.1, Math.round((s.limit - s.left) * 10) / 10);
       const bt = isObj(s.bestT) ? s.bestT : {};
       const btKey = numIn(s.star, s.tier);   // 通しの番号（ふつうの星 5 とハードの星 5 は別の記録）
@@ -1470,7 +1516,7 @@
     } else if (s.left <= 1e-9) {
       const broken = progressS(s).broken;
       s.left = 0;
-      s.phase = "lost"; s.shots = []; s.burns = []; s.hold = false;
+      s.phase = "lost"; s.shots = []; s.burns = []; s.fireN = {}; s.hold = false;
       s.tries = Math.min(TRIES_MAX, s.tries + 1);
       evs.push({ kind: "lost", star: s.star, broken });
     }
@@ -1516,7 +1562,7 @@
     s.rock.key = rockKey(s);
     s.limit = limitTry(s.star, s.tier, s.tries);
     s.left = s.limit;
-    s.shots = []; s.burns = []; s.hold = false;
+    s.shots = []; s.burns = []; s.hold = false; s.fireN = {};
     s.cd = s.slots.map(() => s.t);
     s.ship = startShip(s);
   }
@@ -1663,6 +1709,11 @@
     x.lv++;
     return null;
   }
+  // しんか の出来事を出す Lv：99 までは 10 ごと（強さ × 2）とたまの貫通、100 から LV_HI.every ごとと Lv255
+  function evolveAt(w, lv) {
+    if (lv <= LV_HI.from) return lv % EVOLVE_EVERY === 0 || (w === "shot" && SHOT_UP.pierce.includes(lv));
+    return lv % LV_HI.every === 0 || lv === LEVEL_MAX;
+  }
   function upgrade(state, slot) {
     try {
       if (!isState(state) || !Number.isInteger(slot) || !state.slots[slot] || !W[state.slots[slot].id]) return { state, ok: false, reason: "slot" };
@@ -1670,7 +1721,7 @@
       const why = upgradeMut(s, slot);
       if (why) return { state, ok: false, reason: why };
       const lv = s.slots[slot].lv;
-      const events = lv % EVOLVE_EVERY === 0 || (s.slots[slot].id === "shot" && SHOT_UP.pierce.includes(lv)) ? [{ kind: "evolve", slot, lv }] : [];
+      const events = evolveAt(s.slots[slot].id, lv) ? [{ kind: "evolve", slot, lv }] : [];
       return { state: s, ok: true, events };
     } catch (e) { return { state, ok: false, reason: "error" }; }
   }
@@ -1867,7 +1918,7 @@
       const star = q.k, tier = q.t;
       const kakera = intIn(o.kakera, 0, KAKERA_MAX, 0);
       const kfrac = isNum(o.kfrac) && o.kfrac >= 0 && o.kfrac < 1 ? o.kfrac : 0;
-      // 武器：重複は後ろを捨てる・知らない id は捨てる・lv は 1〜99。空なら たま Lv1。5 つ目からは ひかえ へ回す（捨てない）
+      // 武器：重複は後ろを捨てる・知らない id は捨てる・lv は 1〜LEVEL_MAX（255）。空なら たま Lv1。5 つ目からは ひかえ へ回す（捨てない）
       const seen = new Set();
       const slots = [], over = [];
       for (const x of Array.isArray(o.slots) ? o.slots : []) {
@@ -2153,7 +2204,7 @@
     CELL, STANDOFF, SHIP_SPEED, RANGE, SHIP_TURN, ORBIT_LAPS, GRID_MAX,
     R_BASE, R_STEP, R_MAX, BOSS_EVERY, BOSS_SIZE, BOSS_HARD, SHAPE, AREA_FILL, GLOW,
     BOLT_CELLS, BEAM_W, BEAM_DEPTH, SHOT_UP, BOLT_KEEP, BOLT_MIN, BOMB_SHIFT,
-    STAR_HP, STAR_VALUE, HP_TABLE, VALUE_GROWTH, VALUE_GROWTH2, EARLY_VALUE, HARD, TIER_MAX, UP_GROWTH, LEVEL_MAX, SLOTS_MAX, MIX,
+    STAR_HP, STAR_VALUE, HP_TABLE, VALUE_GROWTH, VALUE_GROWTH2, EARLY_VALUE, HARD, TIER_MAX, UP_GROWTH, LEVEL_MAX, LV_HI, HI_COST, BURN, SLOTS_MAX, MIX,
     CLEAR_BONUS, MILESTONE_BONUS, MILESTONES, BEST_MAX, ENDING_STAR, HARD_STARS, STAR_MAX, STAR_CALC_MAX, KAKERA_MAX, SHOTS_MAX, STEP,
     SAVE_VERSION, SAVE_KEY, SAVE_KEY_BAK, SAVE_KEY_BEST, SAVE_KEY_HELP, SAVE_KEY_V3,
     RETRY_EASE, CLEAR_SEC, BEAM_SEC, BOMB_FLIGHT, BULLET_SPEED, BULLET_LIFE, CARRY_MIN, LIMIT_MUL, LIMIT_BASE, IRON_BLOB_MIN,
