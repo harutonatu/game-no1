@@ -958,9 +958,12 @@ export const tests = [
       const cdp = await ctx.newCDPSession(page);
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
       const a = await gs(page);
+      // 弾は 2〜3 コマしか飛ばないので、1 秒おきの読み取りでは撃つ周期とそろって 0 になることがある。ページの中で毎コマ（rAF）の弾の数の最大を数える
+      await page.evaluate(() => { const w = window; w.__kwMaxShots = 0; w.__kwStop = false; const tick = () => { try { const n = w.AsteroidGame.getState().shots; if (n > w.__kwMaxShots) w.__kwMaxShots = n; } catch (e) {} if (!w.__kwStop) requestAnimationFrame(tick); }; requestAnimationFrame(tick); });
       let maxP = 0, maxS = 0;
       const drawMs = [], stepMs = [];
       for (let i = 0; i < 10; i++) { await sleep(1000); const s = await gs(page); maxP = Math.max(maxP, s.particles); maxS = Math.max(maxS, s.shots); drawMs.push(s.drawMs); stepMs.push(s.stepMs); }
+      maxS = Math.max(maxS, await page.evaluate(() => { window.__kwStop = true; return window.__kwMaxShots; }));
       const b = await gs(page);
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
       // 全部描き直す回数（星が変わるときだけのはず。rock.key で同じ星を見分ける）：3 秒の間に 1〜2 回まで
@@ -973,16 +976,15 @@ export const tests = [
       check(`全部描き直す回数 rockFullRedraws が 3 秒で ${f1 - f0} 回（2 回まで。部分の塗り直しが動いている）`, Number.isFinite(f0) && f1 - f0 <= 2, { f0, f1 });
       check(`粒の最大 ${maxP}（≦ 240）・弾の最大 ${maxS}（≦ ${L.SHOTS_MAX}）`, maxP <= 240 && maxS <= L.SHOTS_MAX && maxS > 0, { maxP, maxS });
       // 燃えるマスが多いとき（v74：ほのおが こおり へ燃え広がる。炎の絵・火の粉）も、CPU 4 倍遅くで描画 drawMs の中央が 8ms 以内
+      // 場面を決まった形にする：全マスを こおり（コード 3）・体力を大きく（燃えつきない）にして ほのお だけで燃やす（こおりは何段でも燃え広がり、火のなかま 2〜3 つで 80 に届く。星の混ざり方の運に頼らない）
       let burnsMax = 0;
-      for (const st of [26, 24, 28, 22]) {
-        await dbg(page, 'gostar', { star: st });
-        await setL(page, "l.slots = [{ id: 'fire', lv: 22 }]; l.bench = []; l.swap = [];");
-        for (let k = 0; k < 40 && burnsMax < 80; k++) { await sleep(300); burnsMax = Math.max(burnsMax, (await lg(page)).burns.length); }
-        if (burnsMax >= 80) break;
-      }
+      await dbg(page, 'gostar', { star: 26 });
+      await setL(page, "l.slots = [{ id: 'fire', lv: 22 }]; l.bench = []; l.swap = []; l.rock.mats = l.rock.mats.map((m) => (m ? 3 : 0)); l.rock.hp = l.rock.mats.map((m) => (m ? 1e6 : 0));");
+      const burnN = () => page.evaluate(() => window.AsteroidGame.logic().burns.length);
+      for (let k = 0; k < 40 && burnsMax < 80; k++) { await sleep(300); burnsMax = Math.max(burnsMax, await burnN()); }
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
       const fireMs = [], fireN = [];
-      for (let i = 0; i < 4; i++) { await sleep(700); const s = await gs(page); fireMs.push(s.drawMs); fireN.push((await lg(page)).burns.length); }
+      for (let i = 0; i < 4; i++) { await sleep(700); const s = await gs(page); fireMs.push(s.drawMs); fireN.push(await burnN()); }
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
       check(`描画 drawMs の中央 ${med(fireMs)}ms（燃えるマス ${fireN.join('/')}・最大 ${burnsMax}。8ms 以内）`, burnsMax >= 80 && fireMs.every(Number.isFinite) && med(fireMs) <= 8, { fireMs, fireN, burnsMax });
       await ctx.close();
