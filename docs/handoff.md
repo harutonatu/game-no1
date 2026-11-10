@@ -22,7 +22,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| 公開版 | `master`＝**v74・2026-11-10**。ゲームは**メニューに 13 本** |
+| 公開版 | `master`＝**v75・2026-11-10**。ゲームは**メニューに 13 本** |
 | 実機の確認 | v58 はあまいものあつめが動くことを確認（感想「蟻が早く動くので爽快感があります」「絵が単純です」→ AM-14 を v59 で直した）。**v59 は「いいね」（ユーザー 2026-11-03）。v60 は「とてもいいです」（ユーザー 2026-11-03）。v61 の花輪は「花輪に見えないね　もっとお花を大きくして」→ v62 で直した。v62 はまだ** |
 | 作業ブランチ | `feature/amai-more2`（v63 を公開。master と同じ。計画書 [docs/plans/amai-more2.md](plans/amai-more2.md)）。前は `feature/amai-select`（v61）。計画書 [docs/plans/amai-select.md](plans/amai-select.md)。経緯・決定は [docs/plans/amai-redraw.md](plans/amai-redraw.md)（v59）・[docs/plans/amai-more.md](plans/amai-more.md)（v60）。あまいものあつめの手直しの経緯は [docs/plans/amai-rework.md](plans/amai-rework.md)、約束は [docs/ari-contract.md](ari-contract.md) |
 | 残しているブランチ | `feature/amai-redraw`・`feature/amai-more`・`feature/amai-select`（どれも消してよい。絵の台本 `docs/plans/amai-redraw/*.py` は master にも入っている） |
