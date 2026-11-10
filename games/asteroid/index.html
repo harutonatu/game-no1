@@ -330,6 +330,9 @@
   .winfo { container-type: inline-size; }
   .good .gt { display: none; }
   @container (min-width: 200px) { .good .gt { display: inline; } }
+  /* Lv が 3 桁（Lv255）でも札がボタンにかぶらない：行の札は残りの幅に縮め、入らない分は「…」で省く（v74 UX 1） */
+  .wl1 .good { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+  .wl1 .good .gt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* 「しんか まで あと N」：行の右肩（ボタンの上の角）に重ねる小さな札。行の高さを変えない（U1）。押す邪魔をしない */
   .evo {
     position: absolute;

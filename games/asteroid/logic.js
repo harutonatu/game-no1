@@ -84,7 +84,7 @@
   // ひかり の かたまりの数は段 1 で 1/2・段 2 で 1/4・段 3 から 1/8（最低 1 か所）
   // Lv100〜255（LV_HI）：greedy はハードの星 1 つにつき約 0.83 Lv ずつ上がる（かけらが星ごとに × 1.03 で、値段が 1 Lv ごとに × 1.024〜1.038）。
   // その強さ（LV_HI.dmg^Lv）に合わせて、ハードの星 i 個目（i = 30·(t − 1) + n − 1）の体力に LV_HI.dmg^min(lvMax, lv × i) を掛ける（強くしないと間に合わない・強くすれば間に合う）。
-  // lvMax（150）で止める（段 7 の星 8 ごろ。Lv255 の強さは 1.02^156 ≈ 22 倍で、止めたあとの体力 1.02^150 ≈ 19.5 倍より少し上）
+  // lvMax（140）で止める（0.8·i = 140 になるのは i = 175＝段 6 の星 26 ごろ。止めたあとの体力は 1.02^140 ≈ 16 倍）
   const HARD = deepFreeze({ hp: 1.5, tierUp: 1.1, tierMax: 3, grow: 1.0, glow: [1, 0.5, 0.25, 0.125], lv: 0.8, lvMax: 140 });
   const TIER_MAX = 300;
   // 最初の星だけ、かけらを多めにする（星 1・2。はじめの買い物を早くして、強くした分の速さが見えるように＝何もしないと間に合わない）
@@ -879,13 +879,14 @@
   function ignite(s, i, ctx, from) {
     const lv = slotLv(s, "fire");
     const until = s.t + shapeOf("fire", lv);
-    for (const b of s.burns) if (b.i === i) { if (b.until < until) b.until = until; return; }
-    if (s.burns.length >= BURN.max) return;
+    for (const b of s.burns) if (b.i === i) { if (b.until < until) b.until = until; return false; }
+    if (s.burns.length >= BURN.max) return false;
     let g, d;
     if (from) { g = from.g; d = from.d + 1; }
     else { s.fireG = (s.fireG | 0) + 1; g = s.fireG; d = 0; }
     s.burns.push({ i, until, at: s.t, spread: false, g, d });
     ctx.evs.push({ kind: "burn", i, from: from ? from.i : -1, d });
+    return true;
   }
   function slotLv(s, id) { for (const x of s.slots) if (x.id === id) return x.lv; return 1; }
 
@@ -1442,7 +1443,7 @@
     if (s.burns.length) {
       const per = dmg("fire", slotLv(s, "fire"));
       const keep = [], add = [], moved = [];
-      const fn = s.fireN;
+      const fn = s.fireN, cnt = {};                            // cnt：この step で予約した こおり の数（本当に火がついた分だけ fn へ足す）
       let lit = null;                                          // 燃えているマス（と、この step で火を移すマス）
       for (const b of s.burns) {
         if (!s.rock.mats[b.i]) continue;
@@ -1460,9 +1461,8 @@
             CELLS++;
             if (!m || m === 2 || lit.has(q)) continue;         // 空・てつ・もう燃えているマスへは移らない
             if (m === 3) {                                     // こおり：なかまごとに BURN.ice マスまで、何段でも
-              const n = fn[b.g] | 0;
-              if (n >= BURN.ice) continue;
-              fn[b.g] = n + 1;
+              if ((fn[b.g] | 0) + (cnt[b.g] | 0) >= BURN.ice) continue;
+              cnt[b.g] = (cnt[b.g] | 0) + 1;
             } else if (!(b.d < BURN.other && rngOf(s) < BURN.otherP)) continue;
             lit.add(q);
             add.push([q, b]);
@@ -1488,7 +1488,7 @@
         }
         if (to >= 0) { s.burns.push({ i: to, until: b.until, at: b.at, spread: true, g: b.g, d: b.d }); ctx.evs.push({ kind: "burn", i: to, from: b.i, d: b.d }); }
       }
-      for (const [q, b] of add) if (s.rock.mats[q]) ignite(s, q, ctx, b);
+      for (const [q, b] of add) if (s.rock.mats[q] && ignite(s, q, ctx, b) && s.rock.mats[q] === 3) fn[b.g] = (fn[b.g] | 0) + 1;
       // 燃えている火のなかまが無くなったら、こおり の数えを捨てる
       let live = null;
       for (const g in fn) { if (!live) { live = new Set(); for (const b of s.burns) live.add(b.g); } if (!live.has(+g)) delete fn[g]; }
@@ -1860,7 +1860,7 @@
     }
     const t = state.totals || {};
     const o = {
-      v: SAVE_VERSION, tier, star, kakera: state.kakera, kfrac: isNum(state.kfrac) && state.kfrac >= 0 && state.kfrac < 1 ? state.kfrac : 0,
+      v: SAVE_VERSION, lvv: LVV, tier, star, kakera: state.kakera, kfrac: isNum(state.kfrac) && state.kfrac >= 0 && state.kfrac < 1 ? state.kfrac : 0,
       slots, bench, offer: state.offer ? state.offer.slice() : null, swap, cleared, tries,
       totals: { cells: t.cells | 0, stars: t.stars | 0, kakera: isNum(t.kakera) ? t.kakera : 0, chunks: t.chunks | 0, glows: t.glows | 0 },
       seed: state.seed, rng: state.rng, ms, bestT: isObj(state.bestT) ? Object.assign({}, state.bestT) : {}
@@ -1906,6 +1906,7 @@
       return Number.isInteger(o.v) && o.v >= 1 && o.v <= 999 ? o.v : null;
     } catch (e) { return null; }
   }
+  const LVV = 2;   // 保存の中の欄 lvv：v74（Lv255）以降は 2。無い・ほかの値は v73 まで（ハードにいれば loadSave が Lv99 を 1 回だけ上げる）
   const intIn = (x, lo, hi, def) => (isNum(x) ? clamp(Math.floor(x), lo, hi) : def);
   // v:3 だけを読む（v:1・v:2・ほかの版・読めない値は null。ユーザー決定「最初から」）
   function loadSave(raw) {
@@ -1933,6 +1934,13 @@
         if (!isObj(x) || typeof x.id !== "string" || !W[x.id] || seen.has(x.id)) continue;
         seen.add(x.id);
         bench.push({ id: x.id, lv: intIn(x.lv, 1, LEVEL_MAX, 1) });
+      }
+      // v73 までの保存の移し替え（1 回だけ。計画書 §6.5）：v74 の印（lvv: 2）が無く、ハード（tier ≧ 1）にいる保存は、Lv99 の武器を
+      // 星の硬さの伸び（HARD.lv）と同じ所（min(255, 99 + floor(0.8 × i))。i はハードの星の通しの数）まで上げる。ふつう（tier 0）は変えない
+      if (o.lvv !== LVV && tier > 0) {
+        const up = Math.min(LEVEL_MAX, LV_HI.from + Math.floor(HARD.lv * (HARD_STARS * (tier - 1) + star - 1)));
+        for (const it of slots) if (it.lv === LV_HI.from) it.lv = up;
+        for (const it of bench) if (it.lv === LV_HI.from) it.lv = up;
       }
       const swap = [];
       for (const p of Array.isArray(o.swap) ? o.swap : []) {
@@ -2077,7 +2085,7 @@
       let s = newGame(seed);
       if (isObj(opts.start)) {
         const st = opts.start;
-        const o = loadSave(JSON.stringify({ v: SAVE_VERSION, tier: st.tier || 0, star: st.star || 1, kakera: st.kakera || 0, slots: st.slots || [{ id: "shot", lv: 1 }], bench: st.bench || [], seed, rng: hash2(seed >>> 0, 0x2b), cleared: (st.tier || 0) > 0 }));
+        const o = loadSave(JSON.stringify({ v: SAVE_VERSION, lvv: LVV, tier: st.tier || 0, star: st.star || 1, kakera: st.kakera || 0, slots: st.slots || [{ id: "shot", lv: 1 }], bench: st.bench || [], seed, rng: hash2(seed >>> 0, 0x2b), cleared: (st.tier || 0) > 0 }));
         if (o) s = o;
       }
       fixParts(s);

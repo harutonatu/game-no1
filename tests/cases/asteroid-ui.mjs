@@ -791,6 +791,8 @@ export const tests = [
       const CASES = [
         // 最大の桁：Lv255（LEVEL_MAX。v74）・Lv254 の値段 8099ちょう・1びょうに 8 けた
         { name: '3 台', n: 3, unlock: true, set: `${ARMS(3, 255)} l.slots[2].lv = 254; l.bench = []; l.swap = [];` },
+        // 武器の行の札「てつに つよい」（◎ つき）がボタンにかぶらない（v74 UX 1）：いなずま Lv255 でてつの多い星
+        { name: '4 台（いなずま Lv255・てつの星）', n: 4, unlock: true, set: "l.star = 8; l.slots = ['shot', 'spread', 'bolt', 'beam'].map((id) => ({ id, lv: 255 })); l.offer = null; l.bench = []; l.swap = [];" },
         { name: '4 台＋ひかえ 1・予約', n: 4, unlock: true, set: "l.slots = ['shot', 'spread', 'bomb', 'beam'].map((id) => ({ id, lv: 255 })); l.slots[3].lv = 254; l.offer = null; l.bench = [{ id: 'bolt', lv: 255 }]; l.swap = [{ slot: 1, id: 'bolt' }];" },
         { name: '4 台＋ひかえ 2（6 種類）', n: 4, unlock: false, set: "l.slots = ['shot', 'spread', 'bomb', 'beam'].map((id) => ({ id, lv: 255 })); l.slots[3].lv = 254; l.offer = null; l.bench = [{ id: 'bolt', lv: 255 }, { id: 'fire', lv: 255 }]; l.swap = [{ slot: 1, id: 'bolt' }, { slot: 2, id: 'fire' }];" },
       ];
@@ -835,8 +837,14 @@ export const tests = [
               if (t.startsWith('つぎ ')) return cutWith('つぎの ほしから') && cutWith('つぎから') ? norm : t + '（入るのに短い）';
               return t;
             });
+            // 札（.good）の右の端が、同じ行の「つよくする」ボタンの左の端より左にある（かぶらない）
+            const goodOver = [...document.querySelectorAll('.wrow')].filter(vis).flatMap((row) => {
+              const g = row.querySelector('.good'), u = row.querySelector('[data-up]');
+              if (!g || !u || g.getBoundingClientRect().width === 0) return [];
+              return g.getBoundingClientRect().right > u.getBoundingClientRect().left + 0.5 ? [row.dataset.w + ' 札 ' + Math.round(g.getBoundingClientRect().right) + ' > ボタン ' + Math.round(u.getBoundingClientRect().left)] : [];
+            });
             const tb = document.querySelector('#timeBar').getBoundingClientRect();
-            return { canvas: [Math.round(c.left), Math.round(c.top), Math.round(c.width), Math.round(c.height)], rows, cut, small, unlock: vis(document.querySelector('#unlockBtn')), swapW: vis(sw) ? Math.round(sw.getBoundingClientRect().width) : 0, bench: document.querySelector('#benchCount').textContent.trim(), nexts, num: document.querySelector('#starLabel [data-part="num"]').textContent.trim(), bar: [Math.round(tb.width), Math.round(tb.height)], w: innerWidth, h: innerHeight };
+            return { goodOver, canvas: [Math.round(c.left), Math.round(c.top), Math.round(c.width), Math.round(c.height)], rows, cut, small, unlock: vis(document.querySelector('#unlockBtn')), swapW: vis(sw) ? Math.round(sw.getBoundingClientRect().width) : 0, bench: document.querySelector('#benchCount').textContent.trim(), nexts, num: document.querySelector('#starLabel [data-part="num"]').textContent.trim(), bar: [Math.round(tb.width), Math.round(tb.height)], w: innerWidth, h: innerHeight };
           });
           const lv = await lg(page);
           // 低い画面（index.html の @media と同じ境目）は行 44px 以上、ほかは 52px 以上
@@ -847,7 +855,7 @@ export const tests = [
           const landscape = m.w > m.h && m.h <= 500;
           const fullCanvas = landscape ? m.canvas[3] >= m.h - 1 && m.canvas[2] >= m.w - 312 - 90 : m.canvas[2] >= m.w - 1 && m.canvas[3] >= m.h - 1;
           const ok = lp.n > 0 && lp.outside.length === 0 && lp.overlaps.length === 0 && lp.small.length === 0 && !lp.hscroll && m.rows.length === n && m.rows.every((h) => h >= rowMin - 0.5) &&
-            m.cut.length === 0 && m.small.length === 0 && m.unlock === cs.unlock && m.swapW >= 88 - 0.5 && fullCanvas && m.bar[0] >= 60 &&
+            m.cut.length === 0 && m.goodOver.length === 0 && m.small.length === 0 && m.unlock === cs.unlock && m.swapW >= 88 - 0.5 && fullCanvas && m.bar[0] >= 60 &&
             JSON.stringify(m.nexts) === JSON.stringify(nextWant) && m.bench === (lv.bench.length ? `ひかえ ${lv.bench.length}` : 'ひかえ なし');
           check(`${v.label}・${cs.name}：画面外 ${lp.outside.length}・重なり ${lp.overlaps.length}・44px 未満 ${lp.small.length}・横スクロール ${lp.hscroll}、行の高さ ${m.rows.join('/')}（${rowMin}px 以上${low ? '・低い画面' : ''}）、欠ける文字 ${m.cut.length}・12px 未満 ${m.small.length}、「${m.num}」、残り時間の棒 ${m.bar.join('×')}、canvas ${m.canvas.join(',')}（${landscape ? '横は左の列' : '画面いっぱい'} ${fullCanvas}）、あたらしい ぶき ${m.unlock ? 'あり' : 'なし'}・いれかえ 幅 ${m.swapW}「${m.bench}」・札 ${JSON.stringify(m.nexts)}`, ok, { lp, m, nextWant }, (landscape && n >= 4) ? known('AST-LAND4') : undefined);
         }

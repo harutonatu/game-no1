@@ -488,6 +488,16 @@ export const tests = [
       c = until(L, c, (e) => e.kind === 'clear', 2).s;
       const co = JSON.parse(L.makeSave(c));
       check('クリアの演出中の保存は次の星（tries 1・mid なし・ms 空）', co.star === 4 && co.tries === 1 && !co.mid && J(co.ms) === '[]', co.star);
+      // v73 までの保存の移し替え（計画書 §6.4・約束 §23.3）：印 lvv: 2 が無くハード（tier ≧ 1）なら Lv99 の武器を 99 + floor(0.8 × i) へ 1 回だけ
+      const v73 = (x) => JSON.stringify({ v: 3, tier: 2, star: 11, kakera: 5, seed: 9, slots: [{ id: 'shot', lv: 99 }, { id: 'bolt', lv: 50 }], bench: [{ id: 'beam', lv: 99 }], ...x });
+      const lvs = (r0) => r0 && [...r0.slots, ...r0.bench].map((w) => w.lv);
+      const m1 = L.loadSave(v73({}));
+      check('v73 の保存（印なし・ハード 段 2 星 11＝i 40）：Lv99 の武器は 99 + floor(0.8 × 40) = 131 へ。Lv99 でない武器は変えない（ひかえも）', J(lvs(m1)) === J([131, 50, 131]), lvs(m1));
+      const m2 = L.loadSave(L.makeSave(m1)), m3 = L.loadSave(L.makeSave(m2));
+      check('2 回読んでも二重に上がらない（保存に印 lvv: 2 が付く）。印があれば Lv99 のままでも変えない', JSON.parse(L.makeSave(m1)).lvv === 2 && J(lvs(m2)) === J([131, 50, 131]) && J(lvs(m3)) === J([131, 50, 131]) && J(lvs(L.loadSave(v73({ lvv: 2 })))) === J([99, 50, 99]), [lvs(m2), lvs(m3)]);
+      check('ふつう（tier 0）の v73 の保存は変えない（印だけ付く）。段 10 では 255 で止まる', J(lvs(L.loadSave(v73({ tier: 0, star: 40 })))) === J([99, 50, 99]) && JSON.parse(L.makeSave(L.loadSave(v73({ tier: 0 })))).lvv === 2 && J(lvs(L.loadSave(v73({ tier: 10, star: 30 })))) === J([255, 50, 255]), null);
+      const mb = [{ lvv: 'x' }, { lvv: null }, { lvv: [1] }, { lvv: 1e99 }, { lvv: -2 }, { lvv: {} }].map((x) => L.loadSave(v73(x)));
+      check('壊れた印（文字・null・配列・巨大・負・オブジェクト）でも落ちない（印なしと同じに 1 回だけ上げる）', mb.every((r0) => r0 && J(lvs(r0)) === J([131, 50, 131]) && L.step(r0, L.STEP)), mb.map(lvs));
       check('validateBest（前のまま）', L.validateBest('12') === 12 && L.validateBest('x') === 0 && L.validateBest(-3) === 0 && L.validateBest(1e9) === 9999 && L.validateBest('') === 0, null);
     },
   },
