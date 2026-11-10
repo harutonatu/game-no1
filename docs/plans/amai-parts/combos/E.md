@@ -17,3 +17,4 @@
 | 241 | XXL | nekomachiutau | まちで ねこが うたう | "" | まち | ねこ | うたう | x=31 y=46 背景ぎゃく ground=Y |
 | 242 | XXL | inuyuuenchihon | ゆうえんちで いぬが ほんを よむ | "" | ゆうえんち | いぬ | ほんを よむ | x=31 y=46 背景ぎゃく |
 | 243 | XXL | usagihoshizorajitensha | ほしぞらで うさぎが じてんしゃに のる | "" | ほしぞら | うさぎ | じてんしゃに のる | x=33 y=46 |
+| 244 | XXL | kumamachihon | まちで くまが ほんを よむ | "" | まち | くま | ほんを よむ | x=33 y=46 ぎゃく ground=Y |
