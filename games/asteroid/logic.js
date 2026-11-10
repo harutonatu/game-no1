@@ -19,7 +19,8 @@
  *   - 計画書 §5.1 の state の形に、次の欄を足している（logic の中のもの。保存しない。画面は使わなくてよい）：
  *       wait  … 'clear' の残りの秒
  *       back  … 'choose' を閉じたあとに戻る phase（'fly'・'lost'・'clear'・'end'）
- *       ship.flip … 自機が次に回る向きを変える時刻（t）
+ *       ship.orb  … 今の向きで小惑星の重心（rock.cx・cy）のまわりを回った角度（ラジアン。進む向きが +。引き返すと減る）
+ *       ship.laps … 何周したら回る向きを変えるか（ORBIT_LAPS の 2〜3。種と時刻から決まる）
  *       rock.key  … 星の番号 × 10000 ＋ 挑戦の回数（新しい星・やり直しで変わる。描画が作り直しに気づく目印）
  *       rock.cx・rock.cy … 残っているマスの重心（世界の座標。カメラの向きの目安）
  *       shots[] の弾には、どかん用の着地点（tc・tr：格子の座標）・ほのおのねらい（aim）・たまの通りぬけ（p・h）などを足している
@@ -46,7 +47,9 @@
   const RANGE = 18;                     // 弾が届く距離（マス）。それより遠いマスはねらわない
   const DEG = Math.PI / 180;
   const SHIP_TURN = 240 * DEG;          // 自機が向きを変える速さの上限（ラジアン/秒）
-  const FLIP_MIN = 10, FLIP_MAX = 20;   // まわる向きを変える間隔（秒）
+  // まわる向き：小惑星の重心のまわりを ORBIT_LAPS[0]〜[1] 周（種で決める）回ったら向きを変える（ユーザー「何周かごとに向きを変える」2026-11-10）。
+  // 周は角度の積み上げで数える（引き返すと減る。重心から ORBIT_NEAR マスより近い所では数えない）
+  const ORBIT_LAPS = deepFreeze([2, 3]), ORBIT_NEAR = 2, TAU = 2 * Math.PI;
   // 星の大きさ（半径のマス）：星 1 で R_BASE、星ごとに R_STEP ずつ、上限 R_MAX。ボス（BOSS_EVERY の倍数）は BOSS_SIZE 倍・BOSS_HARD 倍の重さ
   const R_BASE = 36, R_STEP = 28 / 49, R_MAX = 64, BOSS_EVERY = 10, BOSS_SIZE = 1.25, BOSS_HARD = 1.3;
   const GRID_MAX = 2 * R_MAX + 4;       // 格子の一辺の最大（132）
@@ -79,7 +82,7 @@
   const EARLY_VALUE = deepFreeze([3, 1.5]);
   // 星 1〜30 の体力の倍率（STAR_HP に掛ける。ボスの重さ・傾きのならし adj は別に掛ける）。greedy の自動プレイ（種 1〜4 の中央）で、
   // 星 1〜3 が 3.5 分・ふつうの星 4 分・ボス 5 分になるように測って決めた（計画書 §6）。ハード（段 1 から）は HARD
-  const HP_TABLE = deepFreeze([0.0176,0.0508,0.0788,0.2,0.31,0.29,0.332,0.663,0.952,1.19,1.33,1.5,2.19,3.6,4.48,4.85,4.87,7.31,8.42,13.1,14.8,15.5,19.3,26,35.5,34.7,39.8,43.8,60.2,75.4,86.2,90.4,104,127,155,203,212,234,327,362,454,472,533,760,816,1040,1070,1130,1290,1310]);
+  const HP_TABLE = deepFreeze([0.0176,0.0508,0.0788,0.2,0.31,0.29,0.332,0.58,0.952,1.19,1.33,1.5,2.19,3.6,4.48,4.85,4.87,7.31,8.42,13.1,14.8,15.5,19.3,26,35.5,34.7,39.8,43.8,60.2,75.4,86.2,90.4,104,127,155,203,212,234,327,362,454,472,533,760,816,1040,1070,1130,1290,1310]);
   // マスの混ざり方：てつ（星 3〜9・10〜）、こおり（星 6〜）、星ごとの傾き（てつ多め／こおり多め）
   const MIX = deepFreeze({ iron: [0.25, 0.35], ice: 0.15, tilt: 0.08 });
   const MILESTONE_BONUS = 0.03, MILESTONES = deepFreeze([25, 50, 75]);
@@ -702,16 +705,16 @@
       const d = (x - px) * (x - px) + (y - py) * (y - py);
       if (d < bd) { bd = d; bi = i; }
     }
-    const flip = (isNum(s.t) ? s.t : 0) + flipGap(s);
-    if (bi < 0) return { x: px, y: py, ang: 0, dir: 1, flip };
+    const laps = lapsOf(s);
+    if (bi < 0) return { x: px, y: py, ang: 0, dir: 1, orb: 0, laps };
     const c = bi % w, ex = (c + 0.5) * CELL, ey = ((bi - c) / w + 0.5) * CELL;
     const L = Math.hypot(px - ex, py - ey) || 1, nx = (px - ex) / L, ny = (py - ey) / L;
-    return { x: ex + nx * STANDOFF * CELL, y: ey + ny * STANDOFF * CELL, ang: Math.atan2(nx, -ny), dir: 1, flip };
+    return { x: ex + nx * STANDOFF * CELL, y: ey + ny * STANDOFF * CELL, ang: Math.atan2(nx, -ny), dir: 1, orb: 0, laps };
   }
   function rockKey(s) { return numIn(s.star, s.tier) * 10000 + Math.min(9999, s.tries | 0); }
-  function flipGap(s) {
+  function lapsOf(s) {
     const h = hash2((s.seed >>> 0) ^ Math.imul(s.star | 0, 0x9e37), Math.floor((isNum(s.t) ? s.t : 0) * 30) >>> 0);
-    return FLIP_MIN + (FLIP_MAX - FLIP_MIN) * (h / 4294967296);
+    return ORBIT_LAPS[0] + (h % (ORBIT_LAPS[1] - ORBIT_LAPS[0] + 1));
   }
   function fullHp(s, i) {
     const code = s.rock.mats[i];
@@ -744,7 +747,7 @@
     if (!isNum(c.rock.total)) c.rock.total = c.rock.left;
     const sh = c.ship;
     if (!isObj(sh) || !isNum(sh.x) || !isNum(sh.y)) c.ship = startShip(c);
-    else if (!isNum(sh.ang) || (sh.dir !== 1 && sh.dir !== -1) || !isNum(sh.flip)) c.ship = { x: sh.x, y: sh.y, ang: isNum(sh.ang) ? sh.ang : 0, dir: sh.dir === -1 ? -1 : 1, flip: isNum(sh.flip) ? sh.flip : c.t + FLIP_MIN };
+    else if (!isNum(sh.ang) || (sh.dir !== 1 && sh.dir !== -1) || !isNum(sh.orb) || !isNum(sh.laps) || sh.laps <= 0) c.ship = { x: sh.x, y: sh.y, ang: isNum(sh.ang) ? sh.ang : 0, dir: sh.dir === -1 ? -1 : 1, orb: isNum(sh.orb) ? sh.orb : 0, laps: isNum(sh.laps) && sh.laps > 0 ? sh.laps : lapsOf(c) };
     c.hold = c.hold === true;
   }
   function cloneForStep(s) {
@@ -1068,8 +1071,8 @@
     let nl = Math.hypot(nx, ny);
     if (nl < 1e-12) { const c = bi % w; nx = x - (c + 0.5) * CELL; ny = y - ((bi - c) / w + 0.5) * CELL; nl = Math.hypot(nx, ny) || 1; }
     nx /= nl; ny /= nl;
-    // まわる向きを変える
-    if (s.t + 1e-9 >= sh.flip) { sh.dir = -sh.dir; sh.flip = s.t + flipGap(s); }
+    // まわる向きを変える：今の向きで laps 周まわったら
+    if (sh.orb >= sh.laps * TAU - 1e-9) { sh.dir = -sh.dir; sh.orb = 0; sh.laps = lapsOf(s); }
     const D0 = STANDOFF * CELL, err = d - D0;
     const a = clamp(1 - Math.max(0, err - 4 * CELL) / (10 * CELL), 0, 1);
     const b = clamp(err / (3 * CELL), -1, 1);
@@ -1083,8 +1086,19 @@
       sh.ang = Math.abs(da) <= mv ? want : sh.ang + Math.sign(da) * mv;
       sh.ang = Math.atan2(Math.sin(sh.ang), Math.cos(sh.ang));
     }
+    const ox = sh.x - R.cx, oy = sh.y - R.cy;
     sh.x += Math.cos(sh.ang) * SHIP_SPEED * dt;
     sh.y += Math.sin(sh.ang) * SHIP_SPEED * dt;
+    orbitAdd(sh, ox, oy, sh.x - R.cx, sh.y - R.cy);
+  }
+  // 重心から見た角度の動き（y は下向きなので atan2 が増える向き＝dir +1 の進む向き）を、今の向きの進みとして積む。
+  // 引き返すと減る（行き来で数えない）。逆へ進んだ分は 1 周までしかためない（どこかで必ず向きを変えられる）
+  function orbitAdd(sh, x0, y0, x1, y1) {
+    const nr = ORBIT_NEAR * CELL;
+    if (!isNum(x0 + y0 + x1 + y1) || x0 * x0 + y0 * y0 < nr * nr || x1 * x1 + y1 * y1 < nr * nr) return;
+    let da = Math.atan2(y1, x1) - Math.atan2(y0, x0);
+    if (da > Math.PI) da -= TAU; else if (da < -Math.PI) da += TAU;
+    sh.orb = Math.max(-TAU, sh.orb + da * sh.dir);
   }
 
   // ---------------------------------------------------------------- ねらい（自機から。RANGE より遠いマスはねらわない）
@@ -2053,7 +2067,7 @@
         if (s.t >= nextReopen && s.phase === "fly") {
           nextReopen = s.t + reopenEvery;
           const t = s.t, o = loadSave(saveObj(s, reopenMid));
-          if (o) { o.t = t; o.cd = o.slots.map(() => t); o.ship.flip += t; s = o; rep.reopens++; }
+          if (o) { o.t = t; o.cd = o.slots.map(() => t); s = o; rep.reopens++; }
         }
         if (pol !== "idle" && s.t + 1e-9 >= nextBuy) {
           nextBuy = Math.floor(s.t + 1e-9) + buyEvery;
@@ -2136,7 +2150,7 @@
 
   const api = {
     NAME, MATS, WEAPONS, EVOLVE, MAT_HP, MAT_VALUE, UP_COST, SLOT_COST,
-    CELL, STANDOFF, SHIP_SPEED, RANGE, SHIP_TURN, FLIP_MIN, FLIP_MAX, GRID_MAX,
+    CELL, STANDOFF, SHIP_SPEED, RANGE, SHIP_TURN, ORBIT_LAPS, GRID_MAX,
     R_BASE, R_STEP, R_MAX, BOSS_EVERY, BOSS_SIZE, BOSS_HARD, SHAPE, AREA_FILL, GLOW,
     BOLT_CELLS, BEAM_W, BEAM_DEPTH, SHOT_UP, BOLT_KEEP, BOLT_MIN, BOMB_SHIFT,
     STAR_HP, STAR_VALUE, HP_TABLE, VALUE_GROWTH, VALUE_GROWTH2, EARLY_VALUE, HARD, TIER_MAX, UP_GROWTH, LEVEL_MAX, SLOTS_MAX, MIX,

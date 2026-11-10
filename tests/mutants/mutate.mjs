@@ -435,6 +435,8 @@ const M = [
   ['MK39 ほしくだき：場を押すと進む（#field は pointer-events: none なので、ボタンとリンク以外のクリックを document で受けて step を進める）', '操作', 'games/asteroid/main.js', '  if (el.helpOk) el.helpOk.addEventListener("click", closeHelp);', '  document.addEventListener("click", (e) => { if (!(e.target && e.target.closest && e.target.closest("button, a"))) { stepOnce(STEP, null); updateUi(); } });\n  if (el.helpOk) el.helpOk.addEventListener("click", closeHelp);'],
   ['MK40 ほしくだき：さいしょからで asteroid.save.bak を消さない', 'データ消失', 'games/asteroid/main.js', 'goneBak = removeKey(KEY_BAK);', 'goneBak = true;'],
   ['MK41 ほしくだき：表に戻ったとき保存がほかで変わっていても開き直さない（X-20）', '保存', 'games/asteroid/main.js', 'if (!stale && !changedElsewhere()) return false;', 'return false;'],
+  // 自機の回る向き（ユーザー「何周かごとに向きを変える」2026-11-10）。流すときは ONLY=KL6
+  ['MK42 ほしくだき：自機が 1 周する前（半周）で回る向きを変える（星のまわりを回らずに引き返す）', 'ルール', 'games/asteroid/logic.js', 'if (sh.orb >= sh.laps * TAU - 1e-9) {', 'if (sh.orb >= 0.5 * TAU - 1e-9) {'],
   // ---- あまいものあつめ（games/amai/）。ふち・運ぶ・押す・うごかせない・再生・保存・ずかん・絵の選び方・中断・古いページの仕組みを変えたときだけ流す（契約 §7.4）----
   ['MA1 あまいものあつめ：ふちでない角砂糖も運ぶ（見つける：AL3・AL4）', 'ルール', 'games/amai/logic.js', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;', 'return true;'],
   ['MA2 あまいものあつめ：ななめもふちに数える（見つける：AL3）', 'ルール', 'games/amai/logic.js', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1 || o[i - W - 1] === 1 || o[i - W + 1] === 1 || o[i + W - 1] === 1 || o[i + W + 1] === 1;'],
@@ -509,16 +511,16 @@ const M = [
   ['MA66 あまいものあつめ：運ぶときに #fx の位置を測り直さない（ありんこと道がずれて角砂糖の上に見える。見つける：AW38）', '見た目', 'games/amai/render.js', '        sizeFx();\n        const np = nestPoint();', '        const np = nestPoint();'],
   ['MA67 あまいものあつめ：絵の目印に決まりの版を混ぜない（v67 の途中の保存を今の決まりで再生する。見つける：AL22・AW37）', '保存データ互換', 'games/amai/logic.js', 'mix(0xa5); mix(RULE_V);', ''],
   ['MA68 あまいものあつめ：外が広がっても道のりを直さない（見つける：AL23）', 'ルール', 'games/amai/logic.js', '    if (n) relax(b, q, n);\n', ''],
-  // とける ところまで もどす・クリアのカードから ちょうせんへ・もどしと花輪（2026-11-10。計画書 docs/plans/amai-rescue.md・約束 §0.10・§0.11・§1.13）
+  // だいじょうぶな ところまで もどす・クリアのカードから ちょうせんへ・もどしと花輪（2026-11-10。計画書 docs/plans/amai-rescue.md・約束 §0.10・§0.11・§1.13）
   ['MA72 あまいものあつめ：調べの上限に届いたのに「とけない」と言い切る（見つける：AL24）', 'ルール', 'games/amai/logic.js', 'else result = r === "empty" ? "dead" : "unknown";', 'else result = "dead";'],
   ['MA73 あまいものあつめ：戻し先を調べずに 1 手前を返す（見つける：AL24・AW39）', 'お助け', 'games/amai/logic.js', 'if (r.result === "solved") return finish(cur.k, true);', 'return finish(cur.k, true);'],
   ['MA74 あまいものあつめ：言い切れない局面でも予備軍の知らせを出す（見つける：AW40）', 'お助け', 'games/amai/main.js', 'if (r.result !== "dead" || state !== st) return;', 'if (r.result === "solved" || state !== st) return;'],
-  ['MA75 あまいものあつめ：とける ところまで もどしても押した手を切りつめない（保存と局面が食い違う。見つける：AW39）', 'データ', 'games/amai/main.js', '    presses.length = k;\n', ''],
+  ['MA75 あまいものあつめ：だいじょうぶな ところまで もどしても押した手を切りつめない（保存と局面が食い違う。見つける：AW39）', 'データ', 'games/amai/main.js', '    presses.length = k;\n', ''],
   ['MA76 あまいものあつめ：ちょうせんで 1手もどしても もどした印が付かない（金の花輪が付く。見つける：AW34・AW41）', 'ルール', 'games/amai/main.js', '    if (chal) chalUsed = true;   // ちょうせんで 1手もどすを使った面は、金の花輪を付けない（§0.11）\n', ''],
   ['MA77 あまいものあつめ：もどした ちょうせんのクリアでも amai.gold に書く（見つける：AW41）', 'ルール', 'games/amai/main.js', 'const rg = chalUsed ? null : safeCall(', 'const rg = safeCall('],
   ['MA78 あまいものあつめ：ふつうのクリアのカードに［この めんを ちょうせん］が出ない（見つける：AW41）', '操作', 'games/amai/main.js', 'const chalThis = !custom && !chal && canChallenge(level);', 'const chalThis = false;'],
-  ['MA79 あまいものあつめ：［つぎも ちょうせん］が金の花輪のある面も選ぶ（見つける：AW41）', 'ルール', 'games/amai/main.js', 'const ok = (n) => canChallenge(n) && !safeCall(() => L.hasGold(rawGold, L.pickPicture(n, null).id), true);', 'const ok = (n) => canChallenge(n);'],
-  ['MA80 あまいものあつめ：とける ところまで もどしても「1手もどし なし」の花輪が付く（見つける：AW41）', 'ルール', 'games/amai/main.js', '    if (noUndo === true) noUndo = false;   // もどした面には', '    if (false) noUndo = false;   // もどした面には'],
+  ['MA79 あまいものあつめ：［つぎも ちょうせん］が金の花輪のある面も選ぶ（見つける：AW41）', 'ルール', 'games/amai/main.js', 'const ok = (n) => canChallenge(n, book) && !gold.has(safeCall(() => L.pickPicture(n, null).id, ""));', 'const ok = (n) => canChallenge(n, book);'],
+  ['MA80 あまいものあつめ：だいじょうぶな ところまで もどしても「1手もどし なし」の花輪が付く（見つける：AW41）', 'ルール', 'games/amai/main.js', '    if (noUndo === true) noUndo = false;   // もどした面には', '    if (false) noUndo = false;   // もどした面には'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

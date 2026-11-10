@@ -54,7 +54,7 @@ function setRock(L, s, rows, opts = {}) {
   }
   const rock = { w, h, mats, hp, total: n, left: n, value, gen: 0, dirty: [], key: 1, cx: (sc / n + 0.5) * L.CELL, cy: (sr / n + 0.5) * L.CELL };
   const sp = opts.ship || [-L.STANDOFF, 0];
-  const ship = { x: (sp[0] + M + 0.5) * L.CELL, y: (sp[1] + M + 0.5) * L.CELL, ang: opts.ang || 0, dir: 1, flip: 1e9 };
+  const ship = { x: (sp[0] + M + 0.5) * L.CELL, y: (sp[1] + M + 0.5) * L.CELL, ang: opts.ang || 0, dir: 1, orb: 0, laps: opts.laps || 1e9 };
   return { ...s, rock, ship, shots: [], burns: [], left: s.limit, cd: s.slots.map((_, k) => (opts.only === undefined || opts.only === k ? 0 : 1e9)), M };
 }
 const idx = (s, c, r) => (r + s.M) * s.rock.w + (c + s.M);
@@ -326,23 +326,48 @@ export const tests = [
     },
   },
   {
-    id: 'KL6', tier: 'smoke', node: true, title: 'ほしくだき：自機の動き（ふちから STANDOFF マスを保って回る・速さ SHIP_SPEED・ときどき回る向きを変える・遠くからは寄ってくる・届かない所（RANGE より遠い）は撃たない）',
+    id: 'KL6', tier: 'smoke', node: true, title: 'ほしくだき：自機の動き（ふちから STANDOFF マスを保って回る・速さ SHIP_SPEED・2〜3 周ごとに回る向きを変える（1 周する前には変えない）・遠くからは寄ってくる・届かない所（RANGE より遠い）は撃たない）',
     run({ check, root }) {
       const L = load(root);
       let s = L.newGame(3);
       const ds = [], sp = [];
+      // 回った角度は、テストの側で重心（rock.cx・cy）から見た角度を積んで数える（進む向き dir が + になるように）
       let flips = 0, lastDir = s.ship.dir, prev = { x: s.ship.x, y: s.ship.y };
-      for (let i = 0; i < 90 * 30; i++) {
+      const segs = [];   // 向きを変えるまでに、その向きで回った周（[周, 秒]）
+      let turn = 0, segT = 0, pa = Math.atan2(s.ship.y - s.rock.cy, s.ship.x - s.rock.cx), firstLapT = null, firstFlipT = null;
+      for (let i = 0; i < 150 * 30; i++) {
         const r = L.step(s, L.STEP); s = r.state;
-        if (s.ship.dir !== lastDir) { flips++; lastDir = s.ship.dir; }
+        const a = Math.atan2(s.ship.y - s.rock.cy, s.ship.x - s.rock.cx);
+        let da = a - pa; if (da > Math.PI) da -= 2 * Math.PI; else if (da < -Math.PI) da += 2 * Math.PI; pa = a;
+        turn += da * lastDir;
+        if (firstLapT === null && turn >= 2 * Math.PI) firstLapT = s.t;
+        if (s.ship.dir !== lastDir) { flips++; segs.push([+(turn / (2 * Math.PI)).toFixed(2), +(s.t - segT).toFixed(1)]); if (firstFlipT === null) firstFlipT = s.t; turn = 0; segT = s.t; lastDir = s.ship.dir; }
         sp.push(Math.hypot(s.ship.x - prev.x, s.ship.y - prev.y) / L.STEP); prev = { x: s.ship.x, y: s.ship.y };
         if (i % 15 === 0 && i > 300) ds.push(nearestEdge(L, s).d / L.CELL);
       }
       ds.sort((a, b) => a - b);
+      ds.length = Math.min(ds.length, Math.round((90 * 30 - 300) / 15));   // ふちとの距離は 90 秒のうちで見る（前と同じ）
       const inBand = ds.filter((d) => d >= L.STANDOFF - 2 && d <= L.STANDOFF + 4).length / ds.length;
       check('ふちから離れすぎない・寄りすぎない：90 秒のうち 95% 以上で STANDOFF−2〜+4 マス（中央 4〜7 マス）', inBand >= 0.95 && ds[ds.length >> 1] >= 4 && ds[ds.length >> 1] <= 7 && ds[0] > 1, { inBand, med: ds[ds.length >> 1], min: ds[0], max: ds[ds.length - 1] });
       check('速さは SHIP_SPEED（70 単位/秒）', sp.every((v) => near(v, L.SHIP_SPEED, 1e-6)), [Math.min(...sp), Math.max(...sp)]);
-      check('10〜20 秒ごとに回る向きを変える（90 秒で 4〜9 回）', flips >= 4 && flips <= 9, flips);
+      check('ORBIT_LAPS は [2, 3]（何周かごとに向きを変える。ユーザー「何周かごとに向きを変える」）', J(L.ORBIT_LAPS) === J([2, 3]) && L.FLIP_MIN === undefined, L.ORBIT_LAPS);
+      check('1 周する前には向きを変えない：最初に向きを変えたのは、1 周（2 周目の終わり）よりあと', firstLapT !== null && firstFlipT !== null && firstFlipT > firstLapT, { firstLapT, firstFlipT });
+      check('向きを変えるまでに、その向きで 2〜3 周（積んだ角度。±0.15 周）回る・150 秒で 1 回以上変える', segs.length >= 1 && segs.every(([n]) => n >= 1.85 && n <= 3.15), segs);
+      check('ship.orb・ship.laps：laps は 2 か 3、orb はその向きで回った角度（0 から laps 周まで）', [2, 3].includes(s.ship.laps) && s.ship.orb >= -2 * Math.PI && s.ship.orb < s.ship.laps * 2 * Math.PI && near(s.ship.orb / (2 * Math.PI), turn / (2 * Math.PI), 0.15), [s.ship.laps, s.ship.orb, turn]);
+      // 小さな星（10×10 マス）のまわりで 1 周ごとに変える形（laps: 1）にして、行き来しても数がずれない：何回変えても毎回 約 1 周
+      {
+        let q = setRock(L, mk(L), block(10, 10), { hp: 1e9, ship: [-L.STANDOFF, 4], ang: -Math.PI / 2, laps: 1 });
+        let qd = q.ship.dir, qt = 0, qa = Math.atan2(q.ship.y - q.rock.cy, q.ship.x - q.rock.cx);
+        const qs = [];
+        for (let i = 0; i < 120 * 30; i++) {
+          const r = L.step(q, L.STEP); const M = q.M; q = r.state; q.M = M;
+          const a = Math.atan2(q.ship.y - q.rock.cy, q.ship.x - q.rock.cx);
+          let da = a - qa; if (da > Math.PI) da -= 2 * Math.PI; else if (da < -Math.PI) da += 2 * Math.PI; qa = a;
+          qt += da * qd;
+          if (q.ship.dir !== qd) { qs.push(+(qt / (2 * Math.PI)).toFixed(2)); qt = 0; qd = q.ship.dir; q.ship = { ...q.ship, laps: 1 }; }
+        }
+        check('小さな星で laps 1：何回向きを変えても、毎回 その向きで 0.9〜1.1 周（引き返しで数えない・増えない）', qs.length >= 3 && qs.every((n) => n >= 0.9 && n <= 1.1), qs);
+      }
       check('ship.ang は進む向き（x + cos(ang)·v, y + sin(ang)·v）', (() => { const r = L.step(s, L.STEP); return near(r.state.ship.x - s.ship.x, Math.cos(r.state.ship.ang) * L.SHIP_SPEED * L.STEP, 1e-9) && near(r.state.ship.y - s.ship.y, Math.sin(r.state.ship.ang) * L.SHIP_SPEED * L.STEP, 1e-9); })(), s.ship);
       check('星の周りを回る（90 秒で重心から見た向きが 90° 以上動く）', (() => { const a0 = Math.atan2(L.newGame(3).ship.y - s.rock.cy, L.newGame(3).ship.x - s.rock.cx), a1 = Math.atan2(s.ship.y - s.rock.cy, s.ship.x - s.rock.cx); let d = Math.abs(a1 - a0); if (d > Math.PI) d = 2 * Math.PI - d; return d > Math.PI / 2 || s.rock.left < s.rock.total; })(), null);
       // 遠く（30 マス）からは寄ってきて、届く（RANGE 18 マス）まで撃たない
