@@ -14,3 +14,13 @@
 | 171 | XXL | penginhanabatakeodoru | はなばたけで ぺんぎんが おどる | haru | はなばたけ | ぺんぎん | おどる | x=31 y=46 |
 | 196 | XXL | penginmachiodoru | まちで ぺんぎんが おどる | "" | まち | ぺんぎん | おどる | x=35 y=46 ぎゃく 背景ぎゃく ground=W |
 | 176 | XXL | penginyukiyamahon | ゆきやまで ぺんぎんが ほんを よむ | fuyu | ゆきやま | ぺんぎん | ほんを よむ | x=35 y=46 ぎゃく 背景ぎゃく |
+| 201 | XXL | penginhoshizoraoyatsu | ほしぞらで ぺんぎんが おやつを たべる | "" | ほしぞら | ぺんぎん | おやつを たべる | x=25 y=46 sky=V |
+| 202 | XXL | penginmachioyatsu | まちで ぺんぎんが おやつを たべる | "" | まち | ぺんぎん | おやつを たべる | x=37 y=46 ぎゃく 背景ぎゃく |
+| 203 | XXL | penginyuuenchinemuru | ゆうえんちで ぺんぎんが ねむる | "" | ゆうえんち | ぺんぎん | ねむる | x=30 y=46 |
+| 204 | XXL | penginyukiyamanemuru | ゆきやまで ぺんぎんが ねむる | fuyu | ゆきやま | ぺんぎん | ねむる | x=35 y=46 ぎゃく 背景ぎゃく |
+| 205 | XXL | penginumibeoekaki | うみべで ぺんぎんが おえかきを する | natsu | うみべ | ぺんぎん | おえかきを する | x=27 y=46 |
+| 206 | XXL | pengindaidokorooekaki | だいどころで ぺんぎんが おえかきを する | "" | だいどころ | ぺんぎん | おえかきを する | x=37 y=46 ぎゃく 背景ぎゃく |
+| 207 | XXL | penginkouenhon | こうえんで ぺんぎんが ほんを よむ | "" | こうえん | ぺんぎん | ほんを よむ | x=37 y=46 ぎゃく |
+| 208 | XXL | penginmoriutau | もりで ぺんぎんが うたう | "" | もり | ぺんぎん | うたう | x=31 y=46 |
+| 209 | XXL | penginhanabatakejitensha | はなばたけで ぺんぎんが じてんしゃに のる | haru | はなばたけ | ぺんぎん | じてんしゃに のる | x=30 y=46 背景ぎゃく |
+| 210 | XXL | penginhoshizoraodoru | ほしぞらで ぺんぎんが おどる | "" | ほしぞら | ぺんぎん | おどる | x=33 y=46 背景ぎゃく sky=V |
