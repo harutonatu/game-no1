@@ -14,3 +14,13 @@
 | 192 | XXL | zouhanabatakeoyatsu | はなばたけで ぞうが おやつを たべる | haru | はなばたけ | ぞう | おやつを たべる | x=32 y=46 ぎゃく sky=W |
 | 172 | XXL | zouyukiyamanemuru | ゆきやまで ぞうが ねむる | fuyu | ゆきやま | ぞう | ねむる | x=34 y=46 ぎゃく 背景ぎゃく sky=P |
 | 197 | XXL | zouhoshizoranemuru | ほしぞらで ぞうが ねむる | "" | ほしぞら | ぞう | ねむる | x=29 y=46 |
+| 211 | XXL | zoumachibooru | まちで ぞうが ボールで あそぶ | "" | まち | ぞう | ボールで あそぶ | x=29 y=46 sky=P |
+| 212 | XXL | zouyuuenchibooru | ゆうえんちで ぞうが ボールで あそぶ | "" | ゆうえんち | ぞう | ボールで あそぶ | x=35 y=46 ぎゃく 背景ぎゃく |
+| 213 | XXL | zouhoshizoraodoru | ほしぞらで ぞうが おどる | "" | ほしぞら | ぞう | おどる | x=30 y=46 |
+| 214 | XXL | zouyukiyamaodoru | ゆきやまで ぞうが おどる | fuyu | ゆきやま | ぞう | おどる | x=34 y=46 ぎゃく 背景ぎゃく sky=P |
+| 215 | XXL | zouumibeoekaki | うみべで ぞうが おえかきを する | natsu | うみべ | ぞう | おえかきを する | x=28 y=46 sky=P |
+| 216 | XXL | zoudaidokorooekaki | だいどころで ぞうが おえかきを する | "" | だいどころ | ぞう | おえかきを する | x=35 y=46 ぎゃく 背景ぎゃく |
+| 217 | XXL | zoukouenutau | こうえんで ぞうが うたう | "" | こうえん | ぞう | うたう | x=31 y=46 ぎゃく 背景ぎゃく sky=P |
+| 218 | XXL | zoumorihon | もりで ぞうが ほんを よむ | "" | もり | ぞう | ほんを よむ | x=27 y=46 背景ぎゃく sky=P |
+| 219 | XXL | zouhanabatakejitensha | はなばたけで ぞうが じてんしゃに のる | haru | はなばたけ | ぞう | じてんしゃに のる | x=27 y=46 背景ぎゃく sky=P |
+| 220 | XXL | zoumachioyatsu | まちで ぞうが おやつを たべる | "" | まち | ぞう | おやつを たべる | x=30 y=46 ぎゃく 背景ぎゃく sky=P |
