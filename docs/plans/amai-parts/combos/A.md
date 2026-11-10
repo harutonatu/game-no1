@@ -23,4 +23,4 @@
 | 207 | XXL | penginkouenhon | こうえんで ぺんぎんが ほんを よむ | "" | こうえん | ぺんぎん | ほんを よむ | x=37 y=46 ぎゃく |
 | 208 | XXL | penginmoriutau | もりで ぺんぎんが うたう | "" | もり | ぺんぎん | うたう | x=31 y=46 |
 | 209 | XXL | penginhanabatakejitensha | はなばたけで ぺんぎんが じてんしゃに のる | haru | はなばたけ | ぺんぎん | じてんしゃに のる | x=30 y=46 背景ぎゃく |
-| 210 | XXL | penginhoshizoraodoru | ほしぞらで ぺんぎんが おどる | "" | ほしぞら | ぺんぎん | おどる | x=33 y=46 背景ぎゃく sky=V |
+| 210 | XXL | penginhoshizoraodoru | ほしぞらで ぺんぎんが おどる | "" | ほしぞら | ぺんぎん | おどる | x=33 y=46 背景ぎゃく |
