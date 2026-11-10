@@ -784,14 +784,15 @@ export const tests = [
     },
   },
   {
-    id: 'KW8', tier: 'full', title: 'ほしくだき 画面内（計画書 §2・§5.3）：SE 縦（ホーム画面・Safari。320×568・320×454）・SE 横（568×320・568×270）・375×667・iPhone 13 縦横・iPad 縦横で、最大の桁（KAKERA_MAX・Lv99・いちばん大きい星の番号 STAR_MAX＝長い「ハード333 ほし N」）の 3 台（あたらしい ぶき あり・ひかえ なし）、4 台＋ひかえ 1・予約の札「つぎの ほしから いなずま Lv99」（行の幅に入らないときだけ「つぎから」。あたらしい ぶき（ひかえへ）あり）、4 台＋ひかえ 2（6 種類。あたらしい ぶき なし）で、#hud・行・#unlockBtn・#swapBtn が画面内・44px 以上（#swapBtn は幅 88px 以上）・重ならない、行は 52px 以上（低い画面＝縦で高さ 620 以下・横で 360 以下は 44px 以上）、文字が欠けない（はみ出し・省略なし）、12px 以上。残り時間の棒 #timeBar と #timeText が画面内。時間切れの #lostCard の「もういちど」は画面内・押せる・44px 以上で、上の #hud と下の武器の行に重ならない。場の canvas は画面いっぱい',
+    id: 'KW8', tier: 'full', title: 'ほしくだき 画面内（計画書 §2・§5.3）：SE 縦（ホーム画面・Safari。320×568・320×454）・SE 横（568×320・568×270）・375×667・iPhone 13 縦横・iPad 縦横で、最大の桁（KAKERA_MAX・Lv255（LEVEL_MAX）と Lv254 の値段・いちばん大きい星の番号 STAR_MAX＝長い「ハード333 ほし N」）の 3 台（あたらしい ぶき あり・ひかえ なし）、4 台＋ひかえ 1・予約の札「つぎの ほしから いなずま Lv255」（行の幅に入らないときだけ「つぎから」、それでも入らないときだけ「つぎ」。あたらしい ぶき（ひかえへ）あり）、4 台＋ひかえ 2（6 種類。あたらしい ぶき なし）で、#hud・行・#unlockBtn・#swapBtn が画面内・44px 以上（#swapBtn は幅 88px 以上）・重ならない、行は 52px 以上（低い画面＝縦で高さ 620 以下・横で 360 以下は 44px 以上）、文字が欠けない（はみ出し・省略なし）、12px 以上。残り時間の棒 #timeBar と #timeText が画面内。時間切れの #lostCard の「もういちど」は画面内・押せる・44px 以上で、上の #hud と下の武器の行に重ならない。場の canvas は画面いっぱい',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const views = [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), view('SE', 'l', 'safari'), custom(375, 667, null, '375×667'), view('i13', 'p', 'app'), view('i13', 'l', 'app'), view('iPad', 'p', 'app'), view('iPad', 'l', 'app')];
       const CASES = [
-        { name: '3 台', n: 3, unlock: true, set: `${ARMS(3, 99)} l.slots[2].lv = 98; l.bench = []; l.swap = [];` },
-        { name: '4 台＋ひかえ 1・予約', n: 4, unlock: true, set: "l.slots = ['shot', 'spread', 'bomb', 'beam'].map((id) => ({ id, lv: 99 })); l.slots[3].lv = 98; l.offer = null; l.bench = [{ id: 'bolt', lv: 99 }]; l.swap = [{ slot: 1, id: 'bolt' }];" },
-        { name: '4 台＋ひかえ 2（6 種類）', n: 4, unlock: false, set: "l.slots = ['shot', 'spread', 'bomb', 'beam'].map((id) => ({ id, lv: 99 })); l.slots[3].lv = 98; l.offer = null; l.bench = [{ id: 'bolt', lv: 99 }, { id: 'fire', lv: 99 }]; l.swap = [{ slot: 1, id: 'bolt' }, { slot: 2, id: 'fire' }];" },
+        // 最大の桁：Lv255（LEVEL_MAX。v74）・Lv254 の値段 8099ちょう・1びょうに 8 けた
+        { name: '3 台', n: 3, unlock: true, set: `${ARMS(3, 255)} l.slots[2].lv = 254; l.bench = []; l.swap = [];` },
+        { name: '4 台＋ひかえ 1・予約', n: 4, unlock: true, set: "l.slots = ['shot', 'spread', 'bomb', 'beam'].map((id) => ({ id, lv: 255 })); l.slots[3].lv = 254; l.offer = null; l.bench = [{ id: 'bolt', lv: 255 }]; l.swap = [{ slot: 1, id: 'bolt' }];" },
+        { name: '4 台＋ひかえ 2（6 種類）', n: 4, unlock: false, set: "l.slots = ['shot', 'spread', 'bomb', 'beam'].map((id) => ({ id, lv: 255 })); l.slots[3].lv = 254; l.offer = null; l.bench = [{ id: 'bolt', lv: 255 }, { id: 'fire', lv: 255 }]; l.swap = [{ slot: 1, id: 'bolt' }, { slot: 2, id: 'fire' }];" },
       ];
       for (const v of views) {
         const { ctx, page } = await openK(browser, `KW8 ${v.label}`, { v });
@@ -824,12 +825,15 @@ export const tests = [
             }
             const c = document.querySelector('#fieldCanvas').getBoundingClientRect();
             const sw = document.querySelector('#swapBtn');
-            // 予約の札：文字と、「つぎの ほしから」（長いほう）にしたら行の幅からはみ出すか（はみ出すときだけ「つぎから」でよい。UX 1）
+            // 予約の札：文字と、長いほうにしたら行の幅からはみ出すか（はみ出すときだけ「つぎから」、それでもはみ出すときだけ「つぎ」でよい。UX 1・v74）
             const nexts = [...document.querySelectorAll('.wrow [data-next]')].filter(vis).map((e) => {
               const t = e.textContent.trim();
-              const cl = e.cloneNode(true); const tn = [...cl.childNodes].find((x) => x.nodeType === 3); if (tn) tn.textContent = tn.textContent.replace(/^つぎから/, 'つぎの ほしから');
-              e.after(cl); e.hidden = true; const box = cl.parentElement; const longCut = cl.scrollWidth > cl.clientWidth + 0.5 || box.scrollWidth > box.clientWidth + 0.5; cl.remove(); e.hidden = false;
-              return t.startsWith('つぎから') && longCut ? t.replace(/^つぎから/, 'つぎの ほしから') : t + (t.startsWith('つぎから') ? '（入るのに短い）' : '');
+              const cutWith = (pre) => { const cl = e.cloneNode(true); const tn = [...cl.childNodes].find((x) => x.nodeType === 3); if (tn) tn.textContent = tn.textContent.replace(/^(つぎの ほしから|つぎから|つぎ)/, pre); e.after(cl); e.hidden = true; const box = cl.parentElement; const c = cl.scrollWidth > cl.clientWidth + 0.5 || box.scrollWidth > box.clientWidth + 0.5; cl.remove(); e.hidden = false; return c; };
+              const norm = t.replace(/^(つぎから|つぎ)(?= )/, 'つぎの ほしから');
+              if (t.startsWith('つぎの ほしから')) return t;
+              if (t.startsWith('つぎから')) return cutWith('つぎの ほしから') ? norm : t + '（入るのに短い）';
+              if (t.startsWith('つぎ ')) return cutWith('つぎの ほしから') && cutWith('つぎから') ? norm : t + '（入るのに短い）';
+              return t;
             });
             const tb = document.querySelector('#timeBar').getBoundingClientRect();
             return { canvas: [Math.round(c.left), Math.round(c.top), Math.round(c.width), Math.round(c.height)], rows, cut, small, unlock: vis(document.querySelector('#unlockBtn')), swapW: vis(sw) ? Math.round(sw.getBoundingClientRect().width) : 0, bench: document.querySelector('#benchCount').textContent.trim(), nexts, num: document.querySelector('#starLabel [data-part="num"]').textContent.trim(), bar: [Math.round(tb.width), Math.round(tb.height)], w: innerWidth, h: innerHeight };
@@ -838,7 +842,7 @@ export const tests = [
           // 低い画面（index.html の @media と同じ境目）は行 44px 以上、ほかは 52px 以上
           const low = (m.h > m.w && m.h <= 620) || (m.w > m.h && m.h <= 360);
           const rowMin = low ? 44 : 52;
-          const nextWant = n >= 4 ? lv.swap.map((p) => `つぎの ほしから ${L.WEAPONS.find((w) => w.id === p.id).name} Lv99`) : [];
+          const nextWant = n >= 4 ? lv.swap.map((p) => `つぎの ほしから ${L.WEAPONS.find((w) => w.id === p.id).name} Lv255`) : [];
           // 縦は画面いっぱい。横で背が低い画面（max-height 500px）は左の列だけ（右の 312px は UI。index.html の @media）
           const landscape = m.w > m.h && m.h <= 500;
           const fullCanvas = landscape ? m.canvas[3] >= m.h - 1 && m.canvas[2] >= m.w - 312 - 90 : m.canvas[2] >= m.w - 1 && m.canvas[3] >= m.h - 1;
@@ -930,7 +934,7 @@ export const tests = [
     },
   },
   {
-    id: 'KW10', tier: 'full', flaky: { why: 'CPU 4 倍遅くで重いコマの割合・描く時間を測る', checks: /^CPU 4 倍遅くで 10 秒|^描画 drawMs の中央/ }, solo: true, cdp: 'CDP の CPU 低速化', title: 'ほしくだき 性能（§21.5）：gostar で ほし 30（大きな星・48×48 に近い）・4 台 Lv30 にして、CPU 4 倍遅く（CDP）で 10 秒、34ms を超えるコマが 5% 以下・描画 drawMs の中央 8ms 以内・ロジック stepMs の中央 4ms 以内、粒 ≦ 240・弾 ≦ SHOTS_MAX',
+    id: 'KW10', tier: 'full', flaky: { why: 'CPU 4 倍遅くで重いコマの割合・描く時間を測る', checks: /^CPU 4 倍遅くで 10 秒|^描画 drawMs の中央/ }, solo: true, cdp: 'CDP の CPU 低速化', title: 'ほしくだき 性能（§21.5）：gostar で ほし 30（大きな星・48×48 に近い）・4 台 Lv30 にして、CPU 4 倍遅く（CDP）で 10 秒、34ms を超えるコマが 5% 以下・描画 drawMs の中央 8ms 以内・ロジック stepMs の中央 4ms 以内、粒 ≦ 240・弾 ≦ SHOTS_MAX、燃えるマス 80 以上（ほのおの燃え広がり。v74）でも drawMs の中央 8ms 以内',
     async run({ browser, check, root }) {
       const L = logicOf(root);
       const { ctx, page } = await newPage(browser, view('SE', 'p', 'app'), 'KW10');
@@ -960,6 +964,19 @@ export const tests = [
       check(`描画 drawMs の中央 ${med(drawMs)}ms（1 秒ごと ${drawMs.join('/')}。8ms 以内）・ロジック stepMs の中央 ${med(stepMs)}ms（${stepMs.join('/')}。4ms 以内）`, drawMs.length === 10 && drawMs.every(Number.isFinite) && med(drawMs) > 0 && med(drawMs) <= 8 && stepMs.every((x) => Number.isFinite(x) && x >= 0) && med(stepMs) <= 4, { drawMs, stepMs });
       check(`全部描き直す回数 rockFullRedraws が 3 秒で ${f1 - f0} 回（2 回まで。部分の塗り直しが動いている）`, Number.isFinite(f0) && f1 - f0 <= 2, { f0, f1 });
       check(`粒の最大 ${maxP}（≦ 240）・弾の最大 ${maxS}（≦ ${L.SHOTS_MAX}）`, maxP <= 240 && maxS <= L.SHOTS_MAX && maxS > 0, { maxP, maxS });
+      // 燃えるマスが多いとき（v74：ほのおが こおり へ燃え広がる。炎の絵・火の粉）も、CPU 4 倍遅くで描画 drawMs の中央が 8ms 以内
+      let burnsMax = 0;
+      for (const st of [26, 24, 28, 22]) {
+        await dbg(page, 'gostar', { star: st });
+        await setL(page, "l.slots = [{ id: 'fire', lv: 22 }]; l.bench = []; l.swap = [];");
+        for (let k = 0; k < 40 && burnsMax < 80; k++) { await sleep(300); burnsMax = Math.max(burnsMax, (await lg(page)).burns.length); }
+        if (burnsMax >= 80) break;
+      }
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+      const fireMs = [], fireN = [];
+      for (let i = 0; i < 4; i++) { await sleep(700); const s = await gs(page); fireMs.push(s.drawMs); fireN.push((await lg(page)).burns.length); }
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+      check(`描画 drawMs の中央 ${med(fireMs)}ms（燃えるマス ${fireN.join('/')}・最大 ${burnsMax}。8ms 以内）`, burnsMax >= 80 && fireMs.every(Number.isFinite) && med(fireMs) <= 8, { fireMs, fireN, burnsMax });
       await ctx.close();
     },
   },

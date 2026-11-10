@@ -56,7 +56,7 @@
   const MARK_GOLD = "#f2c14e";
   const GLOW_COL = ["#e8782a", "#f0b72f"];    // ひかり：オレンジと黄
   const CRACK = "#46609a";
-  const SHOT_COL = { shot: "#ffffff", spread: "#ffd84d", bomb: "#ff9a3c", bolt: "#ffe066", beam: "#d8f6ff", fire: "#ff5a3c" };
+  const SHOT_COL = { shot: "#ffffff", spread: "#ffe14d", bomb: "#ff9a3c", bolt: "#ffe066", beam: "#d8f6ff", fire: "#ff5a3c" };
   const PART_COL = { 1: "#ffffff", 2: "#c8d4ea", 3: "#c8f0ff", 4: "#ffd34d", 5: "#ffc23c" };
   const YELLOW = "#ffd84d";
   const SHIP_SCALE = 1.35;   // 自機の大きさ（絵の倍率。長さ約 22 単位）
@@ -86,7 +86,11 @@
     return NAMES_FALLBACK[id] || "ぶき";
   }
   function evolveLine(id, lv) {
-    if (Math.floor(num(lv, 10) / 10) > 3) return "つよさが 2ばいに なった";
+    // Lv100 から先（logic の LV_HI）：100・150・200・250 と さいご（LEVEL_MAX＝255）だけ出る。強さは 1 Lv ごとに少しずつ上がる（2 倍ではない）
+    const L1 = num(lv, 10), top = num(safe(() => Lg().LEVEL_MAX, 255), 255);
+    if (L1 >= top) return "いちばん つよく なった！";
+    if (L1 > 99) return "Lv" + L1 + "！ どんどん つよく なる";
+    if (Math.floor(L1 / 10) > 3) return "つよさが 2ばいに なった";
     switch (id) {
       case "shot": return "たまが ふえた";
       case "spread": return "はっすうが ふえた";
@@ -615,7 +619,8 @@
           case "hit": {
             const i = ev.i | 0;
             if (!known || i < 0 || i >= rockN) break;
-            if (hitFxLeft > 0) { hitFxLeft--; const p = cellCenter(i); fx.push({ kind: "hit", t: 0, dur: 0.12, x: p.x, y: p.y }); }
+            // 当たった所の光：ちらし は黄の輪つきで少し長く（弾が短い間しか飛ばないので、当たった所で見えるように。v74）
+            if (hitFxLeft > 0) { hitFxLeft--; const p = cellCenter(i); const sp = ev.w === "spread"; fx.push({ kind: "hit", t: 0, dur: sp ? 0.2 : 0.12, x: p.x, y: p.y, sp, sx: num(ship.x, p.x), sy: num(ship.y, p.y) }); }
             // ひびの段が変わったら塗り直す
             if (crackK && known[i] && state.rock && state.rock.hp) { const ck = crackOf(i, state.rock.hp); if (ck !== crackK[i]) { crackK[i] = ck; partialRedraw([i]); } }
             break;
@@ -816,9 +821,21 @@
         else if (f.kind === "bolt") drawBolt(f);
         else if (f.kind === "boom") drawBoom(f);
         else if (f.kind === "glowRing") drawRing(f, "#ffc23c");
-        else if (f.kind === "hit") { ctx.globalAlpha = 1 - f.t / f.dur; ctx.fillStyle = "#ffffff"; ctx.fillRect(f.x - 2, f.y - 2, 4, 4); }
+        else if (f.kind === "hit") {
+          const k = f.t / f.dur;
+          ctx.globalAlpha = 1 - k; ctx.fillStyle = "#ffffff"; ctx.fillRect(f.x - 2, f.y - 2, 4, 4);
+          if (f.sp) {
+            ctx.strokeStyle = SHOT_COL.spread; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(f.x, f.y, 2.5 + k * (calm ? 2 : 5), 0, TAU); ctx.stroke();
+            // 自機から当たった所への光の筋（すぐ消える。弾が 2〜3 コマしか飛ばないので、扇の形が見えるように）
+            if (k < 0.6) {
+              const a = (1 - k / 0.6), dx = f.x - f.sx, dy = f.y - f.sy, d = Math.hypot(dx, dy) || 1, from = Math.max(0, d - 26 - k * 30);
+              ctx.globalAlpha = 0.25 * a; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(f.sx + dx / d * from, f.sy + dy / d * from); ctx.lineTo(f.x, f.y); ctx.stroke();
+              ctx.globalAlpha = 0.8 * a; ctx.lineWidth = 1.3; ctx.stroke();
+            }
+          }
+        }
         else if (f.kind === "spark") { const k = f.t / f.dur; ctx.globalAlpha = 1 - k; ctx.strokeStyle = MARK_GOLD; ctx.lineWidth = 1; const r = 3 + k * 6; ctx.beginPath(); ctx.moveTo(f.x - r, f.y); ctx.lineTo(f.x + r, f.y); ctx.moveTo(f.x, f.y - r); ctx.lineTo(f.x, f.y + r); ctx.stroke(); }
-        else if (f.kind === "muzzle") { ctx.globalAlpha = 1 - f.t / f.dur; ctx.fillStyle = f.col || "#fff"; ctx.beginPath(); ctx.arc(f.x, f.y, 3.5, 0, TAU); ctx.fill(); }
+        else if (f.kind === "muzzle") { ctx.globalAlpha = 1 - f.t / f.dur; ctx.fillStyle = f.col || "#fff"; ctx.beginPath(); ctx.arc(f.x, f.y, f.col === SHOT_COL.spread ? 5 : 3.5, 0, TAU); ctx.fill(); }
       }
       ctx.globalAlpha = 1;
       drawShots(state, vb);
@@ -872,30 +889,127 @@
       }
       ctx.globalAlpha = 1;
     }
+    // ほのお（燃えているマス）：ゆらめく炎（赤橙の光・赤橙の根もと・橙の舌・黄の芯・白い芯の重ね）、画面の上へ上がる火の粉、明るさのゆれ、
+    // 燃え始め 0.3 秒のぱっと広がる火、こおり が溶ける しずく（v74）。
+    // 重さ：炎は前もって絵（FLAME_FRAMES 枚のゆれ）にしておき、1 マス 1 回の drawImage（画面の座標で描くので、いつも画面の上へ燃える）。
+    // 火の粉・燃え始めの火は、燃えるマスが多いときは FLAME_DETAIL 個ぶんに間引く。動きを減らす設定（calm）：ゆれ・火の粉・燃え始めの火を出さず、静かな炎だけ
+    const FLAME = { base: "#ff3d1a", mid: "#ff8a1e", core: "#ffe066", tip: "#fff6c8", ember: "#ffc23c", melt: "#9fe8ff" };
+    const FLAME_FRAMES = 8, FLAME_DETAIL = 40, FLAME_W = 24, FLAME_H = 32, FLAME_BX = 12, FLAME_BY = 22;   // 絵の大きさ（CSS px）と根もとの位置
+    let flameImgs = null, flameDpr = 0;
+    function buildFlames() {
+      flameDpr = dpr;
+      flameImgs = [];
+      const cell = 8;
+      for (let v = 0; v < FLAME_FRAMES; v++) {
+        const cv = makeCanvas(Math.ceil(FLAME_W * dpr), Math.ceil(FLAME_H * dpr));
+        const g = cv && cv.getContext("2d");
+        if (!g) { flameImgs = null; return; }
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const fl = 0.5 + 0.5 * Math.sin(v / FLAME_FRAMES * TAU), lean = Math.sin(v / FLAME_FRAMES * TAU * 2 + 0.7) * cell * 0.12;
+        const cx = FLAME_BX, cy = FLAME_BY;
+        // 光
+        g.globalAlpha = 0.3; g.fillStyle = FLAME.base;
+        g.beginPath(); g.arc(cx, cy - 1, cell * (1.1 + fl * 0.35), 0, TAU); g.fill();
+        // 舌（根もとの丸 ＋ 上へのびる 2 本の曲線）
+        const tongue = (r, h) => {
+          g.beginPath();
+          g.moveTo(cx + r, cy);
+          g.quadraticCurveTo(cx + r, cy - h * 0.55, cx + lean, cy - h);
+          g.quadraticCurveTo(cx - r, cy - h * 0.55, cx - r, cy);
+          g.arc(cx, cy, r, Math.PI, 0, true);
+          g.fill();
+        };
+        for (const [col, al, rr, hh] of [[FLAME.base, 0.85, 0.62, 1.7], [FLAME.mid, 0.9, 0.46, 1.3], [FLAME.core, 0.95, 0.28, 0.85]]) {
+          g.globalAlpha = al; g.fillStyle = col;
+          tongue(cell * rr * (0.9 + fl * 0.2), cell * hh * (0.75 + fl * 0.55));
+        }
+        g.globalAlpha = 0.85; g.fillStyle = FLAME.tip;
+        g.beginPath(); g.arc(cx, cy - cell * 0.1, cell * 0.12 + fl * 0.5, 0, TAU); g.fill();
+        flameImgs.push(cv);
+      }
+    }
     function drawBurns(state, vb) {
       const burns = state.burns;
       if (!Array.isArray(burns) || !burns.length || !rockW) return;
+      if (!flameImgs || flameDpr !== dpr) buildFlames();
       const cell = C();
       const n = Math.min(burns.length, 300);
-      for (let pass = 0; pass < 2; pass++) {
-        ctx.fillStyle = pass ? "#ffd84d" : "#ff6a3c";
-        ctx.globalAlpha = pass ? 0.8 : 0.55;
-        ctx.beginPath();
-        for (let k = 0; k < n; k++) {
-          const b = burns[k];
-          if (!b) continue;
-          const i = typeof b === "number" ? b : b.i;
-          if (typeof i !== "number" || i < 0 || i >= rockN) continue;
-          const x = (i % rockW) * cell, y = ((i / rockW) | 0) * cell;
-          if (x < vb.x0 - cell || x > vb.x1 || y < vb.y0 - cell || y > vb.y1) continue;
-          const fl = 0.5 + 0.5 * Math.sin(clk * 14 + i);
-          const s = pass ? 1.2 + fl * 1.4 : 2.5 + fl * 1.5;
-          ctx.moveTo(x + cell / 2 + s, y + cell / 2);
-          ctx.arc(x + cell / 2, y + cell / 2, s, 0, TAU);
-        }
-        ctx.fill();
+      const mats = state.rock && state.rock.mats;
+      const now = num(state.t, 0);
+      // 世界の座標 → 画面の座標（CSS px。worldTransform と同じ式）
+      const cs = Math.cos(rot), sn = Math.sin(rot), ax = cssW * ANCHOR_X, ay = cssH * ANCHOR_Y;
+      const L = [];
+      for (let k = 0; k < n; k++) {
+        const b = burns[k];
+        if (!b) continue;
+        const i = typeof b === "number" ? b : b.i;
+        if (typeof i !== "number" || i < 0 || i >= rockN) continue;
+        const wx = (i % rockW) * cell, wy = ((i / rockW) | 0) * cell;
+        if (wx < vb.x0 - cell * 2 || wx > vb.x1 + cell || wy < vb.y0 - cell * 2 || wy > vb.y1 + cell) continue;
+        const x = wx + cell / 2 - camX, y = wy + cell / 2 - camY;
+        const age = typeof b === "object" ? now - num(b.at, -9) : 9;
+        L.push(cs * x - sn * y + ax, sn * x + cs * y + ay, age, mats && mats[i] === 3 ? 1 : 0, i);
       }
+      if (!L.length) return;
+      const nb = L.length / 5, few = 5 * Math.max(1, Math.ceil(nb / FLAME_DETAIL));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // 1. こおり が溶ける しずく（炎の下に水色の粒）
+      ctx.fillStyle = FLAME.melt;
+      ctx.globalAlpha = 0.75;
+      ctx.beginPath();
+      let melt = false;
+      for (let k = 0; k < L.length; k += 5) {
+        if (!L[k + 3]) continue;
+        melt = true;
+        const p = calm ? 0.5 : (clk * 1.6 + L[k + 4] * 0.37) % 1;
+        const x = L[k] + 2, y = L[k + 1] + 2 + p * 3, r = 1.1 * (1 - p * 0.5);
+        ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU);
+      }
+      if (melt) ctx.fill();
+      // 2. 炎（絵。明るさのゆれ＝ゆれの絵を時刻とマスで選ぶ・透明度も少しゆらす）
+      if (flameImgs) {
+        // 画素の位置を整数にして、そのままの大きさで写す（拡大・縮小・なめらかにする計算をさせない＝軽い）
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const ox = Math.round(FLAME_BX * dpr), oy = Math.round((FLAME_BY - 3) * dpr);
+        let lastA = -1;
+        for (let k = 0; k < L.length; k += 5) {
+          const i = L[k + 4];
+          const f = calm ? 2 : ((clk * 12 + (hash(i, 3) & 7)) | 0) % FLAME_FRAMES;
+          const al = calm ? 0.9 : Math.round((0.8 + 0.2 * Math.sin(clk * 11 + i)) * 8) / 8;
+          if (al !== lastA) { ctx.globalAlpha = al; lastA = al; }
+          ctx.drawImage(flameImgs[f], Math.round(L[k] * dpr) - ox, Math.round(L[k + 1] * dpr) - oy);
+        }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      if (calm) { ctx.globalAlpha = 1; worldTransform(ctx); return; }
+      // 3. 燃え始めの火（0.3 秒、ぱっと広がる光）
+      ctx.fillStyle = FLAME.core;
+      ctx.beginPath();
+      let pop = false;
+      for (let k = 0; k < L.length; k += 5) {
+        const a = L[k + 2];
+        if (!(a >= 0 && a < 0.3)) continue;
+        pop = true;
+        const r = cell * (0.4 + a * 3.2);
+        ctx.moveTo(L[k] + r, L[k + 1]); ctx.arc(L[k], L[k + 1], r, 0, TAU);
+      }
+      if (pop) { ctx.globalAlpha = 0.35; ctx.fill(); }
+      // 4. 火の粉（1 マスに 2 つ。上へ上がりながら小さく・うすくなる。粒の配列は使わず時刻から決める。多いときは間引く）
+      ctx.fillStyle = FLAME.ember;
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      for (let k = 0; k < L.length; k += few) {
+        const i = L[k + 4];
+        for (let e = 0; e < 2; e++) {
+          const p = (clk * (0.9 + e * 0.35) + ((hash(i, 7 + e) & 1023) / 1024)) % 1;
+          const x = L[k] + Math.sin(p * 9 + i + e * 2) * cell * 0.45, y = L[k + 1] - cell * (0.8 + p * 3);
+          const r = 1.2 * (1 - p) + 0.3;
+          ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU);
+        }
+      }
+      ctx.fill();
       ctx.globalAlpha = 1;
+      worldTransform(ctx);
     }
     function drawGhosts() {
       if (!ghosts.length) return;
@@ -990,15 +1104,21 @@
       }
       ctx.globalAlpha = 1;
     }
+    // 弾：たま・ちらし は 3 重（光の太い線 → 尾つきの芯 → 白い頭）で、濃い青の背景・白いふちの上でも見えるように（v74。shadowBlur は使わない＝重くしない）。
+    // どかん は橙の輪、ほのお は赤橙の玉（光つき）。重ねごとに 1 回の stroke・fill にまとめる
+    const SHOT_LOOK = {
+      shot: { glow: 5.5, glowA: 0.3, core: 2.4, tail: 14, glowTail: 16, head: 1.6 },
+      spread: { glow: 7.5, glowA: 0.4, core: 3, tail: 18, glowTail: 20, head: 2 }
+    };
     function drawShots(state, vb) {
       const shots = state.shots;
       if (!Array.isArray(shots) || !shots.length) return;
       const n = Math.min(SHOTS_MAX, shots.length);
       const kinds = ["shot", "spread", "bomb", "fire", "other"];
       ctx.lineCap = "round";
+      const pick = [];
       for (const kd of kinds) {
-        ctx.beginPath();
-        let any = false;
+        pick.length = 0;
         for (let k = 0; k < n; k++) {
           const s = shots[k];
           if (!s) continue;
@@ -1006,17 +1126,63 @@
           if (w !== kd) continue;
           const x = num(s.x, NaN), y = num(s.y, NaN);
           if (!(x >= vb.x0 && x <= vb.x1 && y >= vb.y0 && y <= vb.y1)) continue;
-          any = true;
           const vx = num(s.vx, 0), vy = num(s.vy, 0), v = Math.hypot(vx, vy) || 1;
-          if (kd === "bomb") { ctx.moveTo(x + 3.2, y); ctx.arc(x, y, 3.2, 0, TAU); }
-          else if (kd === "fire") { ctx.moveTo(x + 2.6, y); ctx.arc(x, y, 2.6, 0, TAU); }
-          else { const len = kd === "shot" ? 6 : 4.5; ctx.moveTo(x, y); ctx.lineTo(x - (vx / v) * len, y - (vy / v) * len); }
+          // 尾の長さ：飛んだ距離まで（自機のうしろから出ない）。0 のときも頭は描く
+          const went = Math.max(0, num(s.t, 1) * v);
+          pick.push(x, y, vx / v, vy / v, went);
         }
-        if (!any) continue;
-        if (kd === "bomb") { ctx.strokeStyle = SHOT_COL.bomb; ctx.lineWidth = 1.6; ctx.stroke(); }
-        else if (kd === "fire") { ctx.globalAlpha = 0.85; ctx.fillStyle = SHOT_COL.fire; ctx.fill(); ctx.globalAlpha = 1; }
-        else { ctx.strokeStyle = kd === "other" ? "#ffffff" : SHOT_COL[kd]; ctx.lineWidth = kd === "shot" ? 1.8 : 1.6; ctx.stroke(); }
+        if (!pick.length) continue;
+        const look = SHOT_LOOK[kd];
+        if (look) {
+          // 1. 光（太くうすい線。尾は長め）
+          ctx.strokeStyle = SHOT_COL[kd]; ctx.globalAlpha = look.glowA; ctx.lineWidth = look.glow;
+          ctx.beginPath();
+          for (let k = 0; k < pick.length; k += 5) { const g = Math.min(look.glowTail, pick[k + 4] + 2); ctx.moveTo(pick[k], pick[k + 1]); ctx.lineTo(pick[k] - pick[k + 2] * g, pick[k + 1] - pick[k + 3] * g); }
+          ctx.stroke();
+          // 2. 尾（うすい先から、明るい芯へ）
+          ctx.globalAlpha = 0.55; ctx.lineWidth = look.core * 0.7;
+          ctx.beginPath();
+          for (let k = 0; k < pick.length; k += 5) { const tl = Math.min(look.tail, pick[k + 4]); ctx.moveTo(pick[k] - pick[k + 2] * tl * 0.4, pick[k + 1] - pick[k + 3] * tl * 0.4); ctx.lineTo(pick[k] - pick[k + 2] * tl, pick[k + 1] - pick[k + 3] * tl); }
+          ctx.stroke();
+          ctx.globalAlpha = 1; ctx.lineWidth = look.core;
+          ctx.beginPath();
+          for (let k = 0; k < pick.length; k += 5) { const tl = Math.max(2.5, Math.min(look.tail * 0.45, pick[k + 4])); ctx.moveTo(pick[k], pick[k + 1]); ctx.lineTo(pick[k] - pick[k + 2] * tl, pick[k + 1] - pick[k + 3] * tl); }
+          ctx.stroke();
+          // 3. 白い頭（いちばん明るい点）
+          ctx.fillStyle = "#ffffff";
+          ctx.beginPath();
+          for (let k = 0; k < pick.length; k += 5) { ctx.moveTo(pick[k] + look.head, pick[k + 1]); ctx.arc(pick[k], pick[k + 1], look.head, 0, TAU); }
+          ctx.fill();
+          continue;
+        }
+        if (kd === "bomb") {
+          ctx.globalAlpha = 0.3; ctx.strokeStyle = SHOT_COL.bomb; ctx.lineWidth = 4.5;
+          ctx.beginPath();
+          for (let k = 0; k < pick.length; k += 5) { ctx.moveTo(pick[k] + 3.4, pick[k + 1]); ctx.arc(pick[k], pick[k + 1], 3.4, 0, TAU); }
+          ctx.stroke();
+          ctx.globalAlpha = 1; ctx.lineWidth = 1.8; ctx.stroke();
+        } else if (kd === "fire") {
+          ctx.fillStyle = SHOT_COL.fire;
+          ctx.globalAlpha = 0.35;
+          ctx.beginPath();
+          for (let k = 0; k < pick.length; k += 5) { ctx.moveTo(pick[k] + 5, pick[k + 1]); ctx.arc(pick[k], pick[k + 1], 5, 0, TAU); }
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.beginPath();
+          for (let k = 0; k < pick.length; k += 5) { ctx.moveTo(pick[k] + 2.8, pick[k + 1]); ctx.arc(pick[k], pick[k + 1], 2.8, 0, TAU); }
+          ctx.fill();
+          ctx.fillStyle = "#ffe066";
+          ctx.beginPath();
+          for (let k = 0; k < pick.length; k += 5) { ctx.moveTo(pick[k] + 1.3, pick[k + 1]); ctx.arc(pick[k], pick[k + 1], 1.3, 0, TAU); }
+          ctx.fill();
+        } else {
+          ctx.globalAlpha = 1; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          for (let k = 0; k < pick.length; k += 5) { ctx.moveTo(pick[k], pick[k + 1]); ctx.lineTo(pick[k] - pick[k + 2] * 4.5, pick[k + 1] - pick[k + 3] * 4.5); }
+          ctx.stroke();
+        }
       }
+      ctx.globalAlpha = 1;
     }
     function drawParticles() {
       if (!particles.length) return;

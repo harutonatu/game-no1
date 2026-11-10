@@ -51,7 +51,8 @@
 
   const HINT_BROKEN = "ほぞんが よめなかったので さいしょから はじめるよ";
   const HINT_NO_BENCH = "ひかえの ぶきが まだ ないよ";
-  const NEXT_LONG = "つぎの ほしから", NEXT_SHORT = "つぎから";   // 予約の札の頭（UX 1。幅が足りない行だけ短いほう）
+  // 予約の札の頭（UX 1。幅が足りない行だけ短いほう。Lv255 の 3 けたで「つぎから」でも入らない せまい行は「つぎ」。v74）
+  const NEXT_LONG = "つぎの ほしから", NEXT_SHORT = "つぎから", NEXT_TINY = "つぎ";
   const URGENT_SEC = 30;               // 残り時間がこの秒以下で、棒と字をオレンジに・地球の絵を少し大きく（音は鳴らさない）
   const MS_BANNER_SEC = 1.0;           // 25・50・75% の帯（ロジックの時計で数える）
   const MS_TEXT = { 25: "4ぶんの1 こわした！", 50: "はんぶん こわした！", 75: "あと 4ぶんの1！" };
@@ -631,6 +632,7 @@
       r.next.innerHTML = nx ? head + NEXT_LONG + " " + tail : "";
       r.next.hidden = !nx;
       if (nx && nextOverflows(r.next)) r.next.innerHTML = head + NEXT_SHORT + " " + tail;
+      if (nx && nextOverflows(r.next)) r.next.innerHTML = head + NEXT_TINY + " " + tail;
     }
     let note = "";
     if (x.lv < EVOLVE_LAST) {
@@ -1254,7 +1256,8 @@
   // ===== デバッグ命令（?debug=1 のときだけ。§7.4） =====
   // gostar の表 ARMS：ふつうの星 n の始めに見合う武器（自機の武器と Lv ／ ひかえ）。ふつう 50 面・ハードの段のリニューアルの logic.js（2026-11-09）で測り直した：
   // simulate('greedy', { seed: 1, maxStar: n }) の final（星 n をクリアした直後の武器）を 1 つずつ集め、星 n+1 の行にした（表を引くだけ）。
-  // ハードの段（gotier）は星 50 の行を使い、自機の武器を Lv99 にする（ふつう 50 のクリア直後でほぼ上まで来ているため）。
+  // ハードの段（gotier）は表 HARD_ARMS（段 t の星 1 の始め＝段 t−1 の終わりの武器。Lv255 にした logic.js（2026-11-10）で
+  // simulate('greedy', { seed: 1, maxTier: 8, start: 星 50 のクリア直後 }) から集めた。段 7 から先は全部 Lv255）。
   const ARMS = [
     "shot:1",
     "shot:7 beam:7",
@@ -1305,18 +1308,27 @@
     "shot:95 beam:92 bolt:92 bomb:85 | fire:42 spread:68",
     "shot:97 beam:93 bolt:94 bomb:87 | fire:42 spread:68",
     "shot:98 beam:95 bolt:96 bomb:91 | fire:42 spread:68",
-    "shot:99 beam:97 bolt:98 bomb:93 | fire:42 spread:68"
+    "shot:102 beam:96 bolt:96 bomb:92 | fire:42 spread:68"
+  ];
+  const HARD_ARMS = [
+    "shot:111 beam:96 bolt:96 bomb:92 | fire:42 spread:68",
+    "shot:164 beam:139 bolt:141 bomb:95 | fire:42 spread:68",
+    "shot:193 beam:175 bolt:169 bomb:97 | fire:42 spread:68",
+    "shot:220 beam:203 bolt:195 bomb:98 | fire:42 spread:68",
+    "shot:230 beam:222 bolt:210 bomb:213 | fire:42 spread:68",
+    "shot:254 beam:246 bolt:227 bomb:255 | fire:42 spread:68",
+    "shot:255 beam:255 bolt:255 bomb:255 | fire:42 spread:68"
   ];
   function armsFor(n, tier) {
-    const lvMax = L.LEVEL_MAX || 99;
-    const over = n > ARMS.length || tier > 0;
-    const row = ARMS[over ? ARMS.length - 1 : Math.max(0, n - 1)];
+    const lvMax = L.LEVEL_MAX || 255;
+    const over = n > ARMS.length && !(tier > 0);
+    const row = tier > 0 ? HARD_ARMS[Math.min(HARD_ARMS.length, tier) - 1] : ARMS[over ? ARMS.length - 1 : Math.max(0, n - 1)];
     const parse = (txt, lvTo) => (txt || "").trim().split(/\s+/).filter(Boolean).map((p) => {
       const [id, lv] = p.split(":");
       return { id, lv: Math.min(lvMax, lvTo === undefined ? Number(lv) || 1 : lvTo) };
     }).filter((x) => knownId(x.id));
     const [a, b] = row.split("|");
-    return { slots: parse(a, over ? lvMax : undefined), bench: parse(b) };
+    return { slots: parse(a), bench: parse(b) };
   }
   function gostar(a) {
     const n = Math.floor(Number(a && a.star));
@@ -1392,7 +1404,7 @@
         return { kakera: state.kakera, text: fmt(state.kakera) };
       }, { desc: "かけらを足す（KAKERA_MAX まで）", args: "{ n }" });
       D.command("gostar", (a) => gostar(a), { desc: "その星の始めへ（自機の武器・Lv・ひかえは自動プレイでその星まで来たときの値。表 ARMS）", args: "{ star, tier（省くと 0） }" });
-      D.command("gotier", (a) => gostar({ tier: a && a.t, star: a && a.n }), { desc: "ハードの段 t の星 n の始めへ（武器は星 50 の行で Lv99。ふつうは gostar）", args: "{ t（1〜）, n（1〜30）}" });
+      D.command("gotier", (a) => gostar({ tier: a && a.t, star: a && a.n }), { desc: "ハードの段 t の星 n の始めへ（武器は表 HARD_ARMS の段 t の行。段 7 から Lv255。ふつうは gostar）", args: "{ t（1〜）, n（1〜30）}" });
       D.command("win", () => {
         // 自機から一番近いマスを 1 つだけ残す（自機は撃ってよい。クリアの確認）
         const sh = state && state.ship ? state.ship : { x: 0, y: 0 };
@@ -1436,7 +1448,7 @@
         saveNow();
         updateUi();
         return { slot: k, id: state.slots[k].id, lv: state.slots[k].lv, dps: L.dpsOf(state, k), upCost: L.upCostOf(state, k) };
-      }, { desc: "Lv を変える（1〜99。しんか・最大の桁の確認）", args: "{ slot, lv }" });
+      }, { desc: "Lv を変える（1〜255。しんか・最大の桁の確認）", args: "{ slot, lv }" });
       D.command("swap", (a) => {
         // 予約して、その場で予約だけ当てる（入れ替えの絵と音の確認。ふだんの遊びでは起きない）
         if (!state) throw new Error("まだ はじまっていない");
