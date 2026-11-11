@@ -1193,6 +1193,7 @@
       drawMs: Number(st.drawMs) || 0, cellPx: Number(st.cellPx) || 0, dpr: Number(st.dpr) || 0, rockFullRedraws: Number(st.rockFullRedraws) || 0,
       anchor: st.anchor || null,   // 自機の画面の位置（CSS px）
       view: st.view || null,   // render の見せている向き（x・y・rot）
+      earth: st.earth || null,   // 迫ってくる地球（render の stats().earth：d・target・x・y・urgent・builds）
       urgent: !!(el.hud && el.hud.getAttribute("data-urgent") === "1"),
       boltFx: st.bolt || null, evolveLine: st.evolve || null
     };
