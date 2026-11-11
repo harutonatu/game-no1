@@ -629,6 +629,7 @@
   /* Safari のバー付き（高さ 480 以下の縦）：クリアの絵は盤面にもう出ているので、カードでは省く（全部のボタンを見えるところに） */
   @media (orientation: portrait) and (max-height: 480px) {
     #card[data-kind="clear"] .clearpic { display: none; }
+    #card[data-kind="clear"] p.picname { font-size: 22px; }   /* 22 字の名前（はなばたけで ぺんぎんが じてんしゃに のる）でもカードからはみ出さない（2026-11-11。AW35） */
   }
   /* 横向きで背が低い：遊び方がスクロールなしで収まるよう、幅を広げ、字とすき間を詰める */
   @media (orientation: landscape) and (max-height: 500px) {
