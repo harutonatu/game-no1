@@ -10,6 +10,10 @@
 // 計算：乱数を使わない。段ごとに前から 1 面ずつ、決まりに合う絵のうち
 //   ① 残りの数が多くて今置かないと間に合わない行動の絵 ② 「今の位置からの近さ＋散らす点（2〜4 面前と同じ場所・2 面前と同じ動物）」が小さい絵 ③ 前の位置が早い絵
 //   の順に選ぶ（深さ優先。行き詰まったら戻る）。
+// 25〜36 面（XL）の選び直し（2026-11-11。PM の案「25〜36 面だけ、並べ方の決まりを守ったまま、難しさが前に近くなる並びを選び直す（絵は変えない）」に
+//   ユーザー「良いです」。計画書 §14.2）：上の計算で全部の段を並べたあと（37 面からは上の計算のまま。XL を先に替えると 37 面からの散らす点が変わるため）、
+//   25〜36 面だけを XL_PICK に置きかえる。XL_PICK は xl-pick.js が選んだ並び（決まりに合う 12 枚の並び 229 通りを全部数え、
+//   ゆるいの合計が並べ替える前にいちばん近く、次に 1 面の秒が 170 秒に近いもの。前の帯〔25〜30・31〜36 面〕を全部守る並びは 1 通りだけで ゆるい 25% だった）。
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -21,6 +25,10 @@ const ACTS = "oyatsu booru nemuru oekaki odoru hon utau jitensha".split(" ");
 const TIER_ORDER = ["S", "M", "L", "XL", "XXL"];
 const GAP_FROM = 37;   // ここから（最後の面がこの番号以上の連続 4 面）は同じ行動の間を 3 面以上あける
 const WIN = 4;
+// 25〜36 面の並び（xl-pick.js が選んだもの。上の説明）
+const XL_PICK = ["kumaumibenemuru", "inudaidokorooyatsu", "nekoumibenemuru", "kumadaidokorobooru", "usagiumibenemuru", "inudaidokorobooru",
+  "nekokouenoyatsu", "inuumibenemuru", "kumakouenbooru", "nekodaidokoronemuru", "inuyukiyamaoyatsu", "nekoumibebooru"];
+const XL_FROM = 25;
 
 function parseId(id) {
   for (const a of ANIMALS) {
@@ -112,6 +120,11 @@ function solve(before) {
     };
     if (!rec()) throw new Error("並びが見つからない: " + tier);
   }
+  // 25〜36 面を XL_PICK に置きかえる（同じ 12 枚であることを確かめる）
+  const xl = out.slice(XL_FROM - 1, XL_FROM - 1 + XL_PICK.length);
+  if (xl.some((x) => x.tier !== "XL") || xl.map((x) => x.id).sort().join() !== XL_PICK.slice().sort().join()) throw new Error("XL_PICK が 25〜36 面の 12 枚と合わない");
+  const byId = new Map(xl.map((x) => [x.id, x]));
+  XL_PICK.forEach((id, i) => { out[XL_FROM - 1 + i] = byId.get(id); });
   return out;
 }
 

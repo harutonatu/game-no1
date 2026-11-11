@@ -133,8 +133,8 @@
     ["inuumibeoyatsu", "M"], ["usagikouennemuru", "M"], ["kumaumibebooru", "M"], ["inuyukiyamanemuru", "M"], ["nekodaidokorooyatsu", "M"], ["usagiyukiyamabooru", "M"], ["inukouennemuru", "M"], ["nekoyukiyamabooru", "M"],
     ["usagikouenoyatsu", "L"], ["inuumibebooru", "L"], ["kumakouennemuru", "L"], ["nekodaidokorobooru", "L"], ["kumakouenoyatsu", "L"], ["inuyukiyamabooru", "L"],
     ["nekoumibeoyatsu", "L"], ["usagikouenbooru", "L"], ["kumadaidokoronemuru", "L"], ["inukouenbooru", "L"], ["kumayukiyamaoyatsu", "L"], ["nekokouenbooru", "L"],
-    ["usagiumibenemuru", "XL"], ["inudaidokorobooru", "XL"], ["nekoumibenemuru", "XL"], ["inuyukiyamaoyatsu", "XL"], ["nekodaidokoronemuru", "XL"], ["kumakouenbooru", "XL"],
-    ["inuumibenemuru", "XL"], ["kumadaidokorobooru", "XL"], ["nekokouenoyatsu", "XL"], ["kumaumibenemuru", "XL"], ["inudaidokorooyatsu", "XL"], ["nekoumibebooru", "XL"],
+    ["kumaumibenemuru", "XL"], ["inudaidokorooyatsu", "XL"], ["nekoumibenemuru", "XL"], ["kumadaidokorobooru", "XL"], ["usagiumibenemuru", "XL"], ["inudaidokorobooru", "XL"],
+    ["nekokouenoyatsu", "XL"], ["inuumibenemuru", "XL"], ["kumakouenbooru", "XL"], ["nekodaidokoronemuru", "XL"], ["inuyukiyamaoyatsu", "XL"], ["nekoumibebooru", "XL"],
     // 37〜250 面（XXL の段。36→37 面の境目から、同じ行動は間を 3 面以上あける・同じ場所と同じ動物は となりの面に続けない）
     ["usagikouenoekaki", "XXL"], ["inudaidokoronemuru", "XXL"], ["usagiyukiyamaoyatsu", "XXL"], ["inumoribooru", "XXL"], ["nekokouenoekaki", "XXL"], ["kumayukiyamanemuru", "XXL"],
     ["usagidaidokorooyatsu", "XXL"], ["kumayukiyamabooru", "XXL"], ["inudaidokorooekaki", "XXL"], ["nekokouennemuru", "XXL"], ["kumaumibeoyatsu", "XXL"], ["usagidaidokorobooru", "XXL"],
