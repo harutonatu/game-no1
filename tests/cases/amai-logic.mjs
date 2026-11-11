@@ -1478,7 +1478,7 @@ export const tests = [
   },
   // ---------- 面の並べ方の決まり（2026-11-10・11。約束 §2.6・計画書 docs/plans/amai-parts.md §12〜§14） ----------
   {
-    id: 'AL25', tier: 'smoke', node: true, title: 'あまいものあつめ：面の並べ方の決まり（3 面から：となりの面に同じ行動・同じ場所・同じ動物を続けない・最後の面が 37 面以上の どの連続 4 面にも同じ行動は 1 回まで・どの連続 6 面にも同じ動物・同じ場所は 3 回まで〔36→37 面の境目を含む〕・段の並びは 4/8/12/12/214 で前と同じ形・3 面からの id はみな 動物＋場所＋行動 に読める）',
+    id: 'AL25', tier: 'smoke', node: true, title: 'あまいものあつめ：面の並べ方の決まり（3 面から：となりの面に同じ行動・同じ場所・同じ動物を続けない・最後の面が 37 面以上の どの連続 4 面にも同じ行動は 1 回まで・どの連続 6 面にも同じ動物・同じ場所は 2 回まで〔36→37 面の境目を含む〕・段の並びは 4/8/12/12/214 で前と同じ形・3 面からの id はみな 動物＋場所＋行動 に読める）',
     run({ check, root }) {
       const L = load(root);
       const PO = L.PICTURE_ORDER;
@@ -1511,7 +1511,7 @@ export const tests = [
         if (new Set(w).size !== w.length) gap.push(`${e - 2}〜${e + 1} 面 ${w.join(' ')}`);
       }
       check(`37 面から（36→37 面の境目を含む）どの連続 4 面にも同じ行動は 1 回まで（${gap.length} か所）`, gap.length === 0, gap.slice(0, 10));
-      // 37 面から：どの連続 6 面にも同じ動物・同じ場所は 3 回まで（最後の面が 37 面以上の連続 6 面。32〜37 面の窓から。
+      // 37 面から：どの連続 6 面にも同じ動物・同じ場所は 2 回まで（最後の面が 37 面以上の連続 6 面。32〜37 面の窓から。
       // 2026-11-11。UX レビュー「新しい動物・行動が 121 面まで出てこない」→ PM の案にユーザー「おすすめで」）
       const six = { a: [], p: [] };
       for (let e = 36; e < N; e++) {
@@ -1519,12 +1519,12 @@ export const tests = [
         for (const k of ['a', 'p']) {
           const cnt = {};
           for (const x of w) cnt[x[k]] = (cnt[x[k]] || 0) + 1;
-          const over = Object.keys(cnt).filter((v) => cnt[v] > 3);
+          const over = Object.keys(cnt).filter((v) => cnt[v] > 2);
           if (over.length) six[k].push(`${e - 4}〜${e + 1} 面 ${over.map((v) => v + '×' + cnt[v]).join(' ')}`);
         }
       }
-      check(`37 面から（36→37 面の境目を含む）どの連続 6 面にも同じ動物は 3 回まで（${six.a.length} か所）`, six.a.length === 0, six.a.slice(0, 10));
-      check(`37 面から（36→37 面の境目を含む）どの連続 6 面にも同じ場所は 3 回まで（${six.p.length} か所）`, six.p.length === 0, six.p.slice(0, 10));
+      check(`37 面から（36→37 面の境目を含む）どの連続 6 面にも同じ動物は 2 回まで（${six.a.length} か所）`, six.a.length === 0, six.a.slice(0, 10));
+      check(`37 面から（36→37 面の境目を含む）どの連続 6 面にも同じ場所は 2 回まで（${six.p.length} か所）`, six.p.length === 0, six.p.slice(0, 10));
     },
   },
 ];
