@@ -113,9 +113,9 @@ const setHidden = (p, hidden) => p.evaluate((h) => {
 
 // だいじょうぶな ところまで もどす（AW39・AW40）：Node の logic で「落ち着いてから押す」遊び方をまね、
 // want＝'stuck'（うごかせない）か 'dead'（予備軍：うごかせないでなく、rescueSearch が上限 150 で dead）になる押す列を探す（4 回に 1 回 でたらめ）
-function findPath(L, lv, want, { chal = false, seed = 3, tries = 40 } = {}) {
+function findPath(L, lv, want, { chal = false, seed = 3, tries = 40, pick = null } = {}) {
   const settle = (s) => { for (let i = 0; i < 20000; i++) { const r = L.step(s); if (!r.moved) return s; s = r.state; } return s; };
-  const pk = L.pickPicture(lv, null);
+  const pk = pick || L.pickPicture(lv, null);
   const s0 = (chal ? L.createLevel(lv, pk, { challenge: true }) : L.createLevel(lv, pk)).state;
   let sd = seed;
   const rnd = () => { sd = (sd * 1103515245 + 12345) & 0x7fffffff; return sd / 0x7fffffff; };
@@ -156,6 +156,15 @@ const pressCol = (p, c) => p.evaluate((c) => window.AmaiGame.press(c), c);
 const settleG = (p) => p.evaluate(() => window.AmaiGame.settle());
 const skipG = (p) => p.evaluate(() => window.AmaiGame.skip());
 const setLevel = async (p, n) => { await p.evaluate((n) => window.AmaiGame.setLevel(n), n); await wait(p, 150); };
+// 2026-11-10 に並べ替える前のその面の絵（OLD_PIC）で面を始める：途中の保存（押した手 0）を書いて開き直す。
+// 並べ替えた面の古い保存は前と同じ盤になる（約束 §2.1・§2.7）ので、局面の形に頼る確かめ（AW25・AW27・AW40）を前と同じ盤で続ける
+const OLD_PIC = { 9: 'inuyukiyamanemuru', 14: 'kumayukiyamaoyatsu', 39: 'usagiyukiyamaoyatsu', 80: 'inumorioekaki' };
+const setOldLevel = async (p, n) => {
+  // ゲームの画面は離れるとき（pagehide）に保存を書くので、保存の文字をここで作り、中立のページで書いてから開く（seed）
+  const sv = await p.evaluate(([n, id]) => window.AmaiLogic.makeSave(n, { id, mirror: false, repeat: false }, [], 0), [n, OLD_PIC[n]]);
+  await seed(p, { 'amai.save': sv }, { clear: false });
+  await p.goto(AM); await wait(p, 300);
+};
 // 解の順に「落ち着くまで進める → 押す」。n 個目まで（既定は全部）。押せなければ例外
 async function playSolution(p, n = Infinity) {
   const sol = await solutionOf(p);
@@ -391,7 +400,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW3', tier: 'smoke', title: 'あまいもの データ：2 回押して何はこびか進め再読み込みすると同じ局面（t・left・わく・列・絵）、201 面（くり返し）でも同じ、壊れた amai.save・amai.best・amai.book でも落ちない、ほかのゲームの保存キーを変えない',
+    id: 'AW3', tier: 'smoke', title: 'あまいもの データ：2 回押して何はこびか進め再読み込みすると同じ局面（t・left・わく・列・絵）、251 面（くり返し）でも同じ、壊れた amai.save・amai.best・amai.book でも落ちない、ほかのゲームの保存キーを変えない',
     async run({ browser, check, root }) {
       const others = { 'blockpuzzle.best': '777', 'tile2048.best': '888', 'hashi.best': '55', 'zenmai.progress': '{"stars":{"z01":3}}', 'pikatto.bestSolo': '321', 'kiritori.best': '99', 'irobin.best': '4' };
       const { ctx, page } = await openG(browser, 'AW3', { v: SMOKE_V(), extra: others });
@@ -418,14 +427,14 @@ export const tests = [
       const changed = Object.entries(others).filter(([k, v]) => after[k] !== v).map(([k]) => k);
       const extraKeys = Object.keys(after).filter((k) => !(k in others) && !k.startsWith('amai.') && k !== 'blockpuzzle.sound');
       check(`ほかのゲームの保存キーは変わらず、新しいキーは amai.* だけ（変化 ${changed.join(',') || 'なし'}・余分 ${extraKeys.join(',') || 'なし'}）`, changed.length === 0 && extraKeys.length === 0, { changed, extraKeys });
-      // 201 面（くり返し。49〜100 面は 2026-11-03、101〜150 面は 2026-11-04、151〜200 面は 2026-11-09 に足した絵）。ずかんに 200 枚そろえてから（空のずかんだと 3 枚目からの 0 回の絵が反転せずに先に出る。約束 §2.7）
+      // 251 面（くり返し。49〜100 面は 2026-11-03、101〜150 面は 2026-11-04、151〜200 面は 2026-11-09、201〜250 面は 2026-11-10 に足した絵）。ずかんに 250 枚そろえてから（空のずかんだと 3 枚目からの 0 回の絵が反転せずに先に出る。約束 §2.7）
       await page.evaluate(() => { const L = window.AmaiLogic; localStorage.setItem(L.SAVE_KEY_BOOK, JSON.stringify({ v: 1, got: Object.fromEntries(L.PICTURE_ORDER.map((p) => [p.id, 1])) })); });
-      await setLevel(page, 201);
+      await setLevel(page, 251);
       const sol49 = await solutionOf(page);
       await settleG(page); await pressCol(page, sol49[0]); await page.evaluate(() => window.AmaiGame.tick(2)); await settleG(page); await skipG(page);
       const a49 = await gs(page), a49l = await lg(page);
-      check(`201 面はくり返しの面（repeat ${a49l.repeat}・mirror ${a49l.mirror}・presses ${a49.presses}）`, a49.level === 201 && a49l.repeat === true && a49l.mirror === true && a49.presses === 1, { level: a49.level, repeat: a49l.repeat, mirror: a49l.mirror });
-      await same('201 面（くり返し）', a49, a49l, (b) => b.repeat === true && b.mirror === true && b.picture === a49l.picture);
+      check(`251 面はくり返しの面（repeat ${a49l.repeat}・mirror ${a49l.mirror}・presses ${a49.presses}）`, a49.level === 251 && a49l.repeat === true && a49l.mirror === true && a49.presses === 1, { level: a49.level, repeat: a49l.repeat, mirror: a49l.mirror });
+      await same('251 面（くり返し）', a49, a49l, (b) => b.repeat === true && b.mirror === true && b.picture === a49l.picture);
       // 壊れた amai.save（使えない形は 1 面から。形が正しく絵の id だけ知らない保存は、その面の最初か 1 面）
       const BAD_SAVE = ['{not json', '', 'null', '[]', '{"v":2,"level":3,"pic":"ringo","mirror":false,"rep":false,"presses":[],"t":0}',
         '{"v":1,"level":0,"pic":"ringo","mirror":false,"rep":false,"presses":[],"t":0}', '{"v":1,"level":-2,"pic":"ringo","mirror":false,"rep":false,"presses":[],"t":0}',
@@ -445,7 +454,7 @@ export const tests = [
       }
       check(`壊れた amai.save（${BAD_SAVE.length} 通り）でも落ちず、面の最初（または 1 面）から始まる`, bad.length === 0, bad);
       // 描き直す前の古い絵の id（計画書 amai-redraw.md §7.1）：途中の保存の絵が古い id でも落ちず、同じ面の番号で新しい絵の面を最初から。
-      // ずかんの古い id は消さないが「M / 200」に数えない
+      // ずかんの古い id は消さないが「M / 250」に数えない
       const PO = loadLogic(root).PICTURE_ORDER;
       const oldBook = J({ v: 1, got: { kinoko: 4, sakura: 2, kanransha: 1, [PO[0].id]: 1 } });
       const oldRows = [];
@@ -944,7 +953,7 @@ export const tests = [
       const info = swInfo(root);
       const dir = path.join(root, 'games/amai');
       const actual = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => fs.statSync(path.join(dir, f)).isFile()) : [];
-      const required = ['index.html', 'pictures-a.js', 'pictures-b.js', 'pictures-c.js', 'pictures-d.js', 'pictures-e.js', 'logic.js', 'render.js', 'input.js', 'main.js'];
+      const required = ['index.html', 'pictures-a.js', 'pictures-b.js', 'pictures-c.js', 'pictures-d.js', 'pictures-e.js', 'pictures-f.js', 'logic.js', 'render.js', 'input.js', 'main.js'];
       const want = ['./games/amai/', ...required.map((f) => `./games/amai/${f}`), ...actual.map((f) => `./games/amai/${f}`)];
       const uniq = [...new Set(want)];
       const missing = uniq.filter((f) => !info.files.includes(f));
@@ -966,8 +975,8 @@ export const tests = [
       await page.goto(AM, { timeout: 10000 }); await sleep(500);
       const libs = await page.evaluate(() => ({ L: typeof window.AmaiLogic?.step, R: typeof window.AmaiRender?.create, I: typeof window.AmaiInput?.attach, P: typeof window.AmaiPictures?.add, Y: typeof window.YubiSfx?.create, G: typeof window.AmaiGame?.getState }));
       check('オフラインで開き、AmaiLogic・AmaiRender・AmaiInput・AmaiPictures・YubiSfx・AmaiGame が使える', Object.values(libs).every((x) => x === 'function'), libs);
-      const js = ['pictures-a.js', 'pictures-b.js', 'pictures-c.js', 'pictures-d.js', 'pictures-e.js', 'logic.js', 'render.js', 'input.js', 'main.js', 'common/sfx.js'].map((f) => ({ f, hit: resp.find((r) => r.f.endsWith(f)) }));
-      check('pictures-a.js・pictures-b.js・pictures-c.js・pictures-d.js・pictures-e.js・logic.js・render.js・input.js・main.js・sfx.js を Service Worker から 200 で読んだ', js.every((x) => x.hit && x.hit.sw && x.hit.status === 200), { js, resp });
+      const js = ['pictures-a.js', 'pictures-b.js', 'pictures-c.js', 'pictures-d.js', 'pictures-e.js', 'pictures-f.js', 'logic.js', 'render.js', 'input.js', 'main.js', 'common/sfx.js'].map((f) => ({ f, hit: resp.find((r) => r.f.endsWith(f)) }));
+      check('pictures-a.js・pictures-b.js・pictures-c.js・pictures-d.js・pictures-e.js・pictures-f.js・logic.js・render.js・input.js・main.js・sfx.js を Service Worker から 200 で読んだ', js.every((x) => x.hit && x.hit.sw && x.hit.status === 200), { js, resp });
       if (libs.G === 'function') {
         const sol = await page.evaluate(() => window.AmaiGame.solution());
         await page.evaluate((m) => { for (const c of m.slice(0, 2)) { window.AmaiGame.settle(); window.AmaiGame.press(c); window.AmaiGame.skip(); } }, sol);
@@ -1030,7 +1039,7 @@ export const tests = [
       await page.goto(BASE); await wait(page, 200);
       const cb = await card();
       check(`ずかんに 2 枚なら「3 めん クリア」に「ずかん 2」が付く（${cb && cb.bestAll}）`, cb && /3 めん クリア/.test(cb.bestAll) && /ずかん\s*2/.test(cb.bestAll), cb);
-      // 描き直す前の古い id（sakura・kinoko …）は amai.book に残っていても数えない（ずかんの「M / 200」と同じ。計画書 amai-redraw.md §7.1）
+      // 描き直す前の古い id（sakura・kinoko …）は amai.book に残っていても数えない（ずかんの「M / 250」と同じ。計画書 amai-redraw.md §7.1）
       const menuSrc = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
       const mIds = (() => { const m = /const AMAI_IDS = \[([\s\S]*?)\];/.exec(menuSrc); return m ? [...m[1].matchAll(/"([a-z]+)"/g)].map((x) => x[1]) : null; })();
       check(`メニューの AMAI_IDS（${mIds && mIds.length} 枚）が logic.js の PICTURE_ORDER の id と同じ並び`, !!mIds && J(mIds) === J(LG.PICTURE_ORDER.map((p) => p.id)), mIds);
@@ -1060,7 +1069,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW17', tier: 'full', title: 'あまいもの ずかん：クリアした絵は色つきの小さな絵と名前と回数、まだの絵は「？？？」、上に「M / 200」・季節の札・200 枚がスクロールで全部見えて「とじる」がいつも押せる。開いている間 t は進まず、閉じると続き',
+    id: 'AW17', tier: 'full', title: 'あまいもの ずかん：クリアした絵は色つきの小さな絵と名前と回数、まだの絵は「？？？」、上に「M / 250」・季節の札・250 枚がスクロールで全部見えて「とじる」がいつも押せる。開いている間 t は進まず、閉じると続き',
     async run({ browser, check, root }) {
       const LG = loadLogic(root);
       const order = LG.PICTURE_ORDER, total = order.length;
@@ -1075,7 +1084,7 @@ export const tests = [
         const notYet = (text.match(/？？？/g) || []).length;
         check(`${v.label}：「2 / ${total}」、クリアした絵の名前（${names[0]}・${names[2]}）と「1 かい」「3 かい」、まだの絵は「？？？」が ${total - 2} 個（${notYet}）`,
           new RegExp(`2\\s*/\\s*${total}`).test(text) && text.includes(names[0]) && text.includes(names[2]) && /1\s*かい/.test(text) && /3\s*かい/.test(text) && notYet === total - 2, { text: text.slice(0, 200), notYet });
-        // 季節の札：3〜48 面を場面の絵に描き直し、季節は うみべ＝なつ・ゆきやま＝ふゆ だけになった（計画書 amai-redraw.md §4）。101〜150 面で はなばたけ＝はる が増えた（151〜200 面の まち・ゆうえんち・ほしぞら は季節なし）
+        // 季節の札：3〜48 面を場面の絵に描き直し、季節は うみべ＝なつ・ゆきやま＝ふゆ だけになった（計画書 amai-redraw.md §4）。101〜150 面で はなばたけ＝はる が増えた（151〜250 面の まち・ゆうえんち・ほしぞら は季節なし）
         const seasonsIn = [...new Set(order.map((p) => LG.pictureById(p.id, false).season).filter(Boolean))];
         const SW = { haru: 'はる', natsu: 'なつ', aki: 'あき', fuyu: 'ふゆ' };
         check(`${v.label}：まだの絵の名前は出ない（例：${names[10]}）・季節の札（${seasonsIn.map((x) => SW[x]).join('・')}）が出る`, !text.includes(names[10]) && seasonsIn.length >= 2 && seasonsIn.every((x) => text.includes(SW[x])), text.slice(0, 160));
@@ -1356,7 +1365,8 @@ export const tests = [
     async run({ browser, check }) {
       const { ctx, page } = await openG(browser, 'AW25');
       // 9 面（2026-11-05 に 3 → 12、2026-11-06 に 12 → 9。取る順を道のりにして面の作りが変わり、12 面の手前の箱がみな ふちに出ている色になったため。ふちに無い色の手前の箱がある面）
-      await page.evaluate(() => window.AmaiGame.setLevel(9));
+      // 2026-11-10 の並べ替えで 9 面の絵が変わったので、並べ替える前の 9 面の絵で始める（setOldLevel）
+      await setOldLevel(page, 9);
       await wait(page, 300);
       const edge0 = await page.evaluate(() => window.AmaiGame.edgeColors());
       check(`edgeColors() が 今ふちに出ている色を返す（${JSON.stringify(edge0)}）`, Array.isArray(edge0) && edge0.length > 0, edge0);
@@ -1441,7 +1451,7 @@ export const tests = [
       // 9・14・39 面（2026-11-05 に 3・13・40 から 12・18・41、2026-11-06 に取る順を道のりにして面の作りが変わったので 9・14・39。ふちに無い色の手前の箱がある M・L・XXL の面）
       for (const lv of [9, 14, 39]) {
         await page.goto(AM); await wait(page, 300);
-        await page.evaluate((lv) => window.AmaiGame.setLevel(lv), lv);
+        await setOldLevel(page, lv);   // 2026-11-10 の並べ替えの前の その面の絵（前と同じ盤）
         await wait(page, 500);
         const pr = await page.evaluate(() => {
           const g = window.AmaiGame.getState();
@@ -1476,7 +1486,7 @@ export const tests = [
 
   // ================= 面えらび・花輪・ともだちに おくる（2026-11-03。計画書 docs/plans/amai-select.md §1・§3） =================
   {
-    id: 'AW28', tier: 'full', title: 'あまいもの 面えらび：「めん」で一覧（1〜200 面）・選べるのは 1〜ベスト＋1 面（その先は押せない「？」）・選ぶと最初から・押した数 1 以上なら確かめ（やめる／はじめる）・ベスト（amai.best）は下がらない・クリアの「つぎの めんへ」は選んだ面の次・ベスト 200 以上は「つづき」・壊れた amai.best でも落ちない',
+    id: 'AW28', tier: 'full', title: 'あまいもの 面えらび：「めん」で一覧（1〜250 面）・選べるのは 1〜ベスト＋1 面（その先は押せない「？」）・選ぶと最初から・押した数 1 以上なら確かめ（やめる／はじめる）・ベスト（amai.best）は下がらない・クリアの「つぎの めんへ」は選んだ面の次・ベスト 250 以上は「つづき」・壊れた amai.best でも落ちない',
     async run({ browser, check }) {
       const PO = await (async () => { const { ctx, page } = await openG(browser, 'AW28 絵'); const ids = await page.evaluate(() => window.AmaiLogic.PICTURE_ORDER.map((x) => x.id)); await ctx.close(); return ids; })();
       const { ctx, page } = await openG(browser, 'AW28', { extra: { 'amai.best': '5', 'amai.save': null } });
@@ -1489,7 +1499,7 @@ export const tests = [
       check(`ベスト 5・保存なしで開くと 6 面（${s0.level}）`, s0.level === 6, s0.level);
       await page.click('#selectBtn'); await wait(page, 150);
       const l1 = await list();
-      check(`「めん」で面えらびのカード（${l1.kind}）・1〜200 面（${l1.n} 個）・選べるのは 1〜6 面（${J(l1.open)}）・7 面から先は押せない「？」（${l1.dis.length} 個・「？」${l1.q} 個）・いまの面 6 に印（${J(l1.cur)}）・「つづき」なし`, l1.kind === 'select' && l1.n === 200 && J(l1.open) === J([1, 2, 3, 4, 5, 6]) && l1.dis.length === 194 && l1.dis[0] === 7 && l1.q === 194 && J(l1.cur) === J([6]) && l1.more.length === 0, l1);
+      check(`「めん」で面えらびのカード（${l1.kind}）・1〜250 面（${l1.n} 個）・選べるのは 1〜6 面（${J(l1.open)}）・7 面から先は押せない「？」（${l1.dis.length} 個・「？」${l1.q} 個）・いまの面 6 に印（${J(l1.cur)}）・「つづき」なし`, l1.kind === 'select' && l1.n === 250 && J(l1.open) === J([1, 2, 3, 4, 5, 6]) && l1.dis.length === 244 && l1.dis[0] === 7 && l1.q === 244 && J(l1.cur) === J([6]) && l1.more.length === 0, l1);
       await pickLv(7);
       const s7 = await gs(page);
       check(`押せない 7 面を押しても何も起きない（面 ${s7.level}・カード ${s7.overlay}）`, s7.level === 6 && s7.overlay === 'select', s7);
@@ -1510,7 +1520,7 @@ export const tests = [
       const sc = await gs(page);
       const lc = await list();
       const here = await page.evaluate(() => [...document.querySelectorAll('#card ul.levels li[data-current="1"] .here')].map((e) => e.textContent));
-      check(`「やめる」で 3 面のまま・押した数 1 のまま（${sc.level}・${sc.presses}）・面えらびの一覧に戻る（カード ${sc.overlay}・${lc.kind}・${lc.n} 個）（E-5）・いまの面に文字「いま」（${J(here)}）（E-4）`, sc.level === 3 && sc.presses === 1 && sc.overlay === 'select' && lc.kind === 'select' && lc.n === 200 && J(here) === J(['いま']), { sc, lc, here });
+      check(`「やめる」で 3 面のまま・押した数 1 のまま（${sc.level}・${sc.presses}）・面えらびの一覧に戻る（カード ${sc.overlay}・${lc.kind}・${lc.n} 個）（E-5）・いまの面に文字「いま」（${J(here)}）（E-4）`, sc.level === 3 && sc.presses === 1 && sc.overlay === 'select' && lc.kind === 'select' && lc.n === 250 && J(here) === J(['いま']), { sc, lc, here });
       const wn = await page.evaluate(() => { const n = document.querySelector('#card p.wnote'); return { t: n ? n.textContent.trim() : null, w: !!(n && n.querySelector('.wreath')) }; });
       check(`面えらびの上に花輪の説明の行（${J(wn.t)}）（E-3）`, wn.w && /1手もどし なしで クリア/.test(wn.t || ''), wn);
       await pickLv(2);
@@ -1529,30 +1539,36 @@ export const tests = [
       const back = await reachable(page, 'a#back');
       await page.keyboard.press('Escape'); await wait(page, 150);
       check(`面えらびの間も「← メニュー」が押せる（${back}）・Esc で閉じる（${(await gs(page)).overlay}）`, back && (await gs(page)).overlay === null, back);
-      // ベスト 150（151〜200 面を足す前に一覧の最後まで進んでいた人）：一覧は 200 面・選べるのは 1〜151 面・「つづき」なし（2026-11-09）
+      // ベスト 150（151〜200 面を足す前に一覧の最後まで進んでいた人）：一覧は 250 面・選べるのは 1〜151 面・「つづき」なし（2026-11-09）
       await gotoG(page, { 'amai.best': '150', 'amai.save': null });
       await page.click('#selectBtn'); await wait(page, 150);
       const l15 = await list();
-      check(`ベスト 150：一覧 ${l15.n} 個（1〜200 面）・選べるのは 1〜151 面（${l15.open.length}）・「つづき」なし（${J(l15.more)}）・いまの面 151 に印（${J(l15.cur)}）`, l15.n === 200 && l15.open.length === 151 && l15.open[150] === 151 && l15.more.length === 0 && l15.dis.length === 49 && J(l15.cur) === J([151]), l15);
+      check(`ベスト 150：一覧 ${l15.n} 個（1〜250 面）・選べるのは 1〜151 面（${l15.open.length}）・「つづき」なし（${J(l15.more)}）・いまの面 151 に印（${J(l15.cur)}）`, l15.n === 250 && l15.open.length === 151 && l15.open[150] === 151 && l15.more.length === 0 && l15.dis.length === 99 && J(l15.cur) === J([151]), l15);
       await page.keyboard.press('Escape'); await wait(page, 150);
-      // ベスト 200：一覧は 200 面まで＋「つづき（201 めん）」
+      // ベスト 200（201〜250 面を足す前に一覧の最後まで進んでいた人）：一覧は 250 面・選べるのは 1〜201 面・「つづき」なし（2026-11-10）
       await gotoG(page, { 'amai.best': '200', 'amai.save': null });
       await page.click('#selectBtn'); await wait(page, 150);
-      const l2 = await list();
-      check(`ベスト 200：一覧 ${l2.n} 個（1〜200 面＋つづき）・つづきは 201 面（${J(l2.more)}）・1〜200 面は全部選べる（${l2.open.length - 1}）・いまの面 201 に印（${J(l2.cur)}）`, l2.n === 201 && J(l2.more) === J([201]) && l2.open.length === 201 && l2.dis.length === 0 && J(l2.cur) === J([201]), l2);
-      await pickLv(200);
-      const s100 = await gs(page);
-      check(`ベスト 200 で 200 面を選べる（${s100.level}・絵 ${s100.picture}）・ベストは 200 のまま`, s100.level === 200 && s100.picture === PO[199] && (await stored(page, 'amai.best')) === '200', s100);
+      const l20 = await list();
+      check(`ベスト 200：一覧 ${l20.n} 個（1〜250 面）・選べるのは 1〜201 面（${l20.open.length}）・「つづき」なし（${J(l20.more)}）・いまの面 201 に印（${J(l20.cur)}）`, l20.n === 250 && l20.open.length === 201 && l20.open[200] === 201 && l20.more.length === 0 && l20.dis.length === 49 && J(l20.cur) === J([201]), l20);
+      await page.keyboard.press('Escape'); await wait(page, 150);
+      // ベスト 250：一覧は 250 面まで＋「つづき（251 めん）」
+      await gotoG(page, { 'amai.best': '250', 'amai.save': null });
       await page.click('#selectBtn'); await wait(page, 150);
-      await pickLv(201);
+      const l2 = await list();
+      check(`ベスト 250：一覧 ${l2.n} 個（1〜250 面＋つづき）・つづきは 251 面（${J(l2.more)}）・1〜250 面は全部選べる（${l2.open.length - 1}）・いまの面 251 に印（${J(l2.cur)}）`, l2.n === 251 && J(l2.more) === J([251]) && l2.open.length === 251 && l2.dis.length === 0 && J(l2.cur) === J([251]), l2);
+      await pickLv(250);
+      const s100 = await gs(page);
+      check(`ベスト 250 で 250 面を選べる（${s100.level}・絵 ${s100.picture}）・ベストは 250 のまま`, s100.level === 250 && s100.picture === PO[249] && (await stored(page, 'amai.best')) === '250', s100);
+      await page.click('#selectBtn'); await wait(page, 150);
+      await pickLv(251);
       const s151 = await gs(page);
-      check(`「つづき」で 201 面（${s151.level}）`, s151.level === 201 && s151.presses === 0, s151);
+      check(`「つづき」で 251 面（${s151.level}）`, s151.level === 251 && s151.presses === 0, s151);
       // 壊れた amai.best
       for (const bad of ['abc', '-1', '{', '1.5', '']) {
         await gotoG(page, { 'amai.best': bad, 'amai.save': null });
         await page.click('#selectBtn'); await wait(page, 150);
         const lb = await list();
-        check(`壊れた amai.best（${J(bad)}）でも落ちず、選べるのは 1 面だけ（${J(lb.open)}）`, lb.kind === 'select' && J(lb.open) === J([1]) && lb.n === 200, lb);
+        check(`壊れた amai.best（${J(bad)}）でも落ちず、選べるのは 1 面だけ（${J(lb.open)}）`, lb.kind === 'select' && J(lb.open) === J([1]) && lb.n === 250, lb);
       }
       await ctx.close();
     },
@@ -1608,7 +1624,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW30', tier: 'full', title: 'あまいもの ともだちに おくる：クリアのカードのボタンで navigator.share に 文（「N めん クリア！」・もどしなし・ずかん M/200）・URL・クリアした絵の PNG（canShare が true のときだけ）を渡す。canShare が無い・false なら文と URL だけ。やめた（AbortError）ら何も出さない・失敗したら あどれすの吹き出し（あどれすを押しても閉じない・ほかを押すと閉じる）。share が無ければ文と URL をコピー。落ちない',
+    id: 'AW30', tier: 'full', title: 'あまいもの ともだちに おくる：クリアのカードのボタンで navigator.share に 文（「N めん クリア！」・もどしなし・ずかん M/250）・URL・クリアした絵の PNG（canShare が true のときだけ）を渡す。canShare が無い・false なら文と URL だけ。やめた（AbortError）ら何も出さない・失敗したら あどれすの吹き出し（あどれすを押しても閉じない・ほかを押すと閉じる）。share が無ければ文と URL をコピー。落ちない',
     async run({ browser, check }) {
       const URL0 = 'https://harutonatu.github.io/game-no1/games/amai/';
       const { ctx, page } = await openG(browser, 'AW30');
@@ -1647,7 +1663,7 @@ export const tests = [
       await stub('ok', 'yes', 'keep');
       const a = await share();
       const a0 = a[0] || {};
-      check(`share に文「${a0.text}」（${s.level}めん クリア！・もどしなし・ずかん ${s.book}/200）・URL（${a0.url}）・PNG（${J(a0.files)}）`, a.length === 1 && a0.text.includes(`${s.level}めん クリア！`) && a0.text.includes('もどしなし') && a0.text.includes(`ずかん ${s.book}/200`) && a0.url === URL0 && Array.isArray(a0.files) && a0.files.length === 1 && a0.files[0].type === 'image/png' && /\.png$/.test(a0.files[0].name) && a0.files[0].size > 200, a);
+      check(`share に文「${a0.text}」（${s.level}めん クリア！・もどしなし・ずかん ${s.book}/250）・URL（${a0.url}）・PNG（${J(a0.files)}）`, a.length === 1 && a0.text.includes(`${s.level}めん クリア！`) && a0.text.includes('もどしなし') && a0.text.includes(`ずかん ${s.book}/250`) && a0.url === URL0 && Array.isArray(a0.files) && a0.files.length === 1 && a0.files[0].type === 'image/png' && /\.png$/.test(a0.files[0].name) && a0.files[0].size > 200, a);
       const png = await page.evaluate(async () => { try { const b = await createImageBitmap(window.__file); return { w: b.width, h: b.height }; } catch (e) { return { err: String(e) }; } });
       check(`PNG は読める画像で、ドットを拡大している（${J(png)}。一番小さい絵でも 1 マス 4px 以上）`, png.w >= 200 && png.h >= 100, png);
       const n1 = await note();
@@ -1692,11 +1708,11 @@ export const tests = [
     },
   },
   {
-    id: 'AW31', tier: 'full', title: 'あまいもの 小さい画面（SE 縦 320×568・SE 横）：面えらび（ベスト 37・200・16 桁）とクリアのカード（ともだちに おくる）が崩れない：見出しが 1 行・ボタン 44px 以上で届く・面の番号がはみ出さない・横スクロールなし',
+    id: 'AW31', tier: 'full', title: 'あまいもの 小さい画面（SE 縦 320×568・SE 横）：面えらび（ベスト 37・250・16 桁）とクリアのカード（ともだちに おくる）が崩れない：見出しが 1 行・ボタン 44px 以上で届く・面の番号がはみ出さない・横スクロールなし',
     async run({ browser, check }) {
       for (const v of [view('SE', 'p', 'app'), view('SE', 'l', 'app')]) {
         const { ctx, page } = await openG(browser, `AW31 ${v.label}`, { v });
-        for (const best of ['37', '200', '9007199254740990']) {
+        for (const best of ['37', '250', '9007199254740990']) {
           await gotoG(page, { 'amai.best': best, 'amai.save': null });
           await page.click('#selectBtn'); await wait(page, 200);
           const r = await page.evaluate(() => {
@@ -1742,7 +1758,7 @@ export const tests = [
       const LG = loadLogic(root);
       const got = {}; for (const p of LG.PICTURE_ORDER) got[p.id] = 1;
       const v = custom(375, 667, null, 'iPhone 8 375×667');
-      const { ctx, page } = await openG(browser, 'AW32', { v, extra: { 'amai.book': J({ v: 1, got }), 'amai.best': '200' } });
+      const { ctx, page } = await openG(browser, 'AW32', { v, extra: { 'amai.book': J({ v: 1, got }), 'amai.best': '250' } });
       // いま開いているカードの絵（canvas）の状態を読む
       const probe = (sel) => page.evaluate((sel) => {
         const card = document.querySelector('#card');
@@ -1779,7 +1795,7 @@ export const tests = [
         let k = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) k++;
         return k;
       }, sel);
-      for (const [name, btn, sel, total] of [['ずかん', '#bookBtn', 'ul.book', LG.PICTURE_ORDER.length], ['面えらび', '#selectBtn', 'ul.levels', 200]]) {
+      for (const [name, btn, sel, total] of [['ずかん', '#bookBtn', 'ul.book', LG.PICTURE_ORDER.length], ['面えらび', '#selectBtn', 'ul.levels', 250]]) {
         await page.click(btn); await wait(page, 100);
         let a = await probe(sel);
         for (let i = 0; i < 40 && a.painted < 1; i++) { await sleep(50); a = await probe(sel); }   // 最初の 1 枚が描かれるまで実時間で待つ（最大 2 秒）
@@ -1806,7 +1822,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW33', tier: 'full', flaky: { why: 'CPU 6 倍遅くで開く時間（実時間）を測る', checks: /CPU 6 倍遅くで開くのに/ }, title: 'あまいもの ずかん・面えらびを開く時間：CPU 6 倍遅く（iPhone SE 相当）・375×667 で、200 枚そろいのずかんと、ベスト 200 の面えらびを開いて 2 コマ描き終わるまでが 1.8 秒以内（v63 までは約 3〜5 秒。目標は 1 秒。性能は揺れるので余裕を持つ）。Chromium だけ',
+    id: 'AW33', tier: 'full', flaky: { why: 'CPU 6 倍遅くで開く時間（実時間）を測る', checks: /CPU 6 倍遅くで開くのに/ }, title: 'あまいもの ずかん・面えらびを開く時間：CPU 6 倍遅く（iPhone SE 相当）・375×667 で、250 枚そろいのずかんと、ベスト 250 の面えらびを開いて 2 コマ描き終わるまでが 1.8 秒以内（v63 までは約 3〜5 秒。目標は 1 秒。性能は揺れるので余裕を持つ）。Chromium だけ',
     async run({ browser, check, root }) {
       if (!IS_CHROMIUM) { check('対象外（CDP の CPU 制限は Chromium だけ）', true); return; }
       const LG = loadLogic(root);
@@ -1816,7 +1832,7 @@ export const tests = [
         const ms = [];
         for (let i = 0; i < 3; i++) {
           const { ctx, page } = await newPage(browser, v, `AW33 ${name} ${i}`);   // 実時間で測るので clock は使わない
-          await gotoG(page, { 'amai.book': J({ v: 1, got }), 'amai.best': '200' });
+          await gotoG(page, { 'amai.book': J({ v: 1, got }), 'amai.best': '250' });
           const cdp = await ctx.newCDPSession(page);
           await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 });
           ms.push(Math.round(await page.evaluate(async (btn) => {
@@ -1834,7 +1850,7 @@ export const tests = [
   },
   // ---------- ちょうせんモード（2026-11-05。計画書 docs/plans/amai-challenge.md §1・契約 §3.5） ----------
   {
-    id: 'AW34', tier: 'full', title: 'あまいもの ちょうせん：クリアした 1〜200 面を押すと［ふつうで あそぶ］［ちょうせん］のカード（まだの面はふつうだけ）。ちょうせんは わく 2 つ・1手もどすは何回でも（2026-11-10 から。前は 3 回まで）でボタンは「1手もどす」だけ・はじめのヒントに「もどすと きんの わは つかないよ」。途中の保存はしない（開き直すと ふつうの続き）。クリアで「ちょうせん クリア！」・amai.gold に入り、面えらびとずかんに金の花輪（ふつうの花輪もあれば ふつうと金を1つずつ並べる）・ベストは変わらない・つぎの めんへ はふつうの次の面。ふつうで遊ぶ面の進み方は今までどおり。壊れた amai.gold でも落ちない',
+    id: 'AW34', tier: 'full', title: 'あまいもの ちょうせん：クリアした 1〜250 面を押すと［ふつうで あそぶ］［ちょうせん］のカード（まだの面はふつうだけ）。ちょうせんは わく 2 つ・1手もどすは何回でも（2026-11-10 から。前は 3 回まで）でボタンは「1手もどす」だけ・はじめのヒントに「もどすと きんの わは つかないよ」。途中の保存はしない（開き直すと ふつうの続き）。クリアで「ちょうせん クリア！」・amai.gold に入り、面えらびとずかんに金の花輪（ふつうの花輪もあれば ふつうと金を1つずつ並べる）・ベストは変わらない・つぎの めんへ はふつうの次の面。ふつうで遊ぶ面の進み方は今までどおり。壊れた amai.gold でも落ちない',
     async run({ browser, check }) {
       // 途中の保存は、ページの AmaiLogic.makeSave で今の絵の目印（picSig。課題 AM-18）つきで作る（目印が無いと 3 面からは最初から始まる）
       const { PO, save0 } = await (async () => { const { ctx, page } = await openG(browser, 'AW34 絵'); const r = await page.evaluate(() => { const L = window.AmaiLogic; const ids = L.PICTURE_ORDER.map((x) => x.id); return { PO: ids, save0: L.makeSave(11, { id: ids[10], mirror: false, repeat: false }, [[0, 0]], 3) }; }); await ctx.close(); return r; })();
@@ -2029,12 +2045,12 @@ export const tests = [
         check(`${v.label}：ちょうせんのクリアのカード（${J(cp.btns.map((b) => b.cmd))}）が崩れず、「ちょうせん クリア！」がはみ出さない（${J(gl)}）`, s.overlay === 'clear' && overlayOk(cp) && !!gl && gl.fs >= 12 && gl.sw <= gl.cw + 1, { cp, gl });
         await ctx.close();
       }
-      // 名前のいちばん長い 161 面（21 字・3 行）の もどした ちょうせんのクリア：SE 縦と Safari（320×454）で全部のボタンがスクロールなしで押せる（2026-11-10 技術 H-3・UX M1・L4）
+      // 名前のいちばん長い 198 面（はなばたけで ぺんぎんが じてんしゃに のる 22 字・3 行。2026-11-10 の並べ替えと足した絵の前は 161 面の 21 字）の もどした ちょうせんのクリア：SE 縦と Safari（320×454）で全部のボタンがスクロールなしで押せる（2026-11-10 技術 H-3・UX M1・L4）
       const gotAll = {}; PO.slice(0, 200).forEach((id) => { gotAll[id] = 1; });
       for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari')]) {
         const extra = { 'amai.best': '200', 'amai.book': J({ v: 1, got: gotAll }), 'amai.save': null };
-        const { ctx, page } = await openG(browser, `AW35 161 面 ${v.label}`, { v, extra });
-        await page.evaluate(() => window.AmaiGame.setLevel(161, { challenge: true })); await wait(page, 300);
+        const { ctx, page } = await openG(browser, `AW35 198 面 ${v.label}`, { v, extra });
+        await page.evaluate(() => window.AmaiGame.setLevel(198, { challenge: true })); await wait(page, 300);
         const sol = await solutionOf(page);
         await settleG(page); await pressCol(page, sol[0]); await skipG(page);
         await page.click('#undoBtn'); await wait(page, 150);
@@ -2042,7 +2058,7 @@ export const tests = [
         await wait(page, 600);
         const cp = await overlayProbe(page, v.safe);
         const oi = await overlayInfo(page);
-        check(`${v.label}：161 面（名前が 3 行）の もどした ちょうせんのクリアのカード（${J(cp.btns.map((b) => b.cmd))}・card ${cp.sh}/${cp.ch}）で、全部のボタンがスクロールなしで押せる・「もどしたので きんの わは つかないよ」あり`, s.overlay === 'clear' && overlayOk(cp) && cp.fit && /もどしたので きんの わは つかないよ/.test(oi.text), { cp, oi });
+        check(`${v.label}：198 面（名前が 3 行）の もどした ちょうせんのクリアのカード（${J(cp.btns.map((b) => b.cmd))}・card ${cp.sh}/${cp.ch}）で、全部のボタンがスクロールなしで押せる・「もどしたので きんの わは つかないよ」あり`, s.overlay === 'clear' && overlayOk(cp) && cp.fit && /もどしたので きんの わは つかないよ/.test(oi.text), { cp, oi });
         await ctx.close();
       }
     },
@@ -2236,8 +2252,8 @@ export const tests = [
       if (col !== undefined) { await pressCol(page, col); await settleG(page); await skipG(page); await wait(page, 600); }
       const g2 = await gs(page);
       check(`②このまま つづける で閉じる（overlay ${g1.overlay}・ヒント「${g1.hint}」）・次に押しても 2 回目は出ない（overlay ${g2.overlay}）`, g1.overlay === null && /この ままだと ぜんぶは はこべないかも/.test(g1.hint) && g2.overlay !== 'rescue', { g1, g2 });
-      // ③ 80 面の 1 手目を まちがえる（言い切れない局面）
-      await setLevel(page, 80);
+      // ③ 80 面の 1 手目を まちがえる（言い切れない局面）。2026-11-10 の並べ替えの前の 80 面の絵 inumorioekaki で（前と同じ盤。AL24 と同じ）
+      await setOldLevel(page, 80);
       const sol80 = await solutionOf(page);
       const st80 = await page.evaluate(() => window.AmaiGame.logic());
       const wrong = await page.evaluate(([s, first]) => { const L = window.AmaiLogic; const st = L.validateState(s); for (let c = 0; c < 4; c++) { if (c === first || L.canPress(st, c) !== null) continue; return c; } return -1; }, [st80, sol80[0]]);
@@ -2245,8 +2261,8 @@ export const tests = [
       const g3 = await gs(page);
       check(`③80 面の 1 手目を まちがえた局面（列 ${wrong}。解は列 ${sol80[0]}）では知らせない（overlay ${g3.overlay}・doomed ${g3.doomed}）`, wrong >= 0 && g3.overlay === null && !g3.doomed, g3);
       // ④ 80 面を詰ませて もどす
-      const seq80 = findPath(L, 80, 'stuck');
-      await setLevel(page, 80);
+      const seq80 = findPath(L, 80, 'stuck', { pick: { id: OLD_PIC[80], mirror: false, repeat: false } });
+      await setOldLevel(page, 80);
       let g4 = null;
       if (seq80) {
         await pressSeq(page, seq80); await wait(page, 600);
