@@ -158,7 +158,8 @@ const skipG = (p) => p.evaluate(() => window.AmaiGame.skip());
 const setLevel = async (p, n) => { await p.evaluate((n) => window.AmaiGame.setLevel(n), n); await wait(p, 150); };
 // 2026-11-10 に並べ替える前のその面の絵（OLD_PIC）で面を始める：途中の保存（押した手 0）を書いて開き直す。
 // 並べ替えた面の古い保存は前と同じ盤になる（約束 §2.1・§2.7）ので、局面の形に頼る確かめ（AW25・AW27・AW40）を前と同じ盤で続ける
-const OLD_PIC = { 9: 'inuyukiyamanemuru', 14: 'kumayukiyamaoyatsu', 39: 'usagiyukiyamaoyatsu', 80: 'inumorioekaki' };
+// 40 面は 2026-11-11 に 37 面からを散らす並びに変えたときに足した（AW40 の①②。v77 までの 40 面の絵）
+const OLD_PIC = { 9: 'inuyukiyamanemuru', 14: 'kumayukiyamaoyatsu', 39: 'usagiyukiyamaoyatsu', 40: 'inumoribooru', 80: 'inumorioekaki' };
 const setOldLevel = async (p, n) => {
   // ゲームの画面は離れるとき（pagehide）に保存を書くので、保存の文字をここで作り、中立のページで書いてから開く（seed）
   const sv = await p.evaluate(([n, id]) => window.AmaiLogic.makeSave(n, { id, mirror: false, repeat: false }, [], 0), [n, OLD_PIC[n]]);
@@ -2233,11 +2234,12 @@ export const tests = [
     id: 'AW40', tier: 'full', title: 'あまいもの 予備軍の知らせ（2026-11-10。計画書 amai-rescue.md・約束 §1.13）：①40 面で、あと少しで必ず うごかせなくなる局面（dead）になると、落ち着いたあとに下の小さなカード「この ままだと ぜんぶは はこべないかも」［だいじょうぶな ところまで もどす］［このまま つづける］（44px 以上・SE 縦に収まる）②このまま つづける で閉じ、ヒントが残る・次に押して落ち着いても 2 回目は出ない ③80 面の 1 手目を まちがえた局面（言い切れない）では出ない ④80 面を詰ませて［だいじょうぶな ところまで もどす］で面の最初（押した数 0）へ戻り、そこから解の順で押せる ⑤ちょうせんでも出て、もどすと chalUsed（金の花輪は付かない）',
     async run({ browser, check, root }) {
       const L = loadLogic(root);
-      const seq = findPath(L, 40, 'dead');
+      // 40 面は v77 までの 40 面の絵（OLD_PIC。前と同じ盤）で
+      const seq = findPath(L, 40, 'dead', { pick: { id: OLD_PIC[40], mirror: false, repeat: false } });
       check(`40 面で予備軍になる押す列が見つかる（${seq ? seq.length : '-'} 手）`, !!seq);
       if (!seq) return;
       const { ctx, page } = await openG(browser, 'AW40', { v: SMOKE_V() });
-      await setLevel(page, 40);
+      await setOldLevel(page, 40);
       await pressSeq(page, seq);
       await wait(page, 600); await skipG(page); await wait(page, 300);
       const g0 = await gs(page);
@@ -2273,11 +2275,12 @@ export const tests = [
       let replayOk = false;
       if (g5.presses === 0) { try { await playSolution(page); const c = await toClear(page); replayOk = c.overlay === 'clear'; } catch (e) { replayOk = false; } }
       check(`④80 面を詰ませて（${seq80 ? seq80.length : '-'} 手・${g4 && g4.overlay}）もどすと面の最初（押した数 ${g5.presses}・ヒント「${g5.hint}」）・そこから解の順でクリア（${replayOk}）`, !!seq80 && !!g4 && (g4.overlay === 'stuck' || g4.overlay === 'rescue') && g5.presses === 0 && /ここからなら/.test(g5.hint) && replayOk, { g4, g5 });
-      // ⑤ ちょうせん
-      const seqC = findPath(L, 40, 'dead', { chal: true });
+      // ⑤ ちょうせん（ちょうせんは途中の保存を使わないので今の絵で。2026-11-11 に 37 面からを散らす並びにしたとき、40 面〔今の絵〕は
+      // 予備軍になる押す列が見つからなくなったので、すぐ見つかる 43 面にした）
+      const seqC = findPath(L, 43, 'dead', { chal: true });
       let gc = null, gd = null;
       if (seqC) {
-        await page.evaluate(() => window.AmaiGame.setLevel(40, { challenge: true })); await wait(page, 150);
+        await page.evaluate(() => window.AmaiGame.setLevel(43, { challenge: true })); await wait(page, 150);
         await pressSeq(page, seqC); await wait(page, 600); await skipG(page); await wait(page, 300);
         gc = await gs(page);
         if (gc.overlay === 'rescue' || gc.overlay === 'stuck') { await wait(page, 450); await clickCmd(page, 'rewindYes'); }

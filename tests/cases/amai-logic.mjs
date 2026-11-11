@@ -947,7 +947,7 @@ export const tests = [
     async run({ check, root }) {
       const L = load(root);
       const PO = L.PICTURE_ORDER;
-      // 並べ替える前の 250 枚の並び（1〜200 面は v76 の PICTURE_ORDER。2026-11-10 に段の中で並べ替えた。docs/plans/amai-parts/order-before.txt）。
+      // 並べ替える前の 250 枚の並び（1〜200 面は v77 まで（PICTURE_ORDER は v76 と同じ）の PICTURE_ORDER。2026-11-10 に段の中で並べ替えた。docs/plans/amai-parts/order-before.txt）。
       // 49〜100 面・101〜150 面・151〜200 面を足す前の人の確かめは、そのころの並び（OB）で ずかん を作る
       const OB = fs.readFileSync(path.join(root, 'docs/plans/amai-parts/order-before.txt'), 'utf8').split('\n').filter((l) => l && !l.startsWith('#')).map((l) => l.split(' ')[2]);
       // ずかんに 0 回の絵のうち、PICTURE_ORDER の 3 枚目から一番前（251 面から反転せずに先に出る絵。§2.7）
@@ -1096,7 +1096,7 @@ export const tests = [
       const clean150 = J({ v: 1, ids: OB.slice(0, 150) });
       check('もどしなしの印（1〜150 枚目）は消えない・足した絵には付かない', L.validateClean(clean150).ids.length === 150 && L.hasClean(clean150, OB[149]) === true && L.hasClean(clean150, OB[150]) === false, null);
       check('validateBest：ベスト 170 はそのまま読める', L.validateBest('170') === 170, L.validateBest('170'));
-      // 2026-11-10 の並べ替えと 201〜250 面を足す前（v76 まで。くり返しが 201 面からだった頃）の途中の保存（約束 §2.6・§2.7。計画書 docs/plans/amai-parts.md §14）。
+      // 2026-11-10 の並べ替えと 201〜250 面を足す前（v77 まで（PICTURE_ORDER は v76 と同じ）。くり返しが 201 面からだった頃）の途中の保存（約束 §2.6・§2.7。計画書 docs/plans/amai-parts.md §14）。
       // 文字は並べ替える前の版（0ca51c7）の makeSave で作ったもの。start・end は、その版で同じ形に作った盤と、押した手 3 つを再生した盤の目印。
       // ・3〜200 面：面の番号どおりだった絵（並べ替えで面の絵が変わった）→ paramsFor は絵の段が面の段と同じなので面の表を使い、前と同じ盤で続きから
       //   （8 面〔M・5〜8 面の行〕・14 面〔L・13〜18 面〕・28 面〔XL・25〜30 面〕は段の値と面の表がちがう所。120 面・180 面は XXL）
@@ -1478,7 +1478,7 @@ export const tests = [
   },
   // ---------- 面の並べ方の決まり（2026-11-10・11。約束 §2.6・計画書 docs/plans/amai-parts.md §12〜§14） ----------
   {
-    id: 'AL25', tier: 'smoke', node: true, title: 'あまいものあつめ：面の並べ方の決まり（3 面から：となりの面に同じ行動・同じ場所・同じ動物を続けない・最後の面が 37 面以上の どの連続 4 面にも同じ行動は 1 回まで〔36→37 面の境目を含む〕・段の並びは 4/8/12/12/214 で前と同じ形・3 面からの id はみな 動物＋場所＋行動 に読める）',
+    id: 'AL25', tier: 'smoke', node: true, title: 'あまいものあつめ：面の並べ方の決まり（3 面から：となりの面に同じ行動・同じ場所・同じ動物を続けない・最後の面が 37 面以上の どの連続 4 面にも同じ行動は 1 回まで・どの連続 6 面にも同じ動物・同じ場所は 3 回まで〔36→37 面の境目を含む〕・段の並びは 4/8/12/12/214 で前と同じ形・3 面からの id はみな 動物＋場所＋行動 に読める）',
     run({ check, root }) {
       const L = load(root);
       const PO = L.PICTURE_ORDER;
@@ -1511,6 +1511,20 @@ export const tests = [
         if (new Set(w).size !== w.length) gap.push(`${e - 2}〜${e + 1} 面 ${w.join(' ')}`);
       }
       check(`37 面から（36→37 面の境目を含む）どの連続 4 面にも同じ行動は 1 回まで（${gap.length} か所）`, gap.length === 0, gap.slice(0, 10));
+      // 37 面から：どの連続 6 面にも同じ動物・同じ場所は 3 回まで（最後の面が 37 面以上の連続 6 面。32〜37 面の窓から。
+      // 2026-11-11。UX レビュー「新しい動物・行動が 121 面まで出てこない」→ PM の案にユーザー「おすすめで」）
+      const six = { a: [], p: [] };
+      for (let e = 36; e < N; e++) {
+        const w = q.slice(Math.max(2, e - 5), e + 1);
+        for (const k of ['a', 'p']) {
+          const cnt = {};
+          for (const x of w) cnt[x[k]] = (cnt[x[k]] || 0) + 1;
+          const over = Object.keys(cnt).filter((v) => cnt[v] > 3);
+          if (over.length) six[k].push(`${e - 4}〜${e + 1} 面 ${over.map((v) => v + '×' + cnt[v]).join(' ')}`);
+        }
+      }
+      check(`37 面から（36→37 面の境目を含む）どの連続 6 面にも同じ動物は 3 回まで（${six.a.length} か所）`, six.a.length === 0, six.a.slice(0, 10));
+      check(`37 面から（36→37 面の境目を含む）どの連続 6 面にも同じ場所は 3 回まで（${six.p.length} か所）`, six.p.length === 0, six.p.slice(0, 10));
     },
   },
 ];
