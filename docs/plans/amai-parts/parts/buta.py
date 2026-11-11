@@ -90,3 +90,26 @@ def face2(hx, hy, eyes='open', mouth='smile'):
         mo = ell(hx + 3, hy + 6.2, 2.6, 2.2); fill(mo, 'K'); fill(rect(hx + 2, hy + 7, hx + 4, hy + 7), 'R')
     elif mouth == 'eat':
         mo = ell(hx + 3.5, hy + 5.8, 2, 1.6); fill(mo, 'K'); put(hx + 3, hy + 6, 'R')
+
+
+# ---- 2026-11-10 に足した（担当 C。ねむる の 大きな頭。上の関数は 前の絵のため変えない）----
+def head_big(hx, hy, rx=12, ry=10):
+    """大きな頭（head の 1.25 倍くらい。顔が よく 見えるように）と 耳。返り値は頭のマス。"""
+    ear(hx + 5, hy - 10, 3.4, 5.4, 40)
+    m = ell(hx, hy, rx, ry)
+    blob(m)
+    ear(hx - 3, hy - 10.5, 3.8, 5.8, 35)
+    return m
+
+
+def face_sleep(hx, hy):
+    """ねむる顔（大きな頭に）：とじた目 ∪（K。下は 2 マスの 太さ）・大きな まるい鼻・小さな にっこり口・ほっぺ。"""
+    for ex in (hx - 3, hx + 4):
+        y = hy
+        fill({(ex - 2, y - 1), (ex - 1, y), (ex, y + 1), (ex + 1, y + 1), (ex + 2, y), (ex + 3, y - 1),
+              (ex - 1, y + 1), (ex + 2, y + 1), (ex, y + 2), (ex + 1, y + 2)}, 'K')
+    sn = ell(hx + 12, hy + 3, 3.4, 4)
+    shape(sn, 'P', sh='V', sw=1)
+    fill({(hx + 11, hy + 2), (hx + 11, hy + 3), (hx + 13, hy + 2), (hx + 13, hy + 3)}, 'K')
+    fill({(hx - 8, hy + 3), (hx - 7, hy + 3), (hx - 7, hy + 4), (hx - 6, hy + 4)}, 'R')
+    fill({(hx + 2, hy + 6), (hx + 3, hy + 7), (hx + 4, hy + 7), (hx + 5, hy + 6)}, 'K')

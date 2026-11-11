@@ -1092,8 +1092,8 @@
   }
 
   // ===== 面えらび（計画書 docs/plans/amai-select.md §1。契約 §3.5） =====
-  // 選べるのは 1〜ベスト＋1 面（L.levelChoices）。一覧は 1〜200 面（その先は鍵つき）。ベスト＋1 が 201 面より先なら「つづき」を 1 つ
-  const choices = () => safeCall(() => L.levelChoices(best), null) || { top: 1, list: Math.min(Number(L.BASE_PICTURES) || 200, ORDER.length || 1), open: 1, more: 0 };
+  // 選べるのは 1〜ベスト＋1 面（L.levelChoices）。一覧は 1〜250 面（その先は鍵つき）。ベスト＋1 が 251 面より先なら「つづき」を 1 つ
+  const choices = () => safeCall(() => L.levelChoices(best), null) || { top: 1, list: Math.min(Number(L.BASE_PICTURES) || 250, ORDER.length || 1), open: 1, more: 0 };
   function showSelect() {
     if (overlay !== null || rescuing) return;
     flush();
@@ -1169,7 +1169,7 @@
   function chooseLevel(n) {
     if (overlay !== "select") return false;
     if (!safeCall(() => L.canSelect(best, n), false)) return false;
-    // クリアしたことのある 1〜200 面は、ふつう か ちょうせん かを選ぶカード（途中なら「とちゅうは きえるよ」も）
+    // クリアしたことのある 1〜250 面は、ふつう か ちょうせん かを選ぶカード（途中なら「とちゅうは きえるよ」も）
     if (canChallenge(n)) {
       selectTarget = n;
       confirmFrom = "select";
@@ -1200,9 +1200,9 @@
     }
     return startChosen(n);
   }
-  // ちょうせんで遊べる面：1〜200 面（絵が 1 枚ずつ決まっている面）で、その面の絵がずかんにある（＝クリアしたことがある）
+  // ちょうせんで遊べる面：1〜250 面（絵が 1 枚ずつ決まっている面）で、その面の絵がずかんにある（＝クリアしたことがある）
   function canChallenge(n, bk) {
-    if (!Number.isSafeInteger(n) || n < 3 || n > Math.min(Number(L.BASE_PICTURES) || 200, ORDER.length)) return false;
+    if (!Number.isSafeInteger(n) || n < 3 || n > Math.min(Number(L.BASE_PICTURES) || 250, ORDER.length)) return false;
     if (!safeCall(() => L.canSelect(best, n), false)) return false;
     const pk = safeCall(() => L.pickPicture(n, null), null);
     const book = bk || readBook();   // bk：まとめて調べるとき、ずかんを 1 回だけ読んで渡す
@@ -1211,7 +1211,7 @@
   // ［つぎも ちょうせん］の面：まだ金の花輪が無い・ちょうせんできる（クリアしたことのある）面のうち、from より後でいちばん近い面。
   // 無ければ 1 面から from まで（from も、もどして金が付かなかったなら候補）。1 つも無ければ 0（ボタンを出さない）
   function nextChalLevel(from) {
-    const max = Math.min(Number(L.BASE_PICTURES) || 200, ORDER.length);
+    const max = Math.min(Number(L.BASE_PICTURES) || 250, ORDER.length);
     const book = readBook();   // ずかんと金の花輪は 1 回だけ読んで解く（1 面ごとに読むと最大 400 回になる）
     const gold = new Set(safeCall(() => L.validateGold(readKey(KEY_GOLD)).ids, []) || []);
     const ok = (n) => canChallenge(n, book) && !gold.has(safeCall(() => L.pickPicture(n, null).id, ""));

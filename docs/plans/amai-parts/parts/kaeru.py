@@ -120,3 +120,31 @@ def face_sleep(hx, hy):
               (x - 2, y + 1), (x + 2, y + 1), (x - 1, y + 2), (x, y + 2), (x + 1, y + 2)}, 'K')   # 下は 2 マスの 太さ
     put(hx + 9, hy - 1, 'K'); put(hx + 11, hy - 1, 'K')
     fill(arc(hx + 2, hy + 1, 6, 3, 25, 155, 2), 'K')
+
+
+def face_big(hx, hy, eyes='open', mouth='smile'):
+    """大きな頭（head_big）の 顔（2026-11-10 に足した。おやつ・ボール・おえかき）。
+    eyes：open（白目 W・黒目 K・光・まぶたの線 D）・happy（にっこり ∩）・down（下を見る）。
+    mouth：smile（大きな にっこり）・grin（にっこり あけた口。中 R・した P）・eat（もぐもぐ。ほおばった 小さな口）。"""
+    for ex, ey in ((hx + EYE_BIG[0][0], hy + EYE_BIG[0][1]), (hx + EYE_BIG[1][0], hy + EYE_BIG[1][1])):
+        x0, y0 = int(ex - 2.5), int(ey - 1.5)
+        if eyes in ('open', 'down'):
+            eye = rect(x0, y0, x0 + 4, y0 + 3) | rect(x0 + 1, y0 + 4, x0 + 3, y0 + 4) | rect(x0 + 1, y0 - 1, x0 + 3, y0 - 1)
+            fill(eye, 'W')
+            py = y0 + 1 if eyes == 'open' else y0 + 2
+            fill(rect(x0 + 2, py, x0 + 4, py + 2), 'K')
+            if eyes == 'open': put(x0 + 3, py, 'W')
+            fill(rect(x0, y0 - 2, x0 + 4, y0 - 2) | {(x0 - 1, y0 - 1)}, 'D')   # まぶたの線
+        else:   # happy（にっこり ∩。2 マスの 太さ）
+            fill({(x0 - 1, y0 + 3), (x0, y0 + 2), (x0, y0 + 1), (x0 + 1, y0), (x0 + 2, y0), (x0 + 3, y0), (x0 + 4, y0 + 1),
+                  (x0 + 4, y0 + 2), (x0 + 5, y0 + 3), (x0 + 1, y0 + 1), (x0 + 2, y0 + 1), (x0 + 3, y0 + 1)}, 'K')
+    put(hx + 9, hy - 1, 'K'); put(hx + 11, hy - 1, 'K')   # 鼻の あな
+    if mouth == 'grin':
+        mo = poly([(hx - 2, hy + 1.5), (hx + 12, hy + .5), (hx + 9, hy + 6), (hx + 2, hy + 6)])
+        fill(mo, 'R'); fill(edge(mo), 'K')
+        inn = mo - edge(mo); fill(cells(inn, lambda x, y: (x, y + 1) not in inn and hx + 1 < x < hx + 9), 'P')
+    elif mouth == 'eat':
+        fill(arc(hx + 3, hy - 1, 8, 4, 25, 155, 2), 'K')
+        fill(ell(hx + 9, hy + 3, 1.8, 1.4), 'K')
+    else:
+        fill(arc(hx + 2.5, hy - 2, 10, 5.5, 20, 160, 2), 'K')
