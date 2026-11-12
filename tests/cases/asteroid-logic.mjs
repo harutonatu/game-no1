@@ -133,11 +133,11 @@ export const tests = [
       check('§5.1 の関数が全部ある', fns.every((f) => typeof L[f] === 'function'), fns.filter((f) => typeof L[f] !== 'function'));
       check('マスは いわ・てつ・こおり・きん・ひかり（コード 1〜5）、硬さ 1・4・2・2・1、かけら 1・4・2・10・2、ひかり は ×3', J(L.MATS.map((m) => [m.id, m.code, m.name])) === J([['rock', 1, 'いわ'], ['iron', 2, 'てつ'], ['ice', 3, 'こおり'], ['gold', 4, 'きん'], ['glow', 5, 'ひかり']]) &&
         J(L.MAT_HP) === J({ rock: 1, iron: 4, ice: 2, gold: 2, glow: 1 }) && J(L.MAT_VALUE) === J({ rock: 1, iron: 4, ice: 2, gold: 10, glow: 2 }) && L.GLOW.mul === 3, [L.MATS, L.MAT_HP, L.MAT_VALUE, L.GLOW]);
-      check('武器は今の 6 種類（名前・強さ・間隔は前のまま）', J(L.WEAPONS.map((w) => [w.id, w.name, w.dmg, w.rate])) === J([['shot', 'たま', 1, 0.2], ['spread', 'ちらし', 1.25, 0.6], ['bomb', 'どかん', 0.75, 1.6], ['bolt', 'いなずま', 0.8, 1.2], ['beam', 'ビーム', 0.375, 2], ['fire', 'ほのお', 3, 1]]), L.WEAPONS.map((w) => [w.id, w.dmg, w.rate]));
-      const aff = { spread: { rock: 2, iron: 0.9, ice: 1, gold: 1, glow: 1 }, bomb: { rock: 1, iron: 1, ice: 2, gold: 1, glow: 1 }, bolt: { rock: 1, iron: 2.2, ice: 0.5, gold: 1, glow: 1 }, beam: { rock: 1, iron: 1.8, ice: 1, gold: 1, glow: 1 }, fire: { rock: 1, iron: 0.75, ice: 3, gold: 1, glow: 1 }, shot: { rock: 1, iron: 1, ice: 1, gold: 1, glow: 1 } };
+      check('武器は今の 6 種類（名前・強さ・間隔。2026-11-12 にビーム 1.1・3.2 秒、どかん 0.9。ユーザー「ビーム、本当に鉄に強いのかな？調べて」）', J(L.WEAPONS.map((w) => [w.id, w.name, w.dmg, w.rate])) === J([['shot', 'たま', 1, 0.2], ['spread', 'ちらし', 1.25, 0.6], ['bomb', 'どかん', 0.9, 1.6], ['bolt', 'いなずま', 0.8, 1.2], ['beam', 'ビーム', 1.1, 3.2], ['fire', 'ほのお', 3, 1]]), L.WEAPONS.map((w) => [w.id, w.dmg, w.rate]));
+      const aff = { spread: { rock: 2, iron: 0.9, ice: 1, gold: 1, glow: 1 }, bomb: { rock: 1, iron: 1, ice: 3, gold: 1, glow: 1 }, bolt: { rock: 1, iron: 2.2, ice: 0.5, gold: 1, glow: 1 }, beam: { rock: 1, iron: 3, ice: 1, gold: 1, glow: 1 }, fire: { rock: 1, iron: 0.75, ice: 3, gold: 1, glow: 1 }, shot: { rock: 1, iron: 1, ice: 1, gold: 1, glow: 1 } };
       const affBad = [];
       for (const w in aff) for (const m in aff[w]) if (L.affOf(w, m) !== aff[w][m]) affBad.push([w, m, L.affOf(w, m)]);
-      check('相性の倍率（§3.3 のまま。ひかり は 1）、どれも 0.5〜3 倍', affBad.length === 0 && L.WEAPONS.every((w) => L.MATS.every((m) => L.affOf(w.id, m.id) >= 0.5 && L.affOf(w.id, m.id) <= 3)), affBad);
+      check('相性の倍率（§3.3。2026-11-12 から ビームの てつ 3・どかんの こおり 3。ひかり は 1）、どれも 0.5〜3 倍', affBad.length === 0 && L.WEAPONS.every((w) => L.MATS.every((m) => L.affOf(w.id, m.id) >= 0.5 && L.affOf(w.id, m.id) <= 3)), affBad);
       check('UP_COST・UP_GROWTH は前のまま、VALUE_GROWTH 1.77・SLOT_COST の 5・6 つ目 50まん・15おく（ふつうを 50 面にしたので、星 50 で Lv99 に届くように）', J(L.UP_COST) === J({ shot: 5, spread: 5, bomb: 34, bolt: 5, beam: 8, fire: 4 }) && J(L.SLOT_COST) === J([null, 40, 300, 2000, 500000, 1.5e9]) && L.UP_GROWTH === 1.35 && L.VALUE_GROWTH === 1.77, [L.UP_COST, L.SLOT_COST]);
       check('HP_TABLE は星 1〜50 の 50 個で、だいたい増えていく（greedy で測って決めた。計画書 §6）', Array.isArray(L.HP_TABLE) && L.HP_TABLE.length === 50 && L.HP_TABLE.every((v, k, a) => v > 0 && (k === 0 || v > a[k - 1] * 0.85)) && L.HP_TABLE[49] > L.HP_TABLE[0] * 1e4, L.HP_TABLE);
       // マスの体力 = STAR_HP × hpMul × MAT_HP ÷ 面積の目安。星の体力の合計は星の大きさによらない（面積で割る）
@@ -650,7 +650,7 @@ export const tests = [
     },
   },
   {
-    id: 'KL15', tier: 'smoke', node: true, title: 'ほしくだき：時間切れの厳しさ（何もしない（idle）と星 1 は時間切れ、greedy は星 1〜3 で時間切れにならず 1 つの星が 2.5〜5 分、最初の買い物が 40 秒以内）',
+    id: 'KL15', tier: 'smoke', node: true, title: 'ほしくだき：時間切れの厳しさ（何もしない（idle）と星 1 は時間切れ、greedy は星 1〜3 で時間切れにならず 1 つの星が 1〜5 分、最初の買い物が 40 秒以内）',
     run({ check, root, tier }) {
       const L = load(root);
       const seeds = tier === 'full' ? [1, 2, 3] : [1];
@@ -658,7 +658,7 @@ export const tests = [
       check('何もしないと星 1 は時間切れ（lost が出る・クリアしない・壊した割合 1 未満）', idle.every((r) => !r.error && r.losts.length >= 1 && r.stars.length === 0 && r.losts[0].star === 1 && r.losts[0].broken < 1), idle.map((r) => [r.losts[0], r.error]));
       const g = seeds.map((seed) => L.simulate('greedy', { seed, maxStar: 3 }));
       check('greedy は星 1〜3 で時間切れにならない（1 回目でクリア）', g.every((r) => !r.error && r.losts.length === 0 && r.stars.length === 3 && r.stars.every((x) => x.tries === 1)), g.map((r) => [r.losts.length, r.stars.map((x) => x.clearSec), r.error]));
-      check('greedy の星 1〜3：1 つの星が 2〜5 分（120〜300 秒）で、limit の 8 割より早い。ただし いわ だけの星 2 に ちらし（いわ に 2 倍）を持つと 40 秒〜（前からの性質。2026-11-12 から greedy が先の星に いわ の多い星を見て ちらし を選ぶ種がある）', g.every((r) => r.stars.every((x) => x.clearSec >= (x.star === 2 && /spread/.test(x.slots) ? 40 : 120) && x.clearSec <= 300 && x.clearSec <= x.limit * 0.8)), g.map((r) => r.stars.map((x) => [x.clearSec, x.limit])));
+      check('greedy の星 1〜3：1 つの星が 1〜5 分（60〜300 秒。2026-11-12 ユーザー「時間を短くしてよい」：ビームが てつ に強くなり、ビームを先に持つと てつ の星 3 が 1.5 分ほど）で、limit の 8 割より早い。ただし いわ だけの星 2 に ちらし（いわ に 2 倍）を持つと 40 秒〜（前からの性質。2026-11-12 から greedy が先の星に いわ の多い星を見て ちらし を選ぶ種がある）', g.every((r) => r.stars.every((x) => x.clearSec >= (x.star === 2 && /spread/.test(x.slots) ? 40 : 60) && x.clearSec <= 300 && x.clearSec <= x.limit * 0.8)), g.map((r) => r.stars.map((x) => [x.clearSec, x.limit])));
       check('最初の買い物は 40 秒以内', g.every((r) => r.firstBuySec !== null && r.firstBuySec <= 40), g.map((r) => r.firstBuySec));
     },
   },
@@ -736,18 +736,18 @@ export const tests = [
     },
   },
   {
-    id: 'KL19', tier: 'full', node: true, title: 'ほしくだき：自動プレイでふつうの星 50 まで（計画書 §6 の目安：greedy で 1 つの星がふつう 3〜5 分・ボス 6 分以内・時間切れなし・5 つ目の武器が星 15〜20・6 つ目が星 28〜35・合計 2.8〜4 時間・星 50 で Lv90 以上、30 秒に 1 つ買う人は時間切れのあと強くして進める）',
+    id: 'KL19', tier: 'full', node: true, title: 'ほしくだき：自動プレイでふつうの星 50 まで（計画書 §6 の目安：greedy で 1 つの星がふつう 2.3〜5 分・ボス 6 分以内・時間切れなし・5 つ目の武器が星 15〜20・6 つ目が星 28〜35・合計 2.2〜3.5 時間・星 50 で Lv90 以上、30 秒に 1 つ買う人は時間切れのあと強くして進める）',
     run({ check, root }) {
       const L = load(root);
       const g = L.simulate('greedy', { seed: 1 });
       const st = g.stars;
       const normal = st.filter((x) => !x.boss && x.star > 3);
       check('greedy：星 50 までクリア・時間切れ 0 回・エラーなし', !g.error && st.length === 50 && g.losts.length === 0, [st.length, g.losts.length, g.error]);
-      check('greedy：ふつうの星（4〜49）の 9 割が 3〜5 分（180〜300 秒）・全部 6 分以内、ボスは 3.5〜6 分（2026-11-12：てつの多いボスは武器しだいで 1.4 倍ちがうので、9 割をこえない側に合わせた）', normal.filter((x) => x.clearSec >= 180 && x.clearSec <= 300).length >= normal.length * 0.9 && normal.every((x) => x.clearSec <= 360) && st.filter((x) => x.boss).every((x) => x.clearSec >= 210 && x.clearSec <= 360), st.map((x) => [x.star, x.clearSec]));
+      check('greedy：ふつうの星（4〜49）の 9 割が 2.3〜5 分（138〜300 秒）・全部 6 分以内、ボスは 3〜6 分（2026-11-12 ユーザー「時間を短くしてよい」：ビーム・どかん・ほのおを ◎ に見合う強さにして、前の 3〜5 分から短くなった。計画書 §6.2b）', normal.filter((x) => x.clearSec >= 138 && x.clearSec <= 300).length >= normal.length * 0.9 && normal.every((x) => x.clearSec <= 360) && st.filter((x) => x.boss).every((x) => x.clearSec >= 180 && x.clearSec <= 360), st.map((x) => [x.star, x.clearSec]));
       check('greedy：どの星も limit の 9 割より早い（強くすれば間に合う）', st.every((x) => x.clearSec <= x.limit * 0.9), st.filter((x) => x.clearSec > x.limit * 0.9).map((x) => [x.star, x.clearSec, x.limit]));
       const got5 = g.gotAt.find((x) => x.n === 5), got6 = g.gotAt.find((x) => x.n === 6);
       check('5 つ目の武器が星 15〜20、6 つ目が星 28〜35', got5 && got5.star >= 15 && got5.star <= 20 && got6 && got6.star >= 28 && got6.star <= 35, g.gotAt);
-      check('合計（飛んでいた時間）2.8〜4 時間', g.endSec >= 2.8 * 3600 && g.endSec <= 4 * 3600, g.endSec);
+      check('合計（飛んでいた時間）2.2〜3.5 時間（2026-11-12 から 約 2.3〜2.6 時間の見込み）', g.endSec >= 2.2 * 3600 && g.endSec <= 3.5 * 3600, g.endSec);
       check('星 50 で 4 つの武器が Lv90 以上（強くする楽しみが星 50 まで続く。Lv100 からは値段の伸びが小さいので たま が先に 100 をこえる）・星 30 では Lv75 以下', g.final.slots.every((x) => x.lv >= 90) && st[29].slots.split(' ').every((x) => +x.replace(/\D/g, '') <= 75), [g.final.slots, st[29].slots]);
       check('弾は 120・粒は 600 をこえない', g.shotsMax <= 120 && g.particlesMax <= 1500, [g.shotsMax, g.particlesMax]);
       const p = L.simulate('greedy', { seed: 2, buyEvery: 30, maxStar: 12 });
@@ -803,14 +803,14 @@ export const tests = [
     },
   },
   {
-    id: 'KL21', tier: 'full', node: true, title: 'ほしくだき：ハードの自動プレイ（Lv99 の 4 つの武器で 段 1 の星 1〜12、その段に見合う Lv で 段 3 の星 1〜3・段 8（Lv255）の星 1〜2、Lv99 のままの段 3 は時間切れ：greedy で 1 つの星が 4〜6 分くらい（ボス 7.5 分以内）・時間切れ 0 回・limit の 9 割より早い）',
+    id: 'KL21', tier: 'full', node: true, title: 'ほしくだき：ハードの自動プレイ（Lv99 の 4 つの武器で 段 1 の星 1〜12、その段に見合う Lv で 段 3 の星 1〜3・段 8（Lv255）の星 1〜2、Lv99 のままの段 3 は時間切れ：greedy で 1 つの星が 2.3〜6 分くらい（ボス 7.5 分以内。2026-11-12 から短く）・時間切れ 0 回・limit の 9 割より早い）',
     run({ check, root }) {
       const L = load(root);
       const slots = ['shot', 'bolt', 'beam', 'bomb'].map((id) => ({ id, lv: 99 })), bench = ['spread', 'fire'].map((id) => ({ id, lv: 60 }));
       const a = L.simulate('greedy', { seed: 2, maxTier: 1, maxStar: 12, start: { tier: 1, star: 1, slots, bench, kakera: 1e15 } });
       const st = a.stars;
       check('段 1 の星 1〜12：時間切れ 0 回・エラーなし', !a.error && st.length === 12 && a.losts.length === 0 && st.every((x) => x.tier === 1), [st.length, a.losts.length, a.error]);
-      check('段 1：ふつうの星は 3.3〜6 分くらい（200〜360 秒。2026-11-12 の星の種類で、いわ・てつ の多い星の差が広がった）、ボスは 7.5 分以内、どれも limit の 9 割より早い', st.every((x) => (x.boss ? x.clearSec >= 300 && x.clearSec <= 450 : x.clearSec >= 200 && x.clearSec <= 360) && x.clearSec <= x.limit * 0.9), st.map((x) => [x.num, x.clearSec, x.limit]));
+      check('段 1：ふつうの星は 2.3〜6 分くらい（138〜360 秒。2026-11-12 ユーザー「時間を短くしてよい」：ビーム・どかん の直しで短くなった）、ボスは 3〜7.5 分、どれも limit の 9 割より早い', st.every((x) => (x.boss ? x.clearSec >= 180 && x.clearSec <= 450 : x.clearSec >= 138 && x.clearSec <= 360) && x.clearSec <= x.limit * 0.9), st.map((x) => [x.num, x.clearSec, x.limit]));
       // 段 3・段 8 は、greedy で ふつう 50 から続けて来たときの Lv（計画書 §6.3：段 2 の終わり たま193・ビーム175・いなずま169・どかん97、段 6 の途中から全部 Lv255）
       const s3 = [['shot', 193], ['beam', 175], ['bolt', 169], ['bomb', 97]].map(([id, lv]) => ({ id, lv }));
       const c = L.simulate('greedy', { seed: 3, maxTier: 3, maxStar: 3, start: { tier: 3, star: 1, slots: s3, bench, kakera: 1e15 } });
@@ -826,7 +826,7 @@ export const tests = [
     id: 'KL22', tier: 'smoke', node: true, title: 'ほしくだき：ほのおの燃え広がり（ユーザー「燃え広がる感じが欲しい」「四方に燃え広がるのが自然」2026-11-10。こおり へは何段も広く（1 回の火で BURN.ice マスまで）・0.25 秒ごとに 1 段・壊れても上下左右の 4 方向へ移る・てつ へは移らない・いわ へは BURN.other 段まで・決まった結果）',
     run({ check, root }) {
       const L = load(root);
-      check('BURN の定数（1 か所）', J(L.BURN) === J({ step: 0.25, ice: 40, other: 3, otherP: 0.65, max: 160 }), L.BURN);
+      check('BURN の定数（1 か所）', J(L.BURN) === J({ step: 0.25, ice: 40, other: 3, otherP: 0.65, max: 160, pw: 2, upMax: 6 }), L.BURN);
       // こおり 20×20：1 回の火で 40 マス（＋火のもと）まで広がる。全部 こおり
       const a = fireOnce(L, block(20, 20, 'c'), 4);
       const R = a.s0.rock;
@@ -906,7 +906,57 @@ export const tests = [
       check('撃つ向き（fire の ang）は 自機の位置 → ねらったマス（tx・ty）で、自機の向きとは別', fe && near(fe.ang, Math.atan2(fe.ty - fe.y, fe.tx - fe.x), 1e-9) && near(fe.x, f.s.ship.x, 1e-9) && Math.abs(Math.cos(fe.ang - f.s.ship.ang)) < 0.9, fe && [fe.ang, f.s.ship.ang]);
     },
   },
+  {
+    id: 'KL24', tier: 'full', node: true, title: 'ほしくだき（2026-11-12）：◎ の武器はよく壊す（ユーザー「ビーム、本当に鉄に強いのかな？調べて」→「はい、その形で進めて、できたら公開して」「時間を短くしてよい」）。武器 1 つ・Lv10・30・60・99 で、greedy がその Lv で着く てつ・こおり・いわ の星を 60 秒撃ち、◎ の武器は ◎ の無い武器の平均より多く（その種類のマスを）壊す・ビームは てつ で ◎ の無いどの武器より多い・ほのおは こおり で同じ・ビームは いわ・こおり の星で ◎ の武器より少ない・ほのおは同じ星で Lv を上げると多く壊す（強い火ほど広く）・ビームの奥行きと幅は変えない',
+    run({ check, root }) {
+      const L = load(root);
+      check('ビームの奥行き BEAM_DEPTH 20・幅 BEAM_W 2 は変えない（ユーザー「奥行きを短くするのはなぜ？」→ 奥行きでは割らないので変えない）', L.BEAM_DEPTH === 20 && L.BEAM_W === 2, [L.BEAM_DEPTH, L.BEAM_W]);
+      const T = breakTable(L);
+      const bad = [];
+      for (const k of Object.keys(ARMS_AT)) for (const lv of Object.keys(ARMS_AT[k])) {
+        const c = T[k][lv], good = GOODS[k], no = ALL.filter((w) => !good.includes(w));
+        const avg = no.reduce((a, w) => a + c[w], 0) / no.length;
+        if (!good.every((w) => c[w] > avg)) bad.push([k, lv, c, Math.round(avg)]);
+      }
+      check('てつ・こおり・いわ の星（Lv10・30・60・99）：◎ の付く武器は ◎ の無い武器の平均より多く、その種類のマスを壊す', bad.length === 0, bad.length ? bad : T);
+      const lvs = Object.keys(ARMS_AT.iron);
+      check('てつ の星：ビームは ◎ の無いどの武器（たま・ちらし・どかん・ほのお）より多く てつ を壊す（どの Lv でも）', lvs.every((lv) => ['shot', 'spread', 'bomb', 'fire'].every((w) => T.iron[lv].beam > T.iron[lv][w])), lvs.map((lv) => T.iron[lv]));
+      check('こおり の星：ほのおは ◎ の無いどの武器（たま・ちらし・いなずま・ビーム）より多く こおり を壊す', lvs.every((lv) => ['shot', 'spread', 'bolt', 'beam'].every((w) => T.ice[lv].fire > T.ice[lv][w])), lvs.map((lv) => T.ice[lv]));
+      check('ビームは いわ の星で ちらし（◎）より、こおり の星で ほのお（◎）より少ない（強くなりすぎない）', lvs.every((lv) => T.rock[lv].beam < T.rock[lv].spread && T.ice[lv].beam < T.ice[lv].fire), lvs.map((lv) => [T.rock[lv].beam, T.rock[lv].spread, T.ice[lv].beam, T.ice[lv].fire]));
+      // ほのお：前は Lv を上げても 1 分で壊す数が 300 前後で止まっていた（1 発の火が届くマスの数が決まっていたため）
+      const f = [60, 80, 99].map((lv) => breaks60(L, 32, 'fire', lv).ice), g = [30, 60, 80].map((lv) => breaks60(L, 13, 'fire', lv).rock);
+      check('ほのお：同じ星で Lv を上げると多く壊す（こおり の星 32 で Lv60・80・99、いわ の星 13 で Lv30・60・80。前は 252・287・288 と 256・264・263 で止まっていた）', f[1] > f[0] * 1.5 && f[2] > f[1] && g[1] > g[0] * 1.3 && g[2] > g[1] * 1.3, [f, g]);
+      const st = (n, lv) => L.loadSave(JSON.stringify({ v: 3, lvv: 2, tier: 0, star: n, kakera: 0, slots: [{ id: 'fire', lv }], bench: [], seed: 1, rng: 1 }));
+      check('強い火ほど広く（burnUpOf）：greedy の Lv とその星（星 28 に Lv60・星 46 に Lv99）では 0（今までどおり）、強すぎる火（星 13 に Lv99）は BURN.upMax まで', L.burnUpOf(st(28, 60)) === 0 && L.burnUpOf(st(46, 99)) === 0 && L.burnUpOf(st(13, 99)) === L.BURN.upMax && L.burnUpOf(st(13, 60)) > 0, [L.burnUpOf(st(28, 60)), L.burnUpOf(st(46, 99)), L.burnUpOf(st(13, 60)), L.burnUpOf(st(13, 99))]);
+    },
+  },
 ];
+
+// ◎ の確かめ（KL24）：greedy がその Lv で着く星（2026-11-12 の greedy 種 1 で、星 5・12・28・46 に Lv 約 15・30・60・92）
+const ARMS_AT = { iron: { 10: 5, 30: 12, 60: 28, 99: 46 }, ice: { 10: 7, 30: 14, 60: 32, 99: 48 }, rock: { 10: 4, 30: 13, 60: 29, 99: 42 } };
+const GOODS = { iron: ['bolt', 'beam'], ice: ['bomb', 'fire'], rock: ['spread'] };
+// 武器 1 つ（Lv lv）だけで星 n を 60 秒撃ち、壊したマス（break・はなれたかたまり・ひかり）を種類ごとに数える。残り時間は減らさない。種 1 で決まった結果
+function breaks60(L, n, w, lv) {
+  let s = L.loadSave(JSON.stringify({ v: 3, lvv: 2, tier: 0, star: n, kakera: 0, slots: [{ id: w, lv }], bench: [], seed: 1, rng: 12345, cleared: false }));
+  const c = { rock: 0, iron: 0, ice: 0, gold: 0, glow: 0, all: 0 };
+  for (let k = 0; k < 1800; k++) {
+    const r = L.step(s, 1 / 30);
+    s = r.state;
+    if (s.phase !== 'fly') break;
+    s = { ...s, left: s.limit };
+    for (const e of r.events) {
+      if (e.kind === 'break') { c[e.mat]++; c.all++; }
+      else if (e.kind === 'chunk') for (const m of e.mats) { c[MATN[m]]++; c.all++; }
+      else if (e.kind === 'glow') { c.glow += e.cells.length; c.all += e.cells.length; }
+    }
+  }
+  return c;
+}
+function breakTable(L) {
+  const T = {};
+  for (const k of Object.keys(ARMS_AT)) { T[k] = {}; for (const lv of Object.keys(ARMS_AT[k])) { T[k][lv] = {}; for (const w of ALL) T[k][lv][w] = breaks60(L, ARMS_AT[k][lv], w, +lv)[k]; } }
+  return T;
+}
 
 // ほのおの燃え広がり（KL22）：rows の小惑星に ほのお Lv1 で 1 回だけ火をつけ（最初の burn のあと撃たない）、sec 秒ぶんの burn の出来事を集める
 // （seed ごとに rng も変える。hp を決めると、その体力で（小さいと火のもとが 0.25 秒より前に燃えつきる））

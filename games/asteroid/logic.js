@@ -114,7 +114,11 @@
   // （ユーザー「四方に燃え広がるのが自然」2026-11-10。前は となりの 1 マスへ移るだけで一方向へ歩いて見えた）。こおり へは何段でも続けて移る（1 回の火で ice マスまで）。
   // いわ・きん・ひかり へは火のもとから other 段目までだけ、確率 otherP で（state の rng）。てつ へは移らない（苦手）。燃えているマスは全部で max まで。
   // other 3・otherP 0.65：1 マスへ移るのをやめた分、いわ の星で ほのお が弱くならないように（ふつう 50 面の greedy が前と同じ 3.3〜3.4 時間・時間切れ 0。計画書 §1.2.1）
-  const BURN = deepFreeze({ step: 0.25, ice: 40, other: 3, otherP: 0.65, max: 160 });
+  // 強い火ほど広く（2026-11-12。ユーザー「ビーム、本当に鉄に強いのかな？調べて」の調べで、ほのおは Lv を上げても 1 分でこわす数が 300 前後で増えなかった）：
+  // 1 発の火が届くマスの数が other・ice で決まっていて、Lv が上がって 1 コマで燃えつきるようになると、強くしても こわす数が増えなかった。
+  // 火の強さ（毎秒の威力 ÷ その星の いわ の体力）が pw の 2^k 倍をこえるたびに k 段（upMax まで）、other を +k 段・ice を ×(1 + k) にする（燃えるマスの上限 max も ×(1 + k)）。
+  // pw 2 は、ふつうに強くしている人（greedy）の Lv とその星の体力の比（1〜3）では k = 0（今までどおり）になる値
+  const BURN = deepFreeze({ step: 0.25, ice: 40, other: 3, otherP: 0.65, max: 160, pw: 2, upMax: 6 });
   const EVOLVE_EVERY = 10, EVOLVE_TIERS = 3;
   const TRIES_MAX = 9999;
   // ねらい：ビームは 4° ごと（±60°）、どかんは届くふちのマスを 3 マスおき
@@ -141,9 +145,9 @@
   const WEAPONS = deepFreeze([
     { id: "shot", name: "たま", dmg: 1, rate: 0.20, good: null, aff: {}, desc: "いちばん ちかい マスへ まっすぐ うつ" },
     { id: "spread", name: "ちらし", dmg: 1.25, rate: 0.6, good: "rock", aff: { rock: 2, iron: 0.9 }, desc: "おうぎの かたちに 5はつ ちらす" },
-    { id: "bomb", name: "どかん", dmg: 0.75, rate: 1.6, good: "ice", aff: { ice: 2 }, desc: "おちた ところの まわりを まとめて こわす" },
+    { id: "bomb", name: "どかん", dmg: 0.9, rate: 1.6, good: "ice", aff: { ice: 3 }, desc: "おちた ところの まわりを まとめて こわす" },
     { id: "bolt", name: "いなずま", dmg: 0.8, rate: 1.2, good: "iron", aff: { iron: 2.2, ice: 0.5 }, desc: "つながった マスへ えだわかれ。てつは とおくまで とどく" },
-    { id: "beam", name: "ビーム", dmg: 0.375, rate: 2.0, good: "iron", aff: { iron: 1.8 }, desc: "まっすぐ おくまで あなを あける" },
+    { id: "beam", name: "ビーム", dmg: 1.1, rate: 3.2, good: "iron", aff: { iron: 3 }, desc: "まっすぐ おくまで あなを あける" },
     { id: "fire", name: "ほのお", dmg: 3, rate: 1.0, good: "ice", aff: { ice: 3, iron: 0.75 }, desc: "もやす。こおりへは ひろく もえひろがる" }
   ]);
   const W = {};
@@ -927,13 +931,20 @@
     const lv = slotLv(s, "fire");
     const until = s.t + shapeOf("fire", lv);
     for (const b of s.burns) if (b.i === i) { if (b.until < until) b.until = until; return false; }
-    if (s.burns.length >= BURN.max) return false;
+    if (s.burns.length >= BURN.max && s.burns.length >= BURN.max * (1 + burnUpOf(s))) return false;
     let g, d;
     if (from) { g = from.g; d = from.d + 1; }
     else { s.fireG = (s.fireG | 0) + 1; g = s.fireG; d = 0; }
     s.burns.push({ i, until, at: s.t, spread: false, g, d });
     ctx.evs.push({ kind: "burn", i, from: from ? from.i : -1, d });
     return true;
+  }
+  // 強い火ほど広く：火の強さ（毎秒の威力 ÷ その星の いわ の体力）から燃え広がりの段 k（0〜BURN.upMax）
+  function burnUpOf(s) {
+    const hp = cellHp(s.star, "rock", s.tier), per = dmg("fire", slotLv(s, "fire"));
+    if (!(hp > 0) || !(per > 0)) return 0;
+    const r = per / (hp * BURN.pw);
+    return r >= 2 ? Math.min(BURN.upMax, Math.floor(Math.log2(r))) : 0;
   }
   function slotLv(s, id) { for (const x of s.slots) if (x.id === id) return x.lv; if (Array.isArray(s.bench)) for (const x of s.bench) if (x.id === id) return x.lv; return 1; }   // 外した武器もひかえの Lv を見る（燃えている火が弱くならない）
 
@@ -1504,6 +1515,7 @@
     // 4. 燃える
     if (s.burns.length) {
       const per = dmg("fire", slotLv(s, "fire"));
+      const up = burnUpOf(s), iceMax = BURN.ice * (1 + up), otherMax = BURN.other + up;   // 強い火ほど広く
       const keep = [], add = [];
       const fn = s.fireN, cnt = {};                            // cnt：この step で予約した こおり の数（本当に火がついた分だけ fn へ足す）
       let lit = null;                                          // 燃えているマス（と、この step で火を移すマス）
@@ -1523,9 +1535,9 @@
           CELLS++;
           if (!m || m === 2 || lit.has(q)) continue;           // 空・てつ・もう燃えているマスへは移らない
           if (m === 3) {                                       // こおり：なかまごとに BURN.ice マスまで、何段でも
-            if ((fn[b.g] | 0) + (cnt[b.g] | 0) >= BURN.ice) continue;
+            if ((fn[b.g] | 0) + (cnt[b.g] | 0) >= iceMax) continue;
             cnt[b.g] = (cnt[b.g] | 0) + 1;
-          } else if (!(b.d < BURN.other && rngOf(s) < BURN.otherP)) continue;
+          } else if (!(b.d < otherMax && rngOf(s) < BURN.otherP)) continue;
           lit.add(q);
           add.push([q, b]);
         }
@@ -2272,7 +2284,7 @@
     RETRY_EASE, CLEAR_SEC, BEAM_SEC, BOMB_FLIGHT, BULLET_SPEED, BULLET_LIFE, CARRY_MIN, LIMIT_MUL, LIMIT_BASE, IRON_BLOB_MIN,
     newGame, starInfo, step, dpsOf, upCostOf, upgrade, slotCostOf, unlock, choose, swapChoicesOf, swapWeapon, retry, afterEnding, progressOf, formatKakera, formatTime,
     makeSave, loadSave, saveVersionOf, validateBest, simulate,
-    hpMul, valMul, kindOf, dmg, upCost, affOf, shapeOf, cellHp, cellHpAt, cellValue, matOf, limitOf, limitTry, rateOf, pierceOf, numIn, starsOf
+    hpMul, valMul, kindOf, burnUpOf, dmg, upCost, affOf, shapeOf, cellHp, cellHpAt, cellValue, matOf, limitOf, limitTry, rateOf, pierceOf, numIn, starsOf
   };
   return Object.freeze(api);
 });

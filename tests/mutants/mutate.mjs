@@ -442,7 +442,7 @@ const M = [
   ['MK44 ほしくだき：ハードの硬さが Lv100〜255 の強さに合わせて上がらない（強くしなくても間に合う）', 'ルール', 'games/asteroid/logic.js', 'Math.min(HARD.lvMax, HARD.lv * (HARD_STARS * (t - 1) + k - 1))', '0'],
   // ほのおの燃え広がり（ユーザー「ほのおは、燃え広がる感じが欲しいですね。得意な氷相手だと広く燃え広がるとか？」2026-11-10）。流すときは ONLY=KL22
   ['MK45 ほしくだき：ほのおが てつ（苦手）へも燃え移る', 'ルール', 'games/asteroid/logic.js', 'if (!m || m === 2 || lit.has(q)) continue;', 'if (!m || lit.has(q)) continue;'],
-  ['MK46 ほしくだき：こおり への燃え広がりに上限が無い（1 回の火で星の こおり が全部燃える）', 'ルール', 'games/asteroid/logic.js', 'if ((fn[b.g] | 0) + (cnt[b.g] | 0) >= BURN.ice) continue;', 'if (0) continue;'],
+  ['MK46 ほしくだき：こおり への燃え広がりに上限が無い（1 回の火で星の こおり が全部燃える）', 'ルール', 'games/asteroid/logic.js', 'if ((fn[b.g] | 0) + (cnt[b.g] | 0) >= iceMax) continue;', 'if (0) continue;'],
   ['MK47 ほしくだき：v73 の保存（印なし・ハード）の Lv99 の武器を上げない（急に何回も負ける）', '保存', 'games/asteroid/logic.js', 'if (o.lvv !== LVV && tier > 0) {', 'if (false) {'],
   // 四方への燃え広がり（ユーザー「ほのおの燃え広がりは一方向のみ？四方に燃え広がるのが自然だと思いました」2026-11-10）。流すときは ONLY=KL22
   ['MK48 ほしくだき：燃えているマスが広がる前に燃えつきると、まわりへ移らない（火が四方へ広がらない）', 'ルール', 'games/asteroid/logic.js', 'if (!b.spread) spreadFrom(b);                          // 広がる前に燃えつきた', '                          // 広がる前に燃えつきた'],
@@ -454,6 +454,9 @@ const M = [
   ['MK52 ほしくだき：入れ替えのカードで ひかえ の武器を押しても替わらない', '操作', 'games/asteroid/main.js', 'doSwap(swapSel, b.dataset.swapTo);', ''],
   ['MK53 ほしくだき：入れ替えで撃つ間隔が 0 に戻る（A→B→A で間隔を待たずに撃てる。技術レビュー M2。KL12 で流す）', 'ルール', 'games/asteroid/logic.js', 's.cd[slot] = Math.max(s.cd[slot], s.t);', 's.cd[slot] = s.t;'],
   ['MK54 ほしくだき：通しの番号が 401 以上で種類が固まる（技術レビュー M1。KL23 で流す）', 'ルール', 'games/asteroid/logic.js', 'const kind = kindOf(Math.min(nk === undefined ? n : nk, STAR_MAX));', 'const kind = kindOf(n);'],
+  // ◎ の武器はよく壊す（ユーザー「ビーム、本当に鉄に強いのかな？調べて」→「はい、その形で進めて、できたら公開して」「時間を短くしてよい」2026-11-12）。流すときは ONLY=KL1,KL24
+  ['MK55 ほしくだき：ビームの 1 発の力・てつ への倍率・撃つ間隔を前（0.375・1.8・2 秒）に戻す（てつ を ほとんど壊せない）', 'ルール', 'games/asteroid/logic.js', 'dmg: 1.1, rate: 3.2, good: "iron", aff: { iron: 3 }', 'dmg: 0.375, rate: 2.0, good: "iron", aff: { iron: 1.8 }'],
+  ['MK56 ほしくだき：強い火でも燃え広がりが広がらない（ほのおは Lv を上げても 1 分で壊す数が止まる）', 'ルール', 'games/asteroid/logic.js', 'const up = burnUpOf(s), iceMax', 'const up = 0, iceMax'],
   // ---- あまいものあつめ（games/amai/）。ふち・運ぶ・押す・うごかせない・再生・保存・ずかん・絵の選び方・中断・古いページの仕組みを変えたときだけ流す（契約 §7.4）----
   ['MA1 あまいものあつめ：ふちでない角砂糖も運ぶ（見つける：AL3・AL4）', 'ルール', 'games/amai/logic.js', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;', 'return true;'],
   ['MA2 あまいものあつめ：ななめもふちに数える（見つける：AL3）', 'ルール', 'games/amai/logic.js', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1 || o[i - W - 1] === 1 || o[i - W + 1] === 1 || o[i + W - 1] === 1 || o[i + W + 1] === 1;'],
