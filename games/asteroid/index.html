@@ -621,6 +621,7 @@
   .bench .good .gt { display: inline; }
   .bench .btag { grid-area: tag; padding: 2px 6px; border-radius: 8px; font: 800 12px/1.2 var(--font-text); background: rgba(255, 255, 255, 0.1); color: var(--muted); white-space: nowrap; }
   .bench[aria-pressed="true"] { border-color: var(--gold); }
+  .bench:disabled { opacity: 0.55; cursor: default; }
   .bench[aria-pressed="true"] .btag { background: var(--gold); color: #2a1f00; }
   .bench:active:not([aria-disabled="true"]) { filter: brightness(1.2); }
   .bench[aria-disabled="true"], .sslot[aria-disabled="true"] { opacity: 0.6; }

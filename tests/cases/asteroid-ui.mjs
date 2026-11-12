@@ -811,7 +811,7 @@ export const tests = [
             const vis = (e) => !e.closest('[hidden]') && e.getBoundingClientRect().width > 0;
             const rows = [...document.querySelectorAll('.wrow')].filter(vis).map((e) => Math.round(e.getBoundingClientRect().height));
             const cut = [];
-            for (const sel of ['#kakera', '#starLabel', '#starLabel [data-part="num"]', '#timeText', '#starPct', '.wrow [data-part="name"]', '.wrow [data-part="lv"]', '.wrow [data-part="dps"]', '.wrow [data-next]', '.wrow [data-part="cost"]', '.wrow [data-part="label"]', '#unlockBtn [data-part="cost"]', '#unlockBtn [data-part="label"]', '#unlockBtn [data-part="to"]', '#swapBtn', '#benchCount']) {
+            for (const sel of ['#kakera', '#starLabel', '#starLabel [data-part="num"]', '#timeText', '#starPct', '.wrow [data-part="name"]', '.wrow [data-part="lv"]', '.wrow [data-part="dps"]', '.wrow [data-part="cost"]', '.wrow [data-part="label"]', '#unlockBtn [data-part="cost"]', '#unlockBtn [data-part="label"]', '#unlockBtn [data-part="to"]', '#swapBtn', '#benchCount']) {
               for (const e of document.querySelectorAll(sel)) {
                 if (!vis(e)) continue;
                 const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
@@ -831,16 +831,7 @@ export const tests = [
             }
             const c = document.querySelector('#fieldCanvas').getBoundingClientRect();
             const sw = document.querySelector('#swapBtn');
-            // 予約の札：文字と、長いほうにしたら行の幅からはみ出すか（はみ出すときだけ「つぎから」、それでもはみ出すときだけ「つぎ」でよい。UX 1・v74）
-            const nexts = [...document.querySelectorAll('.wrow [data-next]')].filter(vis).map((e) => {
-              const t = e.textContent.trim();
-              const cutWith = (pre) => { const cl = e.cloneNode(true); const tn = [...cl.childNodes].find((x) => x.nodeType === 3); if (tn) tn.textContent = tn.textContent.replace(/^(つぎの ほしから|つぎから|つぎ)/, pre); e.after(cl); e.hidden = true; const box = cl.parentElement; const c = cl.scrollWidth > cl.clientWidth + 0.5 || box.scrollWidth > box.clientWidth + 0.5; cl.remove(); e.hidden = false; return c; };
-              const norm = t.replace(/^(つぎから|つぎ)(?= )/, 'つぎの ほしから');
-              if (t.startsWith('つぎの ほしから')) return t;
-              if (t.startsWith('つぎから')) return cutWith('つぎの ほしから') ? norm : t + '（入るのに短い）';
-              if (t.startsWith('つぎ ')) return cutWith('つぎの ほしから') && cutWith('つぎから') ? norm : t + '（入るのに短い）';
-              return t;
-            });
+            const nexts = [...document.querySelectorAll('.wrow [data-next]')].filter(vis).map((e) => e.textContent.trim());   // 予約の札はもう無い（出たら不合格）
             // 札（.good）の右の端が、同じ行の「つよくする」ボタンの左の端より左にある（かぶらない）
             const goodOver = [...document.querySelectorAll('.wrow')].filter(vis).flatMap((row) => {
               const g = row.querySelector('.good'), u = row.querySelector('[data-up]');
@@ -1560,14 +1551,14 @@ export const tests = [
       const kb0 = await gs(page);
       await page.keyboard.press('2'); await wait(page, 30);
       const kb1 = await gs(page);
-      await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowRight'); await wait(page, 30);
+      await page.keyboard.press('ArrowRight'); await wait(page, 30);   // 今の武器の行は押せない（disabled）ので、1 回で ひかえの 1 つ目
       const focusId = await page.evaluate(() => document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.swapTo || null : null);
       await page.keyboard.press('Enter'); await wait(page, 50);
       const kb2 = await gs(page);
       await page.keyboard.press('Escape'); await wait(page, 50);
       const kb3 = await gs(page);
       const wantK = L.swapChoicesOf(cl, 1)[1];
-      check(`キーボード：S で開く（${kb0.overlay}・枠 ${kb0.swapSel}）、2 で枠 2（${kb1.swapSel}）、→→ で ${focusId}（${wantK}）、Enter で すぐ替わる（枠 2 ${JSON.stringify(kb2.slots[1])}）、Esc で閉じる（${kb3.overlay}）`,
+      check(`キーボード：S で開く（${kb0.overlay}・枠 ${kb0.swapSel}）、2 で枠 2（${kb1.swapSel}）、→ で ${focusId}（${wantK}）、Enter で すぐ替わる（枠 2 ${JSON.stringify(kb2.slots[1])}）、Esc で閉じる（${kb3.overlay}）`,
         kb0.overlay === 'swap' && kb0.swapSel === 0 && kb1.swapSel === 1 && focusId === wantK && !!wantK && kb2.slots[1].id === wantK && kb3.overlay === null, { kb0: kb0.swapSel, kb1: kb1.swapSel, focusId, kb2: kb2.slots, kb3: kb3.overlay });
       await ctx.close();
       // (10) SE 縦・横（ホーム画面・Safari）：カードのボタンが画面内・押せる・44px 以上・重ならない

@@ -301,7 +301,7 @@
     if (boss) rad = Math.min(R_MAX, rad * BOSS_SIZE);
     rad = Math.round(rad * 10) / 10;
     const w = 2 * Math.ceil(rad) + 4;
-    const mx = mixRaw(Math.min(N, STAR_CALC_MAX));
+    const mx = mixRaw(Math.min(N, STAR_CALC_MAX), N);
     const adj = (boss ? BOSS_HARD : 1) * (weightOf(mx.iron0, mx.ice0) / weightOf(mx.iron, mx.ice));
     d0 = { boss, rad, w, h: w, adj, mix: mx, area: AREA_FILL * Math.PI * rad * rad, tier: t };
     if (dimsMemo.size < 2000) dimsMemo.set(N, d0);
@@ -312,22 +312,25 @@
   // 組ごとにハッシュで並べかえて回す（同じ種類が 2 つ続かない。組の頭が前の組のおしりと同じなら 1 つずらす）。通しの番号で決まる（ハードも続けて回る）。
   // 体力・かけらの合計は種類によらず前の目安（iron0・ice0）にそろえる（dimsOf の adj）。きん・ひかり の星は きん・ひかり が多いぶん かけらが少し多い
   const KIND_FROM = 6, KIND_BLOCK = 5;
-  const kindMemo = new Map();
-  function kindOf(n) {
-    if (n < 3) return null;
-    if (n < KIND_FROM) return n === 4 ? "rock" : "iron";
-    let v = kindMemo.get(n);
-    if (v !== undefined) return v;
-    const b = Math.floor((n - KIND_FROM) / KIND_BLOCK), p = (n - KIND_FROM) % KIND_BLOCK;
+  const kindBlocks = [];   // 組ごとの並び（前から作りためる。最大でも STAR_MAX / 5 組）
+  function buildBlock(b, prev) {
     const arr = ["iron", "ice", "rock", "mix", b % 2 === 0 ? "glow" : "gold"];
     let h = hash2(b + 1, 0x6b1d);
     for (let k = arr.length - 1; k > 0; k--) { const j = h % (k + 1); h = hash2(h, k); const t = arr[k]; arr[k] = arr[j]; arr[j] = t; }
     // 組の頭が前の星（前の組のおしり・星 5 の てつ）と同じなら、頭とその次を入れかえる。きん は星 8 から（MATS の from）
-    const prev = b === 0 ? kindOf(KIND_FROM - 1) : kindOf(KIND_FROM + b * KIND_BLOCK - 1);
     if (arr[0] === prev) { const t = arr[0]; arr[0] = arr[1]; arr[1] = t; }
-    if (b === 0) { const g = arr.indexOf("glow"); if (g >= 0 && g < 2) { const q = arr.indexOf("ice") >= 2 ? arr.indexOf("ice") : arr.indexOf("rock") >= 2 ? arr.indexOf("rock") : 4; if (Math.abs(q - g) > 0) { const t = arr[g]; arr[g] = arr[q]; arr[q] = t; } } }
-    for (let k = 0; k < KIND_BLOCK && kindMemo.size < 4000; k++) kindMemo.set(KIND_FROM + b * KIND_BLOCK + k, arr[k]);
-    return arr[p];
+    if (b === 0) { const g = arr.indexOf("glow"); if (g >= 0 && g < 2) { const q = arr.indexOf("ice") >= 2 ? arr.indexOf("ice") : arr.indexOf("rock") >= 2 ? arr.indexOf("rock") : 4; const t = arr[g]; arr[g] = arr[q]; arr[q] = t; } }
+    return arr;
+  }
+  function kindOf(n) {
+    if (n < 3) return null;
+    if (n < KIND_FROM) return n === 4 ? "rock" : "iron";
+    const b = Math.floor((n - KIND_FROM) / KIND_BLOCK), p = (n - KIND_FROM) % KIND_BLOCK;
+    while (kindBlocks.length <= b) {
+      const i = kindBlocks.length;
+      kindBlocks.push(buildBlock(i, i === 0 ? kindOf(KIND_FROM - 1) : kindBlocks[i - 1][KIND_BLOCK - 1]));
+    }
+    return kindBlocks[b][p];
   }
   // 種類ごとの てつ・こおり の割合（星 3〜5 は こおり が無い＝ice は 0）。tag は画面の札（SE 縦で 8 文字（空白こみ）まで）、lead は2択の案内（「この ほしは」に続く）、
   // goods は ◎ を付ける武器の得意（WEAPONS の good）
@@ -339,10 +342,11 @@
     gold: { iron: 0.12, ice: 0.10, tag: "きんが おおい", lead: "きんが おおいよ", goods: [], gold: 10 },
     glow: { iron: 0.12, ice: 0.10, tag: "ひかりが おおい", lead: "ひかりが おおいよ", goods: [], glow: 2 }
   });
-  function mixRaw(n) {
+  // n：割合の基準の番号（頭打ちあり）、nk：種類を決める通しの番号（頭打ちなし。STAR_MAX まで）
+  function mixRaw(n, nk) {
     const iron0 = n < 3 ? 0 : n < 10 ? MIX.iron[0] : MIX.iron[1];
     const ice0 = n < 6 ? 0 : MIX.ice;
-    const kind = kindOf(n);
+    const kind = kindOf(Math.min(nk === undefined ? n : nk, STAR_MAX));
     let iron = iron0, ice = ice0;
     if (kind) {
       const K = KINDS[kind];
@@ -931,7 +935,7 @@
     ctx.evs.push({ kind: "burn", i, from: from ? from.i : -1, d });
     return true;
   }
-  function slotLv(s, id) { for (const x of s.slots) if (x.id === id) return x.lv; return 1; }
+  function slotLv(s, id) { for (const x of s.slots) if (x.id === id) return x.lv; if (Array.isArray(s.bench)) for (const x of s.bench) if (x.id === id) return x.lv; return 1; }   // 外した武器もひかえの Lv を見る（燃えている火が弱くならない）
 
   // ---------------------------------------------------------------- はなれたかたまり（欠けたマスのまわりだけ調べる）
   // 1. その step で欠けたマスを、となり（8 方向）どうしでまとめる。
@@ -1853,7 +1857,7 @@
     const out = s.slots[slot], inn = s.bench[bi];
     s.slots[slot] = { id: inn.id, lv: inn.lv };
     s.bench[bi] = { id: out.id, lv: out.lv };
-    if (Array.isArray(s.cd) && slot < s.cd.length) s.cd[slot] = s.t;   // 載せた武器は すぐ撃てる（その武器の間隔から）
+    if (Array.isArray(s.cd) && slot < s.cd.length) s.cd[slot] = Math.max(s.cd[slot], s.t);   // 枠の間隔は引きつぐ（もう撃てる枠ならすぐ撃てる。撃った直後の枠は待つ）
     evs.push({ kind: "swap", slot, from: out.id, to: inn.id, lv: inn.lv });
     return null;
   }

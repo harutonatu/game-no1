@@ -1276,8 +1276,9 @@
         for (let s = 0; s < f.segs.length; s++) { const g = f.segs[s]; if (!g.fe || g.d > reach) continue; ctx.moveTo(g.bx + pr, g.by); ctx.arc(g.bx, g.by, pr, 0, TAU); }
         ctx.fill();
         // 落ちた所に広がる輪（黄）
-        ctx.strokeStyle = YELLOW; ctx.globalAlpha = (1 - k) * 0.8; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(f.rx, f.ry, 4 + Math.min(1, f.t / 0.3) * (f.dmax + 1) * C() * 0.6, 0, TAU); ctx.stroke();
+        ctx.strokeStyle = YELLOW; ctx.globalAlpha = (1 - k) * 0.5; ctx.lineWidth = 2;
+        const vw = viewport ? viewport.right - viewport.left : cssW;   // 輪の半径は見えている場の幅の 3 割まで（てつの長い鎖でも画面を覆わない）
+        ctx.beginPath(); ctx.arc(f.rx, f.ry, Math.min(vw * 0.3, 4 + Math.min(1, f.t / 0.3) * (f.dmax + 1) * C() * 0.6), 0, TAU); ctx.stroke();
       }
       ctx.globalAlpha = 1 - k * 0.6;
       for (let pass = 0; pass < 2; pass++) {

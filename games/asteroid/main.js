@@ -809,7 +809,7 @@
       const fit = fitsStar(id);
       const tag = isCur ? "いま つかってる" : "";
       const label = wName(id) + " Lv" + lv + (w.good ? "。" + (MAT_NAME[w.good] || w.good) + "に つよい" : "") + (isCur ? "。いま つかってる" : "。えらぶと すぐ かわる");
-      html += '<button type="button" class="bench" data-swap-to="' + esc(id) + '" aria-pressed="' + (id === pick ? "true" : "false") + '" aria-label="' + esc(label) + '">' +
+      html += '<button type="button" class="bench" data-swap-to="' + esc(id) + '"' + (isCur ? " disabled" : "") + ' aria-pressed="' + (id === pick ? "true" : "false") + '" aria-label="' + esc(label) + '">' +
         iconHtml(id) + '<span class="bname">' + esc(wName(id)) + ' <span class="lv">Lv' + lv + "</span>" + (fit ? '<span class="fit" aria-hidden="true">◎</span>' : "") + "</span>" +
         '<span class="good">' + goodHtml(id) + "</span>" + (tag ? '<span class="btag">' + tag + "</span>" : "") + "</button>";
     }
@@ -823,7 +823,7 @@
   }
   function moveBenchFocus(d) {
     if (!el.benchList) return;
-    const bs = Array.from(el.benchList.querySelectorAll("[data-swap-to]"));
+    const bs = Array.from(el.benchList.querySelectorAll("[data-swap-to]:not(:disabled)"));   // 今の武器（押せない）は飛ばす
     if (!bs.length) return;
     const i = bs.indexOf(document.activeElement);
     const j = i < 0 ? (d > 0 ? 0 : bs.length - 1) : (i + d + bs.length) % bs.length;

@@ -452,6 +452,8 @@ const M = [
   ['MK50 ほしくだき：いなずまが てつ へ広がらない（てつ も BOLT_CELLS まで）', 'ルール', 'games/asteroid/logic.js', 'const nIron = Math.round(n * BOLT_IRON.ironMul);', 'const nIron = n;'],
   ['MK51 ほしくだき：たま・ちらし・ほのお を自機の向き（ship.ang）へ撃つ（ねらったマスへ向けない）', 'ルール', 'games/asteroid/logic.js', 'const ang = Math.atan2(ty - y, tx - x);', 'const ang = sh.ang;'],
   ['MK52 ほしくだき：入れ替えのカードで ひかえ の武器を押しても替わらない', '操作', 'games/asteroid/main.js', 'doSwap(swapSel, b.dataset.swapTo);', ''],
+  ['MK53 ほしくだき：入れ替えで撃つ間隔が 0 に戻る（A→B→A で間隔を待たずに撃てる。技術レビュー M2。KL12 で流す）', 'ルール', 'games/asteroid/logic.js', 's.cd[slot] = Math.max(s.cd[slot], s.t);', 's.cd[slot] = s.t;'],
+  ['MK54 ほしくだき：通しの番号が 401 以上で種類が固まる（技術レビュー M1。KL23 で流す）', 'ルール', 'games/asteroid/logic.js', 'const kind = kindOf(Math.min(nk === undefined ? n : nk, STAR_MAX));', 'const kind = kindOf(n);'],
   // ---- あまいものあつめ（games/amai/）。ふち・運ぶ・押す・うごかせない・再生・保存・ずかん・絵の選び方・中断・古いページの仕組みを変えたときだけ流す（契約 §7.4）----
   ['MA1 あまいものあつめ：ふちでない角砂糖も運ぶ（見つける：AL3・AL4）', 'ルール', 'games/amai/logic.js', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;', 'return true;'],
   ['MA2 あまいものあつめ：ななめもふちに数える（見つける：AL3）', 'ルール', 'games/amai/logic.js', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1 || o[i - W - 1] === 1 || o[i - W + 1] === 1 || o[i + W - 1] === 1 || o[i + W + 1] === 1;'],

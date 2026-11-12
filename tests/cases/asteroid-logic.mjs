@@ -580,7 +580,13 @@ export const tests = [
       const fly0 = run(L, s, 1.3).s;
       const r = L.swapWeapon(fly0, 1, 'beam');
       check('星の途中（fly）で すぐ替わる：載せた ビーム は Lv11、外した いなずま は Lv4 で ひかえ へ、出来事 swap、予約は無い（swap: []）、元の state は変わらない', r.ok && r.state.phase === 'fly' && r.state.slots[1].id === 'beam' && r.state.slots[1].lv === 11 && J(r.state.bench) === J([{ id: 'bolt', lv: 4 }, { id: 'fire', lv: 2 }]) && J(r.events) === J([{ kind: 'swap', slot: 1, from: 'bolt', to: 'beam', lv: 11 }]) && J(r.state.swap) === '[]' && fly0.slots[1].id === 'bolt', [r.ok, r.state.slots, r.events]);
-      check('載せた武器はすぐ撃てる（cd はいまの時刻）', near(r.state.cd[1], fly0.t, 1e-9), [r.state.cd, fly0.t]);
+      check('替えた枠の撃つ間隔は引きつぐ（もう撃てる枠は cd がいまの時刻、撃った直後の枠は間隔を待つ。A→B→A でも 0 に戻らない：技術レビュー M2）', (() => {
+        const w = Object.assign({}, fly0, { cd: fly0.cd.slice() }); w.cd[1] = fly0.t + 5;
+        const a = L.swapWeapon(w, 1, 'beam'), b = L.swapWeapon(a.state, 1, 'bolt');
+        const ready = Object.assign({}, fly0, { cd: fly0.cd.slice() }); ready.cd[1] = fly0.t - 1;
+        const c = L.swapWeapon(ready, 1, 'beam');
+        return near(a.state.cd[1], fly0.t + 5, 1e-9) && near(b.state.cd[1], fly0.t + 5, 1e-9) && near(c.state.cd[1], fly0.t, 1e-9);
+      })(), [r.state.cd, fly0.t]);
       const fly = run(L, r.state, 3);
       check('載せた ビーム を撃ち、ひかえ の いなずま は撃たない', ofKind(fly.evs, 'fire').some((e) => e.w === 'beam') && ofKind(fly.evs, 'fire').every((e) => e.w === 'shot' || e.w === 'beam'), [...new Set(ofKind(fly.evs, 'fire').map((e) => e.w))]);
       const back = L.swapWeapon(fly.s, 1, 'bolt');
@@ -877,6 +883,14 @@ export const tests = [
       const wsum = (n) => { const s = mk(L, { star: n, seed: 3 }); let h = 0; for (let i = 0; i < s.rock.hp.length; i++) if (s.rock.mats[i] && s.rock.mats[i] !== 5) h += s.rock.hp[i]; return h / (L.STAR_HP * L.HP_TABLE[n - 1] * s.rock.total / (L.AREA_FILL * Math.PI * L.starInfo(n).radius ** 2)); };
       const ws = ['iron', 'ice', 'rock', 'mix'].map((m) => wsum(byK(m)));
       check(`体力の合計は種類によらず前の目安にそろう（てつ・こおり・いわ・まざる で 2.0〜2.4：${ws.map((x) => x.toFixed(2)).join('・')}）`, ws.every((x) => x > 2.0 && x < 2.4), ws);
+      // 通しの番号が大きい星（段 13・100・300）でも 6 種類が回り、2 つ続かず、札と中身の種類が同じ（技術レビュー M1。前は 401 から全部 ひかり）
+      for (const base of [401, 1201, 8801]) {
+        const ks = Array.from({ length: 60 }, (_, k) => L.starInfo(base + k));
+        const set = new Set(ks.map((x) => x.main));
+        const gs = ks.filter((x) => x.main === 'gold').map((x) => x.mix.gold), os = ks.filter((x) => x.main !== 'gold').map((x) => x.mix.gold);
+        const same = ks.every((x, k) => x.main === L.kindOf(base + k)) && Math.min(...gs) > Math.max(...os);
+        check(`通しの番号 ${base}〜${base + 59}：6 種類が回る（${[...set].join('・')}）・同じ種類が 2 つ続かない・札（main）と中身（きんの かたまりの数）の種類が同じ`, set.size === 6 && ks.every((x, k) => k === 0 || x.main !== ks[k - 1].main) && same, ks.map((x) => x.main));
+      }
       // いなずま：てつ の かたまり と いわ の かたまり（Lv1＝BOLT_CELLS 16）
       const boltOn = (rows) => { const q = setRock(L, mk(L, { slots: [{ id: 'bolt', lv: 1 }] }), rows, { hp: 1e9, ship: [-8, 10], only: 0 }); const u = until(L, q, (e) => e.kind === 'bolt', 3); const e = ofKind(u.evs, 'bolt')[0]; const R = q.rock; return e ? { n: e.path.length, iron: e.path.filter((i) => R.mats[i] === 2).length, edgesI: e.edges.filter((x) => x[2] === 1).length } : null; };
       const bi = boltOn(block(20, 20, 'i')), br = boltOn(block(20, 20, 'r')), bm = boltOn(Array.from({ length: 20 }, () => 'i'.repeat(10) + 'r'.repeat(10)));
