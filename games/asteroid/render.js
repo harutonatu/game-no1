@@ -844,18 +844,25 @@
             const depth = new Map([[from | 0, 0]]);
             const segs = [];
             let dmax = 1;
-            for (const e of edges.slice(0, 120)) {
+            let nIron = 0;
+            for (const e of edges.slice(0, 240)) {
               if (!Array.isArray(e)) continue;
               const a = e[0] | 0, b = e[1] | 0;
               const da = depth.has(a) ? depth.get(a) : 0;
               depth.set(b, da + 1);
               if (da + 1 > dmax) dmax = da + 1;
               const pa = cellCenter(a), pb = cellCenter(b);
-              segs.push({ ax: pa.x, ay: pa.y, bx: pb.x, by: pb.y, d: da });
+              const fe = e[2] === 1;   // てつ へ伝わった枝（logic の edges の 3 つ目）
+              if (fe) nIron++;
+              segs.push({ ax: pa.x, ay: pa.y, bx: pb.x, by: pb.y, d: da, fe });
             }
             const r0 = cellCenter(from | 0);
-            lastBolt = { dur: 0.35, segs: segs.length };
-            fx.push({ kind: "bolt", t: 0, dur: 0.35, mx: num(ev.x, num(ship.x, r0.x)), my: num(ev.y, num(ship.y, r0.y)), rx: r0.x, ry: r0.y, segs, dmax, seed: (rnd() * 1e6) | 0 });
+            // てつ に広がったとき（2026-11-12。ユーザー「いなずまの効果がちょっとわかりづらいです。もう少し鉄に対して拡散してもいいと思います」）：
+            // 少し長く見せ（0.55 秒）、はじめの 0.2 秒で枝が根もとから先へ ぱっと広がり、てつ の枝は太い黄の光と、先に小さな光の点
+            const irony = nIron >= 4;
+            const dur = irony ? 0.55 : 0.35;
+            lastBolt = { dur, segs: segs.length, iron: nIron };
+            fx.push({ kind: "bolt", t: 0, dur, mx: num(ev.x, num(ship.x, r0.x)), my: num(ev.y, num(ship.y, r0.y)), rx: r0.x, ry: r0.y, segs, dmax, irony, seed: (rnd() * 1e6) | 0 });
             break;
           }
           case "boom": {
@@ -1252,6 +1259,27 @@
       for (let j = 1; j < n; j++) { const u = j / n, off = (r() - 0.5) * 9; trunk.push([f.mx + (f.rx - f.mx) * u + nx * off, f.my + (f.ry - f.my) * u + ny * off]); }
       trunk.push([f.rx, f.ry]);
       const jit = f.segs.map(() => [(r() - 0.5) * 5, (r() - 0.5) * 5]);
+      // てつ に広がった いなずま：はじめの REVEAL 秒で根もと（段 0）から先へ広がる。てつ の枝に太い光と、先の光の点（動きを減らす設定では広がりの動きは出さない）
+      const REVEAL = 0.2;
+      const reach = f.irony && !calm ? Math.min(1, f.t / REVEAL) * (f.dmax + 1) : Infinity;
+      if (f.irony) {
+        ctx.strokeStyle = YELLOW;
+        ctx.globalAlpha = (1 - k) * 0.45;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        for (let s = 0; s < f.segs.length; s++) { const g = f.segs[s]; if (!g.fe || g.d > reach) continue; ctx.moveTo(g.ax, g.ay); ctx.lineTo(g.bx, g.by); }
+        ctx.stroke();
+        ctx.fillStyle = "#fffbe0";
+        ctx.globalAlpha = 1 - k * 0.8;
+        const pr = 1.2 + 1.8 * (1 - k);
+        ctx.beginPath();
+        for (let s = 0; s < f.segs.length; s++) { const g = f.segs[s]; if (!g.fe || g.d > reach) continue; ctx.moveTo(g.bx + pr, g.by); ctx.arc(g.bx, g.by, pr, 0, TAU); }
+        ctx.fill();
+        // 落ちた所に広がる輪（黄）
+        ctx.strokeStyle = YELLOW; ctx.globalAlpha = (1 - k) * 0.8; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(f.rx, f.ry, 4 + Math.min(1, f.t / 0.3) * (f.dmax + 1) * C() * 0.6, 0, TAU); ctx.stroke();
+      }
+      ctx.globalAlpha = 1 - k * 0.6;
       for (let pass = 0; pass < 2; pass++) {
         ctx.strokeStyle = pass ? "#fffbe0" : YELLOW;
         const base = pass ? 0.8 : 2;
@@ -1267,7 +1295,7 @@
           for (let s = 0; s < f.segs.length; s++) {
             const g = f.segs[s];
             const b = Math.min(2, Math.floor((g.d / Math.max(1, f.dmax)) * 3));
-            if (b !== bd) continue;
+            if (b !== bd || g.d > reach) continue;
             any = true;
             ctx.moveTo(g.ax, g.ay);
             ctx.lineTo((g.ax + g.bx) / 2 + jit[s][0], (g.ay + g.by) / 2 + jit[s][1]);

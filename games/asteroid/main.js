@@ -9,7 +9,7 @@
  * - カード（遊び方・2択・入れ替え・エンディング・さいしょから）が出ている間は進まない（running の 1 行の式。MK20 の置換元）。
  * - 自機は全部自動（砲台・はね返し・バリアは無い）。残り時間（state.left）が 0 になると phase 'lost'：#lostCard が出る。
  *   #lostCard はカードではなく場の上の札（押せるのは [data-cmd="retry"]「もういちど」だけ）。lost の間も 強くする・2択・入れ替え はできる。
- * - ひかえと入れ替え：#swapBtn → #swapCard で予約（reserveSwap）。替わるのは次の星の始めと、時間切れのやり直しの始め（logic が swap の出来事を出す）。
+ * - ひかえと入れ替え：#swapBtn → #swapCard で選ぶと、その場ですぐ替わる（swapWeapon。星の途中・時間切れの札の間・クリアの演出の間でも。2026-11-12）。
  * - X-20（古いページから書き戻さない）：ほかの 7 本と同じ形（WATCH_KEYS・seenRaw・noteSaved・changedElsewhere・reloadIfStale・staleOnHide・storage）。
  * - さいしょから（§19）：asteroid.save と asteroid.save.bak を消し、保存を止めてから読み直す（best・help は残す）。
  * - 古い保存（ユーザー決定「最初から」・計画書 §1.6）：asteroid.v3 の印が無いとき、1 回だけ asteroid.save・.bak・.best・.help を消して印をつける。
@@ -51,8 +51,6 @@
 
   const HINT_BROKEN = "ほぞんが よめなかったので さいしょから はじめるよ";
   const HINT_NO_BENCH = "ひかえの ぶきが まだ ないよ";
-  // 予約の札の頭（UX 1。幅が足りない行だけ短いほう。Lv255 の 3 けたで「つぎから」でも入らない せまい行は「つぎ」。v74）
-  const NEXT_LONG = "つぎの ほしから", NEXT_SHORT = "つぎから", NEXT_TINY = "つぎ";
   const URGENT_SEC = 30;               // 残り時間がこの秒以下で、棒と字をオレンジに・地球の絵を少し大きく（音は鳴らさない）
   const MS_BANNER_SEC = 1.0;           // 25・50・75% の帯（ロジックの時計で数える）
   const MS_TEXT = { 25: "4ぶんの1 こわした！", 50: "はんぶん こわした！", 75: "あと 4ぶんの1！" };
@@ -86,13 +84,10 @@
     return {
       row, btn,
       name: part(row, "name"), lv: part(row, "lv"), good: part(row, "good"), dps: part(row, "dps"), note: part(row, "note"),
-      next: row ? row.querySelector("[data-next]") : null,
       label: part(btn, "label"), cost: part(btn, "cost"), plus: part(row, "plus"), plusTimer: 0,
-      prevCan: undefined, fillShown: "", nextShown: null
+      prevCan: undefined, fillShown: ""
     };
   });
-  // 画面の大きさ・向きが変わったら、予約の札の長さ（つぎの ほしから／つぎから）を測り直す（次の updateUi で）
-  window.addEventListener("resize", () => { for (const r of rows) r.nextShown = null; });
   const slotBtns = [0, 1, 2, 3].map((k) => document.querySelector('[data-swap-slot="' + k + '"]'));
   const missing = ["kakera", "starLabel", "timeBar", "timeText", "canvas", "lostCard", "unlockBtn", "swapBtn", "choiceCard", "swapCard", "benchList"].filter((k) => !el[k]);
   if (missing.length) console.error("ほしくだき: 画面の部品が見つかりません：" + missing.join(", "));
@@ -386,14 +381,6 @@
     return '<i class="mat" data-mat="' + esc(g) + '"></i><span class="gt">' + esc(n) + "に つよい</span>";
   }
   const benchOf = (s) => (s && Array.isArray(s.bench) ? s.bench : []);
-  const swapOf = (s) => (s && Array.isArray(s.swap) ? s.swap : []);
-  // 枠 k の入れ替えの予約（無ければ null）。lv は ひかえ で覚えている Lv
-  function reservedFor(k) {
-    const p = swapOf(state).find((x) => x && x.slot === k);
-    if (!p || !knownId(p.id)) return null;
-    const b = benchOf(state).find((x) => x && x.id === p.id);
-    return { id: p.id, lv: b ? b.lv : 1 };
-  }
 
   // ===== 進め方（§7.1） =====
   function phaseNow() {
@@ -495,7 +482,7 @@
           break;
         }
         case "swap": {
-          // 予約が当たって武器が替わった（次の星の始め・時間切れのやり直しの始め）。絵は render が events から出す
+          // 入れ替えで武器が替わった（入れ替えのカードで選んだとき＝すぐ）。絵は render が events から出す
           if (!swapped) sfx.play("swap");
           swapped = true;
           const k = e.slot | 0;
@@ -610,23 +597,15 @@
       setAttr(el.swapBtn, "data-wide", sc === null ? "1" : null);
     }
   }
-  // 予約の札が行（.wl2）の幅からはみ出すか（はみ出すなら短い「つぎから」にする）
-  function nextOverflows(e) {
-    try {
-      const box = e.parentElement || e;
-      return e.scrollWidth > e.clientWidth + 0.5 || box.scrollWidth > box.clientWidth + 0.5;
-    } catch (err) { return false; }
-  }
   function updateRow(k) {
     const r = rows[k];
     if (!r.row) return;
     const x = state.slots[k];
     setHidden(r.row, !x);
-    if (!x) { setAttr(r.row, "data-suggest", null); setAttr(r.row, "data-fit", null); setAttr(r.row, "data-has-next", null); r.prevCan = undefined; return; }
+    if (!x) { setAttr(r.row, "data-suggest", null); setAttr(r.row, "data-fit", null); r.prevCan = undefined; return; }
     setAttr(r.row, "data-w", x.id);
-    // いまの星の札（一番多い いわ 以外のマス）が得意な武器に ◎（U6）
-    const main = starMain();
-    const fit = !!main && !!WEAPON[x.id] && WEAPON[x.id].good === main;
+    // いまの星の札（starInfo の goods＝その星に多いマス）が得意な武器に ◎（U6）
+    const fit = fitsStar(x.id);
     setAttr(r.row, "data-fit", fit ? "1" : null);
     setText(r.name, wName(x.id));
     setText(r.lv, "Lv" + x.lv);
@@ -634,19 +613,6 @@
     setText(r.dps, "1びょうに " + (dps === null ? "-" : dps));
     const gh = goodHtml(x.id);
     if (r.good && r.good.innerHTML !== gh) r.good.innerHTML = gh;
-    // 入れ替えの予約「つぎの ほしから いなずま Lv12」（§5.2）。行の幅に入らないときだけ「つぎから」（UX 1。画面の大きさが変わったら測り直す）
-    const nx = reservedFor(k);
-    const nkey = nx ? nx.id + ":" + nx.lv : "";
-    setAttr(r.row, "data-has-next", nx ? "1" : null);
-    if (r.next && r.nextShown !== nkey) {
-      r.nextShown = nkey;
-      const head = nx ? '<i class="wicon mini" data-w="' + esc(nx.id) + '" aria-hidden="true"></i>' : "";
-      const tail = nx ? esc(wName(nx.id)) + " Lv" + nx.lv : "";
-      r.next.innerHTML = nx ? head + NEXT_LONG + " " + tail : "";
-      r.next.hidden = !nx;
-      if (nx && nextOverflows(r.next)) r.next.innerHTML = head + NEXT_SHORT + " " + tail;
-      if (nx && nextOverflows(r.next)) r.next.innerHTML = head + NEXT_TINY + " " + tail;
-    }
     let note = "";
     if (x.lv < EVOLVE_LAST) {
       const next = (Math.floor(x.lv / EVOLVE_EVERY) + 1) * EVOLVE_EVERY;
@@ -655,13 +621,12 @@
     setText(r.note, note);
     setHidden(r.note, !note);
     const cost = safeCall(() => L.upCostOf(state, k), null);
-    const nxLabel = nx ? "（" + NEXT_LONG + " " + wName(nx.id) + " Lv" + nx.lv + "）" : "";
     if (cost === null) {
       setAttr(r.btn, "data-max", "1");
       setAttr(r.btn, "aria-disabled", "true");
       setText(r.label, "さいだい");
       setText(r.cost, "");
-      setAttr(r.btn, "aria-label", wName(x.id) + "は さいだい" + (fit ? "（いまの ほしに とくい）" : "") + nxLabel);
+      setAttr(r.btn, "aria-label", wName(x.id) + "は さいだい" + (fit ? "（いまの ほしに とくい）" : ""));
       r.prevCan = undefined;
     } else {
       setAttr(r.btn, "data-max", null);
@@ -676,16 +641,21 @@
       // 買えないところから買えるようになった瞬間に、短い光（音は無し。動きを減らす設定では出さない）
       if (r.prevCan === false && can) pulseClass(r.btn, "ready", READY_MS);
       r.prevCan = can;
-      setAttr(r.btn, "aria-label", wName(x.id) + "を つよくする " + fmt(cost) + "かけら" + (can ? "" : "（あと " + fmt(lack) + " かけら）") + (fit ? "（いまの ほしに とくい）" : "") + nxLabel);
+      setAttr(r.btn, "aria-label", wName(x.id) + "を つよくする " + fmt(cost) + "かけら" + (can ? "" : "（あと " + fmt(lack) + " かけら）") + (fit ? "（いまの ほしに とくい）" : ""));
     }
     setAttr(r.row, "data-suggest", k === suggestSlot ? "1" : null);
   }
 
-  // いまの星の札のマス（'iron'・'ice'・いわ だけなら null）
-  function starMain() {
+  // いまの星の札（starInfo の main：'iron'・'ice'・'rock'・'mix'・'gold'・'glow'、いわ だけの星 1・2 は null）と tag・goods
+  function starNow() {
     if (!state) return null;
-    const info = safeCall(() => L.starInfo(state.star, state.tier), null);
-    return info && typeof info.main === "string" ? info.main : null;
+    return safeCall(() => L.starInfo(state.star, state.tier), null);
+  }
+  // その武器の得意（WEAPONS の good）が いまの星に多いマス（goods）か＝◎
+  function fitsStar(id) {
+    const w = WEAPON[id];
+    const info = starNow();
+    return !!(w && w.good && info && Array.isArray(info.goods) && info.goods.includes(w.good));
   }
   // 買った行の「＋12%」（その行の dpsOf の前後差の割合。0.8 秒）
   function showPlus(k, before, after) {
@@ -791,24 +761,22 @@
     const b = slotBtns[k];
     if (b && document.activeElement !== b) { try { b.focus({ preventScroll: true }); } catch (e) { /* 無視 */ } }
   }
-  // 予約（今の武器を選ぶと取り消し）。カード・テスト用 API の両方がこの道を通る（行の札と保存も同じ）
-  function doReserve(slot, id) {
+  // 入れ替え：選んだら すぐ替わる（2026-11-12。ユーザー「武器の交換は、麺が始まってから自由に変えれるようにしてください」）。
+  // 今の武器を選んだら何もしない。カード・テスト用 API の両方がこの道を通る（音・行の光・ヒント・保存も同じ）
+  function doSwap(slot, id) {
     if (!state) return { ok: false, reason: "state" };
     const k = Math.floor(Number(slot));
-    const had = reservedFor(k);
-    const r = safeCall(() => L.reserveSwap(state, k, id), null);
+    const r = safeCall(() => L.swapWeapon(state, k, id), null);
     if (!r) return { ok: false, reason: "error" };
     if (!r.ok) return { ok: false, reason: r.reason };
     state = r.state;
-    const now2 = reservedFor(k);
-    const cancelled = !now2;
-    if (cancelled) { if (had) sfx.play("toggle"); }
-    else { sfx.play("swap"); R_call("burst", "swap", k); }
-    if (rows[k] && (had || now2)) pulseClass(rows[k].row, "flash", 900);
+    const evs = Array.isArray(r.events) ? r.events : [];
+    for (const e of evs) pendingEvents.push(e);
+    handleEvents(evs);
     saveNow();
     updateUi();
     if (overlay === "swap") fillSwap();
-    return { ok: true, slot: k, id: now2 ? now2.id : null };
+    return { ok: true, slot: k, id: state.slots[k].id };
   }
   function iconHtml(id, cls) { return '<i class="wicon' + (cls ? " " + cls : "") + '" data-w="' + esc(id) + '" aria-hidden="true"></i>'; }
   function fillSwap() {
@@ -820,19 +788,17 @@
       const x = state.slots[k];
       setHidden(b, !x);
       if (!x) return;
-      const nx = reservedFor(k);
-      const key = x.id + ":" + x.lv + ":" + (nx ? nx.id : "");
+      const key = x.id + ":" + x.lv;
       if (b.dataset.key !== key) {
         b.dataset.key = key;
-        b.innerHTML = iconHtml(x.id) + '<span class="sname">' + esc(wName(x.id)) + "</span>" + (nx ? iconHtml(nx.id, "nx") : "");
+        b.innerHTML = iconHtml(x.id) + '<span class="sname">' + esc(wName(x.id)) + "</span>";
       }
       setAttr(b, "aria-pressed", k === swapSel ? "true" : "false");
-      setAttr(b, "aria-label", (k + 1) + "ばんめの ほうだい " + wName(x.id) + " Lv" + x.lv + (nx ? "（" + NEXT_LONG + " " + wName(nx.id) + "）" : ""));
+      setAttr(b, "aria-label", (k + 1) + "ばんめの ほうだい " + wName(x.id) + " Lv" + x.lv);
     });
     const list = safeCall(() => L.swapChoicesOf(state, swapSel), null) || [];
     const cur = state.slots[swapSel];
-    const nx = reservedFor(swapSel);
-    const pick = nx ? nx.id : cur ? cur.id : null;
+    const pick = cur ? cur.id : null;
     let html = "";
     for (const id of list) {
       if (!knownId(id)) continue;
@@ -840,14 +806,13 @@
       const b = benchOf(state).find((x) => x && x.id === id);
       const lv = isCur ? cur.lv : b ? b.lv : 1;
       const w = WEAPON[id] || {};
-      const fit = !!w.good && w.good === starMain();
-      const tag = isCur ? "このまま" : id === pick ? NEXT_LONG : "";
-      const label = wName(id) + " Lv" + lv + (w.good ? "。" + (MAT_NAME[w.good] || w.good) + "に つよい" : "") + (isCur ? "。このまま" : "") + (id === pick && !isCur ? "。よやく ずみ" : "");
+      const fit = fitsStar(id);
+      const tag = isCur ? "いま つかってる" : "";
+      const label = wName(id) + " Lv" + lv + (w.good ? "。" + (MAT_NAME[w.good] || w.good) + "に つよい" : "") + (isCur ? "。いま つかってる" : "。えらぶと すぐ かわる");
       html += '<button type="button" class="bench" data-swap-to="' + esc(id) + '" aria-pressed="' + (id === pick ? "true" : "false") + '" aria-label="' + esc(label) + '">' +
         iconHtml(id) + '<span class="bname">' + esc(wName(id)) + ' <span class="lv">Lv' + lv + "</span>" + (fit ? '<span class="fit" aria-hidden="true">◎</span>' : "") + "</span>" +
         '<span class="good">' + goodHtml(id) + "</span>" + (tag ? '<span class="btag">' + tag + "</span>" : "") + "</button>";
     }
-    if (list.length <= 1) html += '<p class="bench-empty">ひかえの ぶきは ほかの ほうだいで よやく ずみだよ</p>';
     if (el.benchList && el.benchList.dataset.html !== html) {
       const focusedId = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.swapTo : null;
       el.benchList.innerHTML = html;
@@ -888,7 +853,7 @@
         setText(part(btn, "name"), wName(id));
         setText(part(btn, "desc"), w.desc || "");
         const g = part(btn, "good");
-        const fit = !!w.good && w.good === starMain();
+        const fit = fitsStar(id);
         const gh = (fit ? '<span class="fit" aria-hidden="true">◎</span>' : "") + goodHtml(id);
         if (g) { if (g.innerHTML !== gh) g.innerHTML = gh; g.hidden = !goodHtml(id); }
         btn.setAttribute("data-fit", fit ? "1" : "0");
@@ -899,8 +864,8 @@
       if (el.choiceLead) {
         const parts = [];
         if (state.slots.length >= SLOTS_MAX) parts.push("えらんだ ぶきは ひかえ（いま つかわない ぶき）に はいるよ");
-        const main = starMain();
-        if (main) parts.push("この ほしは " + (MAT_NAME[main] || main) + "が おおいよ");
+        const info = starNow();
+        if (info && info.lead) parts.push("この ほしは " + info.lead);
         else if (Array.isArray(L.MATS)) {
           const nx = L.MATS.filter((m) => (m.id === "iron" || m.id === "ice") && m.from > numOfState(state)).sort((a, b) => a.from - b.from)[0];
           if (nx) parts.push((nx.from === numOfState(state) + 1 ? "つぎの ほしから " : "ほし " + nx.from + " から ") + nx.name + "が でてくるよ");
@@ -1096,7 +1061,7 @@
   if (el.benchList) el.benchList.addEventListener("click", (e) => {
     const b = e.target && e.target.closest ? e.target.closest("[data-swap-to]") : null;
     if (!b || overlay !== "swap" || cardLocked()) return;
-    doReserve(swapSel, b.dataset.swapTo);
+    doSwap(swapSel, b.dataset.swapTo);
   });
   if (el.swapDone) el.swapDone.addEventListener("click", closeSwap);
   if (el.helpBtn) el.helpBtn.addEventListener("click", () => { sfx.unlock(); showHelp(); });
@@ -1180,7 +1145,6 @@
       slots: Array.isArray(s.slots) ? s.slots.map((x) => ({ id: x.id, lv: x.lv })) : [],
       bench: benchOf(s).map((x) => ({ id: x.id, lv: x.lv })),
       offer: s.offer ? s.offer.slice() : null,
-      swap: swapOf(s).map((p) => ({ slot: p.slot, id: p.id })),
       progress: pr, left: Number(s.left) || 0, limit: Number(s.limit) || 0,
       ship: s.ship ? { x: s.ship.x, y: s.ship.y, ang: s.ship.ang, dir: s.ship.dir } : null,
       overlay, lost: lostShown, particles: st.particles | 0, shots: Array.isArray(s.shots) ? s.shots.length : 0,
@@ -1262,7 +1226,7 @@
     upgrade(slot) { return doUpgrade(slot, null); },
     unlock() { return doUnlock(); },
     choose(k) { return doChoose(Number(k), false); },
-    reserveSwap(slot, id) { return doReserve(slot, id); },
+    swapWeapon(slot, id) { return doSwap(slot, id); },
     retry() { return doRetry(false); },
     setState: setStateApi,
     save() { return saveNow(); }
@@ -1400,7 +1364,7 @@
         upCost: k >= 0 ? safeCall(() => L.upCostOf(s, k), null) : null, good: w.good || null, aff: w.aff || {}, rate: w.rate, dmg: w.dmg
       };
     });
-    return { star: s.star, tier: s.tier | 0, info, kakera: s.kakera, slotCost: safeCall(() => L.slotCostOf(s), null), progress: safeCall(() => L.progressOf(s), null), swap: swapOf(s), weapons };
+    return { star: s.star, tier: s.tier | 0, info, kakera: s.kakera, slotCost: safeCall(() => L.slotCostOf(s), null), progress: safeCall(() => L.progressOf(s), null), weapons };
   }
   const D = window.YubiDebug;
   if (D && typeof D.command === "function") {
@@ -1465,28 +1429,14 @@
         return { slot: k, id: state.slots[k].id, lv: state.slots[k].lv, dps: L.dpsOf(state, k), upCost: L.upCostOf(state, k) };
       }, { desc: "Lv を変える（1〜255。しんか・最大の桁の確認）", args: "{ slot, lv }" });
       D.command("swap", (a) => {
-        // 予約して、その場で予約だけ当てる（入れ替えの絵と音の確認。ふだんの遊びでは起きない）
+        // その場で入れ替える（ふだんの「いれかえ」と同じ道。カードを開かずに）
         if (!state) throw new Error("まだ はじまっていない");
         const k = Math.floor(Number(a && a.slot));
-        const id = a && a.id;
-        const r = safeCall(() => L.reserveSwap(state, k, id), null);
-        if (!r || !r.ok) throw new Error("よやく できない（" + (r ? r.reason : "error") + "）");
-        const p = swapOf(r.state).find((x) => x.slot === k);
-        if (!p) { state = r.state; saveNow(); updateUi(); return { slot: k, id: state.slots[k].id, swapped: false }; }
-        const s = r.state;
-        const slots = s.slots.map((x) => ({ id: x.id, lv: x.lv }));
-        const bench = benchOf(s).map((x) => ({ id: x.id, lv: x.lv }));
-        const bi = bench.findIndex((x) => x.id === p.id);
-        const out = slots[k], inn = bench[bi];
-        slots[k] = { id: inn.id, lv: inn.lv };
-        bench[bi] = { id: out.id, lv: out.lv };
-        state = Object.assign({}, s, { slots, bench, swap: swapOf(s).filter((x) => x.slot !== k) });
-        const ev = { kind: "swap", slot: k, from: out.id, to: inn.id, lv: inn.lv };
-        pendingEvents.push(ev);
-        handleEvents([ev]);
-        updateUi();
-        return { slot: k, from: out.id, to: inn.id, lv: inn.lv, swapped: true };
-      }, { desc: "予約して、その場で入れ替える（絵と音の確認）", args: "{ slot, id }" });
+        const from = state.slots[k] ? state.slots[k].id : null;
+        const r = doSwap(k, a && a.id);
+        if (!r.ok) throw new Error("いれかえ できない（" + r.reason + "）");
+        return { slot: k, from, to: state.slots[k].id, lv: state.slots[k].lv, swapped: true };
+      }, { desc: "その場で入れ替える（いれかえ と同じ。絵と音の確認）", args: "{ slot, id }" });
       D.command("bench", (a) => {
         // その武器を ひかえ に Lv 1 で入れる（持っている武器・知らない武器は飛ばす。自機の武器と合わせて 6 つまで）
         if (!state) throw new Error("まだ はじまっていない");

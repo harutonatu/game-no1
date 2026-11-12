@@ -402,7 +402,7 @@ const M = [
   ['MK6 ほしくだき：もういちど でも残り時間が増えない（RETRY_EASE を使わない）', 'ルール', 'games/asteroid/logic.js', 'const e = 1 + Math.min(RETRY_EASE.max, RETRY_EASE.step * Math.max(0, (isNum(tries) ? Math.floor(tries) : 1) - 1));', 'const e = 1;'],
   ['MK7 ほしくだき：もういちど でかけらと武器を消す', 'データ消失', 'games/asteroid/logic.js', '  function retryMut(s, evs) {\n    s.phase = "fly";', '  function retryMut(s, evs) {\n    s.kakera = 0; s.slots = s.slots.map((x) => ({ id: x.id, lv: 1 }));\n    s.phase = "fly";'],
   ['MK8 ほしくだき：もういちど で区切り（ms）をもらい直せる', 'ルール', 'games/asteroid/logic.js', 'resetTry(s);   // 区切り（ms）はそのまま：やり直しでもらい直せない\n', 'resetTry(s); s.ms = [];\n'],
-  ['MK9 ほしくだき：もういちど で入れ替えの予約が当たらない', 'ルール', 'games/asteroid/logic.js', '    s.phase = "fly";\n    applySwaps(s, evs);\n    resetTry(s);', '    s.phase = "fly";\n    resetTry(s);'],
+  ['MK9 ほしくだき：星の途中（fly）では入れ替えられない（2026-11-12 から すぐ替わる。予約は廃止）', 'ルール', 'games/asteroid/logic.js', 'const SWAP_PHASES = ["fly", "lost", "clear"];', 'const SWAP_PHASES = ["lost", "clear"];'],
   ['MK10 ほしくだき：時間切れでなくても retry が通る（飛んでいる最中に星を最初から）', 'ルール', 'games/asteroid/logic.js', 'if (state.phase !== "lost") return { state, ok: false, reason: "phase", events: [] };', ''],
   ['MK11 ほしくだき：hold でも撃つ（時間切れの確かめが星のクリアで崩れる。T-19）', 'テスト', 'games/asteroid/logic.js', 'if (!s.hold && ctx.near >= 0', 'if (ctx.near >= 0'],
   ['MK12 ほしくだき：ひかりが 1 マスずつしか砕けない（つながった ひかり をまとめない）', 'ルール', 'games/asteroid/logic.js', 'if (k >= 0 && k < N && !seen.has(k) && R.mats[k] === 5)', 'if (k >= 0 && k < N && !seen.has(k) && R.mats[k] === 99)'],
@@ -446,6 +446,12 @@ const M = [
   ['MK47 ほしくだき：v73 の保存（印なし・ハード）の Lv99 の武器を上げない（急に何回も負ける）', '保存', 'games/asteroid/logic.js', 'if (o.lvv !== LVV && tier > 0) {', 'if (false) {'],
   // 四方への燃え広がり（ユーザー「ほのおの燃え広がりは一方向のみ？四方に燃え広がるのが自然だと思いました」2026-11-10）。流すときは ONLY=KL22
   ['MK48 ほしくだき：燃えているマスが広がる前に燃えつきると、まわりへ移らない（火が四方へ広がらない）', 'ルール', 'games/asteroid/logic.js', 'if (!b.spread) spreadFrom(b);                          // 広がる前に燃えつきた', '                          // 広がる前に燃えつきた'],
+  // 星の種類・いなずまの てつ への広がり・ねらい・途中の入れ替え（ユーザー「鉄が多い星が多すぎ」「もう少し鉄に対して拡散して」「自機の向きを調整してから狙いを定めてますか？」「麺が始まってから自由に変えれるように」2026-11-12）。
+  //      MK9・MK49〜MK51 は ONLY=KL1,KL3,KL7,KL12,KL23、MK52 は ONLY=KW23,X1 で流す
+  ['MK49 ほしくだき：星の種類が てつ に偏る（組の中が てつ ばかり）', 'ルール', 'games/asteroid/logic.js', 'const arr = ["iron", "ice", "rock", "mix", b % 2 === 0 ? "glow" : "gold"];', 'const arr = ["iron", "iron", "iron", "mix", b % 2 === 0 ? "glow" : "gold"];'],
+  ['MK50 ほしくだき：いなずまが てつ へ広がらない（てつ も BOLT_CELLS まで）', 'ルール', 'games/asteroid/logic.js', 'const nIron = Math.round(n * BOLT_IRON.ironMul);', 'const nIron = n;'],
+  ['MK51 ほしくだき：たま・ちらし・ほのお を自機の向き（ship.ang）へ撃つ（ねらったマスへ向けない）', 'ルール', 'games/asteroid/logic.js', 'const ang = Math.atan2(ty - y, tx - x);', 'const ang = sh.ang;'],
+  ['MK52 ほしくだき：入れ替えのカードで ひかえ の武器を押しても替わらない', '操作', 'games/asteroid/main.js', 'doSwap(swapSel, b.dataset.swapTo);', ''],
   // ---- あまいものあつめ（games/amai/）。ふち・運ぶ・押す・うごかせない・再生・保存・ずかん・絵の選び方・中断・古いページの仕組みを変えたときだけ流す（契約 §7.4）----
   ['MA1 あまいものあつめ：ふちでない角砂糖も運ぶ（見つける：AL3・AL4）', 'ルール', 'games/amai/logic.js', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;', 'return true;'],
   ['MA2 あまいものあつめ：ななめもふちに数える（見つける：AL3）', 'ルール', 'games/amai/logic.js', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1;', 'return o[i - 1] === 1 || o[i + 1] === 1 || o[i - W] === 1 || o[i + W] === 1 || o[i - W - 1] === 1 || o[i - W + 1] === 1 || o[i + W - 1] === 1 || o[i + W + 1] === 1;'],

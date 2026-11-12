@@ -43,9 +43,9 @@
   // ---------------------------------------------------------------- 定数（計画書 §1・§5.1）
   const NAME = "ちきゅうを守れ！ほしくだき";
   const CELL = 8;                       // 1 マスの大きさ（世界の単位）
-  const STANDOFF = 7;                   // 自機がふちから離れるマスの数
+  const STANDOFF = 10;                  // 自機がふちから離れるマスの数（2026-11-12 に 7 から。ちらしの扇が広がって見えるように）
   const SHIP_SPEED = 70;                // 自機の速さ（単位/秒）
-  const RANGE = 20;                     // 弾が届く距離（マス）。それより遠いマスはねらわない
+  const RANGE = 23;                     // 弾が届く距離（マス）。それより遠いマスはねらわない（STANDOFF と同じだけ足す）
   const DEG = Math.PI / 180;
   const SHIP_TURN = 240 * DEG;          // 自機が向きを変える速さの上限（ラジアン/秒）
   // まわる向き：小惑星の重心のまわりを ORBIT_LAPS[0]〜[1] 周（種で決める）回ったら向きを変える（ユーザー「何周かごとに向きを変える」2026-11-10）。
@@ -66,7 +66,10 @@
   // たまの伸び（Lv 11 から）：x = (Lv − 10) ÷ 89（0〜1）。撃つ間隔 = RATE ÷ (1 + rate × x)、強さ × (1 + dmg × x)。pierce の Lv ごとに 貫通 +1（威力 × keep）
   const SHOT_UP = deepFreeze({ from: 10, rate: 0.8, dmg: 0.2, keep: 0.3, pierce: [20, 40, 60, 80, 99] });
   // いなずまは どの種類のマスへも伝わる。1 マス伝わるごとに威力 ×（てつ へ 0.95、ほかへ 0.8）。BOLT_MIN 未満になる先へは伝わらない
-  const BOLT_KEEP = deepFreeze({ iron: 0.95, other: 0.8 }), BOLT_MIN = 0.3;
+  const BOLT_KEEP = deepFreeze({ iron: 0.97, other: 0.8 }), BOLT_MIN = 0.3;
+  // てつ へは広く（ユーザー「いなずまの効果がちょっとわかりづらいです。もう少し鉄に対して拡散してもいいと思います」2026-11-12）：
+  // てつ のマスは BOLT_CELLS（しんか込み）の ironMul 倍まで伝わる（てつ以外は今までどおり BOLT_CELLS まで）。てつ の先は威力が減りにくい（BOLT_KEEP.iron 0.95 → 0.97）
+  const BOLT_IRON = deepFreeze({ ironMul: 2.5 });
   // どかん の円の中心を、ねらった縁のマスから星の内側（円の中の残っているマスの重心の向き）へ 半径 × BOMB_SHIFT ずらす
   const BOMB_SHIFT = 0.5;
   // 星 1 の体力の合計（ぜんぶ いわ のとき）・かけらの合計の目安
@@ -90,8 +93,8 @@
   // 最初の星だけ、かけらを多めにする（星 1・2。はじめの買い物を早くして、強くした分の速さが見えるように＝何もしないと間に合わない）
   const EARLY_VALUE = deepFreeze([3, 1.5]);
   // 星 1〜30 の体力の倍率（STAR_HP に掛ける。ボスの重さ・傾きのならし adj は別に掛ける）。greedy の自動プレイ（種 1〜4 の中央）で、
-  // 星 1〜3 が 3.5 分・ふつうの星 4 分・ボス 5 分になるように測って決めた（計画書 §6）。ハード（段 1 から）は HARD
-  const HP_TABLE = deepFreeze([0.0176,0.0508,0.0788,0.2,0.31,0.29,0.332,0.58,0.952,1.19,1.33,1.5,2.19,3.6,4.48,4.85,4.87,7.31,8.42,13.1,14.8,15.5,19.3,26,35.5,34.7,39.8,43.8,60.2,75.4,86.2,90.4,104,127,155,203,212,234,327,362,454,472,533,760,816,1040,1070,1130,1290,1310]);
+  // 星 1〜3 が 3.5 分・ふつうの星 4 分・ボス 5 分になるように測って決めた（計画書 §6）。2026-11-12 に星の種類・距離 10 マスに合わせて測り直した（§6.2a）。ハード（段 1 から）は HARD
+  const HP_TABLE = deepFreeze([0.0177,0.0508,0.0786,0.161,0.344,0.31,0.29,0.831,1.04,1.29,1.49,1.59,2.62,3.81,4.59,5.07,6.4,6.99,8.55,11.8,12.3,18.5,20.3,25.1,30.9,32.9,42.1,48.7,55.9,68.2,77.2,91.4,105,129,161,189,192,229,373,350,515,445,483,705,740,930,998,1150,1250,1290]);
   // マスの混ざり方：てつ（星 3〜9・10〜）、こおり（星 6〜）、星ごとの傾き（てつ多め／こおり多め）
   const MIX = deepFreeze({ iron: [0.25, 0.35], ice: 0.15, tilt: 0.08 });
   const MILESTONE_BONUS = 0.03, MILESTONES = deepFreeze([25, 50, 75]);
@@ -199,6 +202,10 @@
 
   // 1 step に調べたマスの数の目安（simulate が最大を記録する）
   let CELLS = 0;
+  // 弾（たま・ちらし・ほのお）の数え：撃った数・どのマスにも当たらずに消えた数（ハズレ弾）。simulate が読む（画面は使わない）
+  // miss：ねらったマスが残っているのに当たらなかった（ねらいのせい）・gone：ねらったマスが届く前にほかの弾や崩れで消えて外れた（仕方ない）・away：当たったあと通りぬけて外へ出た
+  const BUL = { fired: 0, miss: 0, gone: 0, away: 0, by: {} };
+  function bulFire(w) { BUL.fired++; const o = BUL.by[w] || (BUL.by[w] = [0, 0]); o[0]++; }
 
   // ---------------------------------------------------------------- 式
   function calcN(n) { return clamp(Math.floor(isNum(n) ? n : 1), 1, STAR_CALC_MAX); }
@@ -300,19 +307,52 @@
     if (dimsMemo.size < 2000) dimsMemo.set(N, d0);
     return d0;
   }
+  // 星の種類（KINDS。ユーザー「鉄が多い星が多すぎ。もうちょっとバリエーション増やしてください」2026-11-12）：
+  // 星 1・2 は いわ だけ（札なし）、星 3 てつ・4 いわ・5 てつ、星 6 から 5 つずつの組（てつ・こおり・いわ・まざる・きん か ひかり）を
+  // 組ごとにハッシュで並べかえて回す（同じ種類が 2 つ続かない。組の頭が前の組のおしりと同じなら 1 つずらす）。通しの番号で決まる（ハードも続けて回る）。
+  // 体力・かけらの合計は種類によらず前の目安（iron0・ice0）にそろえる（dimsOf の adj）。きん・ひかり の星は きん・ひかり が多いぶん かけらが少し多い
+  const KIND_FROM = 6, KIND_BLOCK = 5;
+  const kindMemo = new Map();
+  function kindOf(n) {
+    if (n < 3) return null;
+    if (n < KIND_FROM) return n === 4 ? "rock" : "iron";
+    let v = kindMemo.get(n);
+    if (v !== undefined) return v;
+    const b = Math.floor((n - KIND_FROM) / KIND_BLOCK), p = (n - KIND_FROM) % KIND_BLOCK;
+    const arr = ["iron", "ice", "rock", "mix", b % 2 === 0 ? "glow" : "gold"];
+    let h = hash2(b + 1, 0x6b1d);
+    for (let k = arr.length - 1; k > 0; k--) { const j = h % (k + 1); h = hash2(h, k); const t = arr[k]; arr[k] = arr[j]; arr[j] = t; }
+    // 組の頭が前の星（前の組のおしり・星 5 の てつ）と同じなら、頭とその次を入れかえる。きん は星 8 から（MATS の from）
+    const prev = b === 0 ? kindOf(KIND_FROM - 1) : kindOf(KIND_FROM + b * KIND_BLOCK - 1);
+    if (arr[0] === prev) { const t = arr[0]; arr[0] = arr[1]; arr[1] = t; }
+    if (b === 0) { const g = arr.indexOf("glow"); if (g >= 0 && g < 2) { const q = arr.indexOf("ice") >= 2 ? arr.indexOf("ice") : arr.indexOf("rock") >= 2 ? arr.indexOf("rock") : 4; if (Math.abs(q - g) > 0) { const t = arr[g]; arr[g] = arr[q]; arr[q] = t; } } }
+    for (let k = 0; k < KIND_BLOCK && kindMemo.size < 4000; k++) kindMemo.set(KIND_FROM + b * KIND_BLOCK + k, arr[k]);
+    return arr[p];
+  }
+  // 種類ごとの てつ・こおり の割合（星 3〜5 は こおり が無い＝ice は 0）。tag は画面の札（SE 縦で 8 文字（空白こみ）まで）、lead は2択の案内（「この ほしは」に続く）、
+  // goods は ◎ を付ける武器の得意（WEAPONS の good）
+  const KINDS = deepFreeze({
+    iron: { iron: 0.40, ice: 0.05, tag: "てつが おおい", lead: "てつが おおいよ", goods: ["iron"] },
+    ice: { iron: 0.08, ice: 0.35, tag: "こおりが おおい", lead: "こおりが おおいよ", goods: ["ice"] },
+    rock: { iron: 0.06, ice: 0.04, tag: "いわが おおい", lead: "いわが おおいよ", goods: ["rock"] },
+    mix: { iron: 0.22, ice: 0.22, tag: "てつと こおり", lead: "てつと こおりが まざってるよ", goods: ["iron", "ice"] },
+    gold: { iron: 0.12, ice: 0.10, tag: "きんが おおい", lead: "きんが おおいよ", goods: [], gold: 10 },
+    glow: { iron: 0.12, ice: 0.10, tag: "ひかりが おおい", lead: "ひかりが おおいよ", goods: [], glow: 2 }
+  });
   function mixRaw(n) {
     const iron0 = n < 3 ? 0 : n < 10 ? MIX.iron[0] : MIX.iron[1];
     const ice0 = n < 6 ? 0 : MIX.ice;
+    const kind = kindOf(n);
     let iron = iron0, ice = ice0;
-    if (n >= 6) {
-      const tilt = hash2(n, 0x5eed) % 3;
-      if (tilt === 1) { iron += MIX.tilt; ice -= MIX.tilt; } else if (tilt === 2) { iron -= MIX.tilt; ice += MIX.tilt; }
-      iron = Math.round(iron * 100) / 100; ice = Math.round(ice * 100) / 100;
+    if (kind) {
+      const K = KINDS[kind];
+      iron = n < KIND_FROM && kind === "iron" ? 0.30 : K.iron;
+      ice = n < KIND_FROM ? 0 : K.ice;
     }
-    return { iron0, ice0, iron, ice };
+    return { iron0, ice0, iron, ice, kind };
   }
   function weightOf(iron, ice) { return (1 - iron - ice) * MAT_HP.rock + iron * MAT_HP.iron + ice * MAT_HP.ice; }
-  function goldBlobs(n) { return n >= 8 ? 2 + (hash2(n, 0x901d) % 3) : 0; }
+  function goldBlobs(n) { return n >= 8 ? (2 + (hash2(n, 0x901d) % 3)) * (kindOf(n) === "gold" ? KINDS.gold.gold : 1) : 0; }
   // 倍率：星 1〜firstStars は first、lateFrom から late、その間はまっすぐ
   function limitMulOf(n) {
     const M = LIMIT_MUL;
@@ -341,9 +381,9 @@
       const dm = dimsOf(q.k, q.t);
       const iron = dm.mix.iron, ice = dm.mix.ice;
       const gold = goldBlobs(q.N) * 4;
-      const main = iron === 0 && ice === 0 ? null : iron >= ice ? "iron" : "ice";
-      const tag = main === null ? "" : main === "iron" ? "てつが おおい" : "こおりが おおい";
-      return { w: dm.w, h: dm.h, radius: dm.rad, boss: dm.boss, mix: { iron, ice, gold }, limit: limitOf(q.k, q.t), tag, main, tier: q.t, star: q.k, num: q.N, hard: q.t > 0 };
+      const kind = dm.mix.kind || null;
+      const K = kind ? KINDS[kind] : null;
+      return { w: dm.w, h: dm.h, radius: dm.rad, boss: dm.boss, mix: { iron, ice, gold }, limit: limitOf(q.k, q.t), tag: K ? K.tag : "", lead: K ? K.lead : "", main: kind, goods: K ? K.goods.slice() : [], tier: q.t, star: q.k, num: q.N, hard: q.t > 0 };
     } catch (e) { return null; }
   }
 
@@ -560,7 +600,7 @@
     if (iceWant > 0) placeBlobs(mats, w, h, cells, iceWant, 2 + Math.floor(rnd() * 2), 3, okRock, rnd);
     // きん：2×2 の小さなかたまり（星 8〜）
     const gb = goldBlobs(numIn(n, t));
-    for (let b = 0, guard = 0; b < gb && guard < 400; guard++) {
+    for (let b = 0, guard = 0; b < gb && guard < 100 * gb; guard++) {
       const j = cells[Math.floor(rnd() * cnt)];
       const c = j % w;
       if (c >= w - 1) continue;
@@ -584,7 +624,8 @@
       if (!placeGlow(mats, w, h, cand, size, gid, id, rnd)) id--;
     };
     const gf = HARD.glow[Math.min(t, HARD.glow.length - 1)];
-    const nNear = Math.max(1, Math.round(nGlow * gf)), nDeep = Math.round(GLOW.deep * gf);
+    const gk = kindOf(numIn(n, t)) === "glow" ? KINDS.glow.glow : 1;   // ひかり が多い星は かたまりの数 × 2
+    const nNear = Math.max(1, Math.round(nGlow * gf * gk)), nDeep = Math.round(GLOW.deep * gf * gk);
     for (let k = 0; k < nNear; k++) put(nearArr, nearC);
     for (let k = 0; k < nDeep; k++) put(deepArr, deepC);
     const hp = new Array(N).fill(0);
@@ -1058,6 +1099,12 @@
       if (cx < 0 || cx >= cols || cy < 0 || cy >= rows) return;
     }
   }
+  // (x0, y0) から (ca, sa) の向きへ len まで、どれかのマスに当たるか
+  function lineHits(R, x0, y0, ca, sa, len) {
+    let hit = false;
+    dda(R, x0, y0, x0 + ca * len, y0 + sa * len, (i) => (R.mats[i] ? (hit = true) : false));
+    return hit;
+  }
   const cellX = (R, i) => ((i % R.w) + 0.5) * CELL;
   const cellY = (R, i) => (Math.floor(i / R.w) + 0.5) * CELL;
 
@@ -1238,21 +1285,28 @@
       const ang = Math.atan2(ty - y, tx - x);
       const ca = Math.cos(ang), sa = Math.sin(ang);
       ctx.evs.push({ kind: "fire", k, w, x, y, ang, tx, ty });
+      // ねらい（2026-11-12。ユーザー「自機の向きを調整してから狙いを定めてますか？ハズレ弾が若干出てます」）：
+      // 撃つ向きは自機の向き（ship.ang）と関係なく、いまの自機の位置（動いたあと＝弾の出る所）から ねらったマスの中心へ まっすぐ。
+      // 弾は自機の速さを受けつがない（世界にまっすぐ飛ぶ）ので、自機の動きの分の見込みは要らない。扇の外側・連の横の弾が
+      // 届く距離の中でどのマスにも当たらない線なら、その弾だけ ねらったマスへ向け直す（ねらいのせいで外れる弾を出さない）
+      const reach = (RANGE + 2) * CELL;
+      const fix = (x0, y0, a) => (lineHits(R, x0, y0, Math.cos(a), Math.sin(a), reach) ? a : Math.atan2(ty - y0, tx - x0));
       if (w === "spread") {
         const n = shapeOf(w, L);
         const fan = 0.375 * (8 + 2 * (n - 5) / 2) * DEG;
         for (let j = 0; j < n && room(); j++) {
-          const a = ang + (j - (n - 1) / 2) * fan / (1 + (n - 5) / 4);
-          s.shots.push({ k, w, x, y, vx: Math.cos(a) * BULLET_SPEED, vy: Math.sin(a) * BULLET_SPEED, t: 0, dmg: d, dmg0: d });
+          const a = fix(x, y, ang + (j - (n - 1) / 2) * fan / (1 + (n - 5) / 4));
+          bulFire(w); s.shots.push({ k, w, x, y, vx: Math.cos(a) * BULLET_SPEED, vy: Math.sin(a) * BULLET_SPEED, t: 0, dmg: d, dmg0: d, a: tgt });
         }
       } else if (w === "shot") {
         const n = shapeOf(w, L);
         for (let j = 0; j < n && room(); j++) {
           const off = (j - (n - 1) / 2) * 4;   // 連は進む向きに直角にならべる
-          s.shots.push({ k, w, x: x - sa * off, y: y + ca * off, vx: ca * BULLET_SPEED, vy: sa * BULLET_SPEED, t: 0, dmg: d, dmg0: d, p: pierceOf(L) });
+          const bx = x - sa * off, by = y + ca * off, a = off ? fix(bx, by, ang) : ang;
+          bulFire(w); s.shots.push({ k, w, x: bx, y: by, vx: Math.cos(a) * BULLET_SPEED, vy: Math.sin(a) * BULLET_SPEED, t: 0, dmg: d, dmg0: d, p: pierceOf(L), a: tgt });
         }
       } else if (room()) {
-        s.shots.push({ k, w, x, y, vx: ca * BULLET_SPEED, vy: sa * BULLET_SPEED, t: 0, dmg: d, aim: tgt });
+        bulFire(w); s.shots.push({ k, w, x, y, vx: ca * BULLET_SPEED, vy: sa * BULLET_SPEED, t: 0, dmg: d, aim: tgt });
       }
       return true;
     }
@@ -1321,12 +1375,14 @@
       }
     };
     grow(start, 1);
-    while (cells.length < n && front.length) {
+    const nIron = Math.round(n * BOLT_IRON.ironMul);   // てつ のマスはここまで（ほかは n まで）
+    while (cells.length < nIron && front.length) {
       let bi = 0;
       for (let k = 1; k < front.length; k++) { const x = front[k], y = front[bi]; if (x[0] > y[0] + 1e-12 || (Math.abs(x[0] - y[0]) <= 1e-12 && x[3] < y[3])) bi = k; }
       const f = front[bi]; front[bi] = front[front.length - 1]; front.pop();
       if (seen.has(f[1])) continue;
-      seen.add(f[1]); cells.push(f[1]); pw.push(f[0]); edges.push([f[2], f[1]]);
+      if (mats[f[1]] !== 2 && cells.length >= n) continue;   // てつ以外は今までどおり n マスまで
+      seen.add(f[1]); cells.push(f[1]); pw.push(f[0]); edges.push(mats[f[1]] === 2 ? [f[2], f[1], 1] : [f[2], f[1]]);   // 3 つ目の 1 は てつ（描画が光らせる）
       grow(f[1], f[0]);
     }
     return { cells, edges, pw };
@@ -1435,8 +1491,8 @@
           gone = true; return true;
         });
         if (gone) continue;
-        if (b.t > BULLET_LIFE) continue;
-        if (b.h !== undefined && (b.x < 0 || b.y < 0 || b.x > gw || b.y > gh)) continue;   // 通りぬけて格子の外へ出た たまは消す
+        if (b.t > BULLET_LIFE) { if (b.h === undefined) { const a = b.aim !== undefined ? b.aim : b.a; if (a >= 0 && s.rock.mats[a]) { BUL.miss++; const o = BUL.by[b.w]; if (o) o[1]++; } else BUL.gone++; } else BUL.away++; continue; }
+        if (b.h !== undefined && (b.x < 0 || b.y < 0 || b.x > gw || b.y > gh)) { BUL.away++; continue; }   // 通りぬけて格子の外へ出た たまは消す
         keep.push(b);
       }
       s.shots = keep;
@@ -1532,7 +1588,7 @@
     for (const k of keep) o[k] = bt[k];
     return o;
   }
-  // 入れ替えの予約を当てる（次の星の始め・やり直しの始め）。Lv は武器ごと：外した武器はその Lv で ひかえ へ
+  // 古い保存（v78 まで）の入れ替えの予約 swap を当てる（loadSave だけが使う。2026-11-12 から入れ替えは すぐ替わる＝予約は無い）
   function applySwaps(s, evs) {
     if (!Array.isArray(s.swap) || !s.swap.length) { s.swap = []; return; }
     for (const p of s.swap) {
@@ -1556,12 +1612,12 @@
     s.cd = s.slots.map(() => s.t);
     s.ship = startShip(s);
   }
+  // evs は使わない（2026-11-12 から入れ替えの予約が無い）
   function retryMut(s, evs) {
     s.phase = "fly";
-    applySwaps(s, evs);
     resetTry(s);   // 区切り（ms）はそのまま：やり直しでもらい直せない
   }
-  // 時間切れのカードの「もういちど」：その星を最初の形から（かけら・Lv・武器はそのまま。残り時間も戻る。入れ替えの予約はここで当たる）
+  // 時間切れのカードの「もういちど」：その星を最初の形から（かけら・Lv・武器はそのまま。残り時間も戻る）
   function retry(state) {
     try {
       if (!isState(state)) return { state, ok: false, reason: "state", events: [] };
@@ -1578,7 +1634,6 @@
     const end = was >= starsOf(wasTier);
     if (end) { s.tier = Math.min(TIER_MAX, wasTier + 1); s.star = 1; } else s.star = was + 1;
     s.tries = 1;
-    applySwaps(s, evs);
     resetTry(s);
     s.ms = [];
     if (end) {
@@ -1777,34 +1832,40 @@
       return { state: s, ok: true, to, events: [] };
     } catch (e) { return { state, ok: false, to: null }; }
   }
+  // 入れ替え（2026-11-12。ユーザー「武器の交換は、麺が始まってから自由に変えれるようにしてください」＝星の途中でも自由に）：
+  // 選んだらすぐ替わる（予約はしない）。外した武器はその Lv で ひかえ へ、載せた武器は ひかえ で覚えていた Lv で。
+  // 飛んでいる間（fly）・時間切れの札の間（lost）・クリアの演出の間（clear）にできる。2択の間（choose）・エンディング（end）はできない（カードが出ている）
   function swapChoicesOf(state, slot) {
     try {
       if (!isState(state) || !Number.isInteger(slot) || slot < 0 || slot >= state.slots.length) return null;
       const bench = Array.isArray(state.bench) ? state.bench : [];
-      const sw = Array.isArray(state.swap) ? state.swap : [];
-      const used = new Set(sw.filter((p) => p && p.slot !== slot).map((p) => p.id));
-      return [state.slots[slot].id].concat(bench.filter((x) => x && W[x.id] && !used.has(x.id)).map((x) => x.id));
+      return [state.slots[slot].id].concat(bench.filter((x) => x && W[x.id]).map((x) => x.id));
     } catch (e) { return null; }
   }
-  function reserveSwapMut(s, slot, id) {
-    if (s.phase === "end") return "phase";
+  const SWAP_PHASES = ["fly", "lost", "clear"];
+  function swapMut(s, slot, id, evs) {
+    if (!SWAP_PHASES.includes(s.phase)) return "phase";
     if (!Number.isInteger(slot) || slot < 0 || slot >= s.slots.length) return "slot";
     if (typeof id !== "string" || !W[id]) return "id";
-    s.swap = s.swap.filter((p) => p.slot !== slot);
-    if (id === s.slots[slot].id) return null;
-    if (!s.bench.some((x) => x.id === id) || s.swap.some((p) => p.id === id)) return "bench";
-    s.swap.push({ slot, id });
-    s.swap.sort((a, b) => a.slot - b.slot);
+    if (id === s.slots[slot].id) return "same";
+    const bi = s.bench.findIndex((x) => x.id === id);
+    if (bi < 0) return "bench";
+    const out = s.slots[slot], inn = s.bench[bi];
+    s.slots[slot] = { id: inn.id, lv: inn.lv };
+    s.bench[bi] = { id: out.id, lv: out.lv };
+    if (Array.isArray(s.cd) && slot < s.cd.length) s.cd[slot] = s.t;   // 載せた武器は すぐ撃てる（その武器の間隔から）
+    evs.push({ kind: "swap", slot, from: out.id, to: inn.id, lv: inn.lv });
     return null;
   }
-  function reserveSwap(state, slot, id) {
+  function swapWeapon(state, slot, id) {
     try {
-      if (!isState(state)) return { state, ok: false, reason: "state" };
+      if (!isState(state)) return { state, ok: false, reason: "state", events: [] };
       const s = shallow(state);
-      const why = reserveSwapMut(s, slot, id);
-      if (why) return { state, ok: false, reason: why };
-      return { state: s, ok: true };
-    } catch (e) { return { state, ok: false, reason: "error" }; }
+      const events = [];
+      const why = swapMut(s, slot, id, events);
+      if (why) return { state, ok: false, reason: why, events: [] };
+      return { state: s, ok: true, events };
+    } catch (e) { return { state, ok: false, reason: "error", events: [] }; }
   }
 
   // ---------------------------------------------------------------- かけらの書き方
@@ -1833,20 +1894,14 @@
     let star = state.star, tier = tierOk(state.tier), cleared = !!state.cleared, tries = state.tries, ms = Array.isArray(state.ms) ? state.ms.slice() : [];
     let slots = state.slots.map((x) => ({ id: x.id, lv: x.lv }));
     let bench = (Array.isArray(state.bench) ? state.bench : []).map((x) => ({ id: x.id, lv: x.lv }));
-    let swap = (Array.isArray(state.swap) ? state.swap : []).map((x) => ({ slot: x.slot, id: x.id }));
+    const swap = [];
     // クリアの演出中（phase 'clear'、または 2択の間で戻り先が 'clear'）は次の星を保存する（星 30 なら次の段の星 1。エンディングのカードは開き直すと出ない）。
-    // 時間切れの間（phase 'lost'、または 2択の間で戻り先が 'lost'）は、やり直しの始めに当たる予約を先に当てて書く（tries は増えたまま）。
-    // どちらも、入れ替えの予約を当てた slots・bench と swap: [] で書く
+    // 入れ替えは すぐ替わる（2026-11-12）ので、swap はいつも [] で書く（欄は前の形のまま残す）
     const ph = state.phase === "choose" ? state.back : state.phase;
     const toNext = ph === "clear";
     if (toNext) {
       if (state.star >= starsOf(tier)) { star = 1; tier = Math.min(TIER_MAX, tier + 1); cleared = true; } else star = state.star + 1;
       tries = 1; ms = [];
-    }
-    if (toNext || ph === "lost") {
-      const tmp = { slots, bench, swap };
-      applySwaps(tmp, []);
-      slots = tmp.slots; bench = tmp.bench; swap = [];
     }
     const t = state.totals || {};
     const o = {
@@ -1939,6 +1994,9 @@
         swap.push({ slot: p.slot, id: p.id });
       }
       swap.sort((a, b) => a.slot - b.slot);
+      // 古い保存の予約は、読み込むときにすぐ当てる（2026-11-12 から入れ替えは すぐ替わる。予約は残さない）
+      if (swap.length) { const tmp = { slots, bench, swap }; applySwaps(tmp, []); }
+      swap.length = 0;
       const rng = isNum(o.rng) ? Math.floor(Math.abs(o.rng)) >>> 0 : hash2(seed, 0x2b);
       const tries = intIn(o.tries, 1, TRIES_MAX, 1);
       const tt = isObj(o.totals) ? o.totals : {};
@@ -2011,24 +2069,21 @@
     for (let g = 0; g < Math.min(LEVEL_MAX, buys); g++) { const c = upCost(w, lv); if (c === null || c > b) break; b -= c; lv++; }
     return lv;
   }
-  function greedySwap(s, star, buyEvery) {
+  function greedySwap(s, star, buyEvery, evs) {
     const buys = Math.max(1, Math.ceil(90 / buyEvery));
     if (!s.bench.length) return false;
     const mix = mixOf(star);
     let best = null, bg = 1.1;
-    const used = new Set(s.swap.map((p) => p.id));
     for (let k = 0; k < s.slots.length; k++) {
-      if (s.swap.some((p) => p.slot === k)) continue;
       const x = s.slots[k];
       const cur = effDps(x.id, lvReach(x.id, x.lv, s.kakera, buys), mix);
       for (const b of s.bench) {
-        if (used.has(b.id)) continue;
         const g = effDps(b.id, lvReach(b.id, b.lv, s.kakera, buys), mix) / Math.max(1e-9, cur);
         if (g > bg) { bg = g; best = { k, id: b.id }; }
       }
     }
     if (!best) return false;
-    return reserveSwapMut(s, best.k, best.id) === null;
+    return swapMut(s, best.k, best.id, evs || []) === null;
   }
   function pickChoice(s, policy, simRnd, order) {
     if (s.offer.length === 1) return 0;
@@ -2071,6 +2126,7 @@
     };
     const wasSim = SIM;
     SIM = true;
+    BUL.fired = 0; BUL.miss = 0; BUL.gone = 0; BUL.away = 0; BUL.by = {};
     try {
       let s = newGame(seed);
       if (isObj(opts.start)) {
@@ -2099,11 +2155,13 @@
         if (s.phase === "end") s.phase = "fly";
         if ((s.phase === "clear" || s.phase === "lost") && !swapAsked) {
           swapAsked = true;
-          if (doSwap && pol === "greedy") greedySwap(s, s.phase === "clear" ? numOf(s) + 1 : numOf(s), buyEvery);
+          const sev = [];
+          if (doSwap && pol === "greedy") greedySwap(s, s.phase === "clear" ? numOf(s) + 1 : numOf(s), buyEvery, sev);
           else if (doSwap && pol === "random" && s.bench.length && simRnd() < 0.3) {
             const k = Math.floor(simRnd() * s.slots.length), b = s.bench[Math.floor(simRnd() * s.bench.length)];
-            reserveSwapMut(s, k, b.id);
+            swapMut(s, k, b.id, sev);
           }
+          for (const e of sev) { rep.swaps++; rep.swapLog.push({ star: s.phase === "clear" ? s.star + 1 : s.star, slot: e.slot, from: e.from, to: e.to, lv: e.lv }); }
         }
         if (s.phase === "lost") {
           if (s.tries > maxTries) break;
@@ -2184,6 +2242,8 @@
       }
       rep.t = s.t;
       rep.flySec = flyT;
+      // ハズレ弾（たま・ちらし・ほのお のうち、どのマスにも当たらずに消えた弾の割合）
+      rep.bullets = { fired: BUL.fired, miss: BUL.miss, gone: BUL.gone, away: BUL.away, missRate: BUL.fired ? +(BUL.miss / BUL.fired).toFixed(4) : 0, by: JSON.parse(JSON.stringify(BUL.by)) };
       rep.buyGaps.avg = rep.buys ? +(s.t / rep.buys).toFixed(2) : null;
       rep.boltMedian = median(rep.boltCells);
       rep.boltCells = rep.boltCells.length;
@@ -2201,14 +2261,14 @@
     NAME, MATS, WEAPONS, EVOLVE, MAT_HP, MAT_VALUE, UP_COST, SLOT_COST,
     CELL, STANDOFF, SHIP_SPEED, RANGE, SHIP_TURN, ORBIT_LAPS, GRID_MAX,
     R_BASE, R_STEP, R_MAX, BOSS_EVERY, BOSS_SIZE, BOSS_HARD, SHAPE, AREA_FILL, GLOW,
-    BOLT_CELLS, BEAM_W, BEAM_DEPTH, SHOT_UP, BOLT_KEEP, BOLT_MIN, BOMB_SHIFT,
-    STAR_HP, STAR_VALUE, HP_TABLE, VALUE_GROWTH, VALUE_GROWTH2, EARLY_VALUE, HARD, TIER_MAX, UP_GROWTH, LEVEL_MAX, LV_HI, HI_COST, BURN, SLOTS_MAX, MIX,
+    BOLT_CELLS, BEAM_W, BEAM_DEPTH, SHOT_UP, BOLT_KEEP, BOLT_IRON, BOLT_MIN, BOMB_SHIFT,
+    KINDS, STAR_HP, STAR_VALUE, HP_TABLE, VALUE_GROWTH, VALUE_GROWTH2, EARLY_VALUE, HARD, TIER_MAX, UP_GROWTH, LEVEL_MAX, LV_HI, HI_COST, BURN, SLOTS_MAX, MIX,
     CLEAR_BONUS, MILESTONE_BONUS, MILESTONES, BEST_MAX, ENDING_STAR, HARD_STARS, STAR_MAX, STAR_CALC_MAX, KAKERA_MAX, SHOTS_MAX, STEP,
     SAVE_VERSION, SAVE_KEY, SAVE_KEY_BAK, SAVE_KEY_BEST, SAVE_KEY_HELP, SAVE_KEY_V3,
     RETRY_EASE, CLEAR_SEC, BEAM_SEC, BOMB_FLIGHT, BULLET_SPEED, BULLET_LIFE, CARRY_MIN, LIMIT_MUL, LIMIT_BASE, IRON_BLOB_MIN,
-    newGame, starInfo, step, dpsOf, upCostOf, upgrade, slotCostOf, unlock, choose, swapChoicesOf, reserveSwap, retry, afterEnding, progressOf, formatKakera, formatTime,
+    newGame, starInfo, step, dpsOf, upCostOf, upgrade, slotCostOf, unlock, choose, swapChoicesOf, swapWeapon, retry, afterEnding, progressOf, formatKakera, formatTime,
     makeSave, loadSave, saveVersionOf, validateBest, simulate,
-    hpMul, valMul, dmg, upCost, affOf, shapeOf, cellHp, cellHpAt, cellValue, matOf, limitOf, limitTry, rateOf, pierceOf, numIn, starsOf
+    hpMul, valMul, kindOf, dmg, upCost, affOf, shapeOf, cellHp, cellHpAt, cellValue, matOf, limitOf, limitTry, rateOf, pierceOf, numIn, starsOf
   };
   return Object.freeze(api);
 });

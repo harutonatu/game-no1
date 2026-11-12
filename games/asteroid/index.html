@@ -404,9 +404,6 @@
   @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
 
   /* 入れ替えの予約「つぎから いなずま Lv12」（§5.2）。行の 2 段目。せまい行では「1びょうに N」の代わりに出す */
-  .wl2 .next { display: inline-flex; align-items: center; gap: 3px; min-width: 0; padding: 0 4px; border-radius: 6px; background: rgba(255, 216, 77, 0.16); color: var(--gold); font: 800 12px/1.2 var(--font-text); white-space: nowrap; }
-  .wl2 .next[hidden] { display: none; }
-  @container (max-width: 229px) { .wrow[data-has-next="1"] .wl2 .dps { display: none; } }
 
   /* 下のボタンの行：あたらしい ぶき（広い）＋ いれかえ（88px 以上）。6 種類そろって #unlockBtn が消えたら #swapBtn が行の全部 */
   .btnrow { grid-area: btns; display: flex; gap: 6px; min-width: 0; }
@@ -596,7 +593,6 @@
   }
   .sslot .wicon { width: 26px; height: 26px; background-size: 21px 21px; }
   .sslot .sname { white-space: nowrap; }
-  .sslot .wicon.nx { position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; background-size: 13px 13px; box-shadow: 0 0 0 2px var(--gold); }
   .sslot[aria-pressed="true"] { border-color: var(--gold); background: #3a3a22; }
   .sslot[aria-pressed="true"]::after { content: "▼"; position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); font: 10px/1 sans-serif; color: var(--gold); }
   .benchlist { display: flex; flex-direction: column; gap: 6px; }
@@ -628,7 +624,6 @@
   .bench[aria-pressed="true"] .btag { background: var(--gold); color: #2a1f00; }
   .bench:active:not([aria-disabled="true"]) { filter: brightness(1.2); }
   .bench[aria-disabled="true"], .sslot[aria-disabled="true"] { opacity: 0.6; }
-  .bench-empty { margin: 0; color: var(--muted); font: 600 13px/1.4 var(--font-text); }
 
   /* エンディングの絵：地球とじき（線画） */
   .endpic { display: block; margin: 0 auto; width: 140px; height: 124px; overflow: visible; }
@@ -810,7 +805,7 @@
       <span class="wicon" data-part="icon" aria-hidden="true"></span>
       <div class="winfo">
         <div class="wl1"><b data-part="name">たま</b><span class="lv" data-part="lv">Lv1</span><span class="fit" data-part="fit" aria-hidden="true">◎</span><span class="good" data-part="good"></span></div>
-        <div class="wl2"><span class="dps" data-part="dps">1びょうに 10</span><span class="next" data-next hidden></span></div>
+        <div class="wl2"><span class="dps" data-part="dps">1びょうに 10</span></div>
       </div>
       <button class="up" type="button" data-up="0"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost">5</b><span class="unit">かけら</span></span></button>
       <span class="evo" data-part="note"></span>
@@ -820,7 +815,7 @@
       <span class="wicon" data-part="icon" aria-hidden="true"></span>
       <div class="winfo">
         <div class="wl1"><b data-part="name"></b><span class="lv" data-part="lv"></span><span class="fit" data-part="fit" aria-hidden="true">◎</span><span class="good" data-part="good"></span></div>
-        <div class="wl2"><span class="dps" data-part="dps"></span><span class="next" data-next hidden></span></div>
+        <div class="wl2"><span class="dps" data-part="dps"></span></div>
       </div>
       <button class="up" type="button" data-up="1"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost"></b><span class="unit">かけら</span></span></button>
       <span class="evo" data-part="note"></span>
@@ -830,7 +825,7 @@
       <span class="wicon" data-part="icon" aria-hidden="true"></span>
       <div class="winfo">
         <div class="wl1"><b data-part="name"></b><span class="lv" data-part="lv"></span><span class="fit" data-part="fit" aria-hidden="true">◎</span><span class="good" data-part="good"></span></div>
-        <div class="wl2"><span class="dps" data-part="dps"></span><span class="next" data-next hidden></span></div>
+        <div class="wl2"><span class="dps" data-part="dps"></span></div>
       </div>
       <button class="up" type="button" data-up="2"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost"></b><span class="unit">かけら</span></span></button>
       <span class="evo" data-part="note"></span>
@@ -840,7 +835,7 @@
       <span class="wicon" data-part="icon" aria-hidden="true"></span>
       <div class="winfo">
         <div class="wl1"><b data-part="name"></b><span class="lv" data-part="lv"></span><span class="fit" data-part="fit" aria-hidden="true">◎</span><span class="good" data-part="good"></span></div>
-        <div class="wl2"><span class="dps" data-part="dps"></span><span class="next" data-next hidden></span></div>
+        <div class="wl2"><span class="dps" data-part="dps"></span></div>
       </div>
       <button class="up" type="button" data-up="3"><span data-part="label">つよくする</span><span class="cost"><b data-part="cost"></b><span class="unit">かけら</span></span></button>
       <span class="evo" data-part="note"></span>
@@ -876,11 +871,11 @@
   </div>
 </div>
 
-<!-- 入れ替え（§3.6・§5.3）：上で武器の枠を選び、下の ひかえ の武器を押すと予約。替わるのは つぎの ほしか、もういちどの あと -->
+<!-- 入れ替え（§3.6・§5.3。2026-11-12 から）：上で武器の枠を選び、下の ひかえ の武器を押すと、その場ですぐ替わる（星の途中でも） -->
 <div class="overlay" id="swapCard" role="dialog" aria-modal="true" aria-labelledby="swapTitle" hidden>
   <div class="card">
     <h2 id="swapTitle" tabindex="-1">どの ぶきに かえる？</h2>
-    <p class="small" id="swapText">えらぶと、つぎの ほしから かわるよ（まにあわなくて もういちどに なったときも かわるよ）</p>
+    <p class="small" id="swapText">えらぶと すぐ かわるよ。はずした ぶきは その Lv の まま ひかえに もどるよ</p>
     <div class="swapslots" role="group" aria-label="ぶきの わく">
       <button type="button" class="sslot" data-swap-slot="0" aria-pressed="true"></button>
       <button type="button" class="sslot" data-swap-slot="1" aria-pressed="false" hidden></button>
