@@ -12,6 +12,11 @@
 from lib import *
 import lib
 
+# 2026-11-15 中間に（ユーザー「アカン簡単すぎる…ちょうど中間がいい」）：v82 で やめた 書き込みのうち、ON に 書いた物だけを 戻す。
+#   ON に 入れられる 名前：bladegrid bladerim towersh towerrim plank door win roofhi roofrim sun cloud hillhi notch stem bandline cuphi fence bfly
+#   （名前を 足すと 細かくなり、難しくなる。決めかたは 計画書 docs/plans/amai-parts.md §20）
+ON = {'bladegrid', 'fence'}
+
 
 def mirror():
     """描いた背景を まるごと 左右ぎゃくに（地の色・模様の印も いっしょに）。"""
@@ -33,14 +38,32 @@ def windmill(x, gy, hub_y=11):
             for w in range(1, 5):
                 for (u, v) in ((k, w), (k + .5, w), (k, w + .5)):
                     bl.add((int(math.floor(x + .5 + ca * u - sa * v)), int(math.floor(hub_y + .5 + sa * u + ca * v))))
-        blades |= {p for p in bl if p in ALL}
-    fill(blades, 'W')
-    fill(spars, 'K')
+        bl = {p for p in bl if p in ALL}
+        blades |= bl
+        if 'bladerim' in ON or 'bladegrid' in ON:
+            fill(bl, 'W')
+            if 'bladegrid' in ON: fill(cells(bl, lambda a_, b_: (a_ + b_) % 3 == 0 or (a_ - b_) % 3 == 0), 'C')
+            if 'bladerim' in ON: fill(edge(bl), 'K')
+    if not ('bladerim' in ON or 'bladegrid' in ON): fill(blades, 'W')
+    fill(spars, 'C' if 'bladerim' in ON else 'K')
     tower = poly([(x - 4, hub_y + 1), (x + 4, hub_y + 1), (x + 7, gy + 1), (x - 7, gy + 1)])
     fill(tower, 'O')
-    door = rect(x - 1, gy - 5, x + 1, gy); fill(door, 'K')
+    if 'towersh' in ON: fill(cells(tower, lambda xx, yy: xx < x - 1 and ((xx - 1, yy) not in tower or (xx - 2, yy) not in tower or (xx + yy) % 2 == 0)), 'C')
+    if 'towerrim' in ON: fill(edge(tower), 'K')
+    if 'plank' in ON:
+        for yy in range(hub_y + 6, gy, 5):
+            fill(cells(tower, lambda a, b: b == yy and (a - 1, b) in tower and (a + 1, b) in tower), 'C')
+    if 'door' in ON:
+        door = rect(x - 1, gy - 5, x + 1, gy); fill(door, 'C'); fill(edge(door) - cells(door, lambda a, b: b == gy), 'K')
+    else:
+        door = rect(x - 1, gy - 5, x + 1, gy); fill(door, 'K')
+    if 'win' in ON:
+        win = rect(x - 2, hub_y + 6, x + 2, hub_y + 9); fill(win, 'B'); fill(edge(win), 'K'); fill(rect(x, hub_y + 6, x, hub_y + 9), 'K')
     roof = poly([(x - 6, hub_y + 2), (x + 6, hub_y + 2), (x + 3, hub_y - 4), (x - 3, hub_y - 4)]) | ell(x, hub_y - 4, 3, 2)
     fill(roof, 'R')
+    if 'roofhi' in ON: fill(cells(roof, lambda a, b: (a + 1, b) not in roof or (a, b - 1) not in roof), 'O')
+    if 'roofrim' in ON: fill(edge(roof), 'K')
+    if 'bladerim' in ON: fill(spars & ell(x, hub_y, 4, 4), 'C')
     hub = ell(x + .5, hub_y + .5, 1.6, 1.6); fill(hub, 'K')
     return tower | roof | blades
 
@@ -58,16 +81,38 @@ def cloud_(cx, cy, w, c, shade):
     return m
 
 
+def fence(x0, x1, gy):
+    """木のさく（くい C・光 O・ふち K、よこ木 2 本）。"""
+    out = set()
+    for y in (gy - 4, gy - 2):
+        bar = rect(x0, y, x1, y); fill(bar, 'C'); out |= bar
+    for px in range(x0, x1 + 1, 3):
+        post = rect(px, gy - 6, px + 1, gy)
+        fill(post, 'O'); fill(cells(post, lambda a, b: a == px + 1), 'C'); put(px, gy - 6, 'K'); put(px + 1, gy - 6, 'K')
+        out |= post
+    fill(cells(out, lambda a, b: (a, b + 1) not in out), 'K')
+    return out
+
+
+def butterfly(x, y, c='Y'):
+    """小さな ちょうちょ（はね c・からだ K）。"""
+    fill({(x - 1, y - 1), (x + 1, y - 1), (x - 1, y), (x + 1, y)}, c)
+    fill({(x, y - 1), (x, y)}, 'K')
+
+
 def draw(flip=False, sky=None, ground=None, hz=21):
     sky = sky or 'S'; ground = ground or 'G'; acc = accent(ground)
     base_fill(rect(0, 0, 63, hz), sky)
-    sun_(5, 2, 4, 'Y', 'Y')
+    if 'sun' in ON: sun(6, 4, 3, 'Y', 'O')
+    else: sun_(5, 2, 4, 'Y', 'Y')
     for (cx, cy, w) in ((22, 3, 4), (33, 8, 3)):
-        cloud_(cx, cy, w, 'W' if sky != 'W' else 'S', 'W' if sky != 'W' else 'S')
+        if 'cloud' in ON: cloud(cx, cy, w, 'W' if sky != 'W' else 'S', 'V')
+        else: cloud_(cx, cy, w, 'W' if sky != 'W' else 'S', 'W' if sky != 'W' else 'S')
     # 遠くの 低い丘（こいみどり 1 色）
     hill = {(x, y) for (x, y) in rect(0, hz - 4, 63, hz) if y >= hz - 1.5 - 1.8 * math.sin(x / 8 + 1)}
     far = 'D' if ground != 'D' else 'G'
     fill(hill, far)
+    if 'hillhi' in ON: fill(cells(hill, lambda x, y: (x, y - 1) not in hill and (x + y) % 2 == 0), 'G' if far == 'D' else 'Y')
     # チューリップの 太い 色の帯（4 本。上の ふちに 花と 花の あいだの きざみ。帯の あいだは くきの色の 大きな面）
     gr = rect(0, hz + 1, 63, 47)
     base_fill(gr, ground)
@@ -78,8 +123,20 @@ def draw(flip=False, sky=None, ground=None, hz=21):
         band = rect(0, top, 63, bot)
         for x0 in range(-(i % 2) * 2, 64, cw + 1):
             band -= {(x0 + cw, top), (x0 + cw, top + 1)}               # 花と 花の あいだ（2 行）
+            if 'notch' in ON: band -= {(x0 + cw // 2, top)}
         for (xx, yy) in band: deco(xx, yy, c)
+        if 'stem' in ON:
+            for x0 in range(-(i % 2) * 2, 64, cw + 1):
+                deco(x0 + cw // 2, bot + 1, acc)
+        if 'bandline' in ON:
+            for x in range(64):
+                if (x + i) % 2 == 0: deco(x, bot, accent(c) if c != 'W' else 'S')
+        if 'cuphi' in ON:
+            for x0 in range(-(i % 2) * 2, 64, cw + 1):
+                deco(x0 + cw - 1, top, 'W' if c != 'W' else 'Y')
     # 大きな物：風車（右）
     windmill(53, hz + 6)
+    if 'fence' in ON: fence(0, 13, hz + 5)
+    if 'bfly' in ON: butterfly(19, 15, 'Y'); butterfly(42, 23, 'W' if sky != 'W' else 'P')
     if flip: mirror()
-    return {"gy": 46, "floor": ground + acc + ''.join(cols), "shade": acc}
+    return {"gy": 46, "floor": ground + acc + ''.join(cols) + ''.join(sorted({accent(c) for c in cols})) + ('W' if 'cuphi' in ON else ''), "shade": acc}
