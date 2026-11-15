@@ -352,3 +352,18 @@
 - 「公園と、花畑を修正してはどうかな。書き込みを増やして。そして、似た背景画、場所かな？は何があるか確認して、書き込みを増やしてほしい。」→ PM の案（範囲は部品の 100 枚の こうえん・はなばたけ・もり の背景／大きな物は 2 つまで・小さな物は増やしてよい／見本 3 枚から）に「はじめてください」。約束 §2.6 に書き写した。
 - 描き直しの案：こうえん＝すべりだい・ブランコ・すなば・土の道（地面は茶色の道が中心）、はなばたけ＝チューリップの列・風車・木のさく（花の色の帯で地面をうめる）、もり＝木の幹がたくさん並ぶ深い森（空は葉のすき間だけ、全体を暗い緑）。
 - 2026-11-15：見本 3 枚（53・76・52 面）と背景の比べ（重なり 53/51/40% → 20/10/10%）を見せた。ユーザーの答え（そのまま）：「続けて。ただし、準備ができたら私の許可を待たずに公開して」→ 残りを組み立て直し、テスト・レビュー・版 v81・関門に合格したら、許可を待たずに公開する。
+
+### 16.1 組み立て直した結果（2026-11-15。組み込みの担当）
+- `compose.py`（100 枚全部）：変わったのは場所が こうえん・はなばたけ・もり の **27 枚**だけ（見本の 3 枚を含む。ほかの 73 枚の `out/` は 1 文字も変わらない）。100 枚とも compose.py の決まり（色 8〜12・各色 3 個以上・閉じた空きなし・決まり 8）と `check.js` に合格。直しの要る絵は無かった（置き方の列も背景の部品も変えていない）。
+- `build.js`：変わったのは pictures-e.js・pictures-f.js の、その 27 枚の `map` だけ（id・名前・季節・並び・説明は同じ）。手描きの 150 枚（pictures-a〜d.js）は変わらない。
+- 27 枚（面・id）：52 kaerumoriutau・53 penginhanabatakejitensha・63 zouhanabatakeoyatsu・64 kaerumorihon・75 kumamoriutau・76 penginkouenjitensha・84 penginmoribooru・86 butakouenoyatsu・94 penginkouenhon・96 zoumoriutau・112 inukouenjitensha・116 butamoriutau・123 kaeruhanabatakejitensha・130 butakouenjitensha・139 kaerukouenutau・146 kaeruhanabatakehon・156 butamorihon・160 penginmoriutau・172 zoukouenutau・182 zoumorihon・183 usagihanabatakeutau・197 butahanabatakehon・201 zoukouenjitensha・215 zouhanabatakejitensha・226 kaerukouenodoru・231 penginhanabatakeodoru・234 butahanabatakeutau。一覧の絵は `amai-parts/sheet3.png`。
+- 難しさ（`measure.js`・37〜250 面・各面 40 回。前＝描き直す前の pictures-*.js）：
+
+| 数えた面 | ゆるい%（前→後） | でたらめ7割%（前→後） | 1 面の秒（前→後） |
+|---|---|---|---|
+| 描き直した 27 枚の面 | 13.4 → 11.9 | 6.1 → 4.4 | 177 → 178 |
+| XXL 全（37〜250 面） | 24.0 → 23.8 | 12.1 → 11.8 | 168 → 168 |
+
+  - 決めた幅（±5 ポイント・±10 秒）の中。ほかの 187 面は面ごとの値が前と同じ。予備 1・合計≠砂糖 は 0。面ごとには上下する（例 226 面 ゆるい 26 → 6／40・156 面 18 → 25／40。地図が変わり、色の数と並びが変わるため）。
+- 途中の保存：27 枚の面は picSig が変わるので、描き直す前の保存はその面の最初から（約束どおり。ずかん・ベスト・花輪は消えない）。テストに 27 枚の picSig や地図を固定した所は無かった（テストの直しなし）。
+- テスト（Chromium・full）：`ONLY=AL1〜AL25,AW1〜AW41,L10,L12,L13,V1,V13,X1` 72/72 合格（787/787。揺れなし）。変異 MA35・MA36・MA46・MA47・MA69・MA70・MA82・MA83：full 8/8 検出（smoke 5/8。MA47・MA70・MA83 を見つける AW14 は full だけの項目なので smoke の見逃しは前から）。
