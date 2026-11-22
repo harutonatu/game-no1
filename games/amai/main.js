@@ -47,6 +47,7 @@
   // ちょうせんの 1手もどすは 2026-11-10 から何回でも（約束 §0.11。前は 3 回まで）。もどすと金の花輪が付かないことを はじめに知らせる
   const hintChal = () => "ちょうせん！ わくは 2つ・もどすと きんの わは つかないよ";
   const HINT_CALM = "「うごきを へらす」せってい なので、ありんこは でないよ。でも ちゃんと はこんでるよ";
+  let resumeNote = "";   // 開き直した ちょうせんの続きの案内（落ち着いたときの案内より先に出す。押す・もどす・面を始めるで消える）
   let calmTold = false;   // 動きを減らす設定の案内は、1 回だけ出す
   const HINT_CARRY = "ありんこが はこんでるよ";   // 待っているだけのとき（押せる箱が無い・わくが いっぱい）に うすく出す
   const HINT_OPEN = "ふたが あいたよ";
@@ -400,6 +401,7 @@
     save();
     renderTools();
     if (isStuckNow()) { if (el.hint.dataset.soft === "1") setHint("", true); waitAnts(enterStuck); return; }
+    if (resumeNote) { if (el.hint.textContent !== resumeNote) setHint(resumeNote); checkDoom(); return; }   // 押す・もどすまでは、落ち着くたびに同じ案内（上書きしない）
     const h = stableHint();
     if (h) setHint(h, true, h.indexOf("が はこべるよ。") > 0);
     else if (el.hint.dataset.soft === "1") setHint("", true);
@@ -557,8 +559,6 @@
   // mode：{ challenge: true } なら ちょうせん（わく 2 つ）。{ challenge: true, resume: true, used } は amai.chal の続き（押した手を再生できなければ false を返し、何も始めない）
   function startLevel(lv, pk, pr, t, mode) {
     clearLater();
-    // 「うごきを へらす」設定ではありんこを描かない（契約 §3.8）。何も出ないので、1 回だけ理由を知らせる
-    if (calm && !calmTold) { calmTold = true; later(() => setHint(HINT_CALM, true), 400); }
     runId += 1;
     cancelPending();
     safeCall(() => render.finishAll());
@@ -596,6 +596,7 @@
     hist = prs.length === 0 ? [] : null;   // 途中から再開した面は、使うときに replayStates で作る
     job = null; rescuing = false; doomed = false; doomTold = false; doomAsk = false; chalUsed = false;
     if (ch && mode.used === true) chalUsed = true;   // ちょうせんの続き：もどした印も戻す（金の花輪を付けない）
+    resumeNote = ch && mode.resume === true ? `ちょうせんの つづきから${chalUsed ? "・もどしたので きんの わは つかないよ" : ""}` : "";   // 続きだけ 1 回（v84 レビュー L-2）
     if (!ch) removeKey(KEY_CHAL);   // ふつうの面を始めた：ちょうせんの途中は消す（ちょうせんをやめた）
     stable = false;
     sinceSave = 0;
@@ -609,6 +610,9 @@
     setHint(chal ? hintChal() : presses.length === 0 && level <= 2 ? HINT_FIRST : "");
     if (safeCall(() => L.isStable(state), false)) { stable = true; afterStable(); }
     else softHint();
+    // 「うごきを へらす」設定ではありんこを描かない（契約 §3.8）。何も出ないので、1 回だけ理由を知らせる。
+    // runId を進めた後・面を始められると決まった後に予約する（前に置くと later の中で必ず取りやめになっていた。v84 レビュー L-4）
+    if (calm && !calmTold) { calmTold = true; later(() => setHint(HINT_CALM, true), 400); }
     kick();
     return true;
   }
@@ -639,6 +643,7 @@
       return o.kind || "invalid";
     }
     cancelPending();   // うごかせないの待ちは取りやめ（局面が変わった）
+    resumeNote = "";
     if (custom) customHist.push(state);
     else if (hist) hist.push(state);
     doomAsk = true;
@@ -666,6 +671,7 @@
     if (overlay !== null || !state || state.won || phase === "clear" || rescuing) return false;
     if (!presses.length) return false;
     cancelPending();   // 先に うごかせないの待ちを取りやめる（flush がその続きでカードを出さないように）
+    resumeNote = "";
     flush();
     if (state.won || overlay !== null) return false;
     const last = presses[presses.length - 1];
@@ -788,7 +794,8 @@
     // クリアのカードから ちょうせんへ（2026-11-10。約束 §0.11）：ふつうのクリアは［この めんを ちょうせん］、ちょうせんのクリアは［つぎも ちょうせん］
     const chalThis = !custom && !chal && canChallenge(level);
     const nextChal = gold ? nextChalLevel(level) : 0;
-    lastClear = { level, id, name: picture && picture.name ? picture.name : "", mirror: !!pick.mirror, repeat: !!pick.repeat, count, got, improved, next, nextPick, restored: !!restored, clean, gold, goldLost: !!(gold && chalUsed), chalThis, nextChal, cleanToo: !!(gold && typeof L.hasClean === "function" && safeCall(() => L.hasClean(readKey(KEY_CLEAN), id), false)) };
+    const resume = gold ? normalResume() : null;   // ちょうせんのクリアの［つぎの めんへ］は ふつうの続き（無ければ今までどおり 次の面）
+    lastClear = { resume, level, id, name: picture && picture.name ? picture.name : "", mirror: !!pick.mirror, repeat: !!pick.repeat, count, got, improved, next, nextPick, restored: !!restored, clean, gold, goldLost: !!(gold && chalUsed), chalThis, nextChal, cleanToo: !!(gold && typeof L.hasClean === "function" && safeCall(() => L.hasClean(readKey(KEY_CLEAN), id), false)) };
     renderTools();
     setHint(`${level} めん クリア！`, true);
     sfx.play("clear");
@@ -802,6 +809,7 @@
     const again = !!(o && o.again);
     const c = lastClear || { level, name: "", count: 1, got: 0, repeat: false, improved: false };
     const total = ORDER.length;
+    const nextLabel = c.gold && c.resume ? `ふつうの つづき（${c.resume.level} めん）` : "つぎの めんへ";
     const countText = c.repeat ? `はんたいむき・${c.count} かいめ` : c.count > 1 ? `${c.count} かいめ` : "ずかんに はいったよ";
     showCard(`
       <h2 id="cardTitle" data-f="h"></h2>
@@ -812,10 +820,10 @@
       <div class="btns">
         <p class="share-note" aria-live="polite"></p>${c.nextChal ? `
         <button class="cta primary" type="button" data-cmd="chalNext">つぎも ちょうせん</button>` : `
-        <button class="cta primary" type="button" data-cmd="next">つぎの めんへ</button>`}
+        <button class="cta primary" type="button" data-cmd="next">${nextLabel}</button>`}
         <button class="cta half" type="button" data-cmd="book">ずかん</button>
         <button class="cta half" type="button" data-cmd="menu">メニューへ</button>${c.nextChal ? `
-        <button class="cta half two" type="button" data-cmd="next">つぎの めんへ</button>` : c.chalThis ? `
+        <button class="cta half two" type="button" data-cmd="next">${nextLabel}</button>` : c.chalThis ? `
         <button class="cta chal half two" type="button" data-cmd="chalThis">この めんを ちょうせん</button>` : ""}
         <button class="cta share${c.nextChal || c.chalThis ? " half two" : ""}" type="button" data-cmd="share">ともだちに おくる</button>
       </div>`, { h: `${c.level} めん クリア！`, n: c.name, k: "1手もどし なし！", o: "ちょうせん クリア！", l: "もどしたので きんの わは つかないよ", c: countText, g: total ? `ずかん ${c.got} / ${total}` : "" }, "clear");
@@ -834,10 +842,28 @@
     if (c.improved && !c.restored) later(() => sfx.play("best"), 450);
   }
   const unlockCard = () => el.card.querySelectorAll(".btns button[aria-disabled]").forEach((btn) => btn.removeAttribute("aria-disabled"));
+  // ふつうの続き（amai.save）。読めて面が正しければ { level, pick, presses, t }（絵の目印が合わないときは押した手を使わず同じ面の最初から。起動と同じ決め）。無ければ null
+  function normalResume() {
+    const sv = safeCall(() => L.validateSave(readKey(KEY_SAVE)), null);
+    if (!sv || !Number.isSafeInteger(sv.level) || sv.level < 1) return null;
+    const known = !!(sv.pick && inOrder(sv.pick.id));
+    const fits = known && !!safeCall(() => L.saveFits(sv), false);
+    return { level: sv.level, pick: known ? sv.pick : null, presses: fits ? sv.presses : [], t: fits ? sv.t : 0 };
+  }
   function goNext() {
     sfx.unlock();
     const c = lastClear;
     hideOverlay();
+    // ちょうせんでクリアしたカードの［つぎの めんへ］は ふつうの続き（amai.save）から（約束 §0.12 の 7。ユーザーが選んだ「ちょうせんをやめたら ふつうの続きへ戻る」）
+    if (c && c.gold && c.resume) {
+      const rs = c.resume;
+      setHint("つぎの えを つくっているよ");
+      requestAnimationFrame(() => {
+        startLevel(rs.level, rs.pick, rs.presses, rs.t);
+        sfx.play("start");
+      });
+      return;
+    }
     const next = c ? c.next : level + 1;
     // 絵が大きい面は作るのに時間がかかる（実機で最大 1 秒ほど）。先に一言を出し、1 フレーム後に作る（v53 の技術レビュー T-5）
     setHint("つぎの えを つくっているよ");
@@ -1185,14 +1211,19 @@
       selectTarget = n;
       confirmFrom = "select";
       const mid = presses.length > 0 && phase !== "clear";
+      // ちょうせんの途中：ちょうせんの とちゅう（押した数 1 以上）と、［ふつうで あそぶ］で消える ふつうの とちゅう（amai.save の押した数 1 以上）を 2 つとも知らせる（v84 レビュー M-1）
+      const sv = chal ? safeCall(() => L.validateSave(readKey(KEY_SAVE)), null) : null;
+      const normalMid = !!(sv && Array.isArray(sv.presses) && sv.presses.length > 0);
+      const chalMid = !!(chal && mid);
+      const warn = chal ? [chalMid ? "ちょうせんの とちゅうは きえるよ。" : "", normalMid ? "ふつうで あそぶと ふつうの とちゅうも きえるよ" : ""].join("") : mid ? "ふつうで あそぶと いまの めんの とちゅうは きえるよ（ちょうせんなら ふつうの とちゅうは のこるよ）" : "";
       showCard(`
       <h2 id="cardTitle" data-f="h"></h2>
-      <p class="modenote" data-f="m"></p>${mid ? '\n      <p data-f="w"></p>' : ""}
+      <p class="modenote" data-f="m"></p>${warn ? '\n      <p class="modenote warn" data-f="w"></p>' : ""}
       <div class="btns">
         <button class="cta primary" type="button" data-cmd="playNormal">ふつうで あそぶ</button>
         <button class="cta chal" type="button" data-cmd="playChal">ちょうせん</button>
         <button class="cta" type="button" data-cmd="close">やめる</button>
-      </div>`, { h: `${n} めんを あそぶ`, m: "ちょうせんは わくが 2つ。もどさずに クリアすると きんの わ", w: chal ? "いまの ちょうせんの とちゅうは きえるよ" : "ふつうで あそぶと いまの めんの とちゅうは きえるよ（ちょうせんなら ふつうの とちゅうは のこるよ）" }, "confirm");
+      </div>`, { h: `${n} めんを あそぶ`, m: "ちょうせんは わくが 2つ。もどさずに クリアすると きんの わ", w: warn }, "confirm");
       el.card.dataset.mode = "pick";
       return true;
     }
@@ -1595,7 +1626,8 @@
     const rawChal = readKey(KEY_CHAL);
     if (rawChal !== null) {
       const cv = safeCall(() => L.validateChal(rawChal), null);
-      const fitsC = !!cv && inOrder(cv.pick.id) && !!safeCall(() => L.saveFits(cv), false) && canChallenge(cv.level);
+      const fitsC = !!cv && inOrder(cv.pick.id) && !!safeCall(() => L.saveFits(cv), false) && canChallenge(cv.level)
+        && cv.pick.id === safeCall(() => L.pickPicture(cv.level, null).id, "");   // その面の絵か（v84 レビュー L-1）
       if (fitsC) ok = startLevel(cv.level, cv.pick, cv.presses, cv.t, { challenge: true, resume: true, used: cv.used });
       if (!ok) removeKey(KEY_CHAL);
     }

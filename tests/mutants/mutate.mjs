@@ -552,6 +552,9 @@ const M = [
   ['MA88 あまいものあつめ：ちょうせんをクリアしても amai.chal を消さない（見つける：AW42）', 'データ', 'games/amai/main.js', '      removeKey(KEY_CHAL);   // ちょうせんの途中の保存は クリアで消す', '      // ちょうせんの途中の保存は クリアで消す'],
   ['MA89 あまいものあつめ：ちょうせんの続きで もどした印を戻さない（開き直すと金の花輪が付く。見つける：AW42）', 'ルール', 'games/amai/main.js', '    if (ch && mode.used === true) chalUsed = true;', '    if (false) chalUsed = true;'],
   ['MA90 あまいものあつめ：X-20 で amai.chal を見張らない（見つける：AW43）', 'データ消失', 'games/amai/main.js', 'const WATCH_KEYS = [KEY_SAVE, KEY_CHAL];', 'const WATCH_KEYS = [KEY_SAVE];'],
+  ['MA91 あまいものあつめ：ちょうせんのクリアの［ふつうの つづき］が amai.save の続きを使わない（次の面から始める。見つける：AW44）', 'データ消失', 'games/amai/main.js', 'if (c && c.gold && c.resume) {', 'if (false) {'],
+  ['MA92 あまいものあつめ：amai.chal の絵が その面の絵かを確かめない（見つける：AW44）', 'データ', 'games/amai/main.js', '        && cv.pick.id === safeCall(() => L.pickPicture(cv.level, null).id, "");', '        && true;'],
+  ['MA93 あまいものあつめ：ちょうせんの途中の面えらびで ふつうの とちゅうが消えることを知らせない（見つける：AW42・AW44）', 'UX', 'games/amai/main.js', 'const normalMid = !!(sv && Array.isArray(sv.presses) && sv.presses.length > 0);', 'const normalMid = false;'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;
