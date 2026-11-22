@@ -516,7 +516,7 @@ const M = [
   // ちょうせんモード（2026-11-05。計画書 docs/plans/amai-challenge.md）
   ['MA48 あまいものあつめ：ちょうせんの面でも わくが 3 つ（見つける：AL19・AL20・AW34）', 'ルール', 'games/amai/logic.js', 'slots: new Array(nslots === CHAL_SLOTS ? CHAL_SLOTS : SLOTS).fill(null)', 'slots: new Array(SLOTS).fill(null)'],
   // MA49〜MA51（1手もどすの のこり 3 回）は 2026-11-10 に 3 回の制限をやめたので外した（約束 §0.11）
-  ['MA52 あまいものあつめ：ちょうせんの途中も amai.save に書く（見つける：AW34）', 'データ消失', 'games/amai/main.js', 'if (custom || chal || !state || state.won) return;', 'if (custom || !state || state.won) return;'],
+  ['MA52 あまいものあつめ：ちょうせんの途中も amai.save に書く（見つける：AW34・AW42）', 'データ消失', 'games/amai/main.js', 'L.makeChal(level, pick, presses, state.t, chalUsed)), false); return; }', 'L.makeChal(level, pick, presses, state.t, chalUsed)), false); }'],
   ['MA53 あまいものあつめ：ちょうせんでクリアしても amai.gold に書かない（見つける：AW34）', 'データ', 'games/amai/main.js', 'if (typeof rg === "string") writeKey(KEY_GOLD, rg);', ''],
   ['MA54 あまいものあつめ：ずかんで金の花輪を出さない（金だけの絵は花輪なし、両方の絵はふつうだけになる。見つける：AW34）', 'ルール', 'games/amai/main.js', 'const gold = !!(n > 0 && p && isGold(id));', 'const gold = false;'],
   ['MA55 あまいものあつめ：まだクリアしていない面でも ちょうせんを選べる（見つける：AW34）', 'ルール', 'games/amai/main.js', 'return !!(pk && book.got && Number.isSafeInteger(book.got[pk.id]) && book.got[pk.id] > 0);', 'return !!pk;'],
@@ -547,6 +547,11 @@ const M = [
   ['MA79 あまいものあつめ：［つぎも ちょうせん］が金の花輪のある面も選ぶ（見つける：AW41）', 'ルール', 'games/amai/main.js', 'const ok = (n) => canChallenge(n, book) && !gold.has(safeCall(() => L.pickPicture(n, null).id, ""));', 'const ok = (n) => canChallenge(n, book);'],
   ['MA80 あまいものあつめ：だいじょうぶな ところまで もどしても「1手もどし なし」の花輪が付く（見つける：AW41）', 'ルール', 'games/amai/main.js', '    if (noUndo === true) noUndo = false;   // もどした面には', '    if (false) noUndo = false;   // もどした面には'],
   ['MA81 あまいものあつめ：探している間も「？」「ずかん」「めん」を押せる見た目のまま（見つける：AW39）', '操作', 'games/amai/main.js', '    el.helpBtn.disabled = rescuing;\n    el.bookBtn.disabled = rescuing;\n    el.selectBtn.disabled = rescuing;\n', ''],
+  // ちょうせんの途中の保存（2026-11-22。約束 §0.12・§4.2・計画書 docs/plans/amai-chal-save.md）
+  ['MA87 あまいものあつめ：ちょうせんの途中を amai.chal に書かない（開き直すと ふつうの続き。見つける：AW42）', 'データ消失', 'games/amai/main.js', 'if (chal) { safeCall(() => writeKey(KEY_CHAL, L.makeChal(level, pick, presses, state.t, chalUsed)), false); return; }', 'if (chal) return;'],
+  ['MA88 あまいものあつめ：ちょうせんをクリアしても amai.chal を消さない（見つける：AW42）', 'データ', 'games/amai/main.js', '      removeKey(KEY_CHAL);   // ちょうせんの途中の保存は クリアで消す', '      // ちょうせんの途中の保存は クリアで消す'],
+  ['MA89 あまいものあつめ：ちょうせんの続きで もどした印を戻さない（開き直すと金の花輪が付く。見つける：AW42）', 'ルール', 'games/amai/main.js', '    if (ch && mode.used === true) chalUsed = true;', '    if (false) chalUsed = true;'],
+  ['MA90 あまいものあつめ：X-20 で amai.chal を見張らない（見つける：AW43）', 'データ消失', 'games/amai/main.js', 'const WATCH_KEYS = [KEY_SAVE, KEY_CHAL];', 'const WATCH_KEYS = [KEY_SAVE];'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;

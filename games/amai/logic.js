@@ -79,6 +79,8 @@
   const SAVE_KEY_FAST = "amai.fast";
   const SAVE_KEY_CLEAN = "amai.clean";
   const SAVE_KEY_GOLD = "amai.gold";   // ちょうせんでクリアした絵（金の花輪。形は amai.clean と同じ）
+  const SAVE_KEY_CHAL = "amai.chal";   // ちょうせんの途中（2026-11-22。形は amai.save に used を足したもの。約束 §4.2）
+  const CHAL_FROM = 3;                 // ちょうせんは 3 面から（F-5）
 
   // ---------------------------------------------------------------- 色と印（§5.2）
   const COLORS = Object.freeze([
@@ -1457,6 +1459,25 @@
     return JSON.stringify({ v: SAVE_V, level: normLevel(level), pic: typeof p.id === "string" ? p.id : "", mirror: p.mirror === true, rep: p.repeat === true, presses: list, t: isInt(t) && t >= 0 ? t : 0, picSig: pictureSig(p) });
   }
 
+  // ちょうせんの途中の保存（amai.chal。2026-11-22。約束 §0.12・§4.2）：amai.save と同じ形に used（もどした印。金の花輪を付けない）を足す。
+  // 検査は validateSave と同じ ＋ used が true／false・面が 3〜BASE_PICTURES・反転でもくり返しでもない（ちょうせんの面は 1 枚ずつ決まった絵だけ）。だめなら null
+  function validateChal(raw) {
+    try {
+      const sv = validateSave(raw);
+      if (!sv) return null;
+      const o = JSON.parse(raw);
+      if (typeof o.used !== "boolean") return null;
+      if (sv.level < CHAL_FROM || sv.level > BASE_PICTURES) return null;
+      if (sv.pick.mirror !== false || sv.pick.repeat !== false) return null;
+      return { level: sv.level, pick: sv.pick, presses: sv.presses, t: sv.t, sig: sv.sig, used: o.used };
+    } catch (e) { return null; }
+  }
+  function makeChal(level, pick, presses, t, used) {
+    const o = JSON.parse(makeSave(level, pick, presses, t));
+    o.used = used === true;
+    return JSON.stringify(o);
+  }
+
   function validateBest(raw) {
     if (typeof raw !== "string" && typeof raw !== "number") return 0;
     if (typeof raw === "string" && !/^\d+$/.test(raw.trim())) return 0;
@@ -1560,14 +1581,14 @@
     MAX_W, MAX_H, MAX_SUGAR, MAX_COUNT, MAX_PRESSES, MAX_T,
     GEN_TRIES, GEN_WORK, BASE_PICTURES, REPEAT_FROM, GEN_OPT, OVER, ANY_RATE, CARRY_TIERS, PULL_ADD, REPEAT_K, KSET,
     PICTURE_ORDER,
-    SAVE_KEY_SAVE, SAVE_KEY_BEST, SAVE_KEY_BOOK, SAVE_KEY_HELP, SAVE_KEY_FAST, SAVE_KEY_CLEAN, SAVE_KEY_GOLD,
+    SAVE_KEY_SAVE, SAVE_KEY_BEST, SAVE_KEY_BOOK, SAVE_KEY_HELP, SAVE_KEY_FAST, SAVE_KEY_CLEAN, SAVE_KEY_GOLD, SAVE_KEY_CHAL, CHAL_FROM,
     COLORS, LEVELS, TIERS,
     makeRng, seedFor, paramsFor,
     parsePicture, pickPicture, pictureById,
     createLevel, press, step,
     isStable, isStuck, canPress, edgeCells, hud,
     replay, validateState, replayStates, makeRescue, rescueSearch, makeRewind, RESCUE_LIMIT, REWIND_LIMIT, REWIND_BUDGET,
-    validateSave, makeSave, pictureSig, saveFits,
+    validateSave, makeSave, pictureSig, saveFits, validateChal, makeChal,
     validateBest, recordBest, validateBook, addToBook, bookCount, validateClean, addClean, hasClean, validateGold, addGold, hasGold,
     levelChoices, canSelect,
     validateFlag, colorName,

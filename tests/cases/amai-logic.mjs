@@ -1527,6 +1527,60 @@ export const tests = [
       check(`37 面から（36→37 面の境目を含む）どの連続 6 面にも同じ場所は 2 回まで（${six.p.length} か所）`, six.p.length === 0, six.p.slice(0, 10));
     },
   },
+  // ---------- ちょうせんの途中の保存（2026-11-22。約束 §0.12・§4.2・計画書 docs/plans/amai-chal-save.md） ----------
+  {
+    id: 'AL26', tier: 'smoke', node: true, title: 'あまいものあつめ：ちょうせんの途中の保存（amai.chal）：makeChal は amai.save と同じ形に used（もどした印）を足し、validateChal が読む（往復で同じ）。used が true／false でない・面が 1・2 面や 251 面より先・反転・くり返し・amai.save の検査に通らない値（壊れた JSON・v ちがい・手の逆順など）は null・例外なし。目印（picSig）は saveFits で確かめられ、絵が変わると false。押した手は ちょうせんの面（わく 2 つ）で replay できる',
+    async run({ check, root }) {
+      const L = load(root);
+      await withPictures(L, (kind) => {
+        const PO = L.PICTURE_ORDER;
+        check(`絵：${kind}。キーは amai.chal・CHAL_FROM は 3・API がある`, L.SAVE_KEY_CHAL === 'amai.chal' && L.CHAL_FROM === 3 && typeof L.validateChal === 'function' && typeof L.makeChal === 'function', null);
+        const pk = { id: PO[4].id, mirror: false, repeat: false };
+        // ちょうせんの 5 面を 2 手押した局面を作り、その手で保存する
+        const cr = L.createLevel(5, pk, { challenge: true });
+        let s = cr.state; const presses = [];
+        for (const col of cr.info.solution.slice(0, 2)) {
+          for (let i = 0; i < 5000; i++) { const r = L.step(s); if (!r.moved) break; s = r.state; }
+          presses.push([s.t, col]); s = L.press(s, col).state;
+        }
+        for (let i = 0; i < 3; i++) { const r = L.step(s); if (!r.moved) break; s = r.state; }
+        for (const used of [false, true]) {
+          const raw = L.makeChal(5, pk, presses, s.t, used);
+          const o = JSON.parse(raw), v = L.validateChal(raw);
+          check(`①往復（used ${used}）：形は amai.save ＋ used（${Object.keys(o).join(',')}）・validateChal が同じ値を返す`, o.v === 1 && o.level === 5 && o.pic === pk.id && o.mirror === false && o.rep === false && o.used === used && o.picSig === L.pictureSig(pk)
+            && v && v.level === 5 && v.pick.id === pk.id && JSON.stringify(v.presses) === JSON.stringify(presses) && v.t === s.t && v.used === used && v.sig === o.picSig, { o, v });
+          check(`②目印が合う（saveFits true）・ちょうせんの面で replay すると同じ局面（わく 2 つ。t ${s.t}）`, L.saveFits(v) === true && (() => { const rp = L.replay(v.level, v.pick, v.presses, v.t, { challenge: true }); return rp.ok && rp.state.slots.length === 2 && JSON.stringify(rp.state) === JSON.stringify(s); })(), null);
+        }
+        const good = JSON.parse(L.makeChal(5, pk, presses, s.t, false));
+        const bad = [
+          ['JSON でない', '{'], ['null', 'null'], ['配列', '[]'], ['数', '5'],
+          ['used が無い', JSON.stringify({ ...good, used: undefined })], ['used が文字', JSON.stringify({ ...good, used: 'true' })], ['used が 1', JSON.stringify({ ...good, used: 1 })],
+          ['v が 2', JSON.stringify({ ...good, v: 2 })], ['1 面', JSON.stringify({ ...good, level: 1 })], ['2 面', JSON.stringify({ ...good, level: 2 })],
+          [`${L.BASE_PICTURES + 1} 面`, JSON.stringify({ ...good, level: L.BASE_PICTURES + 1 })], ['面が文字', JSON.stringify({ ...good, level: '5' })],
+          ['反転', JSON.stringify({ ...good, mirror: true })], ['くり返し', JSON.stringify({ ...good, rep: true })],
+          ['手の逆順', JSON.stringify({ ...good, presses: [[9, 0], [1, 1]], t: 10 })], ['列が 4', JSON.stringify({ ...good, presses: [[0, 4]] })], ['t が多すぎ', JSON.stringify({ ...good, t: L.MAX_T + 1 })],
+          ['pic が大文字', JSON.stringify({ ...good, pic: 'Bad' })],
+        ];
+        const res = bad.map(([name, raw]) => { try { return [name, L.validateChal(raw)]; } catch (e) { return [name, 'ERR ' + e.message]; } });
+        check(`③壊れた amai.chal ${bad.length} 通りは null・例外なし`, res.every(([, r]) => r === null), res.filter(([, r]) => r !== null));
+        check('④文字でない（undefined・数・オブジェクト）も null', [undefined, 5, {}, good].every((x) => L.validateChal(x) === null), null);
+        check('⑤3 面と 250 面（端）は読める', !!L.validateChal(JSON.stringify({ ...good, level: 3 })) && !!L.validateChal(JSON.stringify({ ...good, level: L.BASE_PICTURES })), null);
+        // 壊れた目印は読めるが合わない（ふつうの保存と同じ）
+        const v6 = L.validateChal(JSON.stringify({ ...good, picSig: 'zz' }));
+        check(`⑥壊れた picSig は sig ""・saveFits false（${v6 && v6.sig}）`, v6 && v6.sig === '' && L.saveFits(v6) === false, v6);
+        // 絵が変わった
+        const prev = globalThis.AmaiPictures;
+        const raw = (id) => (typeof prev.byId === 'function' ? prev.byId(id) : prev.byId[id]);
+        const other = raw(PO[5].id);
+        globalThis.AmaiPictures = { byId: (id) => (id === pk.id ? { ...raw(id), map: other.map } : raw(id)) };
+        let fits;
+        try { fits = L.saveFits(L.validateChal(JSON.stringify(good))); } finally { globalThis.AmaiPictures = prev; }
+        check(`⑦絵が変わると saveFits false（${fits}）`, fits === false, null);
+        // ふつうの validateSave は used があっても読める（形の取り違えで落ちない）
+        check('⑧amai.chal の値を validateSave に渡しても落ちない（形は同じなので読める）', !!L.validateSave(JSON.stringify(good)), null);
+      });
+    },
+  },
 ];
 
 // ---- 単体で流す：node tests/cases/amai-logic.mjs [ID...] ----

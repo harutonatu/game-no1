@@ -1851,7 +1851,7 @@ export const tests = [
   },
   // ---------- ちょうせんモード（2026-11-05。計画書 docs/plans/amai-challenge.md §1・契約 §3.5） ----------
   {
-    id: 'AW34', tier: 'full', title: 'あまいもの ちょうせん：クリアした 1〜250 面を押すと［ふつうで あそぶ］［ちょうせん］のカード（まだの面はふつうだけ）。ちょうせんは わく 2 つ・1手もどすは何回でも（2026-11-10 から。前は 3 回まで）でボタンは「1手もどす」だけ・はじめのヒントに「もどすと きんの わは つかないよ」。途中の保存はしない（開き直すと ふつうの続き）。クリアで「ちょうせん クリア！」・amai.gold に入り、面えらびとずかんに金の花輪（ふつうの花輪もあれば ふつうと金を1つずつ並べる）・ベストは変わらない・つぎの めんへ はふつうの次の面。ふつうで遊ぶ面の進み方は今までどおり。壊れた amai.gold でも落ちない',
+    id: 'AW34', tier: 'full', title: 'あまいもの ちょうせん：クリアした 1〜250 面を押すと［ふつうで あそぶ］［ちょうせん］のカード（まだの面はふつうだけ）。ちょうせんは わく 2 つ・1手もどすは何回でも（2026-11-10 から。前は 3 回まで）でボタンは「1手もどす」だけ・はじめのヒントに「もどすと きんの わは つかないよ」。途中は amai.chal に保存し、開き直すと ちょうせんの続き（2026-11-22 から。前は途中の保存なし）・amai.save は書き換えない。クリアで「ちょうせん クリア！」・amai.gold に入り、面えらびとずかんに金の花輪（ふつうの花輪もあれば ふつうと金を1つずつ並べる）・ベストは変わらない・つぎの めんへ はふつうの次の面。ふつうで遊ぶ面の進み方は今までどおり。壊れた amai.gold でも落ちない',
     async run({ browser, check }) {
       // 途中の保存は、ページの AmaiLogic.makeSave で今の絵の目印（picSig。課題 AM-18）つきで作る（目印が無いと 3 面からは最初から始まる）
       const { PO, save0 } = await (async () => { const { ctx, page } = await openG(browser, 'AW34 絵'); const r = await page.evaluate(() => { const L = window.AmaiLogic; const ids = L.PICTURE_ORDER.map((x) => x.id); return { PO: ids, save0: L.makeSave(11, { id: ids[10], mirror: false, repeat: false }, [[0, 0]], 3) }; }); await ctx.close(); return r; })();
@@ -1871,7 +1871,7 @@ export const tests = [
       check(`面えらびに金の花輪の説明の行（${J(gn)}）`, !!gn && gn.gold && /ちょうせん クリア/.test(gn.t), gn);
       await pickLv(5);
       const oc = await overlayInfo(page);
-      check(`クリアした 5 面を押すと［ふつうで あそぶ］［ちょうせん］［やめる］のカード（${oc.text}）・途中なら「とちゅうは きえるよ」`, oc.cmds.includes('playNormal') && oc.cmds.includes('playChal') && oc.cmds.includes('close') && /5 めんを あそぶ/.test(oc.text) && /わくが 2つ/.test(oc.text) && /とちゅうは きえる/.test(oc.text) && /ほぞんは ないよ/.test(oc.text) && /ふつうの とちゅうは のこる/.test(oc.text), oc);
+      check(`クリアした 5 面を押すと［ふつうで あそぶ］［ちょうせん］［やめる］のカード（${oc.text}）・途中なら「とちゅうは きえるよ」`, oc.cmds.includes('playNormal') && oc.cmds.includes('playChal') && oc.cmds.includes('close') && /5 めんを あそぶ/.test(oc.text) && /わくが 2つ/.test(oc.text) && /とちゅうは きえる/.test(oc.text) && !/ほぞんは ないよ/.test(oc.text) && /ふつうの とちゅうは のこる/.test(oc.text), oc);
       const btnH = await page.evaluate(() => [...document.querySelectorAll('#card [data-cmd="playNormal"], #card [data-cmd="playChal"]')].map((b) => Math.round(b.getBoundingClientRect().height)));
       check(`2 つのボタンが 44px 以上（${J(btnH)}）`, btnH.length === 2 && btnH.every((h) => h >= 44), btnH);
       await clickCmd(page, 'close'); await wait(page, 150);
@@ -1920,11 +1920,11 @@ export const tests = [
       await clickCmd(page, 'restartYes'); await wait(page, 300);
       const r0 = await gs(page);
       check(`やりなおしで もどした印が消え（chalUsed ${r0.chalUsed}）、ちょうせんのまま（${r0.challenge}・わく ${r0.slotCount}）・押した数 0`, r0.chalUsed === false && r0.challenge === true && r0.slotCount === 2 && r0.presses === 0 && r0.level === 5, r0);
-      // 途中で開き直すと ふつうの続き
+      // 途中で開き直すと ちょうせんの続き（2026-11-22 から。前は ふつうの続き）。amai.save は ふつうの 11 面のまま
       await settleG(page); await pressCol(page, sol[0]); await skipG(page);
       await page.reload(); await wait(page, 300);
       const rl = await gs(page);
-      check(`ちょうせんの途中で開き直すと ふつうの続き（${rl.level} 面・押した ${rl.presses}・challenge ${rl.challenge}・わく ${rl.slotCount}）`, rl.level === 11 && rl.presses === 1 && rl.challenge === false && rl.slotCount === 3, rl);
+      check(`ちょうせんの途中で開き直すと ちょうせんの続き（${rl.level} 面・押した ${rl.presses}・challenge ${rl.challenge}・わく ${rl.slotCount}）・amai.save は 11 面のまま`, rl.level === 5 && rl.presses === 1 && rl.challenge === true && rl.slotCount === 2 && (await stored(page, 'amai.save')) === save0, rl);
       // ちょうせんでクリア
       await page.click('#selectBtn'); await wait(page, 150);
       await pickLv(5);
@@ -2364,6 +2364,119 @@ export const tests = [
       }
       const clean = JSON.parse((await stored(page, 'amai.clean')) || 'null');
       check(`⑥ふつうで だいじょうぶな ところまで もどす を使った 9 面のクリア（${seq ? seq.length : '-'} 手で詰む・${c9 && c9.overlay}）：「1手もどし なし！」が出ない（${o9 && o9.text}）・amai.clean に 9 面の絵なし（${J(clean)}）`, !!seq && !!c9 && c9.overlay === 'clear' && !!o9 && !/1手もどし なし/.test(o9.text) && !(clean && Array.isArray(clean.ids) && clean.ids.includes(PO[8])), { o9, clean });
+      await ctx.close();
+    },
+  },
+  // ---------- ちょうせんの途中の保存（2026-11-22。約束 §0.12・§3.6・§4.2・計画書 docs/plans/amai-chal-save.md） ----------
+  {
+    id: 'AW42', tier: 'full', title: 'あまいもの ちょうせんの途中の保存（amai.chal）：①ちょうせんの途中で開き直すと ちょうせんのその局面から続く（わく 2・押した手・t・局面が同じ）・amai.save は ふつうの続きのまま ②もどした印も残る（開き直しても金の花輪は付かない・押した数 0 まで戻しても）③クリアで amai.chal が消え、開き直すと ふつうの続き ④面えらびで ふつうを選ぶと消え（カードに「いまの ちょうせんの とちゅうは きえるよ」）、開き直すと その ふつうの面 ⑤やりなおしでは消えない（押した数 0・もどした印なしで残る）⑥壊れた amai.chal（JSON でない・used ちがい・目印ちがい・クリアしていない面・再生できない手）でも落ちずに消して ふつうの続き',
+    async run({ browser, check }) {
+      const { PO, save0, mkC } = await (async () => { const { ctx, page } = await openG(browser, 'AW42 絵'); const r = await page.evaluate(() => { const L = window.AmaiLogic; const ids = L.PICTURE_ORDER.map((x) => x.id); return { PO: ids, save0: L.makeSave(11, { id: ids[10], mirror: false, repeat: false }, [[0, 0]], 3), mkC: L.makeChal(5, { id: ids[4], mirror: false, repeat: false }, [], 0, false) }; }); await ctx.close(); return r; })();
+      const got = {}; PO.slice(0, 10).forEach((id) => { got[id] = 1; });
+      const base = { 'amai.best': '10', 'amai.book': J({ v: 1, got }), 'amai.save': save0 };
+      const { ctx, page } = await openG(browser, 'AW42', { extra: base });
+      const pickLv = async (n) => { await page.evaluate((n) => document.querySelector(`#card ul.levels button[data-level="${n}"]`)?.click(), n); await wait(page, 200); };
+      const chalOf = async () => { const raw = await stored(page, 'amai.chal'); try { return raw === null ? null : JSON.parse(raw); } catch { return 'ERR'; } };
+      // ① ちょうせんの 5 面で 2 手押す → 開き直すと続き
+      await page.click('#selectBtn'); await wait(page, 150);
+      await pickLv(5);
+      await clickCmd(page, 'playChal'); await wait(page, 300);
+      const c0 = await chalOf();
+      check(`ちょうせんを始めると amai.chal（5 面・押した 0・used false）・amai.save は 11 面のまま`, c0 && c0.level === 5 && c0.presses.length === 0 && c0.used === false && (await stored(page, 'amai.save')) === save0, c0);
+      const sol = await solutionOf(page);
+      await settleG(page); await pressCol(page, sol[0]); await skipG(page);
+      await settleG(page); await pressCol(page, sol[1]); await skipG(page);
+      await settleG(page); await skipG(page);
+      const before = await lg(page);
+      await page.reload(); await wait(page, 300);
+      const r1 = await gs(page), after = await lg(page);
+      check(`①開き直すと ちょうせんの続き（${r1.level} 面・challenge ${r1.challenge}・わく ${r1.slotCount}・押した ${r1.presses}・t ${r1.t}）・局面が同じ・札とわく 2 つが見える`, r1.level === 5 && r1.challenge === true && r1.slotCount === 2 && r1.presses === 2 && r1.chalUsed === false && J(after) === J(before)
+        && (await page.evaluate(() => document.querySelector('#playView').dataset.mode)) === 'chal', { r1, same: J(after) === J(before) });
+      check('①amai.save は ふつうの 11 面のまま', (await stored(page, 'amai.save')) === save0, await stored(page, 'amai.save'));
+      // ② もどした印
+      await page.click('#undoBtn'); await wait(page, 150);
+      const c1 = await chalOf();
+      check(`②1手もどすと amai.chal の used が true（押した ${c1 && c1.presses.length}）`, c1 && c1.used === true && c1.presses.length === 1, c1);
+      await page.reload(); await wait(page, 300);
+      const r2 = await gs(page);
+      check(`②開き直しても もどした印が残る（chalUsed ${r2.chalUsed}・押した ${r2.presses}・challenge ${r2.challenge}）`, r2.chalUsed === true && r2.presses === 1 && r2.challenge === true && r2.level === 5, r2);
+      await page.click('#undoBtn'); await wait(page, 150);
+      await page.reload(); await wait(page, 300);
+      const r3 = await gs(page);
+      check(`②押した数 0 まで戻して開き直しても印が残る（chalUsed ${r3.chalUsed}・押した ${r3.presses}）`, r3.chalUsed === true && r3.presses === 0 && r3.challenge === true, r3);
+      // ③ クリアで消える
+      const { s: cl } = await solveToClear(page);
+      await wait(page, 600);
+      const cc = await overlayInfo(page);
+      const gold = JSON.parse((await stored(page, 'amai.gold')) || 'null');
+      check(`③もどした印のまま クリア（${cl.overlay}）：「もどしたので きんの わは つかないよ」・amai.gold に書かない（${J(gold)}）・amai.chal が消える（${await stored(page, 'amai.chal')}）・amai.save は 11 面のまま`, cl.overlay === 'clear' && /ちょうせん クリア！/.test(cc.text) && /もどしたので きんの わは つかないよ/.test(cc.text) && (gold === null || !gold.ids.includes(PO[4])) && (await stored(page, 'amai.chal')) === null && (await stored(page, 'amai.save')) === save0, cc);
+      await page.reload(); await wait(page, 300);
+      const r4 = await gs(page);
+      check(`③クリアのあと開き直すと ふつうの続き（${r4.level} 面・押した ${r4.presses}・challenge ${r4.challenge}）`, r4.level === 11 && r4.presses === 1 && r4.challenge === false && r4.slotCount === 3, r4);
+      // ⑤ やりなおしでは消えない
+      await page.click('#selectBtn'); await wait(page, 150);
+      await pickLv(6);
+      await clickCmd(page, 'playChal'); await wait(page, 300);
+      const sol6 = await solutionOf(page);
+      await settleG(page); await pressCol(page, sol6[0]); await skipG(page);
+      await page.click('#undoBtn'); await wait(page, 150);
+      await settleG(page); await pressCol(page, sol6[0]); await skipG(page);
+      await page.click('#restartBtn'); await wait(page, 150);
+      await clickCmd(page, 'restartYes'); await wait(page, 300);
+      const c5 = await chalOf();
+      check(`⑤やりなおしでは amai.chal は消えず、6 面・押した 0・used false（${J(c5 && { level: c5.level, n: c5.presses.length, used: c5.used })}）`, c5 && c5.level === 6 && c5.presses.length === 0 && c5.used === false, c5);
+      // ④ 面えらびで ふつうを選ぶと消える
+      await settleG(page); await pressCol(page, sol6[0]); await skipG(page);
+      await page.click('#selectBtn'); await wait(page, 150);
+      await pickLv(7);
+      const oc = await overlayInfo(page);
+      check(`④ちょうせんの途中で面を選ぶカードに「いまの ちょうせんの とちゅうは きえるよ」・「ほぞんは ないよ」は出さない（${oc.text}）`, /いまの ちょうせんの とちゅうは きえるよ/.test(oc.text) && !/ほぞんは ないよ/.test(oc.text), oc);
+      await clickCmd(page, 'playNormal'); await wait(page, 300);
+      const p7 = await gs(page);
+      check(`④［ふつうで あそぶ］で 7 面のふつう（${p7.level}・${p7.challenge}）・amai.chal が消える（${await stored(page, 'amai.chal')}）`, p7.level === 7 && p7.challenge === false && (await stored(page, 'amai.chal')) === null, p7);
+      await page.reload(); await wait(page, 300);
+      const r5 = await gs(page);
+      check(`④開き直すと ふつうの 7 面（${r5.level}・${r5.challenge}）`, r5.level === 7 && r5.challenge === false, r5);
+      // ⑥ 壊れた amai.chal
+      const good = JSON.parse(mkC);
+      const bads = [
+        ['JSON でない', '{'],
+        ['used が文字', J({ ...good, used: 'yes' })],
+        ['目印ちがい（絵・決まりの版が変わった）', J({ ...good, picSig: '00000000' })],
+        ['目印なし', J({ ...good, picSig: undefined })],
+        ['クリアしていない 11 面', J({ ...good, level: 11, pic: PO[10] })],
+        ['再生できない手', J({ ...good, presses: [[999, 0]], t: 999 })],
+        ['1 面', J({ ...good, level: 1, pic: PO[0] })],
+      ];
+      const res = [];
+      for (const [name, raw] of bads) {
+        await gotoG(page, { ...base, 'amai.chal': raw });
+        const g = await gs(page);
+        res.push({ name, level: g.level, presses: g.presses, challenge: g.challenge, chal: await stored(page, 'amai.chal') });
+      }
+      check(`⑥壊れた amai.chal ${bads.length} 通りは落ちずに消して ふつうの続き（11 面・押した 1）`, res.every((r) => r.level === 11 && r.presses === 1 && r.challenge === false && r.chal === null), res);
+      await gotoG(page, { ...base, 'amai.chal': mkC });
+      const g7 = await gs(page);
+      check(`⑥正しい amai.chal（5 面・押した 0）なら ちょうせんの 5 面から（${g7.level}・${g7.challenge}・わく ${g7.slotCount}）`, g7.level === 5 && g7.challenge === true && g7.slotCount === 2 && g7.presses === 0, g7);
+      await ctx.close();
+    },
+  },
+  {
+    id: 'AW43', tier: 'full', title: 'あまいもの ちょうせんの途中の保存も 古いページから書き戻さない（契約 §4.4・X-20。2026-11-22）：ちょうせん中に bfcache から戻ったとき・裏にいる間に別のタブが amai.chal を書いたとき、古い局面を書き戻さず開き直して今の amai.chal から続ける。変わっていなければ開き直さない',
+    async run({ browser, check }) {
+      const { PO } = await (async () => { const { ctx, page } = await openG(browser, 'AW43 絵'); const r = await page.evaluate(() => ({ PO: window.AmaiLogic.PICTURE_ORDER.map((x) => x.id) })); await ctx.close(); return r; })();
+      const got = {}; PO.slice(0, 10).forEach((id) => { got[id] = 1; });
+      const { ctx, page } = await openG(browser, 'AW43', { extra: { 'amai.best': '10', 'amai.book': J({ v: 1, got }) } });
+      const mk = (lv) => page.evaluate((n) => { const L = window.AmaiLogic; return L.makeChal(n, L.pickPicture(n, null), [], 0, false); }, lv);
+      await page.evaluate(() => window.AmaiGame.setLevel(5, { challenge: true })); await wait(page, 200);
+      const s0 = await gs(page);
+      check(`ちょうせんの 5 面から（${s0.level}・${s0.challenge}）・amai.chal がある`, s0.level === 5 && s0.challenge === true && (await stored(page, 'amai.chal')) !== null, s0);
+      const fp = (raw) => { try { const s = JSON.parse(raw); return `${s.level}:${(s.presses || []).length}`; } catch { return 'ERR'; } };
+      const hiddenWrite = (p) => p.evaluate(() => { const G = window.AmaiGame, s = G.solution(); G.press(s ? s[0] : 0); });
+      const r = await x20Run(page, ctx, { key: 'amai.chal', newer: [await mk(3), await mk(4), await mk(6), await mk(7)], fp, hiddenWrite });
+      check(`ちょうせん（amai.chal）：${x20Text(r)}`, r.ok, r);
+      const s1 = await gs(page);
+      check(`開き直したあとも ちょうせんのまま（${s1.level} 面・${s1.challenge}）`, s1.level === 7 && s1.challenge === true, s1);
       await ctx.close();
     },
   },

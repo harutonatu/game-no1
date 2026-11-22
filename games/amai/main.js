@@ -26,6 +26,7 @@
   const KEY_FAST = L.SAVE_KEY_FAST || "amai.fast";
   const KEY_CLEAN = L.SAVE_KEY_CLEAN || "amai.clean";   // 1手もどし なしで クリアした絵（logic.js の validateClean・addClean・hasClean）
   const KEY_GOLD = L.SAVE_KEY_GOLD || "amai.gold";      // ちょうせんで クリアした絵（金の花輪。logic.js の validateGold・addGold・hasGold）
+  const KEY_CHAL = L.SAVE_KEY_CHAL || "amai.chal";      // ちょうせんの途中（2026-11-22。logic.js の validateChal・makeChal。約束 §4.2）
   const TICK_MS = Number(L.TICK_MS) > 0 ? Number(L.TICK_MS) : 500;
   const FAST_MS = Number(L.FAST_MS) > 0 ? Number(L.FAST_MS) : 250;
   const CARD_LOCK_MS = 400;     // クリア・うごかせないのカードを出してから押せない時間
@@ -102,10 +103,14 @@
     if (stale) return false;   // G3：古いページは書かない（amai.book・amai.best も）
     try { localStorage.setItem(key, val); noteSaved(key); return true; } catch (e) { return false; }
   }
+  function removeKey(key) {
+    if (stale) return false;   // G3：古いページは消さない
+    try { if (localStorage.getItem(key) !== null) localStorage.removeItem(key); noteSaved(key); return true; } catch (e) { return false; }
+  }
 
   // ===== 古いページから書き戻さない（契約 §4.4・X-20。いろびん §18 と同じ形） =====
-  // G1：見張るのは途中の保存（amai.save）だけ。このページが最後に読んだ・書いた生の文字と比べる
-  const WATCH_KEYS = [KEY_SAVE];
+  // G1：見張るのは途中の保存（amai.save）と ちょうせんの途中（amai.chal。2026-11-22）。このページが最後に読んだ・書いた生の文字と比べる
+  const WATCH_KEYS = [KEY_SAVE, KEY_CHAL];
   const seenRaw = new Map(WATCH_KEYS.map((k) => [k, readKey(k)]));
   let stale = false;                     // true：このページはもう保存しない（開き直す前）
   let reloading = false;                 // true：開き直しをもう頼んだ（1 回だけ）
@@ -169,7 +174,8 @@
   let confirmFrom = "play";     // やりなおし・面えらびの確認を開いた所（play | stuck | select）
   let selectTarget = 0;         // 面えらびの確認で「はじめる」を押したら始める面
   let hintFadeId = 0;
-  // ちょうせんモード（計画書 docs/plans/amai-challenge.md §1）：わく 2 つ。途中の保存はしない。1手もどすは何回でも（2026-11-10。もどすと金の花輪は付かない）
+  // ちょうせんモード（計画書 docs/plans/amai-challenge.md §1）：わく 2 つ。1手もどすは何回でも（2026-11-10。もどすと金の花輪は付かない）。
+  // 途中は amai.chal に保存する（2026-11-22。計画書 docs/plans/amai-chal-save.md。ふつうの amai.save は書き換えない）
   let chal = false;             // いま ちょうせんで遊んでいる
   let noUndo = null;            // この面で 1手もどすを使っていない：true／使った：false／分からない（途中から再開・テストの局面）：null。保存しない
   // だいじょうぶな ところまで もどす（§1.13）。どれも保存しない
@@ -284,7 +290,8 @@
     el.fastBtn.setAttribute("aria-pressed", String(!!fast));
   }
   function save() {
-    if (custom || chal || !state || state.won) return;   // クリアした面は、onWon が次の面を書く。ちょうせんの途中は保存しない（閉じたら ふつう の続きに戻る）
+    if (custom || !state || state.won) return;   // クリアした面は、onWon が次の面を書く（ちょうせんは amai.chal を消す）
+    if (chal) { safeCall(() => writeKey(KEY_CHAL, L.makeChal(level, pick, presses, state.t, chalUsed)), false); return; }   // ちょうせんの途中は amai.chal だけ（amai.save は ふつうの続きのまま）
     safeCall(() => writeKey(KEY_SAVE, L.makeSave(level, pick, presses, state.t)), false);
   }
   // 押せる手前の箱（列の先頭）・こおりの残り・いま運べる色の名前の文
@@ -547,7 +554,7 @@
 
   // ===== 面を始める =====
   // pk：{ id, mirror, repeat }（無い・PICTURE_ORDER に無い絵なら pickPicture で選ぶ）。pr・t：保存の押した手と t（再開）
-  // mode：{ challenge: true } なら ちょうせん（わく 2 つ。途中から再開しない）
+  // mode：{ challenge: true } なら ちょうせん（わく 2 つ）。{ challenge: true, resume: true, used } は amai.chal の続き（押した手を再生できなければ false を返し、何も始めない）
   function startLevel(lv, pk, pr, t, mode) {
     clearLater();
     // 「うごきを へらす」設定ではありんこを描かない（契約 §3.8）。何も出ないので、1 回だけ理由を知らせる
@@ -564,9 +571,10 @@
       created = ch ? L.createLevel(n, pk2, { challenge: true }) : L.createLevel(n, pk2);
       st = created && created.state;
       if (!st) throw new Error("面を作れませんでした");
-      if (!ch && Array.isArray(pr) && pr.length) {
-        const rp = safeCall(() => L.replay(n, pk2, pr, t), null);
+      if (Array.isArray(pr) && pr.length) {
+        const rp = safeCall(() => (ch ? L.replay(n, pk2, pr, t, { challenge: true }) : L.replay(n, pk2, pr, t)), null);
         if (rp && rp.ok && rp.state) { st = rp.state; prs = pr.map((m) => [m[0], m[1]]); }
+        else if (ch && mode.resume === true) return false;   // ちょうせんの続きが再生できない：呼んだ側が amai.chal を消して ふつうの続きへ
       }
     } catch (e) {
       console.error("あまいものあつめ: 面を始められませんでした", e);
@@ -587,6 +595,8 @@
     customHist = [];
     hist = prs.length === 0 ? [] : null;   // 途中から再開した面は、使うときに replayStates で作る
     job = null; rescuing = false; doomed = false; doomTold = false; doomAsk = false; chalUsed = false;
+    if (ch && mode.used === true) chalUsed = true;   // ちょうせんの続き：もどした印も戻す（金の花輪を付けない）
+    if (!ch) removeKey(KEY_CHAL);   // ふつうの面を始めた：ちょうせんの途中は消す（ちょうせんをやめた）
     stable = false;
     sinceSave = 0;
     acc = 0;
@@ -748,6 +758,7 @@
       // 1手もどす・だいじょうぶな ところまで もどすを使った ちょうせんは、金の花輪を付けない（ずかんの回数は増やす。2026-11-10。約束 §0.11）
       const rg = chalUsed ? null : safeCall(() => L.addGold(readKey(KEY_GOLD), id), null);
       if (typeof rg === "string") writeKey(KEY_GOLD, rg);
+      removeKey(KEY_CHAL);   // ちょうせんの途中の保存は クリアで消す（開き直すと ふつうの続き）
       const raw = safeCall(() => L.addToBook(readKey(KEY_BOOK), id), null);
       if (typeof raw === "string") writeKey(KEY_BOOK, raw);
       const book = safeCall(() => L.validateBook(raw), null) || readBook();
@@ -1181,7 +1192,7 @@
         <button class="cta primary" type="button" data-cmd="playNormal">ふつうで あそぶ</button>
         <button class="cta chal" type="button" data-cmd="playChal">ちょうせん</button>
         <button class="cta" type="button" data-cmd="close">やめる</button>
-      </div>`, { h: `${n} めんを あそぶ`, m: "ちょうせんは わくが 2つ。もどさずに クリアすると きんの わ。とちゅうの ほぞんは ないよ", w: "ふつうで あそぶと いまの めんの とちゅうは きえるよ（ちょうせんなら ふつうの とちゅうは のこるよ）" }, "confirm");
+      </div>`, { h: `${n} めんを あそぶ`, m: "ちょうせんは わくが 2つ。もどさずに クリアすると きんの わ", w: chal ? "いまの ちょうせんの とちゅうは きえるよ" : "ふつうで あそぶと いまの めんの とちゅうは きえるよ（ちょうせんなら ふつうの とちゅうは のこるよ）" }, "confirm");
       el.card.dataset.mode = "pick";
       return true;
     }
@@ -1578,8 +1589,17 @@
   (function boot() {
     fast = !!safeCall(() => L.validateFlag(readKey(KEY_FAST)), false);
     safeCall(() => render.setFast(fast));
-    const sv = safeCall(() => L.validateSave(readKey(KEY_SAVE)), null);
     let ok = false;
+    // ちょうせんの途中（amai.chal。2026-11-22）：形が正しく・絵の目印が合い・ちょうせんできる面で・押した手を再生できれば、その局面から続ける。
+    // どれかがだめなら落ちずに消して、下の ふつうの続きへ
+    const rawChal = readKey(KEY_CHAL);
+    if (rawChal !== null) {
+      const cv = safeCall(() => L.validateChal(rawChal), null);
+      const fitsC = !!cv && inOrder(cv.pick.id) && !!safeCall(() => L.saveFits(cv), false) && canChallenge(cv.level);
+      if (fitsC) ok = startLevel(cv.level, cv.pick, cv.presses, cv.t, { challenge: true, resume: true, used: cv.used });
+      if (!ok) removeKey(KEY_CHAL);
+    }
+    const sv = ok ? null : safeCall(() => L.validateSave(readKey(KEY_SAVE)), null);
     if (sv && Number.isSafeInteger(sv.level) && sv.level >= 1) {
       // 保存の絵が PICTURE_ORDER に無い：pickPicture で選び直してその面の最初から
       // 絵の目印（picSig）が今の絵と合わない（絵が変わった・決まりが変わった（v67 までの保存）・目印の無い古い保存）：押した手を使わず同じ絵でその面の最初から（課題 AM-18・amai-route.md）
