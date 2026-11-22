@@ -48,4 +48,13 @@
 
 ## 5. 結果（2026-11-22・Chromium・PORT=8982）
 
-（§5 は実行のあとに書く）
+- テスト：あまいものあつめの AL・AW 全部と X1（`ONLY` に全部の ID）：**smoke 32/32 合格（確認 351/351）・full 70/70 合格（確認 724/724）**。揺れ（流し直しで合格）は 0 件。1 回目で全部合格した。
+- 変異：`PORT=8982 ONLY=AL26,AW34,AW42,AW43,X1 M=MA52,MA87,MA88,MA89,MA90 node tests/mutants/mutate.mjs both` → **full 5/5 検出**（smoke 0/5。見つける項目 AW34・AW42・AW43 は full だけにあるため。AL26 は smoke）。
+
+| 変異 | smoke | full |
+|---|---|---|
+| MA52 | 見逃し | AW34・AW42 |
+| MA87 | 見逃し | AW34・AW42・AW43 |
+| MA88 | 見逃し | AW42 |
+| MA89 | 見逃し | AW42 |
+| MA90 | 見逃し | AW43 |
