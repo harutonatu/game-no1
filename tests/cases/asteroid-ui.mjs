@@ -725,13 +725,17 @@ export const tests = [
       check(`自機が動く（20 秒で ${total.toFixed(0)} 単位）、1 秒の移動は最大 ${Math.max(...steps).toFixed(1)}（SHIP_SPEED ${L.SHIP_SPEED} の 2 倍以下。縁に寄るときは速くなる）、残りのマスから離れすぎない（最も遠いとき ${near.toFixed(0)} 単位 ≦ ${(L.RANGE + L.STANDOFF) * L.CELL}）`, total > L.SHIP_SPEED * 5 && Math.max(...steps) <= L.SHIP_SPEED * 2 && near <= (L.RANGE + L.STANDOFF) * L.CELL, { total, steps: steps.map((x) => +x.toFixed(1)), near });
       // 撃った弾は自機の近くから出る：1 step ずつ進めて、最初に弾が見えたときの自機との距離
       // （2026-11-12：自機がふちから 10 マスになり、弾が 4 step ほど飛ぶので、弾が 0 になったあとの新しい弾だけを見る）
-      let origin = null, empty = false;
-      for (let i = 0; i < 150 && !origin; i++) {
-        await adv(page, L.STEP);
-        const l = await lg(page);
-        if (!l.shots.length) { empty = true; continue; }
-        if (empty) origin = Math.min(...l.shots.map((b) => Math.hypot(b.x - l.ship.x, b.y - l.ship.y)));
-      }
+      // （2026-11-23：WebKit ではテストの読み取りの間に実時間のコマが進み、弾が飛びすぎて見えることがあった → frozen で実時間を止めて測る）
+      const origin = await frozen(page, async () => {
+        let o = null, empty = false;
+        for (let i = 0; i < 150 && o === null; i++) {
+          await adv(page, L.STEP);
+          const l = await lg(page);
+          if (!l.shots.length) { empty = true; continue; }
+          if (empty) o = Math.min(...l.shots.map((b) => Math.hypot(b.x - l.ship.x, b.y - l.ship.y)));
+        }
+        return o;
+      });
       check(`弾が出る（見えた最大数 ${shotsSeen}）、出た弾は自機から ${origin && origin.toFixed(1)} 単位以内（2 step で飛ぶ分 ${(L.BULLET_SPEED * L.STEP * 2).toFixed(1)} と 3 マス以内）`, shotsSeen > 0 && origin !== null && origin <= L.BULLET_SPEED * L.STEP * 2 + 3 * L.CELL, { shotsSeen, origin });
       // 持っている武器だけが弾を出す（ひかえの武器は撃たない）
       await setL(page, "l.slots = [{ id: 'shot', lv: 5 }]; l.bench = [{ id: 'beam', lv: 9 }]; l.swap = [];");
