@@ -14,6 +14,7 @@
  *   const sfx = YubiSfx.create("michibiki"); // ミチビキ空港（warn/pick/lock/land(n)/near/crash/bounce/open(color)/over）
  *   const sfx = YubiSfx.create("seizai");   // もくもくこうば（chop/saw/sell/buy/hire/tool/cheer/deny/order/deliver(kind)/stage(n)/away）
  *   const sfx = YubiSfx.create("asteroid"); // ちきゅうを守れ！ほしくだき（shot(w)/crack(n)/break(mat)/chunk(n)/absorb/up/evolve/unlock/swap/clear/glow/lost/boss/deny）
+ *   const sfx = YubiSfx.create("machi");    // ぼくのまち（select/place/road/rail/green/erase/deny/grow/rank/voice(good)/good/oops。start/best/toggle は共通）
  *   const sfx = YubiSfx.create("amai");     // あまいものあつめ（place/nest/empty/clear/open/thaw/deny/undo/stuck）
  *   const sfx = YubiSfx.create("menu");    // メニュー（共通の音だけ）
  *   sfx.play(name, arg) / sfx.unlock() / sfx.toggle() / sfx.on / sfx.buzz(pattern)
@@ -43,6 +44,8 @@
   const GROUP_SEIZAI = { chop: "work", saw: "work" };
   // ちきゅうを守れ！ほしくだきだけの間引き（約束 §9）。shot は全武器を合わせて 0.12 秒に 1 回（名前が1つなので自然に合わさる）、
   // break は 0.05 秒・absorb は 0.1 秒に 1 回まで。clear・bounce・deny は ほかのゲームにも同じ名前があるので、このゲームだけに効かせる
+  // ぼくのまちだけの間引き（約束 §9）。なぞって たくさん置くときは place・road を 0.06 秒あける。grow は 0.5 秒あける（寄っていて見えている所だけ main が鳴らす）
+  const GAP_MACHI = { place: 0.06, road: 0.06, rail: 0.06, green: 0.06, erase: 0.06, grow: 0.5, deny: 0.2, voice: 0.5, select: 0.03 };
   const GAP_ASTEROID = { shot: 0.12, crack: 0.08, break: 0.05, chunk: 0.12, absorb: 0.1, up: 0.05, glow: 0.12, lost: 1, deny: 0.2, boss: 1, evolve: 0.2, unlock: 0.3, swap: 0.1, clear: 0.5 };
 
   function create(game, opts) {
@@ -629,6 +632,28 @@
       away: () => { const t = N(); partial(G5, t, 0.5, { vol: 0.05, a: 0.04 }); partial(C6, t + 0.12, 0.6, { vol: 0.05, a: 0.05 }); mallet(E5, t, { vol: 0.06, decay: 0.3, bright: 0.2 }); }
     };
 
+    // ぼくのまち：ずっと遊んでも疲れないよう、置く音は小さく短く。deny は責めない低い「こつ」、oops（こまったできごと）はこわがらせない柔らかい下がる 2 音
+    const MACHI = {
+      select: () => wood(740, N(), { vol: 0.05, dur: 0.04, jit: 20 }),
+      place: () => { const t = N(); wood(420, t, { vol: 0.07, dur: 0.05, jit: 30 }); mallet(G5, t + 0.03, { vol: 0.05, decay: 0.1, bright: 0.2 }); },
+      road: () => { const t = N(); wood(260, t, { vol: 0.06, dur: 0.045, jit: 30 }); noise(t, 0.04, { type: "lowpass", freq: 900, to: 400, vol: 0.02, a: 0.003 }); },
+      rail: () => { const t = N(); wood(520, t, { vol: 0.05, dur: 0.03, jit: 20 }); wood(640, t + 0.045, { vol: 0.04, dur: 0.03, jit: 20 }); },
+      green: () => { const t = N(); mallet(E5, t, { vol: 0.07, decay: 0.12, bright: 0.2 }); mallet(A5, t + 0.05, { vol: 0.06, decay: 0.14, bright: 0.2 }); },
+      erase: () => { const t = N(); noise(t, 0.08, { freq: 1600, to: 600, q: 1, vol: 0.03, a: 0.004 }); wood(200, t + 0.02, { vol: 0.05, dur: 0.05, jit: 20 }); },
+      deny: () => wood(240, N(), { vol: 0.05, dur: 0.05, jit: 20 }),
+      grow: () => { const t = N(); mallet(E5, t, { vol: 0.07, decay: 0.1 }); mallet(G5, t + 0.06, { vol: 0.07, decay: 0.16 }); },
+      rank: () => {
+        const t = N();
+        [C5, E5, G5, C6].forEach((f, i) => mallet(f, t + i * 0.07, { vol: 0.1 + i * 0.01, decay: i === 3 ? 0.45 : 0.16 }));
+        [C5, E5, G5].forEach((f) => partial(f * 2, t + 0.28, 0.5, { vol: 0.025, a: 0.01 }));
+        bell(G6, t + 0.32, { vol: 0.045, decay: 0.5 });
+      },
+      // 市民の声「ぽこっ」：小さな丸い音。いい声（arg が true）は少し明るく上がる
+      voice: (good) => { const t = N(); partial(good ? 660 : 520, t, 0.07, { vol: 0.05, from: good ? 520 : 640, fromT: 0.04, a: 0.002 }); if (good) bell(E6, t + 0.05, { vol: 0.02, decay: 0.2 }); },
+      good: () => { const t = N(); mallet(G5, t, { vol: 0.09, decay: 0.12 }); mallet(C6, t + 0.07, { vol: 0.1, decay: 0.3 }); bell(E6, t + 0.15, { vol: 0.03, decay: 0.3 }); },
+      oops: () => { const t = N(); mallet(E5, t, { vol: 0.07, decay: 0.22, bright: 0.2 }); mallet(C5, t + 0.16, { vol: 0.065, decay: 0.32, bright: 0.2 }); }
+    };
+
     // ちきゅうを守れ！ほしくだき：全部自動で撃ち続けるので、ずっと鳴る音（shot・crack・break・absorb）はごく小さく短く、間引く（GAP_ASTEROID）。
     // 気持ちよさの中心は break（材質で高さが変わる「ぽろっ」）・chunk（はなれたかたまりの「ざらざらっ」）・absorb（五音音階で上がる「ちりっ」）。
     // 基音はどれも A6（1760Hz）まで。lost（時間切れ）は責めない下がる2音。deny はやさしく下がる2音
@@ -754,8 +779,8 @@
     };
 
     const table = Object.assign({}, COMMON,
-      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : game === "hashi" ? HASHI : game === "irobin" ? IROBIN : game === "matomete" ? MATOMETE : game === "michibiki" ? MICHIBIKI : game === "seizai" ? SEIZAI : game === "asteroid" ? ASTEROID : game === "amai" ? AMAI : {});
-    const gap = game === "amai" ? Object.assign({}, GAP, GAP_AMAI) : game === "michibiki" ? Object.assign({}, GAP, GAP_MICHIBIKI) : game === "seizai" ? Object.assign({}, GAP, GAP_SEIZAI) : game === "asteroid" ? Object.assign({}, GAP, GAP_ASTEROID) : GAP;
+      game === "blocks" ? BLOCKS : (game === "tiles" || game === "2048") ? TILES : game === "kiritori" ? KIRI : game === "irocode" ? IROCODE : game === "pikatto" ? PIKATTO : game === "zenmai" ? ZENMAI : game === "hashi" ? HASHI : game === "irobin" ? IROBIN : game === "matomete" ? MATOMETE : game === "michibiki" ? MICHIBIKI : game === "seizai" ? SEIZAI : game === "asteroid" ? ASTEROID : game === "amai" ? AMAI : game === "machi" ? MACHI : {});
+    const gap = game === "machi" ? Object.assign({}, GAP, GAP_MACHI) : game === "amai" ? Object.assign({}, GAP, GAP_AMAI) : game === "michibiki" ? Object.assign({}, GAP, GAP_MICHIBIKI) : game === "seizai" ? Object.assign({}, GAP, GAP_SEIZAI) : game === "asteroid" ? Object.assign({}, GAP, GAP_ASTEROID) : GAP;
     const group = game === "seizai" ? GROUP_SEIZAI : {};
 
     return {

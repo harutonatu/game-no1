@@ -54,6 +54,7 @@ export const GROUPS = [
   { key: 'AL', title: 'AL あまいものあつめ 計算ロジック(Node)', file: 'amai-logic.mjs', weight: { smoke: 0, full: 0 } },
   { key: 'AW', title: 'AW あまいものあつめ 画面（押す・運ぶ・もどす・うごかせない・保存・戻る・画面内・横向き・中断・はやく・ずかん・キーボード・音・色覚・オフライン・メニュー）', file: 'amai-ui.mjs', weight: { smoke: 8, full: 45 } },
   { key: 'CL', title: 'CL ぼくのまち 計算ロジック(Node)', file: 'machi-logic.mjs', weight: { smoke: 0, full: 0 } },
+  { key: 'CW', title: 'CW ぼくのまち 画面（開く・地形えらび・置く・なぞる・保存・名前・時間・節目・声・画面内・戻る・メニュー・音・性能・中断・オフライン・X-20）', file: 'machi-ui.mjs', weight: { smoke: 8, full: 60 } },
 ];
 
 const args = process.argv.slice(2);

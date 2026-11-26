@@ -388,6 +388,17 @@ state = {
 - `#infoCard`・`#rankCard`・`#helpCard`（あそびかた。はじめの 1 回は自動で出す。`[data-cmd="help"]` は `#topBar` の名前の左）・`#restartCard`（さいしょから。`[data-cmd="restart"]` → 確かめてから地形えらびへ）。カードが開いている間は時間が止まる。
 - あそびかた の文（仮）：「みちを ひいて、そばに すむ・しごと・おみせ を おこう」「じょうけんが そろうと たてものが たって、おおきく なるよ」「こんざつ・よごれ・しごと の たりなさで ひとが へることも あるよ。めがねで しらべよう」。
 
+### 7.5 画面を作った担当（C）が足した DOM の id（2026-11-26。§7.1 の id に足す。正はここ）
+
+- `#soundBtn`（♪。`#topBar` の右端。`aria-label="こうかおん"`・状態は `aria-pressed` だけ。テスト A7）・`a#backBtn`（`href="../../"`。カードの暗い幕より上＝`z-index: 30` で、どのカードが開いていても押せる。カードは幕の上 56px をあけて出す）。
+- `[data-cmd="status"]`：`#moneyBox`・`#starBox`（どちらも button）→ `#statusCard`（まちの ランク・まいつき はいる／でる・さいだいの ひと・`#starWhy`（すみやすさを さげている わけ）・`[data-tax="0|1|2"]`（ぜいの たかさ。`aria-pressed`。まち になる前は ふつう だけ・`data-locked="1"`）・`#taxNote`）。
+- `#helpCard` の中：`[data-cmd="help-close"]`（はじめる）・`[data-cmd="restart-ask"]`（さいしょから → `#restartCard`）。`#restartCard` の中：`[data-cmd="restart-no"]`（やめる）・`[data-cmd="restart"]`（はじめる → 地形えらび。町は地形を選ぶまで消さない）。`[data-cmd="close"]`：`#infoCard`・`#statusCard`・`#rankCard` の閉じる。
+- `#infoCard` は `#infoTitle`・`#infoList`・`#infoWhy`（そだたない わけ）、`#rankCard` は `#rankTitle`・`#rankText`・`#rankBonus`。`#viewBtn` の文字は「みかた：ふつう／よごれ／こんざつ／すみやすさ／とちの ねだん」。`#voiceBar` の中は `#voiceFace`（8×8 のドット絵の顔）・`#voiceText`。
+- 地形えらびは地形を選ぶと「ぼくのまち」のまま（さいしょから のときは今の名前を引き継ぐ）。名前の入れ物は `maxlength="10"`（絵文字などは `normalizeName` が最後に切る）。
+- 一度に開くカードは 1 つ。ほかのカードが開いている間は節目のカードを待たせ、閉じたあとに出す。カードが開いている間は時間が止まる（知らせ・声・ヒントの残り時間は進む）。
+- テスト・デバッグ用に `window.__machi`（`state`・`overlay`・`tool`・`render`・`saveNow`）。`?debug=1` の命令：`stats`・`addmoney({n})`・`skip({months})`・`setspeed({s})`・`event({kind})`・`voice({why, text?, i?, good?})`・`demo({months, seed, policy, choice})`・`setstate({save})`。
+- 小さい画面（高さ 700px 以下・縦）は `#newsBar` を地図の上に重ねる（半透明・押せない）。横向きで高さ 520px 以下は左に地図・右に操作の列。`#tools` の道具の絵は 30px、地図は 375×812（セーフエリア上 47・下 34）で 420px 以上。
+
 ## 8. 保存（キー `machi.*`）
 
 | キー | 中身 |

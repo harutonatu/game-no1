@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ゆびあそび">
+<meta name="theme-color" content="#fbe9b6">
+<meta name="description" content="広告なし・登録なし。みちと いえを おいて、まちを そだてよう。こんざつや よごれに きをつけて。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ゆびあそび">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:title" content="ぼくのまち｜ゆびあそび">
+<meta property="og:description" content="広告なし・登録なし。みちと いえを おいて、まちを そだてよう。こんざつや よごれに きをつけて。">
+<meta property="og:url" content="https://harutonatu.github.io/game-no1/games/machi/">
+<meta property="og:image" content="https://harutonatu.github.io/game-no1/icons/og-menu.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="ゆびあそびの ゲームの絵">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<title>ぼくのまち</title>
+<!-- デバッグ表示（?debug=1 のときだけ動く。読めなくてもゲームは動く） -->
+<script src="../../common/debug.js"></script>
+<style>
+  /* 配置（約束 docs/machi-contract.md §7.1・見本 docs/img/machi-mock2-A.png）：
+     縦向きは上から #topBar・#stats・#newsBar・#mapWrap（いちばん広い）・#toolHint・#tools（4×2）。
+     背が低い画面（高さ 700px 以下。SE 縦・375×667）は #newsBar を地図の上に重ねて（同じ grid-area）地図を広く取り、道具のボタンを少し低くする。
+     横向きで背が低い（高さ 520px 以下）ときは、左に #mapWrap、右の列に #topBar・#stats・#newsBar・#toolHint・#tools。 */
+  :root {
+    --bg: #fbe9b6;
+    --bg2: #fff3d0;
+    --panel: #fffaf0;
+    --edge: #7a4a1e;
+    --edge2: #a8743a;
+    --ink: #4a2c10;
+    --muted: #7d6446;
+    --accent: #f6c64a;
+    --accent-ink: #4a2c10;
+    --red: #d8453b;
+    --blue: #3f78c8;
+    --font: "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans CJK JP", system-ui, sans-serif;
+    --tool-h: 56px;
+    --icon: 30px;
+    color-scheme: light;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  html { overscroll-behavior: none; touch-action: manipulation; }
+  body {
+    margin: 0;
+    font: 16px/1.4 var(--font);
+    color: var(--ink);
+    background-color: var(--bg);
+    background-image: linear-gradient(45deg, var(--bg2) 25%, transparent 25%, transparent 75%, var(--bg2) 75%), linear-gradient(45deg, var(--bg2) 25%, transparent 25%, transparent 75%, var(--bg2) 75%);
+    background-size: 64px 64px;
+    background-position: 0 0, 32px 32px;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+  button { font-family: inherit; color: inherit; touch-action: manipulation; -webkit-touch-callout: none; }
+  button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
+  .app {
+    box-sizing: border-box;
+    height: 100%;
+    max-width: 760px;
+    margin: 0 auto;
+    padding-top: max(6px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
+    padding-right: max(10px, env(safe-area-inset-right, 0px));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "top" "stats" "news" "map" "hint" "tools";
+    gap: 4px;
+  }
+  #topBar { grid-area: top; }
+  #stats { grid-area: stats; }
+  #newsBar { grid-area: news; }
+  #mapWrap { grid-area: map; }
+  #toolHint { grid-area: hint; }
+  #tools { grid-area: tools; }
+
+  /* ===== 箱（ふちは茶色。見本 A） ===== */
+  .box { box-sizing: border-box; background: var(--panel); border: 3px solid var(--edge); border-radius: 4px; box-shadow: 0 2px 0 var(--edge2); }
+
+  /* ===== #topBar ===== */
+  #topBar { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 44px; }
+  .btn {
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font: 700 16px var(--font);
+    white-space: nowrap;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .btn:active { filter: brightness(0.93); transform: translateY(1px); }
+  #backBtn { flex: 0 0 auto; color: var(--ink); position: relative; z-index: 30; }   /* カードの暗い幕より上（どの画面からもメニューへ戻れる） */
+  a.btn, a.btn:visited { color: var(--ink); }
+  #nameBtn {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: flex-end;
+    padding: 0 6px;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    font: 700 18px var(--font);
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    line-height: 44px;
+    text-align: right;
+  }
+  #nameBtn[data-long="1"] { font-size: 14px; }
+  #nameBtn:active { transform: none; filter: none; opacity: 0.7; }
+  #topBar .round { flex: 0 0 auto; padding: 0; width: 44px; font-size: 20px; }
+  #soundBtn[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
+
+  /* ===== #stats ===== */
+  #stats { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1.2fr); gap: 6px; min-width: 0; }
+  .stat { min-width: 0; min-height: 44px; padding: 3px 8px 4px; text-align: left; font: inherit; cursor: default; overflow: hidden; }
+  button.stat { cursor: pointer; }
+  .stat .lab { display: block; font-size: 12px; line-height: 1.3; color: var(--muted); white-space: nowrap; }
+  .stat .val { display: block; font: 800 24px/1.1 var(--font); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #starText { letter-spacing: -1px; font-size: 22px; }
+  #starText .on { color: #f0a020; }
+  #starText .off { color: #d9c9a8; }
+  #moneyText.neg { color: var(--red); }
+
+  /* ===== #newsBar ===== */
+  #newsBar { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 40px; padding: 2px 8px; background: #fff2c2; border-color: var(--edge); }
+  #newsBar .star { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; background: #f6a21a; color: #fff; font-size: 14px; line-height: 22px; text-align: center; }
+  #newsText { flex: 1 1 auto; min-width: 0; font-size: 14px; font-weight: 700; line-height: 1.3; word-break: keep-all; overflow-wrap: anywhere; }
+  #dateText { flex: 0 0 auto; font-size: 12px; line-height: 1.2; color: var(--muted); white-space: nowrap; text-align: right; }
+
+  /* ===== #mapWrap ===== */
+  #mapWrap { position: relative; min-height: 0; overflow: hidden; background: #9fd0ee; border: 4px solid #e0a53a; border-radius: 3px; box-shadow: 0 0 0 3px var(--edge); }
+  #mapCanvas { position: absolute; left: 0; top: 0; display: block; touch-action: none; }
+  .over { position: absolute; z-index: 3; }
+  #viewBtn { top: 6px; right: 6px; min-height: 44px; padding: 0 10px; font-size: 13px; }
+  .zoomBtns { right: 6px; bottom: 6px; display: flex; flex-direction: column; gap: 6px; }
+  .zoomBtns .btn { padding: 0; width: 44px; font-size: 24px; }
+  #speedBtns { left: 6px; bottom: 6px; display: flex; gap: 4px; }
+  #speedBtns .btn { padding: 0 6px; min-width: 44px; font-size: 13px; }
+  #speedBtns .btn[aria-pressed="true"], #viewBtn[data-on="1"] { background: var(--accent); border-color: var(--edge); }
+  #zoomHint { left: 50%; transform: translateX(-50%); bottom: 112px; width: max-content; max-width: calc(100% - 24px); box-sizing: border-box; padding: 6px 14px; border-radius: 999px; background: rgba(255, 252, 240, 0.96); border: 2px solid var(--edge2); font-size: 13px; font-weight: 700; text-align: center; pointer-events: none; }
+  #voiceBar {
+    left: 6px; right: 58px; bottom: 56px; min-height: 44px; box-sizing: border-box;
+    display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 6px;
+    border-radius: 999px; border: 2px solid var(--edge); background: rgba(255, 252, 240, 0.97);
+    font: 700 14px/1.25 var(--font); text-align: left; cursor: pointer; animation: voiceIn 0.25s ease-out;
+  }
+  #voiceBar[data-good="1"] { border-color: #4a9a4a; }
+  #voiceFace { flex: 0 0 auto; width: 32px; height: 32px; image-rendering: pixelated; }
+  #voiceText { min-width: 0; }
+  @keyframes voiceIn { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  /* ===== #toolHint・#tools ===== */
+  #toolHint { margin: 0; min-height: 18px; text-align: center; font-size: 14px; font-weight: 700; color: var(--muted); line-height: 1.4; }
+  #toolHint[data-warn="1"] { color: var(--red); }
+  #tools { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .tool {
+    position: relative;
+    box-sizing: border-box;
+    min-height: var(--tool-h);
+    padding: 2px 2px 3px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    font: 700 15px/1.2 var(--font);
+    cursor: pointer;
+  }
+  .tool canvas { width: var(--icon); height: var(--icon); image-rendering: pixelated; display: block; }
+  .tool .nm { display: block; white-space: nowrap; }
+  .tool[aria-pressed="true"] { background: #ffe9a0; border-color: var(--red); box-shadow: 0 0 0 2px var(--red); }
+  .tool[aria-pressed="true"]::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 6px; background: var(--accent); }
+  .tool[data-locked="1"] { opacity: 0.45; }
+  .tool:active { filter: brightness(0.93); }
+  .tool-empty { visibility: hidden; }
+
+  /* ===== 小さい画面（背が低い）：news を地図に重ねて、道具を低く ===== */
+  @media (max-height: 700px) and (orientation: portrait) {
+    :root { --tool-h: 50px; --icon: 24px; }
+    .app { gap: 4px; grid-template-areas: "top" "stats" "map" "hint" "tools"; grid-template-rows: auto auto minmax(0, 1fr) auto auto; }
+    #newsBar { grid-area: map; align-self: start; z-index: 5; margin: 4px; min-height: 44px; background: rgba(255, 242, 194, 0.93); pointer-events: none; }
+    #viewBtn { top: 56px; }
+    #toolHint { min-height: 18px; font-size: 13px; }
+    .stat .val { font-size: 22px; }
+    #starText { font-size: 20px; }
+    #zoomHint { bottom: 112px; }
+  }
+  @media (max-width: 340px) {
+    #nameBtn { font-size: 13px; }
+    .btn { padding: 0 8px; }
+    #backBtn { font-size: 14px; }
+    #stats { gap: 4px; }
+    .stat { padding: 3px 5px 4px; }
+    .tool { font-size: 13px; }
+  }
+  /* ===== 横向き（背が低い）：左に地図、右の列に操作 ===== */
+  @media (orientation: landscape) and (max-height: 520px) {
+    :root { --tool-h: 48px; --icon: 24px; }
+    .app {
+      max-width: none;
+      grid-template-columns: minmax(0, 1fr) clamp(250px, 42vw, 360px);
+      grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+      grid-template-areas: "map top" "map stats" "map news" "map hint" "map ." "map tools";
+      column-gap: 8px; row-gap: 4px;
+    }
+    #newsBar { align-self: stretch; pointer-events: auto; background: #fff2c2; margin: 0; z-index: auto; }
+    #viewBtn { top: 6px; }
+    .stat .val { font-size: 20px; }
+    #starText { font-size: 18px; }
+    #zoomHint { bottom: 112px; }
+  }
+
+  /* ===== カード ===== */
+  .overlay { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: calc(max(6px, env(safe-area-inset-top, 0px)) + 56px) 16px max(16px, env(safe-area-inset-bottom, 0px));   /* 上の 56px は「← メニュー」の分（カードの幕より上に出す） */ background: rgba(74, 44, 16, 0.55); box-sizing: border-box; }
+  .card { box-sizing: border-box; width: min(100%, 360px); max-height: 100%; overflow-y: auto; padding: 16px 16px 14px; background: var(--panel); border: 4px solid var(--edge); border-radius: 6px; box-shadow: 0 6px 0 var(--edge2), 0 10px 28px rgba(0, 0, 0, 0.35); -webkit-user-select: none; user-select: none; }
+  .card h2 { margin: 0 0 8px; font-size: 20px; line-height: 1.3; }
+  .card p { margin: 0 0 8px; font-size: 15px; line-height: 1.55; }
+  .card .small { font-size: 13px; color: var(--muted); }
+  .card ul { margin: 0 0 10px; padding-left: 22px; font-size: 15px; line-height: 1.6; }
+  .card .btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .card .btns .btn { flex: 1 1 120px; }
+  .primary { background: var(--accent); }
+  .btn.box { background: var(--panel); }
+  .info-list { margin: 0 0 8px; padding: 0; list-style: none; font-size: 15px; }
+  .info-list li { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px dotted #d9c4a0; }
+  .info-list li b { font-variant-numeric: tabular-nums; }
+  .why { color: var(--red); font-weight: 700; }
+  #terrainList { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px 0 4px; }
+  .terr { box-sizing: border-box; min-height: 44px; padding: 6px 4px 6px; display: flex; flex-direction: column; align-items: center; gap: 4px; background: var(--panel); border: 3px solid var(--edge); border-radius: 4px; cursor: pointer; font: 700 13px/1.2 var(--font); }
+  .terr canvas { width: 100%; max-width: 92px; height: auto; aspect-ratio: 64 / 78; image-rendering: pixelated; border: 1px solid #c9a96a; display: block; }
+  .terr:active { background: #ffe9a0; }
+  #nameInput { box-sizing: border-box; width: 100%; min-height: 48px; padding: 6px 10px; border: 3px solid var(--edge); border-radius: 4px; background: #fff; color: var(--ink); font: 700 18px var(--font); -webkit-user-select: text; user-select: text; }
+  .taxes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 6px 0 4px; }
+  .taxes .btn { padding: 0 4px; font-size: 15px; }
+  .taxes .btn[aria-pressed="true"] { background: var(--accent); border-color: var(--red); }
+  .taxes .btn[data-locked="1"] { opacity: 0.45; }
+  @media (max-height: 560px) { .card { padding: 12px 12px 10px; } .card h2 { font-size: 18px; } .card p, .card ul { font-size: 14px; } }
+  /* 横向き（背が低い）：カードは左の地図の側に出す（右の列の「← メニュー」を隠さない）。地形えらびはスクロールなしで全部のボタンが押せる大きさにする */
+  @media (orientation: landscape) and (max-height: 520px) {
+    .overlay { padding: 6px calc(clamp(250px, 42vw, 360px) + 16px) 6px 8px; }
+    .card { padding: 8px 10px 8px; }
+    .card h2 { font-size: 17px; margin-bottom: 4px; }
+    #terrainCard .small, #helpCard .small { display: none; }
+    #terrainList { gap: 6px; margin: 4px 0 2px; }
+    .terr { padding: 4px 3px; gap: 2px; font-size: 12px; }
+    .terr canvas { max-width: 64px; }
+    .card .btns { margin-top: 4px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #voiceBar { animation: none; } * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<main class="app" id="app">
+  <header id="topBar">
+    <a class="btn box" id="backBtn" href="../../" aria-label="メニューへ もどる">← メニュー</a>
+    <button type="button" class="btn" id="nameBtn" aria-label="まちの なまえを かえる">ぼくのまち</button>
+    <button type="button" class="btn box round" data-cmd="help" aria-label="あそびかた">?</button>
+    <button type="button" class="btn box round" id="soundBtn" aria-label="こうかおん" aria-pressed="true">♪</button>
+  </header>
+
+  <section id="stats" aria-label="まちの ようす">
+    <button type="button" class="stat box" id="moneyBox" data-cmd="status" aria-label="おかね。おして くわしく みる"><span class="lab">おかね</span><span class="val" id="moneyText">2,000</span></button>
+    <div class="stat box" id="popBox"><span class="lab">ひと</span><span class="val" id="popText">0</span></div>
+    <button type="button" class="stat box" id="starBox" data-cmd="status" aria-label="すみやすさ。おして わけを みる"><span class="lab">すみやすさ</span><span class="val" id="starText" role="img" aria-label="すみやすさ ほし 3 / 5"></span></button>
+  </section>
+
+  <div id="newsBar" class="box" role="status" aria-live="polite">
+    <span class="star" aria-hidden="true">★</span>
+    <span id="newsText">みちを ひいて、そばに すむ を おこう</span>
+    <span id="dateText">1 ねんめ 4 がつ</span>
+  </div>
+
+  <section id="mapWrap" aria-label="ちず">
+    <canvas id="mapCanvas" aria-label="まちの ちず。ゆびで うごかす・ひろげる"></canvas>
+    <button type="button" class="over btn box" id="viewBtn" aria-label="ちずの みかたを かえる">みかた：ふつう</button>
+    <div class="over zoomBtns">
+      <button type="button" class="btn box" data-cmd="zoom-in" aria-label="おおきく する">＋</button>
+      <button type="button" class="btn box" data-cmd="zoom-out" aria-label="ちいさく する">－</button>
+    </div>
+    <div class="over" id="speedBtns" role="group" aria-label="じかんの はやさ">
+      <button type="button" class="btn box" data-speed="0" aria-pressed="false">とめる</button>
+      <button type="button" class="btn box" data-speed="1" aria-pressed="true">ふつう</button>
+      <button type="button" class="btn box" data-speed="4" aria-pressed="false">はやく</button>
+    </div>
+    <div class="over" id="zoomHint" hidden>ゆびで ひろげると ちかくが みえるよ</div>
+    <button type="button" class="over" id="voiceBar" role="status" hidden><canvas id="voiceFace" width="8" height="8" aria-hidden="true"></canvas><span id="voiceText"></span></button>
+  </section>
+
+  <p id="toolHint">おくものを えらんで、マスを タップ</p>
+
+  <nav id="tools" aria-label="おくもの">
+    <button type="button" class="tool box" data-tool="home" aria-pressed="false"><canvas width="36" height="36" aria-hidden="true"></canvas><span class="nm">すむ</span></button>
+    <button type="button" class="tool box" data-tool="work" aria-pressed="false"><canvas width="36" height="36" aria-hidden="true"></canvas><span class="nm">しごと</span></button>
+    <button type="button" class="tool box" data-tool="shop" aria-pressed="false"><canvas width="36" height="36" aria-hidden="true"></canvas><span class="nm">おみせ</span></button>
+    <button type="button" class="tool box" data-tool="road" aria-pressed="false"><canvas width="36" height="36" aria-hidden="true"></canvas><span class="nm">みち</span></button>
+    <button type="button" class="tool box" data-tool="rail" aria-pressed="false"><canvas width="36" height="36" aria-hidden="true"></canvas><span class="nm">せんろ</span></button>
+    <button type="button" class="tool box" data-tool="green" aria-pressed="false"><canvas width="36" height="36" aria-hidden="true"></canvas><span class="nm">みどり</span></button>
+    <button type="button" class="tool box" data-tool="erase" aria-pressed="false"><canvas width="36" height="36" aria-hidden="true"></canvas><span class="nm">こわす</span></button>
+    <button type="button" class="tool box" data-tool="nature" aria-pressed="false"><canvas width="36" height="36" aria-hidden="true"></canvas><span class="nm">めぐみ</span></button>
+  </nav>
+</main>
+
+<!-- 地形えらび（はじめと さいしょから） -->
+<div class="overlay" id="terrainCard" role="dialog" aria-modal="true" aria-labelledby="terrainTitle" hidden>
+  <div class="card">
+    <h2 id="terrainTitle">どんな ちけいで はじめる？</h2>
+    <p class="small">すきな ちけいを えらんでね。ほかの ちけいも みられるよ</p>
+    <div id="terrainList">
+      <button type="button" class="terr" data-terrain="0" aria-label="うみべ"><canvas width="128" height="156" aria-hidden="true"></canvas><span>うみべ</span></button>
+      <button type="button" class="terr" data-terrain="1" aria-label="かわの まち"><canvas width="128" height="156" aria-hidden="true"></canvas><span>かわの まち</span></button>
+      <button type="button" class="terr" data-terrain="2" aria-label="やまあい"><canvas width="128" height="156" aria-hidden="true"></canvas><span>やまあい</span></button>
+    </div>
+    <div class="btns"><button type="button" class="btn box" data-cmd="reroll">ほかの ちけい</button></div>
+  </div>
+</div>
+
+<!-- あそびかた -->
+<div class="overlay" id="helpCard" role="dialog" aria-modal="true" aria-labelledby="helpTitle" hidden>
+  <div class="card">
+    <h2 id="helpTitle">あそびかた</h2>
+    <ul>
+      <li>みちを ひいて、そばに すむ・しごと・おみせ を おこう</li>
+      <li>じょうけんが そろうと たてものが たって、おおきく なるよ</li>
+      <li>こんざつ・よごれ・しごと の たりなさで ひとが へることも あるよ。みかたを かえて しらべよう</li>
+    </ul>
+    <p class="small">おくものを えらんで ゆびで なぞると、まとめて おけるよ。ちいさいときは ゆびで ひろげて ちかくで おいてね</p>
+    <div class="btns">
+      <button type="button" class="btn primary" data-cmd="help-close">はじめる</button>
+      <button type="button" class="btn box" data-cmd="restart-ask">さいしょから</button>
+    </div>
+  </div>
+</div>
+
+<!-- さいしょから（確かめ） -->
+<div class="overlay" id="restartCard" role="dialog" aria-modal="true" aria-labelledby="restartTitle" hidden>
+  <div class="card">
+    <h2 id="restartTitle">さいしょから はじめる？</h2>
+    <p>いまの まちは なくなって、ちけいを えらびなおすよ。</p>
+    <div class="btns">
+      <button type="button" class="btn primary" data-cmd="restart-no">やめる</button>
+      <button type="button" class="btn box" data-cmd="restart">はじめる</button>
+    </div>
+  </div>
+</div>
+
+<!-- 名前を変える -->
+<div class="overlay" id="nameCard" role="dialog" aria-modal="true" aria-labelledby="nameTitle" hidden>
+  <div class="card">
+    <h2 id="nameTitle">まちの なまえ</h2>
+    <p class="small">10 もじまで。からっぽだと「ぼくのまち」になるよ</p>
+    <input id="nameInput" type="text" maxlength="10" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" aria-label="まちの なまえ">
+    <div class="btns">
+      <button type="button" class="btn primary" data-cmd="name-ok">きめる</button>
+      <button type="button" class="btn box" data-cmd="name-cancel">やめる</button>
+    </div>
+  </div>
+</div>
+
+<!-- しらべる（マスを押したとき） -->
+<div class="overlay" id="infoCard" role="dialog" aria-modal="true" aria-labelledby="infoTitle" hidden>
+  <div class="card">
+    <h2 id="infoTitle"></h2>
+    <ul class="info-list" id="infoList"></ul>
+    <div id="infoWhy"></div>
+    <div class="btns"><button type="button" class="btn primary" data-cmd="close">とじる</button></div>
+  </div>
+</div>
+
+<!-- すみやすさ・おかね・ぜい -->
+<div class="overlay" id="statusCard" role="dialog" aria-modal="true" aria-labelledby="statusTitle" hidden>
+  <div class="card">
+    <h2 id="statusTitle">まちの ようす</h2>
+    <ul class="info-list" id="statusList"></ul>
+    <p id="starWhy" class="small"></p>
+    <p style="margin:6px 0 0;font-weight:700">ぜいの たかさ</p>
+    <div class="taxes" role="group" aria-label="ぜいの たかさ">
+      <button type="button" class="btn box" data-tax="0" aria-pressed="false">ひくい</button>
+      <button type="button" class="btn box" data-tax="1" aria-pressed="true">ふつう</button>
+      <button type="button" class="btn box" data-tax="2" aria-pressed="false">たかい</button>
+    </div>
+    <p class="small" id="taxNote">ひくいと すみやすく、たかいと おかねが ふえるよ</p>
+    <div class="btns"><button type="button" class="btn primary" data-cmd="close">とじる</button></div>
+  </div>
+</div>
+
+<!-- 節目 -->
+<div class="overlay" id="rankCard" role="dialog" aria-modal="true" aria-labelledby="rankTitle" hidden>
+  <div class="card">
+    <h2 id="rankTitle"></h2>
+    <p id="rankText"></p>
+    <p class="small" id="rankBonus"></p>
+    <div class="btns"><button type="button" class="btn primary" data-cmd="close">やったね</button></div>
+  </div>
+</div>
+
+<script src="../../common/sfx.js"></script>
+<script src="../../common/notice.js"></script>
+<script src="logic.js"></script>
+<script src="sprites.js"></script>
+<script src="render.js"></script>
+<script src="input.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
