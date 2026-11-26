@@ -1043,7 +1043,7 @@ export const tests = [
       const info = swInfo(root);
       const dir = path.join(root, 'games/amai');
       const actual = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => fs.statSync(path.join(dir, f)).isFile()) : [];
-      const required = ['index.html', 'pictures-a.js', 'pictures-b.js', 'pictures-c.js', 'pictures-d.js', 'pictures-e.js', 'pictures-f.js', 'logic.js', 'render.js', 'input.js', 'main.js'];
+      const required = ['index.html', 'pictures-a.js', 'pictures-b.js', 'pictures-c.js', 'pictures-d.js', 'pictures-e.js', 'pictures-f.js', 'logic.js', 'render.js', 'input.js', 'main.js', 'count-worker.js'];
       const want = ['./games/amai/', ...required.map((f) => `./games/amai/${f}`), ...actual.map((f) => `./games/amai/${f}`)];
       const uniq = [...new Set(want)];
       const missing = uniq.filter((f) => !info.files.includes(f));
@@ -1072,6 +1072,10 @@ export const tests = [
         await page.evaluate((m) => { for (const c of m.slice(0, 2)) { window.AmaiGame.settle(); window.AmaiGame.press(c); window.AmaiGame.skip(); } }, sol);
         const s = await gs(page);
         check(`オフラインで遊べる（2 箱出せた。presses ${s.presses}）`, s.presses === 2, s);
+        // 数える Worker（count-worker.js。2026-11-26・§1.14 N11）もオフラインで読めて、Worker で数える
+        let w = null;
+        for (let i = 0; i < 100; i++) { w = await gs(page); if (w.paths.state !== 'counting') break; await sleep(100); }
+        check(`オフラインでも Worker（count-worker.js）で数える（${w.counter}・${J(w.paths)}）`, w.counter === 'worker' && w.paths.state !== 'counting' && w.paths.n !== null, w.paths);
       }
       await page.click('a#back'); await page.waitForURL(BASE, { timeout: 5000 }).catch(() => {});
       check('オフラインのまま、メニューに戻れる', page.url() === BASE && await page.locator('a.game').count() >= 2, page.url());
@@ -2783,6 +2787,59 @@ export const tests = [
         await c3.close();
       }
       check(`⑤SE 縦・Safari 縦・SE 横・Safari 横で 6 つの言葉が どれも巣をはさんで収まる（だめ ${bad.length}）`, bad.length === 0, bad);
+    },
+  },
+  {
+    id: 'AW47', tier: 'full', title: 'あまいもの とける みち を Worker で数える（2026-11-26。約束 §1.14 N11・計画書 amai-worker.md）：①ふつうは Worker（counter worker）で、1 面・3 面の数が Node と同じ・ちょうせん 43 面の［だいじょうぶな ところまで もどす］の戻し先が Node と同じ ②Worker を消したページ（window.Worker なし）は画面の中で数え（counter main）、同じ数・同じ戻し先 ③Worker のファイルが読めない（404）・Worker が頼みの途中で落ちる・答えない（8 秒）ときは画面の中に戻って数が出る（落ちない）④Worker でも 押す・1手もどす のたびに古い答えを捨てて、今の局面の数（Node で数え直した数と同じ）',
+    async run({ browser, check, root }) {
+      const L = loadLogic(root);
+      const e43 = rewindPlan(L, 43, { chal: true });
+      const n1 = (() => { const c = L.createLevel(1, L.pickPicture(1, null)); return L.countSearch(c.state, { path: c.info.solution }); })();
+      // ①② Worker あり・なし で、同じ数・同じ戻し先
+      const noWorker = () => { try { delete window.Worker; } catch (e) { /* 何もしない */ } try { window.Worker = undefined; } catch (e) { /* 何もしない */ } };
+      for (const [tag, opts, want] of [['①Worker', {}, 'worker'], ['②Worker なし', { initScript: noWorker }, 'main']]) {
+        const { ctx, page } = await openG(browser, 'AW47 ' + tag, { v: SMOKE_V(), opts });
+        await setLevel(page, 1);
+        const g1 = await waitCount(page);
+        await setLevel(page, 3);
+        const g3 = await waitCount(page);
+        await setLevel(page, 60);   // 道しるべ（solution）が無いと 1,500 局面でも「わからない」面（約束 §1.14 N5）
+        const g60 = await waitCount(page);
+        check(`${tag}：数える所 ${g1.counter}（${want}）・1 面 ${J(g1.paths)}（Node ${n1.result} ${n1.n}）・3 面 ${J(g3.paths)}・60 面（道しるべ）${J(g60.paths)}`, g1.counter === want && g3.counter === want && g60.counter === want && g1.paths.state === 'exact' && g1.paths.n === n1.n && g3.paths.state === 'many' && g60.paths.state === 'many', { g1: g1.paths, g3: g3.paths, g60: g60.paths, c: g1.counter });
+        await page.evaluate(() => window.AmaiGame.setLevel(43, { challenge: true })); await wait(page, 150);
+        const r43 = await playAndRewind(page, e43.seq);
+        check(`${tag}：ちょうせん 43 面の戻し先 ${r43.g.presses}（Node ${e43.memoK}）・${J(r43.g.paths)}・数える所 ${r43.g.counter}`, r43.card === 'stuck' && r43.g.presses === e43.memoK && r43.g.paths.n >= 1 && r43.g.counter === want, { r43, e43: e43.memoK });
+        if (want === 'worker') {
+          // ④ 押す・1手もどす を続けても、今の局面の数（古い答えは捨てる）
+          await setLevel(page, 5);
+          const sol5 = await solutionOf(page);
+          await page.evaluate((m) => { for (const c of m.slice(0, 3)) { window.AmaiGame.settle(); window.AmaiGame.press(c); } }, sol5);   // 数え終わる前に次々押す
+          await settleG(page); await skipG(page);
+          const a = await sameAsFresh(page);
+          await page.click('#undoBtn'); await wait(page, 50); await page.click('#undoBtn'); await wait(page, 100); await settleG(page); await skipG(page);
+          const b = await sameAsFresh(page);
+          check(`④Worker で 次々に押す（${J(a)}）・1手もどす 2 回（${J(b)}）のあとも今の局面の数`, a.ok && b.ok && a.presses === 3 && b.presses === 1 && a.shown.n !== null && b.shown.n !== null && (await gs(page)).counter === 'worker', { a, b });
+        }
+        await ctx.close();
+      }
+      // ③ Worker が使えないとき（読めない・途中で落ちる・答えない）は画面の中に戻る
+      const BAD = {
+        '404': (r) => r.fulfill({ status: 404, contentType: 'text/plain', body: 'not found' }),
+        '途中で落ちる': (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: 'self.postMessage({ t: "ready" }); self.onmessage = () => { throw new Error("わざと落とす"); };' }),
+        '答えない': (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: 'self.postMessage({ t: "ready" }); self.onmessage = () => {};' }),
+      };
+      for (const [tag, fn] of Object.entries(BAD)) {
+        const { ctx, page } = await openG(browser, 'AW47 ③' + tag, { v: SMOKE_V(), opts: { allowNetErrors: true } });
+        await page.route(/\/games\/amai\/count-worker\.js/, fn);
+        await page.reload(); await wait(page, 300);
+        await setLevel(page, 1);
+        let g = null;
+        const t0 = Date.now();
+        for (;;) { g = await gs(page); if ((g.paths.state !== 'counting' && g.counter === 'main') || Date.now() - t0 > 20000) break; await sleep(200); await wait(page, 1000); }
+        const ms = Date.now() - t0;
+        check(`③${tag}：画面の中に戻って（${g.counter}・${ms}ms）1 面の数 ${J(g.paths)}（Node ${n1.n}）`, g.counter === 'main' && g.paths.state === 'exact' && g.paths.n === n1.n, { g: g.paths, c: g.counter, ms });
+        await ctx.close();
+      }
     },
   },
 ];

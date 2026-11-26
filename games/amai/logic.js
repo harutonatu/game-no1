@@ -486,6 +486,24 @@
     return { dist: rt.dist.slice(), key: rt.key.slice(), pos: rt.pos.slice(), heap: rt.heap.map((h) => h.slice()), hn: rt.hn.slice(), rank: rt.rank };
   }
 
+  // 局面の鍵の絵の指紋（2026-11-26。計画書 docs/plans/amai-worker.md ③・約束 §1.14 N12）：マス i が値 v（−1＝空き・0〜＝色）のときの
+  // 2 つの 32 bit の数を、全部のマスで XOR したもの（Zobrist の作り）。運ぶ（takeCell）ときは、そのマスの分だけ直す（全部を数え直さない）。
+  // cells の配列 → Int32Array [h1, h2]（数えたことのある配列だけ。盤 b.hz が同じものを持ち、運ぶたびに直す）
+  const ZC = 16;   // 1 マスの値の種類の幅（−1 と 色。COLORS より多くとる）
+  const zob1 = (i, v) => fmix(Math.imul(i * ZC + v + 1, 0x9e3779b1) ^ 0x7f4a7c15) | 0;
+  const zob2 = (i, v) => fmix(Math.imul(i * ZC + v + 1, 0x85ebca77) ^ 0x2545f491) | 0;
+  const hashCache = new WeakMap();
+  function cellsHashFull(cells) {
+    let h1 = 0, h2 = 0;
+    for (let i = 0; i < cells.length; i++) { const v = cells[i]; h1 ^= zob1(i, v); h2 ^= zob2(i, v); }
+    return Int32Array.of(h1, h2);
+  }
+  function cellsHash(cells) {
+    let h = hashCache.get(cells);
+    if (!h) { h = cellsHashFull(cells); hashCache.set(cells, h); }
+    return h;
+  }
+
   // 盤：{ W, H, cells, out, rt, ord, own }。own が false の間は state の配列をそのまま読み、運ぶときに写す
   const outCache = new WeakMap();   // cells の配列 → { out: 外の表, lists: 色ごとの並び, rt: 道のりの表と山 }
   function boardOf(s) {
@@ -494,7 +512,7 @@
     if (!e) { e = { out: null, lists: null, rt: null }; outCache.set(s.cells, e); }
     if (!e.out) { e.out = computeOutside(s.W, s.H, s.cells); e.rt = null; }
     if (!e.rt) e.rt = buildRoute({ W: s.W, H: s.H, cells: s.cells, out: e.out });
-    return { W: s.W, H: s.H, cells: s.cells, out: e.out, rt: e.rt, ord, own: false, lists: e.lists, ptr: null, e };
+    return { W: s.W, H: s.H, cells: s.cells, out: e.out, rt: e.rt, ord, own: false, lists: e.lists, ptr: null, e, hz: hashCache.get(s.cells) || null };
   }
   function isEdge(b, i) {
     const W = b.W, x = i % W, y = (i - x) / W;
@@ -536,15 +554,21 @@
     ptr[color] = p;
     return p < a.length ? a[p] : -1;
   }
+  // 数える調べ（makeCount）が開いた局面の cells（2026-11-26。計画書 docs/plans/amai-worker.md ②・約束 §1.14 N13）。
+  // 同じ局面から押せる列を次々に試すので、最初の 1 手で表を引き取ると、2 手目から毎回 表を一から作り直す（調べの時間の約半分だった）。
+  // この印のある cells の表は引き取らずに写す（写す方が作り直すよりずっと軽い。表の中身は作り直しても写しても同じ）
+  const keepCells = new WeakSet();
   // マス i を運ぶ（空きにして、外を広げ、道のりと山を直す）
   function takeCell(b, i) {
     if (!b.own) {
+      const src = b.cells;
       b.cells = Array.from(b.cells);
       // 外の表と道のりの表は、覚えた元（前の局面の cells の表）から引き取って書きかえる（写すと 1 はこびごとに重い）。
       // 元の局面をもう一度使うとき（1手もどし・生成の別の手）は boardOf が cells から作り直す
       const e = b.e;
-      if (e && e.out === b.out && e.rt === b.rt) { e.out = null; e.rt = null; }
+      if (e && e.out === b.out && e.rt === b.rt && !keepCells.has(src)) { e.out = null; e.rt = null; }
       else { b.out = Uint8Array.from(b.out); b.rt = copyRoute(b.rt); }
+      if (b.hz) b.hz = b.hz.slice();   // 指紋も写して直す（元の局面の指紋は変えない）
       b.own = true; b.e = null;
     }
     const W = b.W, H = b.H, vw = W + 2, rt = b.rt, cells = b.cells, out = b.out;
@@ -556,6 +580,7 @@
       if (last !== i) { h[k] = last; rt.pos[last] = k; hUp(h, k, rt.key, rt.pos); hDown(h, rt.hn[c], rt.pos[last], rt.key, rt.pos); }
     }
     rt.key[i] = Infinity;
+    if (b.hz && c >= 0) { b.hz[0] ^= zob1(i, c) ^ zob1(i, -1); b.hz[1] ^= zob2(i, c) ^ zob2(i, -1); }
     cells[i] = -1;
     const q = queueFor(vw * (H + 2));
     let n = 0;
@@ -764,6 +789,7 @@
     }
     if (n === 0) return { state: s, moved: false, carries: Object.freeze([]), n: 0, won: false, stuck: skipStuck ? false : stuckImpl(s, b) };
     outCache.set(b.cells, { out: b.out, lists: b.lists, rt: b.rt });
+    if (b.hz) hashCache.set(b.cells, b.hz);
     const state = mkState(s, { cells: b.cells, left, slots, t: s.t + 1, won: left === 0 }, skipStuck);
     // skipStuck：生成の再生（verify・solveSearch）では stuck を見ないので数えない（マスが 4 倍になった分の手間を減らす）
     const stuck = skipStuck ? false : stuckImpl(state, { ...b, own: false, ptr: null, e: null });
@@ -1101,15 +1127,8 @@
     let k = "";
     for (const c of s.cols) k += c.length + ",";
     for (const bx of s.slots) k += bx ? bx.id + ":" + bx.count + "," : "-,";
-    const cells = s.cells;
-    let h1 = 0x811c9dc5, h2 = 0x9747b28c;
-    for (let i = 0; i < cells.length; i++) {
-      const v = cells[i] + 2;
-      h1 = Math.imul(h1 ^ v, 0x01000193);
-      h2 = Math.imul(h2 ^ (v + i), 0x5bd1e995);
-      h2 ^= h2 >>> 15;
-    }
-    return k + (h1 >>> 0).toString(36) + "." + (h2 >>> 0).toString(36);
+    const h = cellsHash(s.cells);   // 2026-11-26 から Zobrist（運ぶたびに直した指紋を使う。§1.14 N12）
+    return k + (h[0] >>> 0).toString(36) + "." + (h[1] >>> 0).toString(36);
   }
   // 押せる列を、解けそうな順に（solveSearch と同じ手がかり：いま運べる箱 → 1 箱で運び切れる箱 → 持ち玉の少ない箱 → 列の番号）
   function rescueCands(s) {
@@ -1268,6 +1287,25 @@
   const COUNT_CAP = 100;
   const COUNT_LIMIT = 1500;   // 開く局面の上限（既定）。遊ぶ人をまねた 603 局面で、とける局面の 99% は 130 局面までに 100 いじょう か ちょうどの数が出た（いちばん多くて 2,089）
   const COUNT_MEMO_MAX = 30000;   // 覚えの上限（超えたら、遊んだ局面（memo.keep の鍵）の分だけ残して忘れる。iPhone SE の記憶を食わないため）
+  // 先が無いと早く見切る（2026-11-26。計画書 docs/plans/amai-worker.md ④・約束 §1.14 N14）。落ち着いた局面 s で、次が言い切れるとき true：
+  //   空いたわくの数を f とする。どの列も、手前から f 個の中に「いま ふちに出ている色」（その色の ふちの角砂糖がある色）の箱が無い。
+  // なぜ 0 と言い切れるか（約束 §1.4〜§1.9）：落ち着いているので、わくの箱はどれも運べない（§1.7）。絵が変わるのは、ふちに出ている色の箱が
+  //   わくに入ったときだけ（§1.5。運べる色の箱は その はこびで必ず 1 個運ぶ）。それまでは絵もふちも変わらないので、押した箱は どれも待つだけで
+  //   わくを 1 つずつ うめる（§1.6 で わくが空くのは数が 0 になったときだけ）。列の j 番目（0 から）の箱をわくに入れるには、その列の前の j 箱と
+  //   その箱の j＋1 回押す（§1.4。押せるのは手前だけ）＝わくが j＋1 個いる。f 個しか空いていないので、どの列も手前から f 個より奥の箱には届かない。
+  //   こおり・ふた（§2.4）は押せる手を減らすだけなので、無いものとして調べても言い切れる。よって絵は もう変わらず、全部は運べない（クリアは無い）。
+  // 調べるのは盤の「色ごとの ふちの角砂糖の山」（rt.hn）を見るだけ。言い切れないときは false（今までどおり深く調べる）
+  function noWay(s) {
+    if (s.won) return false;
+    let f = 0;
+    for (const bx of s.slots) if (!bx) f++;
+    const hn = boardOf(s).rt.hn;
+    for (const c of s.cols) {
+      const m = Math.min(c.length, f);
+      for (let j = 0; j < m; j++) if (hn[c[j].color] > 0) return false;
+    }
+    return true;
+  }
   function makeCountMemo() { const m = new Map(); m.keep = new Set(); return m; }
   // memo の中身：key → { v, x }（v＝数（COUNT_CAP で頭打ち）・x＝ちょうど（true）か「v いじょう」（false））
   // c＝そこから とける みちの 1 つめの手（列。次の調べで先に試す道しるべ。無ければ -1）
@@ -1311,6 +1349,7 @@
     // 先に試す列：道しるべ（opt.path の続き）か、覚えにある「とける 1 つめの手」
     function push(lk, hint) {
       nodes++;
+      keepCells.add(lk.s.cells);   // ここから押す列を次々に試す：表を引き取らせない（②）
       const cands = rescueCands(lk.s);
       const m = memo.get(lk.key);
       const first = hint && hint.length ? hint[0] : m && isInt(m.c) ? m.c : -1;
@@ -1326,6 +1365,7 @@
       if (lk.won) { finish("exact", 1); return; }
       const m = memo.get(lk.key);
       if (m && m.x) { finish(m.v >= CAP ? "many" : "exact", m.v); return; }
+      if (noWay(lk.s)) { nodes++; memoPut(memo, lk.key, 0, true, -1); finish("exact", 0); return; }   // 先が無い（④）
       push(lk, path);
     }
     function add(fr, v, c) {
@@ -1369,6 +1409,7 @@
             if (lk.won) { if (add(fr, 1, cd.c)) break; continue; }
             const m = memo.get(lk.key);
             if (m && m.x) { if (m.v > 0 && add(fr, m.v, cd.c)) break; continue; }
+            if (noWay(lk.s)) { nodes++; memoPut(memo, lk.key, 0, true, -1); continue; }   // 先が無い（④）：開いて 0 と覚える（その先は調べない）
             push(lk, fr.hint && fr.i === 1 ? fr.hint.slice(1) : null);
           }
         } catch (e) { result = "unknown"; out = 0; }
@@ -1388,6 +1429,13 @@
     } catch (e) { return null; }
   }
   function countSearch(state, opt) { return makeCount(state, opt).run(Infinity); }
+  // テスト用（AL28。2026-11-26）：落ち着かせた局面の鍵（③）・先が無いと見切るか（④）
+  function countKey(state) {
+    try { const s = asState(state); return s ? rescueKey(settleLite(s)) : null; } catch (e) { return null; }
+  }
+  function countNoWay(state) {
+    try { const s = asState(state); return s ? noWay(settleLite(s)) : false; } catch (e) { return false; }
+  }
 
   function tryBuild(lv, pic, pk, prm, rng, work, pull, lids, ices, opt, noOver, soften, nslots) {
     // 1・2 面は「どう押してもクリアできる」保証を守るため、①・②を使わない（§2.1）
@@ -1742,7 +1790,7 @@
     createLevel, press, step,
     isStable, isStuck, canPress, edgeCells, hud,
     replay, validateState, replayStates, makeRescue, rescueSearch, makeRewind, RESCUE_LIMIT, REWIND_LIMIT, REWIND_BUDGET,
-    makeCount, countSearch, countKnown, makeCountMemo, COUNT_CAP, COUNT_LIMIT, COUNT_MEMO_MAX,
+    makeCount, countSearch, countKnown, makeCountMemo, COUNT_CAP, COUNT_LIMIT, COUNT_MEMO_MAX, countKey, countNoWay,
     validateSave, makeSave, pictureSig, saveFits, validateChal, makeChal,
     validateBest, recordBest, validateBook, addToBook, bookCount, validateClean, addClean, hasClean, validateGold, addGold, hasGold,
     levelChoices, canSelect,

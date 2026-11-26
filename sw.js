@@ -77,6 +77,7 @@ const APP_FILES = [
   "./games/amai/render.js",
   "./games/amai/input.js",
   "./games/amai/main.js",
+  "./games/amai/count-worker.js",
   "./games/amai/pictures-a.js",
   "./games/amai/pictures-b.js",
   "./games/amai/pictures-c.js",

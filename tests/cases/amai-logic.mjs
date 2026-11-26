@@ -1659,6 +1659,98 @@ export const tests = [
       });
     },
   },
+  // ---------- 速くする（2026-11-26。計画書 docs/plans/amai-worker.md・約束 §1.14 N11〜N14） ----------
+  {
+    id: 'AL28', tier: 'full', node: true, title: 'あまいものあつめ：とける みち を速くした作り（鍵の差分③・運ぶ表の写し②・先が無い見切り④）が v86 の作り（tests/ref/amai-logic-v86.js）と同じ答え：①ふつう 6 面・ちょうせん 2 面を でたらめ混じりに遊び、押すたびに数えた結果（result・n）・うごかせなくなったときの戻し先（覚えあり・なし）・落ち着いた局面がすべて同じ ②上限で打ち切る重い局面（80 面の 1 手目の まちがい・上限 300）も同じ ③鍵：同じ局面なら同じ鍵・ちがう局面なら別の鍵（遊んだ局面と押した先の局面）、運ぶたびに直した鍵＝一から作った鍵 ④見切った局面は、見切らずに数えると（v86 の作り・上限 5 万）ちょうど 0。手で組んだ「空いたわく 2 つ・ふちの色の箱が列の 3 番目」は見切り、「2 番目」は見切らない',
+    run({ check, root }) {
+      const N = load(root);
+      const refF = path.join(path.dirname(fileURLToPath(import.meta.url)), '../ref/amai-logic-v86.js');
+      const keepLogic = globalThis.AmaiLogic;
+      const O = createRequire(refF)(refF);
+      globalThis.AmaiLogic = keepLogic;
+      if (!O || typeof O.makeCount !== 'function') throw new Error('tests/ref/amai-logic-v86.js が読めない');
+      if (typeof N.countKey !== 'function' || typeof N.countNoWay !== 'function') throw new Error('countKey・countNoWay が無い（約束 §6.2）');
+      const settleBy = (L, s) => { for (let i = 0; i < 20000; i++) { const r = L.step(s); if (!r.moved) return s; s = r.state; } return s; };
+      const canon = (s) => J([s.cols.map((c) => c.length), s.slots.map((b) => (b ? [b.id, b.count] : null)), s.cells]);
+      let seed = 4242; const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+      const diffs = [], rw = [], pool = [];
+      let counted = 0, settleBad = 0;
+      const cmp = (a, b, tag) => { counted++; if (a.result !== b.result || a.n !== b.n) diffs.push({ tag, old: [a.result, a.n, a.nodes], now: [b.result, b.n, b.nodes] }); };
+      // ① 遊ぶ
+      const plays = [[1, false], [4, false], [9, false], [20, false], [36, false], [48, false], [10, true], [43, true]];
+      for (const [lv, chal] of plays) {
+        const pk = N.pickPicture(lv, null);
+        const cO = chal ? O.createLevel(lv, pk, { challenge: true }) : O.createLevel(lv, pk);
+        const cN = chal ? N.createLevel(lv, pk, { challenge: true }) : N.createLevel(lv, pk);
+        const mO = O.makeCountMemo(), mN = N.makeCountMemo();
+        let sO = cO.state, sN = cN.state, first = true;
+        const hO = [], hN = [];
+        for (let st = 0; st < 40; st++) {
+          const path = first ? cN.info.solution : null; first = false;
+          cmp(O.countSearch(sO, { memo: mO, path }), N.countSearch(sN, { memo: mN, path }), `${chal ? 'ちょうせん' : ''}${lv} 面 ${st} 手`);
+          const tO = settleBy(O, sO), tN = settleBy(N, sN);
+          if (canon(tO) !== canon(tN) || tO.t !== tN.t) settleBad++;
+          sO = tO; sN = tN;
+          if (sN.won) break;
+          pool.push(sN);
+          for (let c = 0; c < 4; c++) if (N.canPress(sN, c) === null) pool.push(N.press(sN, c).state);
+          if (N.isStuck(sN)) {
+            const a = O.makeRewind(hO, { base0Sure: true, memo: mO }).run(), b = N.makeRewind(hN, { base0Sure: true, memo: mN }).run();
+            const a2 = O.makeRewind(hO, { base0Sure: true }).run(), b2 = N.makeRewind(hN, { base0Sure: true }).run();
+            rw.push({ lv, chal, n: hN.length, old: [a.k, a.sure, a2.k], now: [b.k, b.sure, b2.k] });
+            break;
+          }
+          const cols = [0, 1, 2, 3].filter((k) => N.canPress(sN, k) === null);
+          if (!cols.length) break;
+          const m = N.countKnown(sN, mN);
+          const col = rnd() < 0.35 || !m || m.c < 0 || !cols.includes(m.c) ? cols[Math.floor(rnd() * cols.length)] : m.c;
+          hO.push(sO); hN.push(sN);
+          sO = O.press(sO, col).state; sN = N.press(sN, col).state;
+        }
+      }
+      // ② 上限で打ち切る重い局面
+      {
+        const pk = { id: 'inumorioekaki', mirror: false, repeat: false };
+        const sO = settleBy(O, O.createLevel(80, pk).state), sN = settleBy(N, N.createLevel(80, pk).state);
+        const sol = N.createLevel(80, pk).info.solution;
+        const wrong = [0, 1, 2, 3].find((c) => c !== sol[0] && N.canPress(sN, c) === null);
+        cmp(O.countSearch(O.press(sO, wrong).state, { limit: 300 }), N.countSearch(N.press(sN, wrong).state, { limit: 300 }), '80 面 1 手目の まちがい（上限 300）');
+      }
+      const rwBad = rw.filter((r) => J(r.old) !== J(r.now));
+      check(`①②数えた ${counted} 局面の結果が v86 と同じ（ちがう ${diffs.length}）・落ち着いた局面も同じ（ちがう ${settleBad}）`, counted >= 100 && diffs.length === 0 && settleBad === 0, diffs.slice(0, 8));
+      check(`①うごかせなくなった ${rw.length} 回の戻し先（覚えあり・なし）が v86 と同じ（ちがう ${rwBad.length}）`, rw.length >= 3 && rwBad.length === 0, { rwBad, rw });
+      // ③ 鍵
+      const byKey = new Map(), byCanon = new Map();
+      let split = 0, clash = 0, fresh = 0;
+      for (const s of pool) {
+        const k = N.countKey(s), t = settleBy(N, s), c = canon(t);
+        if (byKey.has(k) && byKey.get(k) !== c) clash++;
+        if (byCanon.has(c) && byCanon.get(c) !== k) split++;
+        byKey.set(k, c); byCanon.set(c, k);
+        const k2 = N.countKey(JSON.parse(JSON.stringify(s)));   // 写した局面（指紋を覚えていない配列）は一から作る
+        if (k2 !== k) fresh++;
+      }
+      check(`③${pool.length} 局面（ちがう局面 ${byCanon.size}）で、同じ局面なら同じ鍵（ちがう鍵 ${split}）・ちがう局面なら別の鍵（同じ鍵 ${clash}）・差分で直した鍵＝一から作った鍵（ちがう ${fresh}）`, pool.length >= 200 && split === 0 && clash === 0 && fresh === 0, { split, clash, fresh });
+      // ④ 見切り
+      let cut = 0, cutF = 0;
+      const notZero = [];
+      for (const s of pool) {
+        if (!N.countNoWay(s)) continue;
+        cut++;
+        const t = settleBy(N, s);
+        if (t.slots.some((b) => !b)) cutF++;
+        const r = O.countSearch(JSON.parse(JSON.stringify(s)), { limit: 50000 });
+        if (!(r.result === 'exact' && r.n === 0)) notZero.push({ r: [r.result, r.n, r.nodes] });
+      }
+      const map = ['RRRRR', 'RBBBR', 'RRRRR'];
+      const B = (n = 1) => ({ c: LET.B, n }), R = (n = 4) => ({ c: LET.R, n });
+      const deep = mk(N, map, { slots: [B()], cols: [[B(), B(), R()], [B(), B(), R()], [B()], []] });
+      const near = mk(N, map, { slots: [B()], cols: [[B(), R(), R()], [B(), B(), R()], [B()], []] });
+      const oDeep = O.countSearch(JSON.parse(JSON.stringify(deep)), { limit: 50000 }), oNear = O.countSearch(JSON.parse(JSON.stringify(near))), nNear = N.countSearch(near);
+      check(`④見切った ${cut} 局面（うち空いたわくのある ${cutF}）は見切らずに数えると ちょうど 0（ちがう ${notZero.length}）`, cut >= 1 && notZero.length === 0, notZero.slice(0, 5));
+      check(`④手で組んだ局面：空いたわく 2 つ・ふちの色（R）の箱が列の 3 番目は見切る（${N.countNoWay(deep)}・v86 で数えると ${oDeep.result} ${oDeep.n}）、2 番目は見切らない（${N.countNoWay(near)}・v86 ${oNear.result} ${oNear.n}＝今 ${nNear.result} ${nNear.n}）`, N.countNoWay(deep) === true && oDeep.result === 'exact' && oDeep.n === 0 && N.countNoWay(near) === false && oNear.result === nNear.result && oNear.n === nNear.n, { oDeep, oNear, nNear });
+    },
+  },
 ];
 
 // ---- 単体で流す：node tests/cases/amai-logic.mjs [ID...] ----

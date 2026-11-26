@@ -560,6 +560,15 @@ const M = [
   ['MA96 あまいものあつめ：だいじょうぶな ところまで もどす が とける みち の覚えを使わない（覚えている「とける」局面より前、面の最初まで戻る。見つける：AW46）', 'お助け', 'games/amai/main.js', 'L.makeRewind(states, { base0Sure: !custom, memo: memoNow() })', 'L.makeRewind(states, { base0Sure: !custom })'],
   ['MA97 あまいものあつめ：覚えの無い局面の戻し先を、数える処理でなく今までの makeRescue（60）で調べる（見つける：AL27）', 'お助け', 'games/amai/logic.js', 'cur = memo ? { k, base: 0, cnt: true,', 'cur = false ? { k, base: 0, cnt: true,'],
   ['MA98 あまいものあつめ：とける みち の覚えが満ちたとき、遊んだ局面の分も残さず全部忘れる（見つける：AL27）', 'お助け', 'games/amai/logic.js', 'for (const kk of memo.keep) { const e = memo.get(kk); if (e) saved.push([kk, e]); }', 'void 0;'],
+  // 速くする（2026-11-26。計画書 docs/plans/amai-worker.md・約束 §1.14 N11〜N14）
+  ['MA99 あまいものあつめ：数える Worker が落ちたとき、画面の中で数え直さない（数が出ないまま。見つける：AW47）', '操作', 'games/amai/main.js', 'if (j && j.remote) { job = null; if (j.run === runId) safeCall(() => j.fallback()); }', 'if (j && j.remote) { job = null; }'],
+  ['MA100 あまいものあつめ：Worker が道しるべ（solution の続き）を使わない（60 面の最初が「まだ わからない」。見つける：AW47）', 'ルール', 'games/amai/count-worker.js', 'const path = Array.isArray(m.path) ? m.path : null;', 'const path = null;'],
+  ['MA101 あまいものあつめ：数える Worker を事前キャッシュから外す（オフラインで Worker が読めない。見つける：AW14）', 'オフライン', 'sw.js', '  "./games/amai/count-worker.js",\n', ''],
+  ['MA102 あまいものあつめ：運ぶときに鍵の指紋を直し忘れる（ちがう局面が同じ鍵。見つける：AL28）', 'ルール', 'games/amai/logic.js', 'if (b.hz && c >= 0) { b.hz[0] ^= zob1(i, c) ^ zob1(i, -1); b.hz[1] ^= zob2(i, c) ^ zob2(i, -1); }', ''],
+  ['MA103 あまいものあつめ：運ぶときに鍵の指紋を写さずに直す（元の局面の鍵が変わる。見つける：AL28）', 'ルール', 'games/amai/logic.js', '      if (b.hz) b.hz = b.hz.slice();', ''],
+  ['MA104 あまいものあつめ：運ぶ表を写さずに使い回す（元の局面の表が書きかわる。見つける：AL28）', 'ルール', 'games/amai/logic.js', 'else { b.out = Uint8Array.from(b.out); b.rt = copyRoute(b.rt); }', 'else { b.out = b.out; b.rt = b.rt; }'],
+  ['MA105 あまいものあつめ：先が無い見切りの条件をゆるめる（空いたわくより 1 つ浅くしか見ない＝とける局面も 0 と言う。見つける：AL28）', 'ルール', 'games/amai/logic.js', 'const m = Math.min(c.length, f);', 'const m = Math.min(c.length, f - 1);'],
+  ['MA106 あまいものあつめ：先が無い見切りで、ふちの角砂糖が 1 個だけの色を「ふちに無い」と見る（見つける：AL28）', 'ルール', 'games/amai/logic.js', 'if (hn[c[j].color] > 0) return false;', 'if (hn[c[j].color] > 1) return false;'],
   // ぼくのまち（games/machi/。2026-11-26。計画書 docs/plans/machi.md §7。MC1〜MC56 はロジック、MC57〜MC61 は画面）
   //   ロジックの変異は ONLY=CL1〜CL21、画面の変異は ONLY=CW1〜CW16 で絞って流す（tests/README.md「ぼくのまちの変異テスト」）
   ['MC1 ぼくのまち：いりぐちと つながっていなくても 育つ（connected が みちの塊が あるだけで真。見つける：CL3）', 'ルール', 'games/machi/logic.js', 'return z >= 0 && s.net.comps[z] && s.net.comps[z].entry;', 'return z >= 0 && !!s.net.comps[z];'],

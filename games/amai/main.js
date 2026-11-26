@@ -41,6 +41,13 @@
   const SLICE_NODES = 40;       // 1 回に開く局面の上限（時計を止めたテストの画面でも進むように、数でも区切る）
   // とける みち の数（2026-11-26。計画書 docs/plans/amai-count.md・約束 §0.13・§1.14）
   const COUNT_SHOW_MS = 250;    // 数え始めて これより長くかかったら「かぞえてるよ…」を出す（すぐ出る数のたびに ちらつかせない）
+  // 数える・戻し先の調べは Web Worker（count-worker.js）で回す（2026-11-26。計画書 docs/plans/amai-worker.md・約束 §1.14 N11）。
+  // Worker が使えない・作れない・落ちた・答えが来ないときは、今までの「画面のスレッドで区切って回す」作りに戻る
+  const CW_URL = "count-worker.js";
+  const CW_SILENT_MS = 8000;    // 調べている間に Worker から これより長く何も来なければ、落ちたとみなす（Worker は約 0.25 秒ごとに知らせる）
+  const CW_WATCH_MS = 1000;     // 見張りの間隔
+  // 見張りの時計：テストの早送り（page.clock は performance.now・Date を置き換える）でも本当の時間で比べるため、できるなら Event の時刻を使う
+  const realNow = () => { try { const t = new Event("cw").timeStamp; return Number.isFinite(t) && t > 0 ? t : performance.now(); } catch (e) { return performance.now(); } };
 
   // 案内は絵と わくの間に 1 行で出す（SE 縦の幅 288px に 12px で入る長さ。入らなければ 11px に縮める）
   const HINT_FIRST = "はこを おすと、ありんこが はこぶよ";
@@ -196,6 +203,9 @@
   let countSeq = 0;             // 局面が変わる（押す・もどす・やりなおし・面を始める）たびに 1 増やす
   let countRes = null;          // { result, n }。数えている間は null
   let countSlow = false;        // 数えるのに COUNT_SHOW_MS より長くかかっている（「かぞえてるよ…」を出す）
+  let memoGen = 0;              // setState のたびに 1 増やす（Worker の覚えを作り直す印）
+  // Worker（§1.14 N11）。cw＝Worker（使えないときは null）・cwSeq＝頼みの番号（古い答えを捨てる）・cwHeard＝最後に何か来た時刻
+  let cw = null, cwSeq = 0, cwHeard = 0, cwWatchId = 0;
 
   // 1 はこびを回すのは、表に出ていて・古いページでなく・カードが無く・落ち着いていないときだけ（変異 MA14 の置換元。1 行の式のまま）
   const running = () => !hiddenNow && !stale && overlay === null && !stable;
@@ -419,20 +429,32 @@
 
   // ===== だいじょうぶな ところまで もどす（計画書 docs/plans/amai-rescue.md・約束 §1.13） =====
   // 調べる処理は logic の makeRescue・makeRewind（手間の数で区切れる）。ここでは later(…, 0) で少しずつ進め、画面を止めない
+  // j.remote（2026-11-26。§1.14 N11）：Worker に頼む調べ。j.msg()（頼みの中身。null なら取りやめ）を送り、答えで j.finish(答え)。
+  //   Worker が落ちた・答えが来ないときは j.fallback()（画面のスレッドで区切って回す作りで やり直す）
   function startJob(j) {
-    if (job && job !== j && typeof job.abort === "function") safeCall(() => job.abort());
+    if (job && job !== j) {
+      if (job.remote && !j.remote) cwPost({ t: "stop" });
+      if (typeof job.abort === "function") safeCall(() => job.abort());
+    }
     j.run = runId;
     job = j;
-    later(pumpJob, 0);
+    if (j.remote) later(() => sendRemote(j), 0);   // 先に「さがしてるよ」などを出してから（局面の履歴づくりが重いことがある）
+    else later(pumpJob, 0);
   }
   function stopJob() {
     const j = job;
     job = null;
+    if (j && j.remote) cwPost({ t: "stop" });
     if (j && typeof j.abort === "function") safeCall(() => j.abort());
+  }
+  // 局面を変えたので、今の調べを黙って捨てる（取りやめの処理はしない）
+  function dropJob() {
+    if (job && job.remote) cwPost({ t: "stop" });
+    job = null;
   }
   function pumpJob() {
     const j = job;
-    if (!j) return;
+    if (!j || j.remote) return;
     if (j.run !== runId || (j.check && !j.check())) { stopJob(); return; }
     const t0 = now();
     let n = 0, r = null;
@@ -446,15 +468,77 @@
     later(pumpJob, 0);
   }
   // pagehide の clearLater で止まった調べを始め直す
-  function resumeJob() { if (job) later(pumpJob, 0); if (state && !state.won && phase !== "clear" && countRes === null && job && !rescuing) { countSlow = true; renderPaths(); } }   // 数えている途中なら、0.25 秒の予約も消えているので「かぞえてるよ…」にする
+  function resumeJob() { if (job && job.remote) { cwHeard = realNow(); if (job.sent) armWatch(); else { const j = job; later(() => sendRemote(j), 0); } } else if (job) later(pumpJob, 0); if (state && !state.won && phase !== "clear" && countRes === null && job && !rescuing) { countSlow = true; renderPaths(); } }   // 数えている途中なら、0.25 秒の予約も消えているので「かぞえてるよ…」にする
+  // ===== Worker（count-worker.js。2026-11-26。計画書 docs/plans/amai-worker.md・約束 §1.14 N11） =====
+  // 数える計算と覚え（countMemo の代わり）は Worker の中に置く。画面のスレッドは局面を送り、番号（seq）の合う答えだけ使う
+  function cwStart() {
+    if (typeof window.Worker !== "function") return;
+    try {
+      const w = new window.Worker(CW_URL);
+      w.onmessage = (ev) => cwOnMessage(w, ev && ev.data);
+      w.onerror = (ev) => { if (ev && typeof ev.preventDefault === "function") ev.preventDefault(); cwFail(w, "error"); };
+      w.onmessageerror = () => cwFail(w, "messageerror");
+      cw = w;
+    } catch (e) { cw = null; }
+  }
+  function cwPost(m) {
+    if (!cw) return false;
+    try { cw.postMessage(m); return true; } catch (e) { cwFail(cw, "post"); return false; }
+  }
+  // Worker をやめて、今までの作りに戻る（調べている途中なら、画面のスレッドで やり直す）
+  function cwFail(w, why) {
+    if (!w || w !== cw) return;
+    console.warn("あまいものあつめ: 数える Worker が使えないので、画面の中で数えます（" + why + "）");   // 遊びは続けられるので error にしない
+    cw = null;
+    try { w.terminate(); } catch (e) { /* 何もしない */ }
+    const j = job;
+    if (j && j.remote) { job = null; if (j.run === runId) safeCall(() => j.fallback()); }
+  }
+  function cwOnMessage(w, m) {
+    if (w !== cw || !m || typeof m !== "object") return;
+    cwHeard = realNow();
+    if (m.t === "fail") { cwFail(w, "fail:" + m.why); return; }
+    if (m.t !== "count" && m.t !== "rewind") return;
+    const j = job;
+    if (!j || !j.remote || j.seq !== m.seq || j.kind !== m.t) return;   // 古い頼みの答え：捨てる
+    if (j.run !== runId || (j.check && !j.check())) { stopJob(); return; }
+    job = null;
+    safeCall(() => j.finish(m));
+  }
+  function sendRemote(j) {
+    if (job !== j || j.sent) return;
+    if (!cw) { job = null; safeCall(() => j.fallback()); return; }
+    const m = safeCall(() => j.msg(), null);
+    if (!m) { stopJob(); return; }
+    j.seq = m.seq = ++cwSeq;
+    m.mk = memoTag();
+    cwHeard = realNow();
+    if (!cwPost(m)) return;   // 送れない：cwFail が やり直す
+    j.sent = true;
+    armWatch();
+  }
+  function armWatch() {
+    if (cwWatchId) { clearTimeout(cwWatchId); timers.delete(cwWatchId); }
+    cwWatchId = later(cwWatch, CW_WATCH_MS);
+  }
+  // 見張り：調べている間に Worker から CW_SILENT_MS 何も来なければ落ちたとみなす
+  function cwWatch() {
+    cwWatchId = 0;
+    const j = job;
+    if (!j || !j.remote || !cw) return;
+    if (realNow() - cwHeard > CW_SILENT_MS) { cwFail(cw, "timeout"); return; }
+    armWatch();
+  }
   // 予備軍のカードは、箱を押したあとに「とける みち」が ちょうど 0 と言い切れたとき（onCounted）。落ち着いたら出す（1手もどす・やりなおし・開き直しのあとは出さない。いろびん R1）
   function checkDoom() {
     if (doomed && !doomTold) waitAnts(showRescueCard);
   }
   // ===== とける みち の数（2026-11-26。計画書 docs/plans/amai-count.md・約束 §1.14） =====
   // 局面が変わるたびに、落ち着く先の局面から数え始める（logic の makeCount。調べた局面は countMemo に覚える）
+  // 覚えの印（面・絵・ちょうせん・テストの局面。Worker の覚えも、この印が変わったら作り直す）
+  function memoTag() { return `${level}|${pick.id}|${pick.mirror ? 1 : 0}|${pick.repeat ? 1 : 0}|${chal ? 1 : 0}|${custom ? "c" + memoGen : ""}`; }
   function memoNow() {
-    const k = `${level}|${pick.id}|${pick.mirror ? 1 : 0}|${pick.repeat ? 1 : 0}|${chal ? 1 : 0}|${custom ? "c" : ""}`;
+    const k = memoTag();
     if (!countMemo || countFor !== k) { countMemo = safeCall(() => L.makeCountMemo(), null) || new Map(); countFor = k; }
     return countMemo;
   }
@@ -489,19 +573,23 @@
     renderPaths();
     if (!state || state.won || rescuing) return;
     later(() => { if (seq === countSeq && !countRes) { countSlow = true; renderPaths(); } }, COUNT_SHOW_MS);
-    const st = state;
-    const searcher = safeCall(() => L.makeCount(st, { memo: memoNow(), path: solHint() }), null);
-    if (!searcher) { countRes = { result: "unknown", n: 0 }; renderPaths(); return; }
-    startJob({
-      searcher,
-      check: () => seq === countSeq && !rescuing,
-      finish(r) {
-        if (seq !== countSeq) return;
-        countRes = { result: r.result, n: Number.isSafeInteger(r.n) ? r.n : 0 };
-        renderPaths();
-        onCounted();
-      },
-    });
+    const st = state, path = solHint();
+    const check = () => seq === countSeq && !rescuing;
+    const finish = (r) => {
+      if (seq !== countSeq) return;
+      const ok = r && (r.result === "exact" || r.result === "many" || r.result === "some" || r.result === "unknown");
+      countRes = { result: ok ? r.result : "unknown", n: ok && Number.isSafeInteger(r.n) ? r.n : 0 };
+      renderPaths();
+      onCounted();
+    };
+    // 画面のスレッドで区切って回す（Worker が使えないとき・落ちたとき）
+    const local = () => {
+      const searcher = safeCall(() => L.makeCount(st, { memo: memoNow(), path }), null);
+      if (!searcher) { countRes = { result: "unknown", n: 0 }; renderPaths(); return; }
+      startJob({ searcher, check, finish });
+    };
+    if (!cw) { local(); return; }
+    startJob({ remote: true, kind: "count", msg: () => ({ t: "count", state: st, path }), check, finish, fallback: () => { if (check()) local(); } });
   }
   // 箱を押したあとに ちょうど 0 と言い切れた：予備軍（カードは落ち着いてから 1 回だけ）
   function onCounted() {
@@ -554,22 +642,43 @@
     setHint(HINT_SEARCH, true);   // 先に出す（途中から再開した面の局面の再生は重いので、次の処理の中でする）
     renderTools();
     // 局面の履歴づくり（途中から再開した面は再生が重い）も、調べの最初の 1 歩の中でする（調べと同じく pagehide のあと続きから進む）
-    let states = null, inner = null;
-    startJob({
-      searcher: {
-        run(n) {
-          if (!inner) {
-            states = histStates();
-            inner = states && states.length ? L.makeRewind(states, { base0Sure: !custom, memo: memoNow() }) : null;   // 覚えている「とける」局面より前へは戻らない（§1.14）
-            if (!inner) { console.error("あまいものあつめ: もどす先を さがせませんでした"); return null; }
-            return { done: false };
-          }
-          return inner.run(n);
+    let states = null;
+    const base0Sure = !custom;
+    const check = () => presses.length === np && !!state && !state.won;
+    const abort = () => { rescuing = false; renderTools(); if (run === runId) { dropSearchHint(); if (!countRes) startCount(); } };   // 取りやめ・局面を作れなかった：何も変えずに戻し、カードを出し直す
+    const getStates = () => { if (!states) states = histStates(); return states && states.length ? states : null; };
+    // 画面のスレッドで区切って回す（Worker が使えないとき・落ちたとき・Worker が局面を読めなかったとき）
+    const local = () => {
+      let inner = null;
+      startJob({
+        searcher: {
+          run(n) {
+            if (!inner) {
+              inner = getStates() ? L.makeRewind(states, { base0Sure, memo: memoNow() }) : null;   // 覚えている「とける」局面より前へは戻らない（§1.14）
+              if (!inner) { console.error("あまいものあつめ: もどす先を さがせませんでした"); return null; }
+              return { done: false };
+            }
+            return inner.run(n);
+          },
         },
+        check,
+        finish(r) { rescuing = false; applyRewind(states, r.k, r.sure); },
+        abort,
+      });
+    };
+    if (!cw) { local(); return true; }
+    startJob({
+      remote: true, kind: "rewind", check, abort,
+      msg() {
+        if (!getStates()) { console.error("あまいものあつめ: もどす先を さがせませんでした"); return null; }
+        return { t: "rewind", states, base0Sure };
       },
-      check: () => presses.length === np && !!state && !state.won,
-      finish(r) { rescuing = false; applyRewind(states, r.k, r.sure); },
-      abort() { rescuing = false; renderTools(); if (run === runId) { dropSearchHint(); if (!countRes) startCount(); } },   // 取りやめ・局面を作れなかった：何も変えずに戻し、カードを出し直す
+      finish(m) {
+        if (m.bad || !Number.isSafeInteger(m.k)) { local(); return; }   // Worker が局面を読めなかった：画面の中で探し直す
+        rescuing = false;
+        applyRewind(states, m.k, m.sure === true);
+      },
+      fallback() { if (check()) local(); else abort(); },
     });
     return true;
   }
@@ -650,7 +759,7 @@
     custom = null;
     customHist = [];
     hist = prs.length === 0 ? [] : null;   // 途中から再開した面は、使うときに replayStates で作る
-    job = null; rescuing = false; doomed = false; doomTold = false; doomAsk = false; chalUsed = false;
+    dropJob(); rescuing = false; doomed = false; doomTold = false; doomAsk = false; chalUsed = false;
     if (ch && mode.used === true) chalUsed = true;   // ちょうせんの続き：もどした印も戻す（金の花輪を付けない）
     resumeNote = ch && mode.resume === true ? `ちょうせんの つづきから${chalUsed ? "・もどしたので きんの わは つかないよ" : ""}` : "";   // 続きだけ 1 回（v84 レビュー L-2）
     if (!ch) removeKey(KEY_CHAL);   // ふつうの面を始めた：ちょうせんの途中は消す（ちょうせんをやめた）
@@ -786,7 +895,7 @@
       const base = custom;
       clearLater(); runId += 1; cancelPending(); safeCall(() => render.finishAll());
       state = base; presses = []; customHist = []; stable = false;
-      job = null; rescuing = false; doomed = false; doomTold = false; doomAsk = false; chalUsed = false;
+      dropJob(); rescuing = false; doomed = false; doomTold = false; doomAsk = false; chalUsed = false;
       safeCall(() => render.build(state, picture));
       hud(); setPhase("play"); setHint("");
       startCount();
@@ -1612,7 +1721,7 @@
         overlay, busy: !!render.busy, paused: hiddenNow, stale, fast, calm,
         timers: timers.size, runId, ants: st && Number.isFinite(st.ants) ? st.ants : 0,
         canUndo: presses.length > 0, book: bookCountNow(),
-        doomed, rescuing, chalUsed,
+        doomed, rescuing, chalUsed, counter: cw ? "worker" : "main",   // とける みち を どこで数えているか（§1.14 N11。テスト用）
         paths: { state: el.paths.dataset.state || "", n: el.paths.dataset.n === "" || el.paths.dataset.n === undefined ? null : Number(el.paths.dataset.n), text: (el.pathsLab.textContent + " " + el.pathsVal.textContent).trim() },   // とける みち（2026-11-26。§1.14）
         challenge: chal, slotCount: state && Array.isArray(state.slots) ? state.slots.length : 0,
         picture: pick.id, mirror: !!pick.mirror, repeat: !!pick.repeat, custom: !!custom,
@@ -1659,8 +1768,8 @@
       noUndo = null;
       info = null;
       hist = [];
-      job = null; rescuing = false; doomed = false; doomTold = false; doomAsk = false; chalUsed = false;
-      countMemo = null;   // テストの局面は毎回 覚えを作り直す
+      dropJob(); rescuing = false; doomed = false; doomTold = false; doomAsk = false; chalUsed = false;
+      countMemo = null; memoGen += 1;   // テストの局面は毎回 覚えを作り直す（Worker の覚えも、印が変わるので作り直す）
       level = Number.isSafeInteger(st.level) && st.level >= 1 ? st.level : level;
       pick = { id: typeof st.picture === "string" ? st.picture : "", mirror: !!st.mirror, repeat: !!st.repeat };
       picture = safeCall(() => L.pictureById(pick.id, pick.mirror), null) || { id: pick.id, name: "", season: "", W: st.W, H: st.H, cells: st.cells };
@@ -1683,6 +1792,7 @@
 
   // ===== 起動 =====
   (function boot() {
+    cwStart();   // 数える Worker（使えなければ null のまま＝画面の中で数える）
     fast = !!safeCall(() => L.validateFlag(readKey(KEY_FAST)), false);
     safeCall(() => render.setFast(fast));
     let ok = false;
