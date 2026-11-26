@@ -174,6 +174,8 @@ export const tests = [
       const findT = (t) => { for (let y = 2; y < L.H - 2; y++) for (let x = 2; x < L.W - 2; x++) if (s0.terrain[y * L.W + x] === t) return { x, y }; throw new Error('地形 ' + t + ' が無い'); };
       const sea = findT(L.TER.SEA), mtn = findT(L.TER.MOUNT), riv = findT(L.TER.RIVER);
       const { ctx, page } = await openM(browser, 'CW2', { v: STD_V(), raw: mkRaw(L, s0), debug: true });
+      // 時間を止めてから確かめる（2026-11-26：WebKit では遅く、途中で月が変わって維持費が引かれ、お金の数がずれた）
+      await page.click('#speedBtns [data-speed="0"]'); await wait(page, 100);
       await pick(page, 'road');
       const tip = await txt(page, '#toolHint');
       check(`みち を選ぶと aria-pressed=true・はじめては道具の説明（「${tip}」）`, (await pressed(page, 'road')) === 'true' && /みち＝いりぐちから/.test(tip), tip);
