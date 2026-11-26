@@ -429,7 +429,7 @@ state = {
 | `machi.seen` | あそびかた・拡大のヒントを見たか（`"1"`） |
 | `machi.tips` | 説明を見た道具（`"road,home"` のような `,` 区切り。壊れていても「まだ見ていない」として扱うだけ。2026-11-26 画面の担当） |
 
-- `machi.save` の形：`{ v: 1, at, seed, choice, name, money, month, acc, speed, tax, rank, bestPop, rng, entry: [[x,y]...], terrain: "<base64>", use: "<base64>", kind: "<base64>", lvl: "<base64>", poll: "<base64>", blocked: "<base64>", ev: { cool, active, lastBad } }`。地価・密度・すみやすさ・渋滞・つながり は保存せず、読んだあとに全部計算し直す。
+- `machi.save` の形：`{ v: 1, at, seed, choice, name, money, month, acc, speed, tax, rank, bestPop, rng, star（2026-11-26 足した。無くても読める。1〜5 でなければ計算し直す）, entry: [[x,y]...], terrain: "<base64>", use: "<base64>", kind: "<base64>", lvl: "<base64>", poll: "<base64>", blocked: "<base64>", ev: { cool, active, lastBad } }`。地価・密度・すみやすさ・渋滞・つながり は保存せず、読んだあとに全部計算し直す。
 - 壊れた値で落ちない：JSON が読めない・v が違う・配列の長さが W×H と違う・値が範囲の外 → `loadSave` は `null`（元を `machi.bak` へ）→ 地形えらびから始める。お金・月・名前などの数や文字の範囲外は、範囲に直して読む（名前は `normalizeName`）。
 - 保存する時：遊んでいる 15 秒ごと・置いた/こわしたあと 2 秒以内（まとめて 1 回）・節目・名前を変えたとき・裏へ回る（`visibilitychange` hidden）・`pagehide`。
 - **X-20（v30 の形）**：表に戻ったとき（`pageshow` persisted・`visibilitychange` visible）、`machi.save` が自分の覚えた文字と違えば書かずに 1 回だけ開き直す（直前に `YubiNotice.markReload()`）。裏へ回る・閉じるときの保存の前に比べ直す（`staleOnHide()`）。stale のとき `saveNow` は静かに抜ける（「保存できない」を出さない）。

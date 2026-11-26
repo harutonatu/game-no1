@@ -18,6 +18,7 @@ function load(root) {
   return L;
 }
 const J = (x) => JSON.stringify(x);
+const mut0 = (raw, f) => { const x = JSON.parse(raw); f(x); return JSON.stringify(x); };
 const EX = 10;   // 手で組む町の いりぐち の x
 
 // 平らな地図（いりぐちは (10,0)〜(10,2)）
@@ -83,7 +84,7 @@ export const tests = [
     },
   },
   {
-    id: 'CL2', tier: 'smoke', node: true, title: 'ぼくのまち：置く（値段とお金・置けない地形・はしの値段・お金が足りないと足りる所まで・5 秒以内の取り消し・いりぐちは こわせない・使えない道具 rank・ふみきり）',
+    id: 'CL2', tier: 'smoke', node: true, title: 'ぼくのまち：置く（値段とお金・置けない地形・はしの値段・お金が足りないと足りる所まで・5 秒以内の取り消し（置く前の形に戻す）・いりぐちは こわせない・使えない道具 rank・ふみきり・お金が足りなくても こわせる）',
     run({ check, root }) {
       const L = load(root);
       const s = flat(L, { money: 1000 });
@@ -124,6 +125,35 @@ export const tests = [
       L.place(s, 'road', L.lineCells(5, 50, 15, 50));
       L.place(s, 'rail', L.lineCells(10, 45, 10, 55));
       check('みち と せんろ が交わると ふみきり（3）', s.use[I(L, 10, 50)] === L.USE.CROSS && s.use[I(L, 10, 49)] === L.USE.RAIL && s.use[I(L, 9, 50)] === L.USE.ROAD, s.use[I(L, 10, 50)]);
+      // 5 秒の取り消しは、置いたものだけを置く前の形に戻す（技術レビュー A9）
+      for (let n = 0; n < 32; n++) L.step(s, 0.25);   // 8 秒たつ（せんろ は もう取り消せない）
+      const m1 = s.money;
+      L.place(s, 'road', [I(L, 10, 47)]);
+      const xi = I(L, 10, 47);
+      const ux = L.canPlace(s, 'erase', 10, 47);
+      L.place(s, 'erase', [xi]);
+      check('古い せんろ に みち を重ねて（ふみきり）すぐ取り消す → せんろ に戻る・みち の値段 10 だけ返る', s.use[xi] === L.USE.RAIL && s.money === m1 && ux.undo === true && ux.cost === -10, { use: s.use[xi], money: s.money, m1, ux });
+      s.terrain[I(L, 30, 45)] = L.TER.FOREST; s.terrain[I(L, 31, 45)] = L.TER.FOREST;
+      const fm = s.money;
+      L.place(s, 'home', [I(L, 30, 45)]); L.place(s, 'road', [I(L, 31, 45)]);
+      L.place(s, 'erase', [I(L, 30, 45), I(L, 31, 45)]);
+      check('もり に置いて すぐ取り消す → もり に戻る・お金も戻る', s.terrain[I(L, 30, 45)] === L.TER.FOREST && s.terrain[I(L, 31, 45)] === L.TER.FOREST && s.use[I(L, 30, 45)] === 0 && s.use[I(L, 31, 45)] === 0 && s.money === fm, { t: [s.terrain[I(L, 30, 45)], s.terrain[I(L, 31, 45)]], money: s.money, fm });
+      const nm = s.money;
+      L.place(s, 'rail', [I(L, 40, 45)]); L.place(s, 'road', [I(L, 40, 45)]);
+      const cx = I(L, 40, 45);
+      check('すぐ置いた せんろ に みち を重ねると ふみきり', s.use[cx] === L.USE.CROSS, s.use[cx]);
+      L.place(s, 'erase', [cx]);
+      const c1 = s.use[cx];
+      L.place(s, 'erase', [cx]);
+      check('1 回目の取り消しで せんろ・2 回目で なし（どちらも全部返す）', c1 === L.USE.RAIL && s.use[cx] === 0 && s.money === nm, { c1, c2: s.use[cx], money: s.money, nm });
+      // お金が足りなくても こわせる（ただ。借金を深くしない。技術レビュー M1）
+      s.money = 3;
+      const ef = L.canPlace(s, 'erase', 30, 10);
+      L.place(s, 'erase', [I(L, 30, 10)]);
+      check('お金 3 でも みち を こわせる（値段 0・お金は 3 のまま）', ef.ok && ef.cost === 0 && s.use[I(L, 30, 10)] === 0 && s.money === 3, { ef, money: s.money });
+      s.money = -40;
+      L.place(s, 'erase', [I(L, 31, 10)]);
+      check('お金が マイナスでも こわせる・借金は ふえない（-40 のまま）', s.use[I(L, 31, 10)] === 0 && s.money === -40, s.money);
       check('lineCells は長い方へまっすぐ・rectCells は 8×8 まで', J(L.lineCells(0, 0, 3, 1)) === J([0, 1, 2, 3]) && L.lineCells(0, 0, 1, 5).length === 6 && L.rectCells(0, 0, 20, 20).length === 64 && L.rectCells(5, 5, 4, 4).length === 4, null);
       check('おかしな引数でも落ちない', L.place(s, 'nai', [1]).placed === 0 && L.place(s, 'road', 'x').placed === 0 && L.canPlace(s, 'road', -1, 0).ok === false && L.canPlace(null, 'road', 0, 0).ok === false && J(L.lineCells('a')) === '[]', null);
     },
@@ -335,7 +365,7 @@ export const tests = [
     },
   },
   {
-    id: 'CL10', tier: 'smoke', node: true, title: 'ぼくのまち：お金（毎月の入る・出る・税のたかさ・マイナスで育たない・払えない維持費は待つ）',
+    id: 'CL10', tier: 'smoke', node: true, title: 'ぼくのまち：お金（毎月の入る・出る（維持費＋町の せわ）・税のたかさ・マイナスで育たない・払えない維持費は待つ・人口 0 で動けないときの ほじょきん）',
     run({ check, root }) {
       const L = load(root);
       const s = flat(L, { money: 1000, rank: 1 });
@@ -350,7 +380,9 @@ export const tests = [
       const m = ev.find((e) => e.kind === 'money');
       const pop = L.summary(s).pop, jobs = L.summary(s).jobs;
       const inc = Math.round((pop * L.HOME[3].tax + jobs * 0.12));
-      check(`入る＝(住む人の税＋仕事×0.12)×税・出る＝みち 20＋みどり 3（${m && m.income}・${m && m.cost}）`, m && m.income === inc && m.cost === 23 && m.delta === inc - 23, { m, pop, jobs, inc });
+      const serv = Math.round(pop * L.SERVICE[1]);
+      check(`入る＝(住む人の税＋仕事×0.12)×税・出る＝みち 20＋みどり 3＋町の せわ（人口 × ${L.SERVICE[1]}＝${serv}）（${m && m.income}・${m && m.cost}）`, m && m.income === inc && m.service === serv && m.cost === 23 + serv && m.delta === inc - 23 - serv - m.build && m.subsidy === 0, { m, pop, jobs, inc });
+      check('summary に build（育つのに払ったお金）・service（町の せわ）', L.summary(s).service === serv && typeof L.summary(s).build === 'number', L.summary(s));
       check('month の events（year・month）', ev.some((e) => e.kind === 'month' && e.year === 1 && e.month === 5), ev.filter((e) => e.kind === 'month'));
       check('setTax：まち では 0〜2・むら では ふつう だけ', L.setTax(s, 2) && s.tax === 2 && !L.setTax(flat(L), 0) && !L.setTax(s, 3), null);
       const before = s.money;
@@ -358,20 +390,35 @@ export const tests = [
       const m2 = ev2.find((e) => e.kind === 'money');
       const popB = L.summary(s).pop, jobsB = L.summary(s).jobs;
       check('税 たかい は ×1.3', m2 && m2.income === Math.round((popB * L.HOME[3].tax + jobsB * 0.12) * 1.3) && s.money === before + m2.delta, { m2, want: want(2) });
-      // マイナスで育たない
+      // マイナスで育たない（人口 0 なので ほじょきん 20 が毎月入り、3 か月で 0 以上に戻る）
       const n = flat(L, { money: -50 });
       roadV(L, n, EX, 3, 12);
       const h = setUse(L, n, EX + 1, 6, L.USE.HOME);
       L.recalc(n);
-      const evn = months(L, n, 12);
-      check('お金がマイナスの間は育たない・知らせ money', n.lvl[h] === 0 && evn.some((e) => e.kind === 'news' && e.why === 'money'), { lvl: n.lvl[h] });
-      check('マイナスの間は維持費を待つ（お金は減らない）', n.money === -50, n.money);
+      const evn = months(L, n, 3);
+      check('お金がマイナスの間は育たない・知らせ money', n.lvl[h] === 0 && evn.some((e) => e.kind === 'news' && e.why === 'money'), { lvl: n.lvl[h], news: evn.filter((e) => e.kind === 'news') });
+      check(`マイナスの間は維持費を待つ（お金は ほじょきん の分だけ ふえる：-50 → ${n.money}）`, n.money === 10 && evn.filter((e) => e.kind === 'money').every((e) => e.cost === 0 && e.subsidy === L.SUBSIDY), { money: n.money, m: evn.filter((e) => e.kind === 'money') });
+      months(L, n, 12);
+      check('0 以上に戻ると育つ', n.lvl[h] > 0, n.lvl[h]);
       // 払えない維持費は待つ（0 より下にならない）
       const z = flat(L, { money: 5 });
       roadH(L, z, 3, 0, 60);
       L.recalc(z);
       const evz = months(L, z, 3);
-      check(`お金 5 で みち 60 マス：月の計算でマイナスにならない（${z.money}）`, z.money === 0 && evz.filter((e) => e.kind === 'money').every((e) => e.cost <= 5), z.money);
+      check(`お金 5 で みち 60 マス：月の計算でマイナスにならない（${z.money}）`, z.money >= 0 && evz.filter((e) => e.kind === 'money').every((e) => e.cost <= 20), { money: z.money, m: evz.filter((e) => e.kind === 'money') });
+      // 人口 0・お金 0 で動けない（技術レビュー M1）：まちの ほじょきん で すむ を置けるようになり、ぬけ出せる
+      const b = flat(L, { money: 2000 });
+      const rr = L.place(b, 'road', [...L.lineCells(EX, 3, EX, 77), ...L.lineCells(0, 40, 63, 40), ...L.lineCells(0, 70, 63, 70)].filter((i) => b.use[i] === 0));
+      check(`みち を ${rr.placed} マス引いて お金を使い切る（${b.money}）`, b.money < 20 && b.pop === 0, { money: b.money, placed: rr.placed });
+      const evb = months(L, b, 1);
+      const tip = evb.find((e) => e.kind === 'tip');
+      check('人口 0・お金が すむ の値段より少ない → ほじょきん 20 が入る・tip（key broke・amount 20・text）と知らせ（why broke）', tip && tip.key === 'broke' && tip.amount === L.SUBSIDY && typeof tip.text === 'string' && tip.text.length > 0
+        && evb.some((e) => e.kind === 'news' && e.why === 'broke') && b.money >= 20, { tip, money: b.money, ev: evb.filter((e) => e.kind === 'news' || e.kind === 'money') });
+      const ph = L.place(b, 'home', [I(L, EX + 1, 5)]);
+      months(L, b, 12);
+      check(`すむ を置ける・育って人が来る（ぬけ出せる。人口 ${b.pop}）`, ph.placed === 1 && b.pop > 0, { placed: ph.placed, pop: b.pop, money: b.money });
+      const ev12 = months(L, b, 12);
+      check('人が来たあとは ほじょきん は入らない', ev12.filter((e) => e.kind === 'money').every((e) => e.subsidy === 0), ev12.filter((e) => e.kind === 'money').map((e) => e.subsidy));
       check('formatMoney・formatPop（3 けたごとのカンマ・マイナス）', L.formatMoney(99999999) === '99,999,999' && L.formatPop(1000) === '1,000' && L.formatMoney(-1234) === '-1,234' && L.formatMoney(0) === '0' && L.formatMoney(NaN) === '0', null);
     },
   },
@@ -442,6 +489,8 @@ export const tests = [
       const f = mk();
       const fe = L.startEvent(f, 'fire').find((x) => x.kind === 'event');
       check('かじ：建物が空き地に（区画は残る）・3 マスまで', fe && fe.cells.length <= 3 && fe.cells.every((i) => f.lvl[i] === 0 && f.use[i] >= 5), fe);
+      let fp = 0; for (let i = 0; i < L.N; i++) if (f.use[i] === 5 && f.lvl[i]) fp += L.HOME[f.kind[i]].people[f.lvl[i]];
+      check(`かじ のあと 人口を数え直す（${f.pop}・数えると ${fp}）`, f.pop === fp, { pop: f.pop, fp });
       // 300 未満
       const p = flat(L);
       roadV(L, p, EX, 3, 20);
@@ -520,6 +569,8 @@ export const tests = [
       const ev2 = months(L, s, 1);
       check('人が減っても rank は下がらない・bestPop も残る', s.rank === 1 && s.bestPop >= 1000 && !ev2.some((e) => e.kind === 'rank'), { rank: s.rank, best: s.bestPop });
       check('summary の next・nextPop', L.summary(s).next === 'し' && L.summary(s).nextPop === 10000, L.summary(s));
+      check('おおきな し・だいとし の unlocks は空（おおきな こうえん・まちの タワー は作らない。お祝いのお金だけ）', L.RANKS[3].unlocks.length === 0 && L.RANKS[4].unlocks.length === 0 && L.RANKS[3].bonus > 0 && L.RANKS[4].bonus > 0, L.RANKS.slice(3));
+      check('道具に こうえん（大）・タワー は無い', !L.TOOLS.some((t) => /park|tower/.test(t.id)), L.TOOLS.map((t) => t.id));
     },
   },
   {
@@ -555,6 +606,8 @@ export const tests = [
       check('往復で同じ', same, t && { money: [t.money, s.money], month: [t.month, s.month] });
       check('読んだあと 人口・仕事・ほし を計算し直す', t && t.pop === s.pop && t.jobs === s.jobs && t.star === s.star, t && { pop: [t.pop, s.pop], star: [t.star, s.star] });
       check('もう一度 makeSave しても同じ文字（at が同じなら）', L.makeSave(t, 1234567) === raw, null);
+      const st9 = L.loadSave(mut0(raw, (x) => { x.star = 9; })), stN = L.loadSave(mut0(raw, (x) => { delete x.star; }));
+      check('ほし は保存した値に戻す・無い／範囲外（9）は計算し直す（1〜5）', o.star === s.star && st9 && st9.star >= 1 && st9.star <= 5 && stN && stN.star >= 1 && stN.star <= 5, { o: o.star, st9: st9 && st9.star, stN: stN && stN.star });
       // 同じ乱数で同じに進む
       const a = L.loadSave(raw), b = L.loadSave(raw);
       months(L, a, 12); months(L, b, 12);
@@ -601,7 +654,73 @@ export const tests = [
     },
   },
   {
-    id: 'CL18', tier: 'smoke', flaky: { why: 'Node で step の時間を測る', checks: /ms/ }, node: true, solo: true, title: 'ぼくのまち：重さ（64×78 の greedy 20 年の町で step 1 回：中央 3ms 以内・月の終わりを含む最大 20ms 以内（Node））',
+    id: 'CL19', tier: 'smoke', node: true, title: 'ぼくのまち：お金の使い道（まち から 育つのに払う・足りなければ待つ・むら は ただ・町の せわ は節目で増える・税は来る人にも効く・お金がたまると知らせ）',
+    run({ check, root }) {
+      const L = load(root);
+      check('SERVICE は節目ごとに増える（むら 0）・TAX_INFLOW は ひくい ＞ ふつう ＞ たかい', L.SERVICE[0] === 0 && L.SERVICE.every((v, k) => k === 0 || v > L.SERVICE[k - 1]) && L.TAX_INFLOW[0] > L.TAX_INFLOW[1] && L.TAX_INFLOW[1] > L.TAX_INFLOW[2], { sv: L.SERVICE, ti: L.TAX_INFLOW });
+      // 育つ条件のそろった 住宅地 lvl 1 を 20 マス（仕事も足りる）
+      const mk = (rank, money) => {
+        const s = flat(L, { rank, money });
+        roadV(L, s, EX, 3, 40);
+        for (let y = 4; y <= 40; y++) setUse(L, s, EX - 1, y, L.USE.WORK, 1, 3);
+        for (let y = 6; y <= 25; y++) setUse(L, s, EX + 1, y, L.USE.HOME, 3, 1);
+        for (let y = 4; y <= 40; y += 3) setUse(L, s, EX + 2, y, L.USE.GREEN);
+        L.recalc(s);
+        s.inflow = 5000;
+        return s;
+      };
+      const lv2 = (s) => { let n = 0; for (let y = 6; y <= 25; y++) if (s.lvl[I(L, EX + 1, y)] >= 2) n++; return n; };
+      const a = mk(1, 0);
+      const ins = L.inspect(a, EX + 1, 10);
+      check('まち・お金 0：しらべる に「おおきく なるのに おかねが たりないよ」', ins.reasons.some((t) => /おおきく なるのに おかねが たりない/.test(t)), ins.reasons);
+      const s0 = a.money;
+      L.setSpeed(a, 1);
+      for (let n = 0; n < 15; n++) L.step(a, 0.25);   // 月の終わりの前まで（入るお金で払えるようにならない）
+      check(`まち・お金 0 では 1 段より上へ育たない（2 段 ${lv2(a)}）`, lv2(a) === 0 && a.money === s0, { n: lv2(a), money: a.money });
+      const b = mk(1, 100000);
+      const evb = months(L, b, 6).filter((e) => e.kind === 'money');
+      const paid = evb.reduce((x, e) => x + e.build, 0);
+      const want = Math.round((L.HOME[3].people[2] - L.HOME[3].people[1]) * (L.BUILD_PAY + b.pop * L.BUILD_PAY_RATE));
+      check(`まち・お金あり：育つ（2 段 ${lv2(b)}）・育つのに払う（6 か月で ${paid}。1 段ぶん 約 ${want}）・money の delta に入る`, lv2(b) > 0 && paid >= lv2(b) * 4 * L.BUILD_PAY && evb.every((e) => e.delta === e.income - e.cost - e.build + e.subsidy), { n: lv2(b), paid, want });
+      const c = mk(0, 0);
+      months(L, c, 6);
+      check(`むら では お金 0 でも ただで育つ（2 段 ${lv2(c)}）`, lv2(c) > 0, lv2(c));
+      // 税は 来る人 にも効く
+      const t = mk(1, 100000);
+      const inflowOf = (tax) => { const s = mk(1, 100000); L.setTax(s, tax); s.inflow = 0; months(L, s, 1); return s.inflow; };
+      const i0 = inflowOf(0), i1 = inflowOf(1), i2 = inflowOf(2);
+      check(`1 か月に来る人：ひくい ${i0.toFixed(1)} ＞ ふつう ${i1.toFixed(1)} ＞ たかい ${i2.toFixed(1)}`, i0 > i1 && i1 > i2, { i0, i1, i2, t: t.tax });
+      // お金がたまると、ぜいを さげる知らせ
+      const r = mk(1, 50000);
+      const evr = months(L, r, 13).filter((e) => e.kind === 'news');
+      check('まち・ふつう・お金 2 万以上 → 知らせ why rich（ぜいを ひくく すると…）', evr.some((e) => e.why === 'rich' && /ぜいを ひくく/.test(e.text)), evr);
+      const q = mk(1, 50000); L.setTax(q, 0);
+      check('税 ひくい のときは rich を出さない', !months(L, q, 13).some((e) => e.kind === 'news' && e.why === 'rich'), null);
+    },
+  },
+  {
+    id: 'CL20', tier: 'full', node: true, title: 'ぼくのまち：自動プレイで税の 3 段と住む場所（ひくい は育つのが速くお金がたまらない・たかい はお金がたまり育つのが遅い・お金がたまったら税を下げると いちばん育つ・住宅地と高級住宅地が 2 割以上）',
+    run({ check, root }) {
+      const L = load(root);
+      const seeds = [1, 2];
+      const at = (r, m) => r.log[m - 1];
+      const run = (tax) => seeds.map((sd) => L.simulate(sd, 'grid', 360, { choice: sd - 1, tax }));
+      const T = [run(0), run(1), run(2)];
+      const smart = seeds.map((sd) => L.simulate(sd, 'grid', 360, { choice: sd - 1 }));
+      const pops = (k, m) => T[k].map((r) => at(r, m).pop);
+      const moneys = (k, m) => T[k].map((r) => at(r, m).money);
+      check(`25 年目の人口：ひくい ${pops(0, 300)} ＞ ふつう ${pops(1, 300)} ＞ たかい ${pops(2, 300)}`, seeds.every((_, j) => pops(0, 300)[j] > pops(1, 300)[j] && pops(1, 300)[j] > pops(2, 300)[j]), [pops(0, 300), pops(1, 300), pops(2, 300)]);
+      check(`25 年目のお金：ひくい ${moneys(0, 300)} ＜ ふつう ${moneys(1, 300)} ＜ たかい ${moneys(2, 300)}`, seeds.every((_, j) => moneys(0, 300)[j] < moneys(1, 300)[j] && moneys(1, 300)[j] < moneys(2, 300)[j]), [moneys(0, 300), moneys(1, 300), moneys(2, 300)]);
+      check(`ひくい だけ では お金が たまらない（25 年目 ${moneys(0, 300)}・ふつう の 1 割より少ない）`, seeds.every((_, j) => moneys(0, 300)[j] < moneys(1, 300)[j] * 0.1), null);
+      check(`ふつう の お金は 30 年で 10 万より少ない（${T[1].map((r) => r.money)}）`, T[1].every((r) => r.money < 100000), T[1].map((r) => r.money));
+      check(`お金がたまったら ひくい にする（grid の決まり）と、30 年目の人口が ふつう だけ より多い（${smart.map((r) => r.pop)} ＞ ${T[1].map((r) => r.pop)}）`, smart.every((r, j) => r.pop > T[1][j].pop), null);
+      const share = (rs) => { const c = [0, 0, 0, 0, 0]; for (const r of rs) { const s = r.state; for (let i = 0; i < L.N; i++) if (s.use[i] === 5 && s.lvl[i] > 0) c[s.kind[i]]++; } return { c, low: (c[3] + c[4]) / (c[1] + c[2] + c[3] + c[4]) }; };
+      const g = share(seeds.map((sd) => L.simulate(sd, 'greedy', 480, { choice: sd - 1 }))), gr = share(T[1]);
+      check(`住宅地＋高級住宅地の割合：greedy 40 年 ${(g.low * 100).toFixed(0)}%・grid 30 年 ${(gr.low * 100).toFixed(0)}%（2 割以上）`, g.low >= 0.2 && gr.low >= 0.2, { g, gr });
+    },
+  },
+  {
+    id: 'CL18', tier: 'smoke', flaky: { why: 'Node で step の時間を測る', checks: /ms/ }, node: true, solo: true, title: 'ぼくのまち：重さ（64×78 の greedy 20 年の町で step 1 回：中央 3ms 以内・95% 1.5ms 以内・月の終わりを含む最大 20ms 以内（Node））',
     run({ check, root }) {
       const L = load(root);
       const s = L.simulate(1, 'greedy', 240).state;
@@ -610,8 +729,9 @@ export const tests = [
       const t = [];
       for (let n = 0; n < 640; n++) { const c = cpuOf(); L.step(s, 0.25); t.push(cpuMs(cpuOf(c))); }
       t.sort((a, b) => a - b);
-      const med = t[320], max = t[639];
+      const med = t[320], p95 = t[608], max = t[639];
       check(`step 1 回の中央 ${med.toFixed(3)}ms（3ms 以内）`, med <= 3, med);
+      check(`step 1 回の 95% ${p95.toFixed(3)}ms（1.5ms 以内。月の終わりの計算を月の中の tick に分けた）`, p95 <= 1.5, p95);
       check(`いちばん重い step（月の終わり）${max.toFixed(2)}ms（20ms 以内）`, max <= 20, max);
       const raw = L.makeSave(s, 0);
       const c = cpuOf(); L.loadSave(raw); const lm = cpuMs(cpuOf(c));

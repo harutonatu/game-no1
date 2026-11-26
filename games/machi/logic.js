@@ -50,6 +50,12 @@
   const SAVE_VERSION = 1;
   const SAVE_KEY = "machi.save", SAVE_KEY_BAK = "machi.bak", SAVE_KEY_BEST = "machi.best", SAVE_KEY_SEEN = "machi.seen";
   const UNDO_SEC = 5;
+  const CHEAPEST = 20, SUBSIDY = 20;                 // いちばん安い道具（すむ・めぐみ）・人口 0 で動けないときの ほじょきん（1 か月）
+  const TIP_SUBSIDY = "まちの ほじょきんが はいったよ。みちの そばに すむ を おいて ひとを よぼう";
+  const TIP_BUILD = "おかねが たりなくて たてものが おおきく なれないよ。ぜいを あげると おかねが ふえるよ";
+  const RICH_MONEY = 20000;
+  const TIP_RICH = "おかねが たくさん あるね。ぜいを ひくく すると ひとが はやく ふえるよ";
+  const TIP_BROKE = "おかねが ふえないよ。こわすのは ただ。つかわない みちを こわすと いじひが へるよ";
   const DT_MAX = 0.25;
 
   // 地形・置いた物
@@ -101,8 +107,9 @@
     Object.freeze({ rank: 0, name: "むら", pop: 0, bonus: 0, unlocks: [] }),
     Object.freeze({ rank: 1, name: "まち", pop: 1000, bonus: 3000, unlocks: ["rail", "tax", "apart", "luxury"] }),
     Object.freeze({ rank: 2, name: "し", pop: 10000, bonus: 10000, unlocks: ["mansion", "office", "clean"] }),
-    Object.freeze({ rank: 3, name: "おおきな し", pop: 30000, bonus: 40000, unlocks: ["park"] }),
-    Object.freeze({ rank: 4, name: "だいとし", pop: 60000, bonus: 80000, unlocks: ["tower"] })
+    // おおきな し・だいとし の ごほうび（おおきな こうえん・まちの タワー）は今は作らない（PM 決定 2026-11-26）。お祝いのお金だけ
+    Object.freeze({ rank: 3, name: "おおきな し", pop: 30000, bonus: 40000, unlocks: [] }),
+    Object.freeze({ rank: 4, name: "だいとし", pop: 60000, bonus: 80000, unlocks: [] })
   ]);
   // ときどき起こること（§5.12）
   const EVENTS = Object.freeze([
@@ -128,7 +135,18 @@
   const RAIL_MIN = 8, RAIL_REACH = 3;
   const CAP_ROAD = 20, CAP_X = 10, CAP_CROSS = 8;
   const TRIP_RATE = 0.3;              // 約束の仮 0.1 → 0.3（交差点で渋滞が起きるように。数値合わせ）
+  // 密度 d（§5.5）＝ DENS_BASE ＋ せんろ 35 ＋ 交差点 DENS_X ＋ 半径 6 の仕事 DENS_JOB_STEP 人ごと +5（最大 DENS_JOB_MAX）＋ 町の大きさ
+  const DENS_BASE = 15, DENS_X = 10, DENS_JOB_STEP = 50, DENS_JOB_MAX = 20;   // 約束の仮 20・20 人・25 → 15・50 人・20（住宅地を出す。数値合わせ）
   const LIVE_BASE = 55;                              // 約束の仮 50 → 55（みち と 仕事 があれば育つ。数値合わせ）
+  // お金の使い道（中毒性レビュー 4。数値合わせ・計画書 §6）：
+  //   まち（rank 1）からは、建物が 1 段から上へ育つときに、ふえる 人・仕事 1 つごとに
+  //   (BUILD_PAY + 人口 × BUILD_PAY_RATE) を払う（町が大きいほど建てるのが高い。0 → 1 段は ただ・むら の間は ただ。
+  //   足りなければ育つのを待つ。むら で お金が 0 になっても育てて抜け出せる）
+  //   町の せわ（そうじ・がっこう など）：毎月 人口 × SERVICE[rank] を維持費に足す（節目ごとに増える）
+  //   税は 来る人 にも効く：ひくい ×TAX_INFLOW[0]（すみやすさ +4 と合わせて 育つのが速い）・たかい ×TAX_INFLOW[2]
+  const BUILD_PAY = 4, BUILD_PAY_RATE = 0.004;
+  const SERVICE = Object.freeze([0, 0.04, 0.07, 0.08, 0.09]);
+  const TAX_INFLOW = Object.freeze([1.3, 1, 0.85]);
 
   // ---------------------------------------------------------------- 小さな道具
   const isNum = (x) => typeof x === "number" && Number.isFinite(x);
@@ -320,7 +338,7 @@
         load: new Float32Array(N), rekind: new Uint8Array(N),
         pollNew: new Float32Array(NPOLL), emit: new Float32Array(NPOLL), red: new Float32Array(NPOLL),
         leaveWhy: { smoke: 0, jam: 0, nojob: 0, noroad: 0, factory: 0, tax: 0 },
-        jamI: -1, jamLv: 0, zonesFree: 0, ready: false
+        jamI: -1, jamLv: 0, zonesFree: 0, ready: false, build: 0, waitMoney: 0
       };
       K.set(s, k);
     }
@@ -535,8 +553,10 @@
     k.natureJobs = natureJobs; k.taxSum = taxSum; k.upkeep = upkeep; k.built = built; k.nature = nature; k.fish = fish;
     if (s.pop > s.bestPop) s.bestPop = Math.min(BEST_MAX, s.pop);
   }
-  function buildSats(s) {
+  // part：0 は前半（みどり・おみせ・こうば・仕事）、1 は後半（人・もり・水・やま）、無ければ全部（月の中で 2 つの tick に分ける。A4）
+  function buildSats(s, part) {
     const k = scratch(s), src = k.src, use = s.use, ter = s.terrain, lvl = s.lvl;
+    if (part === 1) { buildSats2(s, k); return; }
     for (let i = 0; i < N; i++) src[i] = use[i] === USE.GREEN ? 1 : 0;
     buildSat(k.sGreen, src);
     for (let i = 0; i < N; i++) src[i] = use[i] === USE.SHOP && lvl[i] > 0 ? 1 : 0;
@@ -547,6 +567,10 @@
     buildSat(k.sJobs, src);
     for (let i = 0; i < N; i++) src[i] = use[i] === USE.SHOP ? jobsOf(s, i) : 0;
     buildSat(k.sShopJobs, src);
+    if (part !== 0) buildSats2(s, k);
+  }
+  function buildSats2(s, k) {
+    const src = k.src, ter = s.terrain, use = s.use;
     for (let i = 0; i < N; i++) src[i] = peopleOf(s, i);
     buildSat(k.sPeople, src);
     for (let i = 0; i < N; i++) src[i] = ter[i] === TER.FOREST && use[i] !== USE.NATURE ? 1 : ter[i] === TER.FOREST ? 1 : 0;
@@ -557,8 +581,14 @@
     buildSat(k.sMount, src);
   }
   // 渋滞（§5.10）
-  function traffic(s) {
+  // part：0 は出かける量を足すだけ・1 は段を決めるだけ・無ければ両方（月の中で 2 つの tick に分ける。A4）
+  function traffic(s, part) {
     const k = scratch(s), load = k.load, use = s.use, label = s.net.label, tr = s.traffic;
+    if (part !== 1) trafficLoad(s, k);
+    if (part !== 0) trafficLevels(s, k);
+  }
+  function trafficLoad(s, k) {
+    const load = k.load, use = s.use, label = s.net.label;
     load.fill(0);
     for (let i = 0; i < N; i++) {
       const u = use[i];
@@ -579,6 +609,9 @@
         for (let dx = -2; dx <= 2; dx++) { const nx = x + dx; if (nx >= 0 && nx < W && label[ny * W + nx] >= 0) load[ny * W + nx] += a; }
       }
     }
+  }
+  function trafficLevels(s, k) {
+    const load = k.load, use = s.use, label = s.net.label, tr = s.traffic;
     let jamI = -1, jamV = 0, jamLv = 0;
     for (let i = 0; i < N; i++) {
       if (label[i] < 0) { if (tr[i]) { tr[i] = 0; touch(s, i); } continue; }
@@ -635,7 +668,7 @@
     return sum / n;
   }
   function sizeLand(pop) { return pop >= 30000 ? 15 : pop >= 10000 ? 10 : pop >= 1000 ? 5 : 0; }
-  function sizeDens(pop) { return pop >= 10000 ? 15 : pop >= 1000 ? 5 : 0; }
+  function sizeDens(pop) { return pop >= 10000 ? 10 : pop >= 1000 ? 5 : 0; }   // 約束の仮 し +15 → +10
 
   // マス 1 つの 地価・密度・すみやすさ（§5.5・§5.7）
   function evalFields(s, k, i) {
@@ -647,7 +680,7 @@
     let v = 30 + Math.min(24, 6 * green3) + (water2 > 0 ? 15 : 0) + (mount4 > 0 ? 5 : 0) + (shop6 > 0 ? 10 : 0) + sizeLand(s.pop)
       - 0.6 * pl - Math.min(30, 10 * fac3) - 8 * jam;
     s.land[i] = clamp(Math.round(v), 0, 100);
-    let d = 20 + (k.railNear[i] ? 35 : 0) + (box(k.sX, x, y, 2) > 0 ? 10 : 0) + Math.min(25, 5 * Math.floor(box(k.sJobs, x, y, 6) / 20)) + sizeDens(s.pop);
+    let d = DENS_BASE + (k.railNear[i] ? 35 : 0) + (box(k.sX, x, y, 2) > 0 ? DENS_X : 0) + Math.min(DENS_JOB_MAX, 5 * Math.floor(box(k.sJobs, x, y, 6) / DENS_JOB_STEP)) + sizeDens(s.pop);
     s.dens[i] = clamp(Math.round(d), 0, 100);
     if (s.use[i] !== USE.HOME) { s.live[i] = 0; return; }
     const z = s.net.zone[i], rc = z >= 0 ? s.net.comps[z].r : s.r;
@@ -727,9 +760,17 @@
           if (lv === 0) nk = homeKindOf(s.dens[i], s.land[i], s.rank);
           const need = HOME[nk].people[lv + 1] - (lv ? HOME[nk].people[lv] : 0);
           if (s.inflow < need) return;
+          const pay = buildPayOf(s, u, nk, lv);
+          if (pay > s.money) { k.waitMoney++; return; }
           s.inflow -= need;
-        } else if (u === USE.WORK && lv === 0) nk = s.rank >= 2 ? 2 : 1;
-        else if (u === USE.SHOP && lv === 0) nk = 1;
+          if (pay) { s.money -= pay; k.build += pay; }
+        } else {
+          if (u === USE.WORK && lv === 0) nk = s.rank >= 2 ? 2 : 1;
+          else if (u === USE.SHOP && lv === 0) nk = 1;
+          const pay = buildPayOf(s, u, nk || 1, lv);
+          if (pay > s.money) { k.waitMoney++; return; }
+          if (pay) { s.money -= pay; k.build += pay; }
+        }
         s.kind[i] = nk; s.lvl[i] = lv + 1;
         touch(s, i);
         ev.push({ kind: "grow", i, use: u, bk: nk, lvl: lv + 1 });
@@ -752,6 +793,15 @@
       touch(s, i);
       ev.push({ kind: "grow", i, use: u, bk: 2, lvl: 1 });
     }
+  }
+  // 1 段から上へ育つときに払うお金（すむ は人、しごと・おみせ・めぐみ は仕事のふえる数 × BUILD_PAY。0 → 1 段は ただ）
+  const payUnit = (s) => (s.rank >= 1 ? BUILD_PAY + (s.pop | 0) * BUILD_PAY_RATE : 0);
+  function buildPayOf(s, u, kd, lv) {
+    if (lv < 1 || lv >= 3 || !(s.rank >= 1)) return 0;
+    let n = 0;
+    if (u === USE.HOME) { const h = HOME[kd]; n = h ? h.people[lv + 1] - h.people[lv] : 0; }
+    else { const t = WORK[u] && WORK[u][kd]; n = t ? t.jobs[lv + 1] - t.jobs[lv] : 0; }
+    return Math.round(n * payUnit(s));
   }
   function seaPoll(s, x, y) {
     let m = 0;
@@ -983,6 +1033,7 @@
         cells.push(i);
       }
       for (const c of cells) { s.lvl[c] = 0; s.kind[c] = 0; touch(s, c); ev.push({ kind: "shrink", i: c, use: s.use[c], lvl: 0 }); }
+      k.needTally = true;
     }
     if (def.bad) E.lastBad = s.month;
     E.cool = EVENT_COOL;
@@ -993,27 +1044,45 @@
 
   // ---------------------------------------------------------------- 1 か月の終わり
   function newsOk(s, why, gap) { const a = s.newsAt || (s.newsAt = {}); if (isNum(a[why]) && s.month - a[why] < gap) return false; a[why] = s.month; return true; }
+  // 月の終わりの重い計算は、月の中の別々の tick に分けて回す（1 回の重さを下げる。技術レビュー A4）：
+  //   tick 10 渋滞の出かける量・11 合計の表の後半・12 渋滞の段・13 よごれ・14 合計の表の前半・15 の終わり monthEnd（お金・できごと・節目・知らせ）・
+  //   次の月の tick 0 市民の声（voiceOf）
+  const PHASE_LOAD = 10, PHASE_SATS2 = 11, PHASE_TRAFFIC = 12, PHASE_POLL = 13, PHASE_SATS = 14;
   function monthEnd(s, k, ev) {
     if (k.netDirty) buildNet(s);
     tally(s);
-    traffic(s);
-    pollution(s);
     // お金（§5.6）
     const jobsTax = (s.jobs - k.natureJobs) * JOB_TAX + k.natureJobs * NATURE_TAX * (s.harvest ? 2 : 1);
     const income = Math.round((k.taxSum + jobsTax) * TAX_MUL[s.tax]);
     // 維持費：払えない分は待ってもらう（お金は月の計算でマイナスにならない。0 から動けなくなる行き止まりを作らない。数値合わせで足した）
-    const cost = s.money >= 0 ? Math.max(0, Math.min(k.upkeep, income + s.money)) : 0;
+    const service = Math.round(s.pop * SERVICE[s.rank] || 0);
+    const want = k.upkeep + service;
+    const cost = s.money >= 0 ? Math.max(0, Math.min(want, income + s.money)) : 0;
+    const build = k.build | 0, waitMoney = k.waitMoney | 0;
+    k.build = 0; k.waitMoney = 0;
     s.money = clamp(s.money + income - cost, MONEY_MIN, MONEY_MAX);
-    s.income = income; s.cost = cost;
+    // おかねが ふえない・いちばん安い物も置けない：人口 0 のときだけ「まちの ほじょきん」（技術レビュー M1。行き止まりを作らない）
+    let subsidy = 0, broke = false;
+    if (s.money < CHEAPEST && income - want <= 0) {
+      broke = true;
+      if (s.pop === 0) { subsidy = SUBSIDY; s.money = clamp(s.money + subsidy, MONEY_MIN, MONEY_MAX); }
+    }
+    s.income = income; s.cost = cost; s.build = build; s.service = service;
     s.month = Math.min(MONTH_MAX, s.month + 1);
     s.taxHigh = s.tax === 2 ? (s.taxHigh | 0) + 1 : 0;
     ev.push({ kind: "month", year: Math.floor(s.month / 12) + 1, month: ((s.month + 3) % 12) + 1 });
-    ev.push({ kind: "money", income, cost, delta: income - cost });
+    ev.push({ kind: "money", income, cost, delta: income - cost + subsidy - build, subsidy, build, service });
     // できごと
     eventsTick(s, k, ev);
-    if (k.netDirty) { buildNet(s); tally(s); }
+    // かじ で建物が消えたら人口を数え直す（数え直さないと s.pop が読み込み直したときの数とずれる）
+    if (k.netDirty || k.needTally) { if (k.netDirty) buildNet(s); tally(s); k.needTally = false; }
     // 節目・ベスト
     let newsDone = false;
+    if (broke) {
+      const text = subsidy ? TIP_SUBSIDY : TIP_BROKE;
+      ev.push({ kind: "tip", key: "broke", amount: subsidy, text });
+      if (newsOk(s, "broke", 6)) { ev.push({ kind: "news", text, why: "broke" }); newsDone = true; }
+    }
     while (s.rank < RANKS.length - 1 && s.pop >= RANKS[s.rank + 1].pop) {
       s.rank++;
       const R = RANKS[s.rank];
@@ -1034,7 +1103,6 @@
     }
     for (const w in k.leaveWhy) k.leaveWhy[w] = 0;
     s.prevPop = s.pop;
-    buildSats(s);
     s.star = starOf(s);
     // 知らせ（1 か月に 1 つまで）
     if (!newsDone) {
@@ -1043,6 +1111,8 @@
       else if (pa > 30 && newsOk(s, "smoke", 6)) ev.push({ kind: "news", text: "くうきが よごれて きたよ。みどりを ふやそう", why: "smoke" });
       else if (k.jamLv >= 2 && newsOk(s, "jam", 6)) ev.push({ kind: "news", text: "みちが こんで きたよ。こうさてんを へらすか、みちを ふやそう", why: "jam" });
       else if (hasUnconnected(s) && newsOk(s, "noroad", 6)) ev.push({ kind: "news", text: "いりぐちと つながって いないよ", why: "noroad" });
+      else if (waitMoney >= 3 && newsOk(s, "build", 6)) ev.push({ kind: "news", text: TIP_BUILD, why: "build" });
+      else if (s.rank >= 1 && s.tax > 0 && s.money >= RICH_MONEY && newsOk(s, "rich", 12)) ev.push({ kind: "news", text: TIP_RICH, why: "rich" });
       else if (s.pop >= 20 && s.r < 0.8 && newsOk(s, "nojob", 6)) ev.push({ kind: "news", text: "しごとが たりないよ", why: "nojob" });
       else if (s.jobs >= 20 && s.r > 1.25 && newsOk(s, "noworker", 6)) ev.push({ kind: "news", text: "はたらく ひとが たりないよ", why: "noworker" });
       else if (s.rank < RANKS.length - 1 && s.pop > 0 && newsOk(s, "goal", 6)) {
@@ -1051,11 +1121,10 @@
       }
     }
     if (k.jamLv >= 2 && k.jamI >= 0) ev.push({ kind: "jam", i: k.jamI, level: k.jamLv });
-    // 市民の声
-    const v = voiceOf(s);
-    if (v) { (s.voiceAt || (s.voiceAt = {}))[v.why] = s.month; ev.push({ kind: "voice", why: v.why, i: v.i, good: v.good, text: v.text }); }
+    // 市民の声は次の tick（次の月の tick 0）で出す（A4）
+    k.voicePending = true;
     // 来たい人（§5.3 の上限）
-    const cap = (GROW_BASE + GROW_RATE * s.pop) * STAR_MUL[s.star] * (s.fest > 0 ? 1.5 : 1);
+    const cap = (GROW_BASE + GROW_RATE * s.pop) * STAR_MUL[s.star] * (s.fest > 0 ? 1.5 : 1) * TAX_INFLOW[s.tax];
     s.inflow = Math.min((s.inflow || 0) + cap, cap * INFLOW_KEEP);
   }
   function hasUnconnected(s) { for (let i = 0; i < N; i++) if (isZoneUse(s.use[i]) && !connected(s, i)) return true; return false; }
@@ -1066,6 +1135,15 @@
     const t = s.tick % TICKS_PER_MONTH;
     const off = (s.month * 13) % NCHUNK;
     for (let a = 0; a < CHUNKS_PER_TICK; a++) evalChunk(s, k, ORDER[(off + t * CHUNKS_PER_TICK + a) % NCHUNK], ev);
+    if (t === 0 && k.voicePending) {
+      k.voicePending = false;
+      const v = voiceOf(s);
+      if (v) { (s.voiceAt || (s.voiceAt = {}))[v.why] = s.month; ev.push({ kind: "voice", why: v.why, i: v.i, good: v.good, text: v.text }); }
+    } else if (t === PHASE_LOAD) traffic(s, 0);
+    else if (t === PHASE_TRAFFIC) traffic(s, 1);
+    else if (t === PHASE_POLL) pollution(s);
+    else if (t === PHASE_SATS) buildSats(s, 0);
+    else if (t === PHASE_SATS2) buildSats(s, 1);
     s.tick++;
     if (s.tick % TICKS_PER_MONTH === 0) monthEnd(s, k, ev);
   }
@@ -1086,7 +1164,7 @@
       net: { gen: 0, label: new Int32Array(N), comps: [], zone: new Int32Array(N) },
       ev: { cool: 0, active: [], lastBad: -1 },
       rng: hash2(seed, choice + 77) | 0, dirty: [], gen: 0,
-      clock: 0, inflow: GROW_BASE, voiceAt: {}, newsAt: {}, taxHigh: 0, prevPop: 0, bestSeen: 0, fest: 0, harvest: false, income: 0, cost: 0
+      clock: 0, build: 0, service: 0, inflow: GROW_BASE, voiceAt: {}, newsAt: {}, taxHigh: 0, prevPop: 0, bestSeen: 0, fest: 0, harvest: false, income: 0, cost: 0
     };
   }
   // 計算し直し（新しく始めた・読み込んだ・テストで手で組んだあと）
@@ -1153,7 +1231,8 @@
         const pa = s.placedAt && s.placedAt[i];
         if (pa && isNum(pa.t) && (s.clock || 0) - pa.t <= UNDO_SEC) return { ok: true, cost: -pa.cost, reason: null, undo: true };
         const ec = T.cost + (isZoneUse(u) ? ERASE_LVL * s.lvl[i] : 0);
-        if (s.money >= 0 && s.money < ec) return { ok: false, cost: ec, reason: "money" };   // マイナスの間は こわせる（約束 §5.6）
+        // お金が足りない（マイナスも）ときは ただで こわせる（借金を深くしない・行き止まりを作らない。技術レビュー M1）
+        if (s.money < ec) return { ok: true, cost: 0, reason: null, free: true };
         return { ok: true, cost: ec, reason: null };
       }
       if (T.rank > s.rank) return { ok: false, cost: 0, reason: "rank" };
@@ -1192,18 +1271,36 @@
         }
         const u = s.use[c];
         if (tool === "erase") {
-          if (isRoadUse(u) || isRailUse(u)) net = true;
-          s.use[c] = 0; s.kind[c] = 0; s.lvl[c] = 0; s.blocked[c] = 0;
-          delete s.placedAt[c];
+          if (isRoadUse(u) || isRailUse(u) || isZoneUse(u)) net = true;
+          const pa = r.undo ? s.placedAt[c] : null;
+          if (pa) {
+            // 5 秒の取り消し：置いたものだけを、置く前の形に戻す（ふみきり → せんろ／みち、もり → もり。技術レビュー A9）
+            const pu = isInt(pa.u) && pa.u >= 0 && pa.u <= 8 ? pa.u : 0;
+            s.use[c] = pu;
+            s.kind[c] = isZoneUse(pu) && isInt(pa.kd) ? pa.kd : 0;
+            s.lvl[c] = isZoneUse(pu) && isInt(pa.lv) ? pa.lv : 0;
+            if (isInt(pa.ter) && pa.ter >= 0 && pa.ter <= 5) s.terrain[c] = pa.ter;
+            s.blocked[c] = 0;
+            if (pa.prev && isObj(pa.prev)) s.placedAt[c] = pa.prev; else delete s.placedAt[c];
+            if (isRoadUse(pu) || isRailUse(pu)) net = true;
+          } else {
+            s.use[c] = 0; s.kind[c] = 0; s.lvl[c] = 0; s.blocked[c] = 0;
+            delete s.placedAt[c];
+          }
           k.rekind[c] = 0;
         } else {
           const T = TOOL[tool];
+          const terBefore = s.terrain[c], kdBefore = s.kind[c], lvBefore = s.lvl[c];
           if (tool === "road") s.use[c] = u === USE.RAIL ? USE.CROSS : USE.ROAD;
           else if (tool === "rail") s.use[c] = u === USE.ROAD ? USE.CROSS : USE.RAIL;
           else { s.use[c] = T.use; s.kind[c] = tool === "nature" ? r.natureKind : 0; s.lvl[c] = 0; }
           if (s.terrain[c] === TER.FOREST && tool !== "nature") s.terrain[c] = TER.FLAT;
           if (line || isZoneUse(s.use[c])) net = true;
-          s.placedAt[c] = { t: s.clock || 0, cost: r.cost };
+          // 取り消し用に、置く前の形を持つ（5 秒以内に置いた物の上に重ねたときは、その前の記録も prev に残す）
+          const old = s.placedAt[c];
+          const rec = { t: s.clock || 0, cost: r.cost, u, ter: terBefore, kd: kdBefore, lv: lvBefore };
+          if (old && isNum(old.t) && (s.clock || 0) - old.t <= UNDO_SEC) rec.prev = old;
+          s.placedAt[c] = rec;
           k.rekind[c] = 0;
         }
         s.money = clamp(s.money - r.cost, MONEY_MIN, MONEY_MAX);
@@ -1254,6 +1351,7 @@
         if (z < 0) reasons.push("みちが とおい（2 マス いないに みちが いるよ）");
         else if (!connected(s, i)) reasons.push("いりぐちと つながって いないよ");
         if (s.money < 0) reasons.push("おかねが たりないよ");
+        else if (lv >= 1 && lv < 3 && s.money < buildPayOf(s, u, s.kind[i] || 1, lv)) reasons.push("おおきく なるのに おかねが たりないよ（" + buildPayOf(s, u, s.kind[i] || 1, lv) + "）");
         if (u === USE.HOME) {
           if (s.live[i] < 55) reasons.push("すみやすさが ひくいよ");
           if (rc < 0.8) reasons.push("しごとが たりないよ");
@@ -1294,7 +1392,7 @@
         money: s.money, pop: s.pop, star: s.star, jobs: s.jobs, workers: s.workers, r: s.r,
         year: Math.floor(s.month / 12) + 1, month: ((s.month + 3) % 12) + 1, rank: s.rank, rankName: RANKS[s.rank].name,
         next: nr ? nr.name : null, nextPop: nr ? nr.pop : null, poll: Math.round(pollAvg(s)),
-        income: s.income | 0, cost: s.cost | 0, tax: s.tax, speed: s.speed, name: s.name, bestPop: s.bestPop,
+        income: s.income | 0, cost: s.cost | 0, build: s.build | 0, service: s.service | 0, tax: s.tax, speed: s.speed, name: s.name, bestPop: s.bestPop,
         jam: k.jamLv | 0, liveAvg: liveAvg(s)
       };
     } catch (e) { return null; }
@@ -1376,7 +1474,7 @@
       if (!okState(s)) return null;
       return JSON.stringify({
         v: SAVE_VERSION, at: isNum(at) ? at : null, seed: s.seed | 0, choice: s.choice, name: normalizeName(s.name),
-        money: Math.round(s.money), month: s.month, acc: s.acc, speed: s.speed, tax: s.tax, rank: s.rank, bestPop: s.bestPop, rng: s.rng | 0,
+        money: Math.round(s.money), month: s.month, acc: s.acc, speed: s.speed, tax: s.tax, rank: s.rank, bestPop: s.bestPop, rng: s.rng | 0, star: s.star,
         entry: s.entry.map((e) => [e.x, e.y]),
         terrain: b64enc(s.terrain), use: b64enc(s.use), kind: b64enc(s.kind), lvl: b64enc(s.lvl), poll: b64enc(s.poll), blocked: b64enc(s.blocked),
         ev: { cool: s.ev.cool, active: s.ev.active.map((e) => ({ kind: e.kind, left: e.left, cells: e.cells.slice() })), lastBad: s.ev.lastBad }
@@ -1456,6 +1554,9 @@
       for (let i = 0; i < N; i++) if (s.blocked[i] && !rainCells.has(i)) s.blocked[i] = 0;
       for (const c of rainCells) if (isRoadUse(s.use[c]) && s.use[c] !== USE.ENTRY) s.blocked[c] = 1;
       recalc(s);
+      // ほし は保存した値に戻す（すみやすさ は月の中で少しずつ計算し直すので、読んだ時に全部計算し直すと ほし が 1 つずれる時がある。
+      // 開き直しで ほし が変わって見えないように。次の月の終わりに計算し直す。無い・おかしい時は計算した値）
+      if (isInt(o.star) && o.star >= 1 && o.star <= 5) s.star = o.star;
       s.prevPop = s.pop;
       s.bestSeen = s.pop;
       if (s.pop > s.bestPop) s.bestPop = s.pop;
@@ -1590,6 +1691,7 @@
       const ev = [];
       for (let mo = 0; mo < m; mo++) {
         policyAct(s, pol, mem);
+        if (isInt(o.tax) && s.rank >= 1) setTax(s, o.tax);   // 税を決めて比べる（数値合わせ）
         for (let t = 0; t < TICKS_PER_MONTH; t++) { ev.length = 0; tickOnce(s, k, ev); for (const e of ev) if (e.kind === "event") rep.events[e.ev] = (rep.events[e.ev] || 0) + 1; }
         for (const th of [1000, 10000, 30000, 60000]) if (rep.monthsTo[th] === null && s.pop >= th) rep.monthsTo[th] = s.month;
         rep.jamMax = Math.max(rep.jamMax, k.jamLv | 0);
@@ -1615,10 +1717,11 @@
     NAME, W, H, N, CHUNK, POLL_BLOCK, TICK_SEC, TICKS_PER_MONTH, START_MONEY, MONEY_MAX, MONEY_MIN, BEST_MAX, SPEEDS, NAME_MAX, DEFAULT_NAME,
     SAVE_VERSION, SAVE_KEY, SAVE_KEY_BAK, SAVE_KEY_BEST, SAVE_KEY_SEEN, UNDO_SEC,
     TER, TER_NAMES, USE, USE_NAMES, TERRAIN_TYPES, TOOLS, HOME, WORK, RANKS, EVENTS, VOICES,
+    BUILD_PAY, BUILD_PAY_RATE, SERVICE, TAX_INFLOW, TAX_MUL, SUBSIDY, DENS_BASE, DENS_JOB_STEP, DENS_JOB_MAX,
     EVENT_RATE, EVENT_COOL, EVENT_MIN_POP, EVENT_BAD_FROM, GROW_BASE, GROW_RATE, STAR_MUL, R_SOFT, RAIL_MIN, CAP_ROAD, CAP_X, CAP_CROSS,
     terrainChoices, newGame, step, canPlace, place, lineCells, rectCells, inspect, summary, setTax, setSpeed, rename, normalizeName,
     starReasons, voiceOf, makeSave, loadSave, saveVersionOf, validateBest, simulate, formatMoney, formatPop, dateText,
-    recalc, homeKindOf, natureKindAt, startEvent: (s, kind) => { try { const ev = []; if (!okState(s)) return null; const k = scratch(s); if (!k.ready) recalc(s); startEvent(s, k, kind, ev); if (k.netDirty) buildNet(s); return ev; } catch (e) { return null; } }
+    recalc, homeKindOf, natureKindAt, startEvent: (s, kind) => { try { const ev = []; if (!okState(s)) return null; const k = scratch(s); if (!k.ready) recalc(s); startEvent(s, k, kind, ev); if (k.netDirty) buildNet(s); if (k.netDirty || k.needTally) { tally(s); k.needTally = false; } return ev; } catch (e) { return null; } }
   };
   return Object.freeze(api);
 });
