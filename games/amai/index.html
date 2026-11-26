@@ -210,8 +210,29 @@
     max-width: 100%;
     max-height: 100%;
   }
+  /* とける みち（2026-11-26。約束 §1.14）：絵の箱の下の行。巣をはさんで 左に「とける みち」、右に数（絵に重ねない・押す邪魔をしない） */
+  .paths {
+    grid-row: 3;
+    grid-column: 1;
+    margin: 0;
+    padding: 0 8px;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 40px minmax(0, 1fr);
+    align-items: center;
+    font: 700 12px/18px var(--font-text);
+    color: #3a2a17;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .paths .pl { grid-column: 1; text-align: right; padding-right: 6px; overflow: hidden; }
+  .paths .pv { grid-column: 3; text-align: left; padding-left: 6px; overflow: hidden; font-variant-numeric: tabular-nums; }
+  .paths[data-state="counting"] .pv { color: rgba(58, 42, 23, 0.7); }
+  .paths[data-state="zero"] { color: #8a1f0f; }
+  .paths[data-state="none"] { visibility: hidden; }
   .nest {
     grid-row: 3;
+    grid-column: 1;   /* #paths と同じ升（列を足さない） */
     justify-self: center;
     align-self: end;
     width: 40px;
@@ -411,6 +432,7 @@
     .col .rest { font-size: 14px; line-height: 16px; }
     .hud { font-size: 16px; height: 18px; }
     .hud b { font-size: 16px; }
+    .paths { font-size: 15px; }
     .hint { font-size: 16px; }
     h1.title { font-size: 18px; }
   }
@@ -674,6 +696,7 @@
         <span class="chaltag">ちょうせん</span>
         <span class="leftbox">のこり <b id="left">0</b> こ</span></p>
       <canvas class="pic" id="pic" role="img" aria-label="え"></canvas>
+      <p class="paths" id="paths" data-state="counting" data-n=""><span class="pl" id="pathsLab">とける みち</span><span class="pv" id="pathsVal">かぞえてるよ…</span></p>
       <div class="nest" id="nest" aria-hidden="true"></div>
     </div>
     <div class="slots" id="slots" role="group" aria-label="わく">

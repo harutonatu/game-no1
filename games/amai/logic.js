@@ -1196,6 +1196,10 @@
   // 戻し先を探す（§1.13 R4）。states[k]＝k 番目の手を押す直前の局面（replayStates・main の履歴）。
   // 新しい方（k＝n−1）から 1 まで、1 局面ずつ makeRescue（上限 limit）で調べ、「とける」と言い切れた いちばん新しい k を返す。
   // 合計の手間が budget に届いた・どれも言い切れない：k＝0（面の最初。生成で解けると確かめた局面なので sure は opt.base0Sure）。
+  // opt.memo（とける みち の覚え。2026-11-26・§1.14）があれば、先に 1 回、新しい方から覚えを引いて
+  //   「1 とおり いじょう」と覚えている いちばん新しい k（床）を見つける（1 局面を落ち着かせる手間を 1 と数える）。
+  //   調べるのは床より新しい局面のうち、覚えていない（か「わからない」と覚えた）局面だけ（ちょうど 0 と覚えた局面は とばす）。
+  //   言い切れなかった・budget に届いたら床へ（床が無ければ今までどおり k＝0）。床より前（古い方）へは戻らない。
   // run(n) → { done, k, sure, nodes }（done までは k は null）
   const REWIND_LIMIT = 60;
   const REWIND_BUDGET = 1500;
@@ -1205,8 +1209,12 @@
     const limit = isInt(o.limit) && o.limit >= 0 ? o.limit : REWIND_LIMIT;
     const budget = isInt(o.budget) && o.budget >= 0 ? o.budget : REWIND_BUDGET;
     const base0Sure = o.base0Sure === true;
+    const memo = o.memo instanceof Map ? o.memo : null;
     let k = list.length - 1, cur = null, nodes = 0, done = null;
+    let floor = 0, scan = memo ? list.length - 1 : 0;   // 覚えを引く（scan が 1 以上の間）
+    const dead = new Set();   // ちょうど 0 と覚えた k
     const finish = (kk, sure) => { done = { done: true, k: kk, sure, nodes }; return done; };
+    const toFloor = () => finish(floor, floor > 0 ? true : base0Sure);
     return {
       run(n) {
         if (done) return done;
@@ -1214,8 +1222,17 @@
         let used = 0;
         try {
           while (used < max) {
-            if (k < 1) return finish(0, base0Sure);
-            if (nodes >= budget) return finish(0, base0Sure);
+            if (scan >= 1) {
+              const kn = countKnown(list[scan], memo);
+              used += 1;
+              if (kn && kn.v >= 1) { floor = scan; scan = 0; }
+              else { if (kn && kn.x && kn.v === 0) dead.add(scan); scan--; }
+              if (floor === list.length - 1 && floor > 0) return toFloor();   // いちばん新しい局面が「とける」と覚えている
+              continue;
+            }
+            if (k <= floor) return toFloor();
+            if (nodes >= budget) return toFloor();
+            if (!cur && dead.has(k)) { k--; continue; }
             if (!cur) cur = { k, base: 0, r: makeRescue(list[k], { limit }) };
             const want = Math.min(max - used, budget - nodes);
             const r = cur.r.run(want);
@@ -1227,13 +1244,140 @@
               cur = null; k--;
             } else if (step <= 0) { cur = null; k--; }   // 進まない（壊れた局面）：次へ
           }
-        } catch (e) { return finish(0, base0Sure); }
+        } catch (e) { return toFloor(); }
         return { done: false, k: null, sure: false, nodes };
       },
     };
   }
   // すぐに最後まで調べる（テスト・デバッグ用）
   function rescueSearch(state, opt) { return makeRescue(state, opt).run(Infinity); }
+
+  // ---------------------------------------------------------------- とける みち の数（2026-11-26。計画書 docs/plans/amai-count.md・約束 §0.13・§1.14）
+  // 「落ち着いてから押す」遊び方（§1.13 R1 と同じ前提）で、局面から全部運べる「ちがう行き着き方」を COUNT_CAP（100）まで数える。
+  //   行き着き方＝落ち着いた局面の並び（押した列でなく、押して落ち着いた局面で見分ける。同じ局面へ行く 2 つの列は 1 つと数える）。
+  //   同じ局面は 1 回だけ開く（覚え memo。そこから先の数は覚えた値を足す）。数は COUNT_CAP で頭打ち（COUNT_CAP＝「100 いじょう」）。
+  //   開いた局面が limit（既定 COUNT_LIMIT）を超えたら打ち切り：見つけた数が 1 以上なら「N いじょう」（some）、0 なら「わからない」（unknown）。
+  // 返す：run(n) → { done, result: "exact"|"many"|"some"|"unknown"|null, n, nodes, steps }。run(n) は 局面を落ち着かせる回数 n ごとに区切る。
+  //   exact＝ちょうど n とおり（0 なら とけないと言い切れた）・many＝COUNT_CAP いじょう（n＝COUNT_CAP）・some＝n とおり いじょう（打ち切り）・unknown＝わからない。
+  // memo（makeCountMemo()）を渡すと、調べた局面の数を覚え、次の調べ・makeRewind で使う（同じ面の間だけ使う。面を変えたら作り直す）。
+  // 時計は使わない（開いた局面の数で区切る＝決定的）。
+  const COUNT_CAP = 100;
+  const COUNT_LIMIT = 1500;   // 開く局面の上限（既定）。遊ぶ人をまねた 603 局面で、とける局面の 99% は 130 局面までに 100 いじょう か ちょうどの数が出た（いちばん多くて 2,089）
+  const COUNT_MEMO_MAX = 200000;   // 覚えの上限（超えたら忘れて作り直す）
+  function makeCountMemo() { return new Map(); }
+  // memo の中身：key → { v, x }（v＝数（COUNT_CAP で頭打ち）・x＝ちょうど（true）か「v いじょう」（false））
+  // c＝そこから とける みちの 1 つめの手（列。次の調べで先に試す道しるべ。無ければ -1）
+  function memoPut(memo, key, v, x, c) {
+    if (!memo) return;
+    const old = memo.get(key);
+    if (old && old.x) return;
+    if (old && !x && old.v >= v) return;
+    if (memo.size >= COUNT_MEMO_MAX) memo.clear();
+    memo.set(key, { v, x: !!x, c: isInt(c) ? c : old && isInt(old.c) ? old.c : -1 });
+  }
+  function makeCount(state, opt) {
+    const o = opt && typeof opt === "object" ? opt : {};
+    const s0 = asState(state);
+    const limit = isInt(o.limit) && o.limit >= 0 ? o.limit : COUNT_LIMIT;
+    const memo = o.memo instanceof Map ? o.memo : new Map();
+    const path = Array.isArray(o.path) && o.path.every((c) => isInt(c)) ? o.path.slice() : null;   // 道しるべ（とけると分かっている押す列。面の最初の solution など）
+    let nodes = 0, steps = 0, result = s0 ? null : "unknown", out = 0, stack = null;   // nodes＝開いた局面（上限 limit）・steps＝落ち着かせた回数（run(n) の区切り）
+    const CAP = COUNT_CAP;
+    const lower = () => { let t = 0; for (const f of stack) t += f.acc; return t; };
+    // 打ち切り・頭打ちのとき：積んでいる局面のそれぞれに「そこから先で見つけた数」を下の限りとして覚える
+    function keepLower() {
+      let t = 0;
+      for (let j = stack.length - 1; j >= 0; j--) {
+        t += stack[j].acc;
+        if (t >= CAP) memoPut(memo, stack[j].key, CAP, true, stack[j].win);
+        else if (t >= 1) memoPut(memo, stack[j].key, t, false, stack[j].win);
+      }
+    }
+    // 局面を落ち着かせ、鍵を作る。won なら 1 とおり
+    function look(s) {
+      steps++;
+      s = settleLite(s);
+      return { s, key: rescueKey(s), won: s.won === true };
+    }
+    // 先に試す列：道しるべ（opt.path の続き）か、覚えにある「とける 1 つめの手」
+    function push(lk, hint) {
+      nodes++;
+      const cands = rescueCands(lk.s);
+      const m = memo.get(lk.key);
+      const first = hint && hint.length ? hint[0] : m && isInt(m.c) ? m.c : -1;
+      const at = first >= 0 ? cands.findIndex((cd) => cd.c === first) : -1;
+      if (at > 0) cands.unshift(cands.splice(at, 1)[0]);
+      stack.push({ s: lk.s, key: lk.key, cands, i: 0, acc: 0, kids: new Set(), win: -1, hint: at >= 0 && hint && hint.length ? hint : null });
+    }
+    function finish(res, n) { result = res; out = n; }
+    function start() {
+      stack = [];
+      const lk = look(s0);
+      if (lk.won) { finish("exact", 1); return; }
+      const m = memo.get(lk.key);
+      if (m && m.x) { finish(m.v >= CAP ? "many" : "exact", m.v); return; }
+      push(lk, path);
+    }
+    function add(fr, v, c) {
+      if (fr.acc === 0 && v > 0) fr.win = c;
+      fr.acc = Math.min(CAP, fr.acc + v);
+      if (lower() >= CAP) { keepLower(); finish("many", CAP); return true; }
+      return false;
+    }
+    return {
+      run(n) {
+        const max = typeof n === "number" && n > 0 ? n : Infinity;
+        const at = steps;
+        try {
+          if (result === null && stack === null) start();
+          while (result === null) {
+            if (!stack.length) { finish("unknown", 0); break; }
+            const fr = stack[stack.length - 1];
+            if (fr.i >= fr.cands.length) {
+              // 全部試した：ちょうどの数を覚えて、親に足す
+              stack.pop();
+              const v = Math.min(CAP, fr.acc);
+              memoPut(memo, fr.key, v, true, fr.win);
+              if (!stack.length) { finish(v >= CAP ? "many" : "exact", v); break; }
+              const pa = stack[stack.length - 1];
+              if (add(pa, v, pa.cands[pa.i - 1].c)) break;
+              continue;
+            }
+            if (nodes >= limit) {
+              keepLower();
+              const m0 = memo.get(stack[0].key), t = Math.max(lower(), m0 ? m0.v : 0);   // 前の調べで覚えた「v いじょう」も使う
+              finish(t >= CAP ? "many" : t >= 1 ? "some" : "unknown", Math.min(CAP, t));
+              break;
+            }
+            if (steps - at >= max) break;
+            const cd = fr.cands[fr.i++];
+            const r = pressImpl(fr.s, cd.c);
+            if (r.outcome.kind !== "press") continue;
+            const lk = look(r.state);
+            if (fr.kids.has(lk.key)) continue;   // 同じ局面へ行く別の列は 1 つと数える
+            fr.kids.add(lk.key);
+            if (lk.won) { if (add(fr, 1, cd.c)) break; continue; }
+            const m = memo.get(lk.key);
+            if (m && m.x) { if (m.v > 0 && add(fr, m.v, cd.c)) break; continue; }
+            push(lk, fr.hint && fr.i === 1 ? fr.hint.slice(1) : null);
+          }
+        } catch (e) { result = "unknown"; out = 0; }
+        return { done: result !== null, result, n: out, nodes, steps };
+      },
+    };
+  }
+  // 覚えている数（落ち着かせた局面の鍵で引く）。{ v, x } か null
+  function countKnown(state, memo) {
+    try {
+      if (!(memo instanceof Map)) return null;
+      const s = asState(state);
+      if (!s) return null;
+      const t = settleLite(s);
+      if (t.won) return { v: 1, x: true };
+      return memo.get(rescueKey(t)) || null;
+    } catch (e) { return null; }
+  }
+  function countSearch(state, opt) { return makeCount(state, opt).run(Infinity); }
 
   function tryBuild(lv, pic, pk, prm, rng, work, pull, lids, ices, opt, noOver, soften, nslots) {
     // 1・2 面は「どう押してもクリアできる」保証を守るため、①・②を使わない（§2.1）
@@ -1588,6 +1732,7 @@
     createLevel, press, step,
     isStable, isStuck, canPress, edgeCells, hud,
     replay, validateState, replayStates, makeRescue, rescueSearch, makeRewind, RESCUE_LIMIT, REWIND_LIMIT, REWIND_BUDGET,
+    makeCount, countSearch, countKnown, makeCountMemo, COUNT_CAP, COUNT_LIMIT,
     validateSave, makeSave, pictureSig, saveFits, validateChal, makeChal,
     validateBest, recordBest, validateBook, addToBook, bookCount, validateClean, addClean, hasClean, validateGold, addGold, hasGold,
     levelChoices, canSelect,
