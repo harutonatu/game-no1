@@ -149,6 +149,92 @@ async function waitRescue(p, max = 200) {
 }
 // カードのボタンの大きさと、画面に収まるか
 const cardBtns = (p) => p.evaluate(() => [...document.querySelectorAll('#overlay:not([hidden]) #card .btns button')].map((b) => { const r = b.getBoundingClientRect(); return { cmd: b.dataset.cmd, text: b.textContent.trim(), w: Math.round(r.width), h: Math.round(r.height), in: r.left >= 0 && r.right <= innerWidth + 0.5 && r.top >= 0 && r.bottom <= innerHeight + 0.5, primary: b.classList.contains('primary') }; }));
+// とける みち（AW45・AW46。2026-11-26）
+// 数え終わるまで待つ（時計を進める）
+async function waitCount(p, max = 400) {
+  for (let i = 0; i < max; i++) { const g = await gs(p); if (!g.paths || g.paths.state !== 'counting') return g; await wait(p, 50); }
+  return gs(p);
+}
+// #paths の置き場所：巣をはさんで左に .pl・右に .pv、絵の箱の下の行（絵の canvas の下）、はみ出さない、字 12px 以上
+const pathsBox = (p) => p.evaluate(() => {
+  const q = (s) => document.querySelector(s);
+  const P = q('#paths'), A = q('#pathsLab'), B = q('#pathsVal'), N = q('#nest'), box = q('#picBox'), pic = q('#pic');
+  if (!P || !A || !B || !N || !box || !pic) return { ok: false, why: '部品が無い' };
+  const r = (e) => e.getBoundingClientRect();
+  const rp = r(P), ra = r(A), rb = r(B), rn = r(N), rx = r(box), rc = r(pic);
+  const font = Math.min(parseFloat(getComputedStyle(A).fontSize), parseFloat(getComputedStyle(B).fontSize));
+  const fitA = A.scrollWidth <= A.clientWidth + 1, fitB = B.scrollWidth <= B.clientWidth + 1;
+  const inBox = rp.left >= rx.left - 0.5 && rp.right <= rx.right + 0.5 && rp.top >= rx.top - 0.5 && rp.bottom <= rx.bottom + 0.5;
+  const sides = ra.right <= rn.left + 0.5 && rb.left >= rn.right - 0.5;
+  const below = rc.bottom <= rp.top + 0.5;
+  const inView = rp.left >= 0 && rp.right <= innerWidth + 0.5 && rp.bottom <= innerHeight + 0.5;
+  return { ok: fitA && fitB && inBox && sides && below && inView && font >= 12, font, fitA, fitB, inBox, sides, below, inView, a: A.textContent, b: B.textContent, w: [A.scrollWidth, A.clientWidth, B.scrollWidth, B.clientWidth] };
+});
+// 手で組む局面（setState に渡す形。色は数：0＝あか R・5＝あお B）
+function mkState(L, map, { cols = [[], [], [], []], slots = [] } = {}) {
+  const LETS = { R: 0, B: 5 };
+  let id = 500;
+  const cells = [];
+  for (const row of map) for (const ch of row) cells.push(ch === '.' ? -1 : LETS[ch]);
+  const left = cells.filter((v) => v >= 0).length;
+  return { level: 7, W: map[0].length, H: map.length, picture: 'test', mirror: false, repeat: false, cells, total: left, left,
+    cols: cols.map((c) => c.map((b) => ({ id: id++, color: b.c, count: b.n, lid: false, ice: 0 }))),
+    slots: Array.from({ length: L.SLOTS }, (_, i) => (slots[i] ? { id: id++, color: slots[i].c, count: slots[i].n } : null)), t: 0, presses: 0, won: left === 0 };
+}
+// Node で、解の 1 手目を押してから 決まった手（押せる列の (i×7) 番目）で詰ませ、押すたびに数え（画面と同じ覚え・道しるべ）、
+// 覚えあり（画面と同じ）・覚えなし（2026-11-26 まで）の戻し先を返す
+function rewindPlan(L, lv, { chal = false, pick = null } = {}) {
+  const settle = (s) => { for (let i = 0; i < 20000; i++) { const r = L.step(s); if (!r.moved) return s; s = r.state; } return s; };
+  const pk = pick || L.pickPicture(lv, null);
+  const c = chal ? L.createLevel(lv, pk, { challenge: true }) : L.createLevel(lv, pk);
+  const memo = L.makeCountMemo();
+  const sol = c.info.solution;
+  let s = c.state;
+  L.countSearch(s, { memo, path: sol });
+  const hist = [], seq = [];
+  s = settle(s); hist.push(s); seq.push(sol[0]); s = L.press(s, sol[0]).state;
+  L.countSearch(s, { memo, path: sol.slice(1) });
+  s = settle(s);
+  for (let i = 0; i < 200 && !s.won && !L.isStuck(s); i++) {
+    const cols = [0, 1, 2, 3].filter((k) => L.canPress(s, k) === null);
+    if (!cols.length) break;
+    const col = cols[(i * 7) % cols.length];
+    hist.push(s); seq.push(col); s = L.press(s, col).state;
+    L.countSearch(s, { memo });
+    s = settle(s);
+  }
+  const stuck = !s.won && L.isStuck(s);
+  const a = L.makeRewind(hist, { base0Sure: true, memo }).run();
+  const b = L.makeRewind(hist, { base0Sure: true }).run();
+  return { seq, stuck, memoK: a.k, oldK: b.k };
+}
+// 押す列を入れる（押すたびに数え終わるまで待つ。予備軍のカードが出たら［このまま つづける］）→ うごかせないのカードで［だいじょうぶな ところまで もどす］
+async function playAndRewind(p, seq) {
+  for (const c of seq) {
+    await settleG(p); await skipG(p);
+    let g = await gs(p);
+    if (g.overlay === 'rescue') { await wait(p, 450); await clickCmd(p, 'close'); }
+    const k = await pressCol(p, c);
+    if (k !== 'press') throw new Error(`列 ${c} が押せない（${k}）`);
+    await skipG(p);
+    await waitCount(p);
+  }
+  await settleG(p); await skipG(p); await wait(p, 600);
+  const card = (await gs(p)).overlay;
+  if (card === 'stuck' || card === 'rescue') { await wait(p, 450); await clickCmd(p, 'rewindYes'); }
+  await waitRescue(p);
+  await skipG(p); await wait(p, 100);
+  const g = await waitCount(p);
+  return { card, g };
+}
+// 今の表示が、その局面を Node と同じ logic で数え直した数と同じか（数え直しが ちょうど・100 いじょう のときだけ比べる）
+async function sameAsFresh(p) {
+  const g = await waitCount(p);
+  const fresh = await p.evaluate(() => { const L = window.AmaiLogic; const r = L.countSearch(L.validateState(window.AmaiGame.logic())); return { result: r.result, n: r.n }; });
+  const want = fresh.result === 'exact' ? (fresh.n === 0 ? 'zero' : 'exact') : fresh.result === 'many' ? 'many' : null;
+  return { ok: want === null || (g.paths.state === want && g.paths.n === fresh.n), shown: g.paths, fresh, presses: g.presses };
+}
+
 
 // ---------- 遊ぶ ----------
 const solutionOf = (p) => p.evaluate(() => window.AmaiGame.solution());
@@ -2580,6 +2666,123 @@ export const tests = [
         check(`④もどした ちょうせんの続き：「もどしたので きんの わは つかないよ」も（${h2}）`, /ちょうせんの つづきから/.test(h2 || '') && /もどしたので きんの わは つかないよ/.test(h2 || ''), h2);
         await ctx.close();
       }
+    },
+  },
+  // ---------- とける みち（2026-11-26。約束 §0.13・§1.14・計画書 docs/plans/amai-count.md） ----------
+  {
+    id: 'AW45', tier: 'smoke', title: 'あまいもの とける みち の表示（2026-11-26。約束 §1.14）：①1 面の最初は「とける みち ／ N とおり」（N＝Node の countSearch のちょうどの数）・巣をはさんで左に「とける みち」、右に数（絵の箱の下の行・絵に重ならない・SE 縦に収まる・字 12px 以上）②3 面の最初は「100 いじょう」③押した直後は数えている（data-state counting）→ 数え終わると数 ④とけない局面（あと 1 手で必ず うごかせない・うごかせない）は「この ままだと とけないよ」（zero）⑤クリアしたら出さない',
+    async run({ browser, check, root }) {
+      const L = loadLogic(root);
+      const { ctx, page } = await openG(browser, 'AW45', { v: SMOKE_V() });
+      // ① 1 面
+      await setLevel(page, 1);
+      const g1 = await waitCount(page);
+      const c1 = L.createLevel(1, L.pickPicture(1, null));
+      const n1 = L.countSearch(c1.state, { path: c1.info.solution });
+      const box1 = await pathsBox(page);
+      check(`①1 面の最初：${J(g1.paths)}（Node ${n1.result} ${n1.n}）`, g1.paths.state === 'exact' && g1.paths.n === n1.n && n1.result === 'exact' && g1.paths.text === `とける みち ${n1.n} とおり`, { paths: g1.paths, n1 });
+      check(`①巣をはさんで左に「とける みち」・右に数、絵の箱の下の行で絵に重ならず、はみ出さない・字 ${box1.font}px（${J(box1)}）`, box1.ok, box1);
+      // ② 3 面
+      await setLevel(page, 3);
+      const g3 = await waitCount(page);
+      check(`②3 面の最初は 100 いじょう（${J(g3.paths)}）`, g3.paths.state === 'many' && g3.paths.n === 100 && g3.paths.text === 'とける みち 100 いじょう', g3.paths);
+      // ③ 押した直後
+      const sol3 = await solutionOf(page);
+      const right = await page.evaluate((c) => { window.AmaiGame.press(c); return window.AmaiGame.getState().paths; }, sol3[0]);
+      await settleG(page); await skipG(page);
+      const g3b = await waitCount(page);
+      check(`③押した直後は数えている（${J(right)}）→ 数え終わると数（${J(g3b.paths)}）`, right.state === 'counting' && right.n === null && (g3b.paths.state === 'many' || g3b.paths.state === 'exact') && g3b.paths.n >= 1, { right, after: g3b.paths });
+      // ④ とけない局面（手で組む。R が外、B は R に囲まれた内側）
+      const map = ['RRRRR', 'RBBBR', 'RRRRR'];
+      const near = mkState(L, map, { slots: [{ c: 5, n: 1 }, { c: 5, n: 1 }], cols: [[{ c: 5, n: 1 }, { c: 0, n: 12 }], [], [], []] });
+      await page.evaluate((s) => window.AmaiGame.setState(s), near); await wait(page, 100);
+      const gn = await waitCount(page);
+      const zbox = await pathsBox(page);
+      const stuck = mkState(L, map, { slots: [{ c: 5, n: 1 }, { c: 5, n: 1 }, { c: 5, n: 1 }], cols: [[{ c: 0, n: 12 }], [], [], []] });
+      await page.evaluate((s) => window.AmaiGame.setState(s), stuck); await wait(page, 300);
+      const gs2 = await waitCount(page);
+      check(`④あと 1 手で うごかせない局面（${J(gn.paths)}・stuck ${gn.stuck}）・うごかせない局面（${J(gs2.paths)}・${gs2.overlay}）は「この ままだと とけないよ」・はみ出さない（${zbox.ok}）`, gn.paths.state === 'zero' && gn.paths.n === 0 && gn.paths.text === 'この ままだと とけないよ' && !gn.stuck && gs2.paths.state === 'zero' && zbox.ok, { gn: gn.paths, gs2: gs2.paths, zbox });
+      // ⑤ クリア
+      await setLevel(page, 1);
+      await playSolution(page);
+      const c = await toClear(page);
+      const gw = await gs(page);
+      const vis = await page.evaluate(() => getComputedStyle(document.querySelector('#paths')).visibility);
+      check(`⑤クリアしたら出さない（${c.overlay}・${J(gw.paths)}・visibility ${vis}）`, c.overlay === 'clear' && gw.paths.state === 'none' && vis === 'hidden', { paths: gw.paths, vis });
+      await ctx.close();
+    },
+  },
+  {
+    id: 'AW46', tier: 'full', title: 'あまいもの とける みち と もどす先（2026-11-26。約束 §1.14）：①80 面（前の絵）で解の 1 手目を押してから まちがえて うごかせなくなると、［だいじょうぶな ところまで もどす］は覚えている「とける」いちばん新しい局面へ（面の最初まで戻らない。Node で同じ手を数えた戻し先と同じ）・戻ったら数が 1 とおり いじょう ②ちょうせん（43 面）でも同じ ③1手もどす・やりなおし・開き直し（途中から再開）のあとも、その局面の数（Node で数え直した数と同じ） ④実時間で数えるのに長くかかる局面（80 面の 1 手目の まちがい）では「かぞえてるよ…」を出してから「わからない」か数 ⑤SE 縦・Safari 縦・SE 横・Safari 横で、どの言葉も巣をはさんで はみ出さない',
+    async run({ browser, check, root }) {
+      const L = loadLogic(root);
+      const { ctx, page } = await openG(browser, 'AW46', { v: SMOKE_V() });
+      // ① 80 面（2026-11-10 に並べ替える前の絵。AL24・AW40 と同じ盤）
+      const e80 = rewindPlan(L, 80, { pick: { id: OLD_PIC[80], mirror: false, repeat: false } });
+      check(`①Node：解の 1 手目のあと まちがえて ${e80.seq.length} 手で うごかせない・覚えありの戻し先 k＝${e80.memoK}（覚えなしなら ${e80.oldK}）`, e80.stuck && e80.memoK > 0 && e80.oldK < e80.memoK, e80);
+      await setOldLevel(page, 80);
+      const r80 = await playAndRewind(page, e80.seq);
+      check(`①画面：うごかせない（${r80.card}）→ もどすと押した数 ${e80.seq.length} → ${r80.g.presses}（Node の戻し先 ${e80.memoK}・面の最初へ戻らない）・ヒント「${r80.g.hint}」・とける みち ${J(r80.g.paths)}`, r80.card === 'stuck' && r80.g.presses === e80.memoK && r80.g.presses > 0 && /ここからなら/.test(r80.g.hint) && r80.g.paths.n >= 1 && ['exact', 'many', 'some'].includes(r80.g.paths.state), r80);
+      // ② ちょうせん（43 面・今の絵）
+      const e43 = rewindPlan(L, 43, { chal: true });
+      await page.evaluate(() => window.AmaiGame.setLevel(43, { challenge: true })); await wait(page, 150);
+      const r43 = await playAndRewind(page, e43.seq);
+      check(`②ちょうせん 43 面：Node の戻し先 ${e43.memoK}（覚えなし ${e43.oldK}）→ 画面 ${r43.g.presses}（${r43.card}・わく ${r43.g.slotCount}・chalUsed ${r43.g.chalUsed}）・${J(r43.g.paths)}`, e43.stuck && e43.memoK > 0 && r43.card === 'stuck' && r43.g.presses === e43.memoK && r43.g.slotCount === 2 && r43.g.chalUsed === true && r43.g.paths.n >= 1, { e43, r43 });
+      // ③ 1手もどす・やりなおし・開き直し
+      await setLevel(page, 5);
+      const sol5 = await solutionOf(page);
+      for (const c of sol5.slice(0, 3)) { await settleG(page); await pressCol(page, c); await skipG(page); await wait(page, 100); }
+      await settleG(page); await skipG(page);
+      await page.evaluate(() => window.AmaiGame.press([0, 1, 2, 3].find((c) => window.AmaiLogic.canPress(window.AmaiLogic.validateState(window.AmaiGame.logic()), c) === null)));
+      await settleG(page); await skipG(page); await waitCount(page);
+      await page.click('#undoBtn'); await wait(page, 100); await settleG(page); await skipG(page);
+      const u = await sameAsFresh(page);
+      await page.click('#restartBtn'); await wait(page, 450); await clickCmd(page, 'restartYes'); await wait(page, 150);
+      const rs = await sameAsFresh(page);
+      for (const c of sol5.slice(0, 4)) { await settleG(page); await pressCol(page, c); await skipG(page); await wait(page, 100); }
+      await settleG(page); await skipG(page);
+      const before = await sameAsFresh(page);
+      await page.reload(); await wait(page, 300);
+      const re = await sameAsFresh(page);
+      check(`③1手もどす（${J(u)}）・やりなおし（${J(rs)}）・開き直し（前 ${J(before.shown)} → ${J(re)}）のあとも その局面の数`, u.ok && rs.ok && re.ok && before.ok && re.presses === 4 && re.shown.state === before.shown.state && re.shown.n === before.shown.n, { u, rs, before, re });
+      await ctx.close();
+      // ④ 実時間（早送りなし）で「かぞえてるよ…」
+      {
+        const { ctx: c2, page: p2 } = await newPage(browser, SMOKE_V(), 'AW46-実時間', {});
+        await gotoG(p2);
+        await setOldLevel(p2, 80);
+        await sleep(300);
+        const sol80 = await solutionOf(p2);
+        const seen = await p2.evaluate(async (first) => {
+          const G = window.AmaiGame, L = window.AmaiLogic;
+          const st = L.validateState(G.logic());
+          const wrong = [0, 1, 2, 3].find((c) => c !== first && L.canPress(st, c) === null);
+          const texts = [];
+          const ob = new MutationObserver(() => texts.push(document.querySelector('#paths').dataset.state + ':' + document.querySelector('#pathsVal').textContent));
+          ob.observe(document.querySelector('#paths'), { subtree: true, childList: true, characterData: true, attributes: true });
+          G.press(wrong);
+          const t0 = performance.now();
+          while (performance.now() - t0 < 20000) { await new Promise((r) => setTimeout(r, 100)); if (G.getState().paths.state !== 'counting') break; }
+          ob.disconnect();
+          return { wrong, texts, end: G.getState().paths, ms: Math.round(performance.now() - t0) };
+        }, sol80[0]);
+        check(`④実時間で長くかかる局面（列 ${seen.wrong}・${seen.ms}ms）は「かぞえてるよ…」を出してから（${J([...new Set(seen.texts)].slice(0, 6))}）→ ${J(seen.end)}`, seen.texts.includes('counting:かぞえてるよ…') && ['unknown', 'some', 'many', 'exact'].includes(seen.end.state) && (seen.end.state !== 'unknown' || seen.end.text === 'とける みち わからない'), seen);
+        await c2.close();
+      }
+      // ⑤ 画面の大きさ：どの言葉も はみ出さない
+      const WORDS = [['とける みち', 'かぞえてるよ…'], ['とける みち', '99 とおり'], ['とける みち', '100 いじょう'], ['とける みち', '99 いじょう'], ['とける みち', 'わからない'], ['この ままだと', 'とけないよ']];
+      const bad = [];
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), custom(568, 270, null, 'SE Safari 横 568×270')]) {
+        const { ctx: c3, page: p3 } = await openG(browser, 'AW46-' + v.label, { v });
+        await setLevel(p3, 80); await wait(p3, 300);
+        for (const [a, b] of WORDS) {
+          await p3.evaluate(([a, b]) => { document.querySelector('#pathsLab').textContent = a; document.querySelector('#pathsVal').textContent = b; }, [a, b]);
+          const bx = await pathsBox(p3);
+          if (!bx.ok) bad.push({ v: v.label, a, b, bx });
+        }
+        await c3.close();
+      }
+      check(`⑤SE 縦・Safari 縦・SE 横・Safari 横で 6 つの言葉が どれも巣をはさんで収まる（だめ ${bad.length}）`, bad.length === 0, bad);
     },
   },
 ];

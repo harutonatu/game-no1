@@ -539,7 +539,7 @@ const M = [
   // だいじょうぶな ところまで もどす・クリアのカードから ちょうせんへ・もどしと花輪（2026-11-10。計画書 docs/plans/amai-rescue.md・約束 §0.10・§0.11・§1.13）
   ['MA72 あまいものあつめ：調べの上限に届いたのに「とけない」と言い切る（見つける：AL24）', 'ルール', 'games/amai/logic.js', 'else result = r === "empty" ? "dead" : "unknown";', 'else result = "dead";'],
   ['MA73 あまいものあつめ：戻し先を調べずに 1 手前を返す（見つける：AL24・AW39）', 'お助け', 'games/amai/logic.js', 'if (r.result === "solved") return finish(cur.k, true);', 'return finish(cur.k, true);'],
-  ['MA74 あまいものあつめ：言い切れない局面でも予備軍の知らせを出す（見つける：AW40）', 'お助け', 'games/amai/main.js', 'if (r.result !== "dead" || state !== st) return;', 'if (r.result === "solved" || state !== st) return;'],
+  ['MA74 あまいものあつめ：言い切れない局面（とける みち が わからない）でも予備軍の知らせを出す（2026-11-26 に置換元を onCounted に。見つける：AW40）', 'お助け', 'games/amai/main.js', 'if (!countRes || countRes.result !== "exact" || countRes.n !== 0) return;', 'if (!countRes || countRes.n !== 0) return;'],
   ['MA75 あまいものあつめ：だいじょうぶな ところまで もどしても押した手を切りつめない（保存と局面が食い違う。見つける：AW39）', 'データ', 'games/amai/main.js', '    presses.length = k;\n', ''],
   ['MA76 あまいものあつめ：ちょうせんで 1手もどしても もどした印が付かない（金の花輪が付く。見つける：AW34・AW41）', 'ルール', 'games/amai/main.js', '    if (chal) chalUsed = true;   // ちょうせんで 1手もどすを使った面は、金の花輪を付けない（§0.11）\n', ''],
   ['MA77 あまいものあつめ：もどした ちょうせんのクリアでも amai.gold に書く（見つける：AW41）', 'ルール', 'games/amai/main.js', 'const rg = chalUsed ? null : safeCall(', 'const rg = safeCall('],
@@ -555,6 +555,9 @@ const M = [
   ['MA91 あまいものあつめ：ちょうせんのクリアの［ふつうの つづき］が amai.save の続きを使わない（次の面から始める。見つける：AW44）', 'データ消失', 'games/amai/main.js', 'if (c && c.gold && c.resume) {', 'if (false) {'],
   ['MA92 あまいものあつめ：amai.chal の絵が その面の絵かを確かめない（見つける：AW44）', 'データ', 'games/amai/main.js', '        && cv.pick.id === safeCall(() => L.pickPicture(cv.level, null).id, "");', '        && true;'],
   ['MA93 あまいものあつめ：ちょうせんの途中の面えらびで ふつうの とちゅうが消えることを知らせない（見つける：AW42・AW44）', 'UX', 'games/amai/main.js', 'const normalMid = !!(sv && Array.isArray(sv.presses) && sv.presses.length > 0);', 'const normalMid = false;'],
+  ['MA94 あまいものあつめ：とける みち を数えるのを上限で打ち切ったのに「ちょうど」と言う（わからない・N いじょう が ちょうどの数になる。見つける：AL27）', 'ルール', 'games/amai/logic.js', 'finish(t >= CAP ? "many" : t >= 1 ? "some" : "unknown", Math.min(CAP, t));', 'finish("exact", Math.min(CAP, t));'],
+  ['MA95 あまいものあつめ：打ち切ったときの「N いじょう」を ちょうどの数として覚える（次に数えると少ない数のまま。見つける：AL27）', 'ルール', 'games/amai/logic.js', 'else if (t >= 1) memoPut(memo, stack[j].key, t, false, stack[j].win);', 'else if (t >= 1) memoPut(memo, stack[j].key, t, true, stack[j].win);'],
+  ['MA96 あまいものあつめ：だいじょうぶな ところまで もどす が とける みち の覚えを使わない（覚えている「とける」局面より前、面の最初まで戻る。見つける：AW46）', 'お助け', 'games/amai/main.js', 'L.makeRewind(states, { base0Sure: !custom, memo: memoNow() })', 'L.makeRewind(states, { base0Sure: !custom })'],
   // ぼくのまち（games/machi/。2026-11-26。計画書 docs/plans/machi.md §7。MC1〜MC56 はロジック、MC57〜MC61 は画面）
   //   ロジックの変異は ONLY=CL1〜CL21、画面の変異は ONLY=CW1〜CW16 で絞って流す（tests/README.md「ぼくのまちの変異テスト」）
   ['MC1 ぼくのまち：いりぐちと つながっていなくても 育つ（connected が みちの塊が あるだけで真。見つける：CL3）', 'ルール', 'games/machi/logic.js', 'return z >= 0 && s.net.comps[z] && s.net.comps[z].entry;', 'return z >= 0 && !!s.net.comps[z];'],

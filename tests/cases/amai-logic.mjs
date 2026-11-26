@@ -1476,6 +1476,67 @@ export const tests = [
       check(`⑦壊れた局面でも例外なし（${threw || 'なし'}）・unknown と k＝0（${J(outs)}）`, threw === null && outs.every((v) => v === 'unknown' || v === 0), { outs });
     },
   },
+  // ---------- とける みち の数（2026-11-26。約束 §0.13・§1.14・計画書 docs/plans/amai-count.md） ----------
+  {
+    id: 'AL27', tier: 'smoke', node: true, title: 'あまいものあつめ：とける みち の数 countSearch・makeCount（2026-11-26。約束 §1.14）：①手で組んだ小さな局面と 1 面の最初で、数＝「落ち着いてから押す」で行き着ける ちがう局面の並びを全部たどった数（テストの中の総当たり。同じ局面へ行く列は 1 つ）・100 を超える局面は many（n＝100）②決定的（2 回とも同じ・run(1) の小分けでも同じ）③上限：limit 0 は unknown・途中で打ち切ると some（1〜ほんとうの数）・同じ覚えで最後まで数えるとほんとうの数 ④80 面の最初（道しるべ solution）は many ⑤うごかせない局面・あと 1 手で必ず うごかせない局面は exact 0 ⑥覚え：countKnown が数を返し、makeRewind（覚えあり）は覚えている「とける」いちばん新しい局面へ（budget 0 でも）・覚えなしは今までどおり k＝0 ⑦壊れた局面でも例外なし（unknown・null）',
+    run({ check, root }) {
+      const L = load(root);
+      const settle = (s) => { for (let i = 0; i < 20000; i++) { const r = L.step(s); if (!r.moved) return s; s = r.state; } return s; };
+      // 総当たり（テストの中の別の作り）：落ち着かせ → 押せる列を全部 → 同じ局面へ行く列は 1 つ → クリアで 1
+      const keyOf = (s) => J([s.cells, s.cols, s.slots]);
+      const bf = (s, memo = new Map()) => {
+        s = settle(s); if (s.won) return 1;
+        const k = keyOf(s); if (memo.has(k)) return memo.get(k);
+        const kids = new Set(); let t = 0;
+        for (let c = 0; c < 4; c++) { if (L.canPress(s, c) !== null) continue; const u = settle(L.press(s, c).state); const kk = keyOf(u); if (kids.has(kk)) continue; kids.add(kk); t += bf(u, memo); }
+        memo.set(k, t); return t;
+      };
+      const map = ['RRRRR', 'RBBBR', 'RRRRR'];
+      const sD = mk(L, map, { cols: [[{ c: LET.R, n: 6 }], [{ c: LET.R, n: 6 }, { c: LET.B, n: 1 }], [{ c: LET.B, n: 1 }], [{ c: LET.B, n: 1 }]] });
+      const sF = mk(L, map, { cols: [[{ c: LET.B, n: 1 }, { c: LET.R, n: 6 }], [{ c: LET.R, n: 6 }, { c: LET.B, n: 1 }], [{ c: LET.B, n: 1 }], []] });
+      const sA = mk(L, map, { cols: [[{ c: LET.R, n: 4 }], [{ c: LET.R, n: 4 }], [{ c: LET.R, n: 4 }, { c: LET.B, n: 1 }], [{ c: LET.B, n: 1 }, { c: LET.B, n: 1 }]] });
+      const c1 = L.createLevel(1, L.pickPicture(1, null));
+      const rD = L.countSearch(sD), rF = L.countSearch(sF), rA = L.countSearch(sA), r1 = L.countSearch(c1.state, { path: c1.info.solution });
+      const bD = bf(sD), bF = bf(sF), bA = bf(sA), b1 = bf(c1.state);
+      check(`①数＝総当たり：手で組んだ局面 ${rD.result} ${rD.n}（総当たり ${bD}）・${rF.result} ${rF.n}（${bF}）・1 面の最初 ${r1.result} ${r1.n}（${b1}）・総当たり ${bA} の局面は many ${rA.result} ${rA.n}・COUNT_CAP ${L.COUNT_CAP}`,
+        L.COUNT_CAP === 100 && rD.result === 'exact' && rD.n === bD && bD >= 1 && bD < 100 && rF.result === 'exact' && rF.n === bF && bF >= 1 && bF < 100 && r1.result === 'exact' && r1.n === b1 && b1 >= 1 && b1 < 100 && bA >= 100 && rA.result === 'many' && rA.n === 100, { rD, rF, rA, r1, bD, bF, bA, b1 });
+      // ② 決定的
+      const again = L.countSearch(sD);
+      const mc = L.makeCount(sD);
+      let part = null, calls = 0;
+      while (calls < 100000) { part = mc.run(1); calls++; if (part.done) break; }
+      check(`②2 回とも同じ（${again.result} ${again.n}・${again.nodes} 局面 ＝ ${rD.result} ${rD.n}・${rD.nodes}）・run(1) を ${calls} 回でも同じ（${part && part.result} ${part && part.n}・${part && part.nodes}）`, again.result === rD.result && again.n === rD.n && again.nodes === rD.nodes && !!part && part.done && part.result === rD.result && part.n === rD.n && part.nodes === rD.nodes, { again, part });
+      // ③ 上限
+      const z = L.countSearch(sD, { limit: 0 });
+      const memo = L.makeCountMemo();
+      const cut = L.countSearch(sD, { limit: 6, memo });
+      const full = L.countSearch(sD, { memo });
+      check(`③limit 0 は unknown（${z.result}）・6 局面で打ち切ると some（${cut.result} ${cut.n}）・同じ覚えで最後まで数えると ほんとうの数（${full.result} ${full.n}＝${bD}）`, z.result === 'unknown' && z.n === 0 && cut.result === 'some' && cut.n >= 1 && cut.n <= bD && full.result === 'exact' && full.n === bD, { z, cut, full });
+      // ④ 80 面の最初（2026-11-10 に並べ替える前の 80 面の絵。AL24 と同じ盤）
+      const c80 = L.createLevel(80, { id: 'inumorioekaki', mirror: false, repeat: false });
+      const r80 = L.countSearch(c80.state, { path: c80.info.solution });
+      check(`④80 面の最初（道しるべ solution）は many（${r80.result} ${r80.n}・${r80.nodes} 局面）`, r80.result === 'many' && r80.n === 100, r80);
+      // ⑤ 詰んだ局面
+      const stuck = mk(L, map, { slots: [{ c: LET.B, n: 1 }, { c: LET.B, n: 1 }, { c: LET.B, n: 1 }], cols: [[{ c: LET.R, n: 12 }], [], [], []] });
+      const near = mk(L, map, { slots: [{ c: LET.B, n: 1 }, { c: LET.B, n: 1 }], cols: [[{ c: LET.B, n: 1 }, { c: LET.R, n: 12 }], [], [], []] });
+      const rs = L.countSearch(stuck), rn = L.countSearch(near);
+      check(`⑤うごかせない局面は exact 0（${rs.result} ${rs.n}）・あと 1 手で必ず うごかせない局面も exact 0（${rn.result} ${rn.n}）`, L.isStuck(stuck) && !L.isStuck(near) && rs.result === 'exact' && rs.n === 0 && rn.result === 'exact' && rn.n === 0, { rs, rn });
+      // ⑥ 覚えと戻し先
+      const m2 = L.makeCountMemo();
+      L.countSearch(sD, { memo: m2 }); L.countSearch(near, { memo: m2 }); L.countSearch(stuck, { memo: m2 });
+      const kD = L.countKnown(sD, m2), kN = L.countKnown(near, m2), kX = L.countKnown(sF, m2);
+      const list = [sF, sD, near, stuck];
+      const w1 = L.makeRewind(list, { base0Sure: true, memo: m2, budget: 0 }).run();
+      const w0 = L.makeRewind(list, { base0Sure: true, budget: 0 }).run();
+      let wp = null; const mw = L.makeRewind(list, { base0Sure: true, memo: m2, budget: 0 }); for (let i = 0; i < 1000; i++) { wp = mw.run(1); if (wp.done) break; }
+      check(`⑥countKnown：${J(kD)}・${J(kN)}・覚えていない局面は null（${J(kX)}）・makeRewind（覚えあり・budget 0）は覚えている とける いちばん新しい k＝1（${w1.k}・sure ${w1.sure}・小分けでも ${wp && wp.k}）・覚えなしは k＝0（${w0.k}）`,
+        !!kD && kD.v === bD && kD.x === true && !!kN && kN.v === 0 && kN.x === true && kX === null && w1.done && w1.k === 1 && w1.sure === true && !!wp && wp.k === 1 && w0.k === 0, { kD, kN, w1, w0 });
+      // ⑦ 壊れた局面
+      let threw = null; const outs = [];
+      try { for (const x of [null, undefined, {}, 1, 'x', { cols: 1 }]) { outs.push(L.countSearch(x).result); outs.push(L.countKnown(x, m2)); outs.push(L.countKnown(sD, x)); } } catch (e) { threw = e.message; }
+      check(`⑦壊れた局面でも例外なし（${threw || 'なし'}）・unknown と null（${J(outs)}）`, threw === null && outs.every((v) => v === 'unknown' || v === null), { outs });
+    },
+  },
   // ---------- 面の並べ方の決まり（2026-11-10・11。約束 §2.6・計画書 docs/plans/amai-parts.md §12〜§14） ----------
   {
     id: 'AL25', tier: 'smoke', node: true, title: 'あまいものあつめ：面の並べ方の決まり（3 面から：となりの面に同じ行動・同じ場所・同じ動物を続けない・最後の面が 37 面以上の どの連続 4 面にも同じ行動は 1 回まで・どの連続 6 面にも同じ動物・同じ場所は 2 回まで〔36→37 面の境目を含む〕・段の並びは 4/8/12/12/214 で前と同じ形・3 面からの id はみな 動物＋場所＋行動 に読める）',

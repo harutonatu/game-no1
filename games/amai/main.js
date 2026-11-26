@@ -36,9 +36,11 @@
   const HINT_FADE_MS = 3500;    // 案内は少したったら薄くする（文字は残す）
   const POLL_MS = 100;          // ありんこが全部巣に入るのを待つ間の見回り
   // だいじょうぶな ところまで もどす（計画書 docs/plans/amai-rescue.md・約束 §1.13）
-  const DOOM_LIMIT = 150;       // 予備軍を調べる 2 段目の上限（局面の数）。言い切れなければ何も言わない
-  const SLICE_MS = 12;          // 調べる処理を 1 回に進める時間の目安（画面を止めない）
+  // 予備軍は「とける みち」が ちょうど 0 と言い切れたとき（2026-11-26。前は makeRescue の上限 150 で dead のとき）
+  const SLICE_MS = 8;           // 調べる処理を 1 回に進める時間の目安（画面を止めない。1 回の長い処理 50ms 以内。2026-11-26 に 12 から）
   const SLICE_NODES = 40;       // 1 回に開く局面の上限（時計を止めたテストの画面でも進むように、数でも区切る）
+  // とける みち の数（2026-11-26。計画書 docs/plans/amai-count.md・約束 §0.13・§1.14）
+  const COUNT_SHOW_MS = 250;    // 数え始めて これより長くかかったら「かぞえてるよ…」を出す（すぐ出る数のたびに ちらつかせない）
 
   // 案内は絵と わくの間に 1 行で出す（SE 縦の幅 288px に 12px で入る長さ。入らなければ 11px に縮める）
   const HINT_FIRST = "はこを おすと、ありんこが はこぶよ";
@@ -66,7 +68,8 @@
     helpBtn: $("helpBtn"), soundBtn: $("soundBtn"), playView: $("playView"), picBox: $("picBox"), pic: $("pic"), nest: $("nest"),
     slots: $("slots"), grid: $("grid"), fx: $("fx"), hint: $("hint"),
     undoBtn: $("undoBtn"), restartBtn: $("restartBtn"), fastBtn: $("fastBtn"), bookBtn: $("bookBtn"), selectBtn: $("selectBtn"),
-    overlay: $("overlay"), card: $("card")
+    overlay: $("overlay"), card: $("card"),
+    paths: $("paths"), pathsLab: $("pathsLab"), pathsVal: $("pathsVal")
   };
   const missing = Object.keys(el).filter((k) => !el[k]);
   if (missing.length) throw new Error("あまいものあつめ: 画面の部品が見つかりません：" + missing.join(", "));
@@ -187,6 +190,12 @@
   let rescuing = false;         // 戻し先を探している間（箱・1手もどす・やりなおしを受けない）
   let chalUsed = false;         // ちょうせんで 1手もどす・だいじょうぶな ところまで もどすを使った（金の花輪を付けない。やりなおしで消える）
   let job = null;               // 区切って進める調べ（{ run, searcher, check, finish, abort }）
+  // とける みち（§1.14）。どれも保存しない
+  let countMemo = null;         // L.makeCountMemo()：調べた局面の数の覚え（同じ面・絵・ちょうせんの間だけ。戻し先にも使う）
+  let countFor = "";            // countMemo の面の印
+  let countSeq = 0;             // 局面が変わる（押す・もどす・やりなおし・面を始める）たびに 1 増やす
+  let countRes = null;          // { result, n }。数えている間は null
+  let countSlow = false;        // 数えるのに COUNT_SHOW_MS より長くかかっている（「かぞえてるよ…」を出す）
 
   // 1 はこびを回すのは、表に出ていて・古いページでなく・カードが無く・落ち着いていないときだけ（変異 MA14 の置換元。1 行の式のまま）
   const running = () => !hiddenNow && !stale && overlay === null && !stable;
@@ -438,23 +447,68 @@
   }
   // pagehide の clearLater で止まった調べを始め直す
   function resumeJob() { if (job) later(pumpJob, 0); }
-  // 箱を押して落ち着いたときだけ調べる（1手もどす・やりなおし・開き直しのあとは調べない。いろびん R1）
+  // 予備軍のカードは、箱を押したあとに「とける みち」が ちょうど 0 と言い切れたとき（onCounted）。落ち着いたら出す（1手もどす・やりなおし・開き直しのあとは出さない。いろびん R1）
   function checkDoom() {
-    if (doomed) { if (!doomTold) waitAnts(showRescueCard); return; }
-    if (!doomAsk || custom || !state || state.won || !presses.length || rescuing) return;
-    doomAsk = false;
+    if (doomed && !doomTold) waitAnts(showRescueCard);
+  }
+  // ===== とける みち の数（2026-11-26。計画書 docs/plans/amai-count.md・約束 §1.14） =====
+  // 局面が変わるたびに、落ち着く先の局面から数え始める（logic の makeCount。調べた局面は countMemo に覚える）
+  function memoNow() {
+    const k = `${level}|${pick.id}|${pick.mirror ? 1 : 0}|${pick.repeat ? 1 : 0}|${chal ? 1 : 0}|${custom ? "c" : ""}`;
+    if (!countMemo || countFor !== k) { countMemo = safeCall(() => L.makeCountMemo(), null) || new Map(); countFor = k; }
+    return countMemo;
+  }
+  // 道しるべ：押した手が面の答え（info.solution）の頭と同じなら、その続き（先に試すだけ。ちがっても数は変わらない）
+  function solHint() {
+    const sol = !custom && info && Array.isArray(info.solution) ? info.solution : null;
+    if (!sol || presses.length > sol.length) return null;
+    for (let i = 0; i < presses.length; i++) if (presses[i][1] !== sol[i]) return null;
+    return sol.slice(presses.length);
+  }
+  function renderPaths() {
+    const r = countRes;
+    let st = "counting", lab = "とける みち", val = el.pathsVal.textContent || "かぞえてるよ…";
+    if (!state || state.won || phase === "clear") { st = "none"; lab = ""; val = ""; }
+    else if (!r) { if (countSlow) val = "かぞえてるよ…"; }
+    else if (r.result === "exact" && r.n === 0) { st = "zero"; lab = "この ままだと"; val = "とけないよ"; }
+    else if (r.result === "exact") { st = "exact"; val = `${r.n} とおり`; }
+    else if (r.result === "many") { st = "many"; val = `${L.COUNT_CAP || 100} いじょう`; }
+    else if (r.result === "some") { st = "some"; val = `${r.n} いじょう`; }
+    else { st = "unknown"; val = "わからない"; }
+    el.paths.dataset.state = st;
+    el.paths.dataset.n = r && st !== "counting" && st !== "none" ? String(r.n) : "";
+    if (el.pathsLab.textContent !== lab) el.pathsLab.textContent = lab;
+    if (el.pathsVal.textContent !== val) el.pathsVal.textContent = val;
+  }
+  function startCount() {
+    countSeq += 1;
+    const seq = countSeq;
+    countRes = null;
+    countSlow = false;
+    renderPaths();
+    if (!state || state.won || rescuing) return;
+    later(() => { if (seq === countSeq && !countRes) { countSlow = true; renderPaths(); } }, COUNT_SHOW_MS);
     const st = state;
-    const searcher = safeCall(() => L.makeRescue(st, { limit: DOOM_LIMIT }), null);
-    if (!searcher) return;
+    const searcher = safeCall(() => L.makeCount(st, { memo: memoNow(), path: solHint() }), null);
+    if (!searcher) { countRes = { result: "unknown", n: 0 }; renderPaths(); return; }
     startJob({
       searcher,
-      check: () => state === st && !rescuing,
+      check: () => seq === countSeq && !rescuing,
       finish(r) {
-        if (r.result !== "dead" || state !== st) return;   // 言い切れた「とけない」のときだけ（上限に届いたら何も言わない）
-        doomed = true;
-        waitAnts(showRescueCard);
+        if (seq !== countSeq) return;
+        countRes = { result: r.result, n: Number.isSafeInteger(r.n) ? r.n : 0 };
+        renderPaths();
+        onCounted();
       },
     });
+  }
+  // 箱を押したあとに ちょうど 0 と言い切れた：予備軍（カードは落ち着いてから 1 回だけ）
+  function onCounted() {
+    if (!countRes || countRes.result !== "exact" || countRes.n !== 0) return;   // 言い切れた 0 のときだけ（わからない・N いじょう は知らせない）
+    if (!doomAsk || custom || !state || state.won || !presses.length || rescuing || doomed) return;
+    doomAsk = false;
+    doomed = true;
+    if (stable) checkDoom();
   }
   function showRescueCard() {
     if (!doomed || doomTold || overlay !== null || hiddenNow || stale || rescuing || !state || state.won || phase !== "play" || isStuckNow()) return;
@@ -505,7 +559,7 @@
         run(n) {
           if (!inner) {
             states = histStates();
-            inner = states && states.length ? L.makeRewind(states, { base0Sure: !custom }) : null;
+            inner = states && states.length ? L.makeRewind(states, { base0Sure: !custom, memo: memoNow() }) : null;   // 覚えている「とける」局面より前へは戻らない（§1.14）
             if (!inner) { console.error("あまいものあつめ: もどす先を さがせませんでした"); return null; }
             return { done: false };
           }
@@ -514,7 +568,7 @@
       },
       check: () => presses.length === np && !!state && !state.won,
       finish(r) { rescuing = false; applyRewind(states, r.k, r.sure); },
-      abort() { rescuing = false; renderTools(); if (run === runId) dropSearchHint(); },   // 取りやめ・局面を作れなかった：何も変えずに戻し、カードを出し直す
+      abort() { rescuing = false; renderTools(); if (run === runId) { dropSearchHint(); if (!countRes) startCount(); } },   // 取りやめ・局面を作れなかった：何も変えずに戻し、カードを出し直す
     });
     return true;
   }
@@ -539,6 +593,7 @@
     sfx.play("undo");
     setPhase("play");
     setHint("");
+    startCount();
     if (safeCall(() => L.isStable(state), false)) { stable = true; afterStable(); }
     else softHint();
     if (firstLost) setHint(HINT_CHAL_LOST);
@@ -608,6 +663,7 @@
     if (state.won) { onWon(true); return true; }   // 最後まで運んだ所で閉じていた：クリアから続ける
     save();
     setHint(chal ? hintChal() : presses.length === 0 && level <= 2 ? HINT_FIRST : "");
+    startCount();
     if (safeCall(() => L.isStable(state), false)) { stable = true; afterStable(); }
     else softHint();
     // 「うごきを へらす」設定ではありんこを描かない（契約 §3.8）。何も出ないので、1 回だけ理由を知らせる。
@@ -653,6 +709,7 @@
     if (phase === "stuck") setPhase("play");
     save();
     hud();
+    startCount();
     sfx.play("place");
     safeCall(() => render.place(o, state));
     const opened = Array.isArray(o.opened) && o.opened.length > 0;
@@ -698,6 +755,7 @@
     sfx.play("undo");
     setPhase("play");
     setHint("");
+    startCount();
     if (safeCall(() => L.isStable(state), false)) { stable = true; afterStable(); }
     else softHint();
     if (firstLost) setHint(HINT_CHAL_LOST);
@@ -730,6 +788,7 @@
       job = null; rescuing = false; doomed = false; doomTold = false; doomAsk = false; chalUsed = false;
       safeCall(() => render.build(state, picture));
       hud(); setPhase("play"); setHint("");
+      startCount();
       if (safeCall(() => L.isStable(state), false)) { stable = true; afterStable(); }
       kick();
       return;
@@ -753,6 +812,7 @@
     stable = true;
     cancelPending();
     setPhase("clear");
+    countSeq += 1; countRes = null; renderPaths();   // クリア：とける みち は出さない
     const id = state.picture || pick.id;
     let count = 1, got = 0, nextPick = null, improved = false;
     const next = level < Number.MAX_SAFE_INTEGER ? level + 1 : level;
@@ -1551,6 +1611,7 @@
         timers: timers.size, runId, ants: st && Number.isFinite(st.ants) ? st.ants : 0,
         canUndo: presses.length > 0, book: bookCountNow(),
         doomed, rescuing, chalUsed,
+        paths: { state: el.paths.dataset.state || "", n: el.paths.dataset.n === "" || el.paths.dataset.n === undefined ? null : Number(el.paths.dataset.n), text: (el.pathsLab.textContent + " " + el.pathsVal.textContent).trim() },   // とける みち（2026-11-26。§1.14）
         challenge: chal, slotCount: state && Array.isArray(state.slots) ? state.slots.length : 0,
         picture: pick.id, mirror: !!pick.mirror, repeat: !!pick.repeat, custom: !!custom,
         pressList: clone(presses), hint: el.hint.textContent, edge: edgeColors(),
@@ -1597,6 +1658,7 @@
       info = null;
       hist = [];
       job = null; rescuing = false; doomed = false; doomTold = false; doomAsk = false; chalUsed = false;
+      countMemo = null;   // テストの局面は毎回 覚えを作り直す
       level = Number.isSafeInteger(st.level) && st.level >= 1 ? st.level : level;
       pick = { id: typeof st.picture === "string" ? st.picture : "", mirror: !!st.mirror, repeat: !!st.repeat };
       picture = safeCall(() => L.pictureById(pick.id, pick.mirror), null) || { id: pick.id, name: "", season: "", W: st.W, H: st.H, cells: st.cells };
@@ -1608,6 +1670,7 @@
       hud();
       setPhase("play");
       setHint("");
+      startCount();
       if (state.won) { onWon(false); return true; }
       if (safeCall(() => L.isStable(state), false)) { stable = true; afterStable(); }
       kick();
