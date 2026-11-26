@@ -1478,7 +1478,7 @@ export const tests = [
   },
   // ---------- とける みち の数（2026-11-26。約束 §0.13・§1.14・計画書 docs/plans/amai-count.md） ----------
   {
-    id: 'AL27', tier: 'smoke', node: true, title: 'あまいものあつめ：とける みち の数 countSearch・makeCount（2026-11-26。約束 §1.14）：①手で組んだ小さな局面と 1 面の最初で、数＝「落ち着いてから押す」で行き着ける ちがう局面の並びを全部たどった数（テストの中の総当たり。同じ局面へ行く列は 1 つ）・100 を超える局面は many（n＝100）②決定的（2 回とも同じ・run(1) の小分けでも同じ）③上限：limit 0 は unknown・途中で打ち切ると some（1〜ほんとうの数）・同じ覚えで最後まで数えるとほんとうの数 ④80 面の最初（道しるべ solution）は many ⑤うごかせない局面・あと 1 手で必ず うごかせない局面は exact 0 ⑥覚え：countKnown が数を返し、makeRewind（覚えあり）は覚えている「とける」いちばん新しい局面へ（budget 0 でも）・覚えなしは今までどおり k＝0 ⑦壊れた局面でも例外なし（unknown・null）',
+    id: 'AL27', tier: 'smoke', node: true, title: 'あまいものあつめ：とける みち の数 countSearch・makeCount（2026-11-26。約束 §1.14）：①手で組んだ小さな局面と 1 面の最初で、数＝「落ち着いてから押す」で行き着ける ちがう局面の並びを全部たどった数（テストの中の総当たり。同じ局面へ行く列は 1 つ）・100 を超える局面は many（n＝100）②決定的（2 回とも同じ・run(1) の小分けでも同じ）③上限：limit 0 は unknown・途中で打ち切ると some（1〜ほんとうの数）・同じ覚えで最後まで数えるとほんとうの数 ④80 面の最初（道しるべ solution）は many ⑤うごかせない局面・あと 1 手で必ず うごかせない局面は exact 0 ⑥覚え：countKnown が数を返し、makeRewind（覚えあり）は覚えている「とける」いちばん新しい局面へ（budget 0 でも）・覚えなしは今までどおり k＝0 ⑦壊れた局面でも例外なし（unknown・null）⑧覚えが空でも makeRescue（60）で言い切れない局面を数える処理で拾って戻し先にする ⑨覚えの上限 3 万・満ちたら遊んだ局面の分だけ残す',
     run({ check, root }) {
       const L = load(root);
       const settle = (s) => { for (let i = 0; i < 20000; i++) { const r = L.step(s); if (!r.moved) return s; s = r.state; } return s; };
@@ -1535,6 +1535,23 @@ export const tests = [
       let threw = null; const outs = [];
       try { for (const x of [null, undefined, {}, 1, 'x', { cols: 1 }]) { outs.push(L.countSearch(x).result); outs.push(L.countKnown(x, m2)); outs.push(L.countKnown(sD, x)); } } catch (e) { threw = e.message; }
       check(`⑦壊れた局面でも例外なし（${threw || 'なし'}）・unknown と null（${J(outs)}）`, threw === null && outs.every((v) => v === 'unknown' || v === null), { outs });
+      // ⑧ 覚えの無い局面の戻し先（レビュー A-1）：makeRescue（60）では言い切れないが、数える処理（上限 200）なら とけると分かる局面を、覚えが空でも戻し先にする
+      const c10 = L.createLevel(10, L.pickPicture(10, null));
+      const b10 = settle(c10.state);
+      let x10 = null;
+      for (let c = 0; c < 4 && !x10; c++) { if (L.canPress(b10, c) !== null) continue; const u = settle(L.press(b10, c).state); if (L.makeRescue(u, { limit: 60 }).run(Infinity).result === 'unknown' && L.countSearch(u, { limit: 200 }).n >= 1) x10 = u; }
+      const list10 = [b10, x10 || b10, stuck];
+      const wE = L.makeRewind(list10, { base0Sure: true, memo: L.makeCountMemo() }).run(Infinity);
+      const wO = L.makeRewind(list10, { base0Sure: true }).run(Infinity);
+      check(`⑧覚えが空でも、makeRescue（60）で言い切れない局面（${x10 ? 'あり' : 'なし'}）を数える処理で とけると分かり、そこへ戻る（覚えあり k＝${wE.k}・sure ${wE.sure}。覚えなしの今までの調べは k＝${wO.k}）`, !!x10 && wE.done && wE.k === 1 && wE.sure === true && wO.k === 0, { wE, wO });
+      // ⑨ 覚えの上限（レビュー A-2）：満ちたら、遊んだ局面（数え始めた局面）の分だけ残して忘れる
+      const m9 = L.makeCountMemo();
+      L.countSearch(sD, { memo: m9 });
+      for (let i = 0; i < L.COUNT_MEMO_MAX; i++) m9.set('fill' + i, { v: 1, x: true, c: -1 });
+      const big = m9.size;
+      L.countSearch(sF, { memo: m9 });
+      const k9 = L.countKnown(sD, m9);
+      check(`⑨覚えの上限 ${L.COUNT_MEMO_MAX}（3 万前後）：満ちたあと（${big} 件 → ${m9.size} 件）、遊んだ局面 sD の覚えは残り（${J(k9)}）・埋めた鍵は消える`, L.COUNT_MEMO_MAX >= 20000 && L.COUNT_MEMO_MAX <= 40000 && m9.size < 1000 && !!k9 && k9.v === bD && !m9.has('fill0'), { size: m9.size, k9 });
     },
   },
   // ---------- 面の並べ方の決まり（2026-11-10・11。約束 §2.6・計画書 docs/plans/amai-parts.md §12〜§14） ----------

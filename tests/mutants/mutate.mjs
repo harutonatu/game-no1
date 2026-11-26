@@ -558,6 +558,8 @@ const M = [
   ['MA94 あまいものあつめ：とける みち を数えるのを上限で打ち切ったのに「ちょうど」と言う（わからない・N いじょう が ちょうどの数になる。見つける：AL27）', 'ルール', 'games/amai/logic.js', 'finish(t >= CAP ? "many" : t >= 1 ? "some" : "unknown", Math.min(CAP, t));', 'finish("exact", Math.min(CAP, t));'],
   ['MA95 あまいものあつめ：打ち切ったときの「N いじょう」を ちょうどの数として覚える（次に数えると少ない数のまま。見つける：AL27）', 'ルール', 'games/amai/logic.js', 'else if (t >= 1) memoPut(memo, stack[j].key, t, false, stack[j].win);', 'else if (t >= 1) memoPut(memo, stack[j].key, t, true, stack[j].win);'],
   ['MA96 あまいものあつめ：だいじょうぶな ところまで もどす が とける みち の覚えを使わない（覚えている「とける」局面より前、面の最初まで戻る。見つける：AW46）', 'お助け', 'games/amai/main.js', 'L.makeRewind(states, { base0Sure: !custom, memo: memoNow() })', 'L.makeRewind(states, { base0Sure: !custom })'],
+  ['MA97 あまいものあつめ：覚えの無い局面の戻し先を、数える処理でなく今までの makeRescue（60）で調べる（見つける：AL27）', 'お助け', 'games/amai/logic.js', 'cur = memo ? { k, base: 0, cnt: true,', 'cur = false ? { k, base: 0, cnt: true,'],
+  ['MA98 あまいものあつめ：とける みち の覚えが満ちたとき、遊んだ局面の分も残さず全部忘れる（見つける：AL27）', 'お助け', 'games/amai/logic.js', 'for (const kk of memo.keep) { const e = memo.get(kk); if (e) saved.push([kk, e]); }', 'void 0;'],
   // ぼくのまち（games/machi/。2026-11-26。計画書 docs/plans/machi.md §7。MC1〜MC56 はロジック、MC57〜MC61 は画面）
   //   ロジックの変異は ONLY=CL1〜CL21、画面の変異は ONLY=CW1〜CW16 で絞って流す（tests/README.md「ぼくのまちの変異テスト」）
   ['MC1 ぼくのまち：いりぐちと つながっていなくても 育つ（connected が みちの塊が あるだけで真。見つける：CL3）', 'ルール', 'games/machi/logic.js', 'return z >= 0 && s.net.comps[z] && s.net.comps[z].entry;', 'return z >= 0 && !!s.net.comps[z];'],

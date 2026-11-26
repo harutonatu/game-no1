@@ -446,7 +446,7 @@
     later(pumpJob, 0);
   }
   // pagehide の clearLater で止まった調べを始め直す
-  function resumeJob() { if (job) later(pumpJob, 0); }
+  function resumeJob() { if (job) later(pumpJob, 0); if (state && !state.won && phase !== "clear" && countRes === null && job && !rescuing) { countSlow = true; renderPaths(); } }   // 数えている途中なら、0.25 秒の予約も消えているので「かぞえてるよ…」にする
   // 予備軍のカードは、箱を押したあとに「とける みち」が ちょうど 0 と言い切れたとき（onCounted）。落ち着いたら出す（1手もどす・やりなおし・開き直しのあとは出さない。いろびん R1）
   function checkDoom() {
     if (doomed && !doomTold) waitAnts(showRescueCard);
@@ -475,7 +475,7 @@
     else if (r.result === "exact") { st = "exact"; lab = "とける みち"; val = `${r.n} とおり`; }
     else if (r.result === "many") { st = "many"; lab = "とける みち"; val = `${L.COUNT_CAP || 100} いじょう`; }
     else if (r.result === "some") { st = "some"; lab = "とける みち"; val = `${r.n} いじょう`; }
-    else { st = "unknown"; lab = "とける みち"; val = "わからない"; }
+    else { st = "unknown"; lab = "とける みち"; val = "まだ わからない"; }
     el.paths.dataset.state = st;
     el.paths.dataset.n = r && st !== "counting" && st !== "none" ? String(r.n) : "";
     if (el.pathsLab.textContent !== lab) el.pathsLab.textContent = lab;
@@ -575,10 +575,10 @@
   }
   function applyRewind(states, k, sure) {
     const st = Number.isSafeInteger(k) && k >= 0 && k < states.length ? states[k] : null;
-    if (!st || !state || state.won || phase === "clear") { renderTools(); dropSearchHint(); return; }
+    if (!st || !state || state.won || phase === "clear") { renderTools(); dropSearchHint(); if (!countRes) startCount(); return; }
     cancelPending();
     flush();
-    if (state.won || overlay !== null) { renderTools(); dropSearchHint(); return; }
+    if (state.won || overlay !== null) { renderTools(); dropSearchHint(); if (!countRes) startCount(); return; }
     presses.length = k;
     if (custom) customHist.length = k;
     else hist = states.slice(0, k);
@@ -1071,6 +1071,7 @@
         <li>てまえの はこを おすと、<b>わく</b>（したの ${chal ? 2 : 3}つの しかく）に はいって ありんこが でてくるよ。</li>
         <li>はこべるのは <b>おなじ いろ</b>で、<b>ふち</b>（えの そとがわ）に ある おさとうだけ。</li>
         <li><b>なかの いろ</b>は、そとの いろを さきに はこんで <b>みちを あけて</b> ね。</li>
+        <li>えの したの <b>とける みち</b> は、ここから クリアできる やりかたの かず。すすむと へるのは ふつうだよ。</li>
         <li>うごけなくなったら<span style="white-space:nowrap">『1手もどす』</span>。なんども やりなおして いいよ。えを ぜんぶ はこぶと <b>ずかん</b>に はいるよ。${chal ? "ちょうせんで もどすと きんの わは つかないよ。" : ""}</li>
       </ol>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");

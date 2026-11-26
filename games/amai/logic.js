@@ -1203,11 +1203,13 @@
   // run(n) → { done, k, sure, nodes }（done までは k は null）
   const REWIND_LIMIT = 60;
   const REWIND_BUDGET = 1500;
+  const REWIND_COUNT_LIMIT = 200;   // 覚えの無い局面を数えるときの開く局面の上限（とける局面の 99% は 130 局面までに答えが出る。計画書 amai-count.md §0）
   function makeRewind(states, opt) {
     const o = opt && typeof opt === "object" ? opt : {};
     const list = Array.isArray(states) ? states : [];
     const limit = isInt(o.limit) && o.limit >= 0 ? o.limit : REWIND_LIMIT;
     const budget = isInt(o.budget) && o.budget >= 0 ? o.budget : REWIND_BUDGET;
+    const countLimit = isInt(o.countLimit) && o.countLimit >= 0 ? o.countLimit : REWIND_COUNT_LIMIT;
     const base0Sure = o.base0Sure === true;
     const memo = o.memo instanceof Map ? o.memo : null;
     let k = list.length - 1, cur = null, nodes = 0, done = null;
@@ -1233,14 +1235,16 @@
             if (k <= floor) return toFloor();
             if (nodes >= budget) return toFloor();
             if (!cur && dead.has(k)) { k--; continue; }
-            if (!cur) cur = { k, base: 0, r: makeRescue(list[k], { limit }) };
+            // 覚えがあるとき（main の遊び）は、覚えの無い局面も とける みちを数える処理（上限 countLimit）で調べる（開き直したあと・数え終わる前に押したあと。§1.14 A-1）
+            if (!cur) cur = memo ? { k, base: 0, cnt: true, r: makeCount(list[k], { limit: countLimit, memo }) } : { k, base: 0, cnt: false, r: makeRescue(list[k], { limit }) };
             const want = Math.min(max - used, budget - nodes);
             const r = cur.r.run(want);
-            const step = r.nodes - cur.base;
-            cur.base = r.nodes;
+            const at = cur.cnt ? r.steps : r.nodes;
+            const step = at - cur.base;
+            cur.base = at;
             used += step; nodes += step;
             if (r.done) {
-              if (r.result === "solved") return finish(cur.k, true);
+              if (cur.cnt ? (r.result === "many" || r.result === "some" || (r.result === "exact" && r.n >= 1)) : r.result === "solved") return finish(cur.k, true);
               cur = null; k--;
             } else if (step <= 0) { cur = null; k--; }   // 進まない（壊れた局面）：次へ
           }
@@ -1263,8 +1267,8 @@
   // 時計は使わない（開いた局面の数で区切る＝決定的）。
   const COUNT_CAP = 100;
   const COUNT_LIMIT = 1500;   // 開く局面の上限（既定）。遊ぶ人をまねた 603 局面で、とける局面の 99% は 130 局面までに 100 いじょう か ちょうどの数が出た（いちばん多くて 2,089）
-  const COUNT_MEMO_MAX = 200000;   // 覚えの上限（超えたら忘れて作り直す）
-  function makeCountMemo() { return new Map(); }
+  const COUNT_MEMO_MAX = 30000;   // 覚えの上限（超えたら、遊んだ局面（memo.keep の鍵）の分だけ残して忘れる。iPhone SE の記憶を食わないため）
+  function makeCountMemo() { const m = new Map(); m.keep = new Set(); return m; }
   // memo の中身：key → { v, x }（v＝数（COUNT_CAP で頭打ち）・x＝ちょうど（true）か「v いじょう」（false））
   // c＝そこから とける みちの 1 つめの手（列。次の調べで先に試す道しるべ。無ければ -1）
   function memoPut(memo, key, v, x, c) {
@@ -1272,7 +1276,12 @@
     const old = memo.get(key);
     if (old && old.x) return;
     if (old && !x && old.v >= v) return;
-    if (memo.size >= COUNT_MEMO_MAX) memo.clear();
+    if (memo.size >= COUNT_MEMO_MAX) {
+      const saved = [];
+      if (memo.keep instanceof Set) for (const kk of memo.keep) { const e = memo.get(kk); if (e) saved.push([kk, e]); }
+      memo.clear();
+      for (const [kk, e] of saved) memo.set(kk, e);
+    }
     memo.set(key, { v, x: !!x, c: isInt(c) ? c : old && isInt(old.c) ? old.c : -1 });
   }
   function makeCount(state, opt) {
@@ -1313,6 +1322,7 @@
     function start() {
       stack = [];
       const lk = look(s0);
+      if (memo.keep instanceof Set) memo.keep.add(lk.key);   // 遊んだ局面の鍵（覚えが満ちて消すとき、これだけ残す）
       if (lk.won) { finish("exact", 1); return; }
       const m = memo.get(lk.key);
       if (m && m.x) { finish(m.v >= CAP ? "many" : "exact", m.v); return; }
@@ -1732,7 +1742,7 @@
     createLevel, press, step,
     isStable, isStuck, canPress, edgeCells, hud,
     replay, validateState, replayStates, makeRescue, rescueSearch, makeRewind, RESCUE_LIMIT, REWIND_LIMIT, REWIND_BUDGET,
-    makeCount, countSearch, countKnown, makeCountMemo, COUNT_CAP, COUNT_LIMIT,
+    makeCount, countSearch, countKnown, makeCountMemo, COUNT_CAP, COUNT_LIMIT, COUNT_MEMO_MAX,
     validateSave, makeSave, pictureSig, saveFits, validateChal, makeChal,
     validateBest, recordBest, validateBook, addToBook, bookCount, validateClean, addClean, hasClean, validateGold, addGold, hasGold,
     levelChoices, canSelect,

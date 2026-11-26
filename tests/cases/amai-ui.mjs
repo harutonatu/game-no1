@@ -2766,11 +2766,11 @@ export const tests = [
           ob.disconnect();
           return { wrong, texts, end: G.getState().paths, ms: Math.round(performance.now() - t0) };
         }, sol80[0]);
-        check(`④実時間で長くかかる局面（列 ${seen.wrong}・${seen.ms}ms）は「かぞえてるよ…」を出してから（${J([...new Set(seen.texts)].slice(0, 6))}）→ ${J(seen.end)}`, seen.texts.includes('counting:かぞえてるよ…') && ['unknown', 'some', 'many', 'exact'].includes(seen.end.state) && (seen.end.state !== 'unknown' || seen.end.text === 'とける みち わからない'), seen);
+        check(`④実時間で長くかかる局面（列 ${seen.wrong}・${seen.ms}ms）は「かぞえてるよ…」を出してから（${J([...new Set(seen.texts)].slice(0, 6))}）→ ${J(seen.end)}`, seen.texts.includes('counting:かぞえてるよ…') && ['unknown', 'some', 'many', 'exact'].includes(seen.end.state) && (seen.end.state !== 'unknown' || seen.end.text === 'とける みち まだ わからない'), seen);
         await c2.close();
       }
       // ⑤ 画面の大きさ：どの言葉も はみ出さない
-      const WORDS = [['とける みち', 'かぞえてるよ…'], ['とける みち', '99 とおり'], ['とける みち', '100 いじょう'], ['とける みち', '99 いじょう'], ['とける みち', 'わからない'], ['この ままだと', 'とけないよ']];
+      const WORDS = [['とける みち', 'かぞえてるよ…'], ['とける みち', '99 とおり'], ['とける みち', '100 いじょう'], ['とける みち', '99 いじょう'], ['とける みち', 'まだ わからない'], ['この ままだと', 'とけないよ']];
       const bad = [];
       for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), custom(568, 270, null, 'SE Safari 横 568×270')]) {
         const { ctx: c3, page: p3 } = await openG(browser, 'AW46-' + v.label, { v });

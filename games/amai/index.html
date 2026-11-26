@@ -640,6 +640,7 @@
   @media (orientation: portrait) and (max-height: 600px) {
     .card { padding: 14px; gap: 8px; }
     .card ol.rules { font-size: 14px; line-height: 1.5; }
+    #card[data-kind="help"] > ol.rules { font-size: 13px; line-height: 1.4; gap: 2px; }   /* とける みち の 1 行を足しても「わかった」が画面内（AW5） */
     .card .sample canvas { width: 56px; height: 56px; }
     /* クリアのカード：名前が 3 行になる面（8・150・161 面）・もどした ちょうせんでも、全部のボタンがスクロールなしで押せるように詰める */
     #card[data-kind="clear"] { padding: 12px 14px; gap: 6px; }
@@ -666,6 +667,9 @@
     .card .btns { gap: 8px; }
     .card .btns button { flex: 1 1 0; min-height: 44px; }
     #card[data-kind="help"] .btns button { flex: 1 1 100%; }
+    #card[data-kind="help"] { padding-top: 6px; padding-bottom: 6px; gap: 2px; }
+    #card[data-kind="help"] > ol.rules { column-count: 2; column-gap: 14px; font-size: 12px; line-height: 1.3; }   /* とける みち の 1 行を足しても収まるよう 2 段に */
+    #card[data-kind="help"] > ol.rules li { break-inside: avoid; }
     .card .btns button.share { padding: 2px 6px; white-space: normal; font-size: 14px; line-height: 1.15; word-break: keep-all; }   /* 「ともだちに おくる」を 2 行で 44 の高さに入れる */
     #card[data-kind="clear"] .btns button.half { flex: 1 1 0; }   /* 横向きは 1 段に並べる（背が低いので） */
     #card[data-kind="clear"] .btns button { padding: 2px 6px; white-space: normal; line-height: 1.15; word-break: keep-all; }   /* ボタンが 5 つのとき（［つぎも ちょうせん］など）も字をボタンに収める */
