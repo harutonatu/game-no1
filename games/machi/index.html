@@ -27,7 +27,7 @@
 <style>
   /* 配置（約束 docs/machi-contract.md §7.1・見本 docs/img/machi-mock2-A.png）：
      縦向きは上から #topBar・#stats・#newsBar・#mapWrap（いちばん広い）・#toolHint・#tools（4×2）。
-     背が低い画面（高さ 700px 以下。SE 縦・375×667）は #newsBar を地図の上に重ねて（同じ grid-area）地図を広く取り、道具のボタンを少し低くする。
+     #newsBar は 2 行ぶんの決まった高さ（文が 1 行でも 2 行でも地図がずれない。UX M7）。背が低い画面（高さ 700px 以下。SE 縦・375×667）でも地図の外（数字の下）に出し、道具のボタンを少し低くする。
      横向きで背が低い（高さ 520px 以下）ときは、左に #mapWrap、右の列に #topBar・#stats・#newsBar・#toolHint・#tools。 */
   :root {
     --bg: #fbe9b6;
@@ -113,7 +113,7 @@
   a.btn, a.btn:visited { color: var(--ink); }
   #nameBtn {
     flex: 1 1 0;
-    min-width: 0;
+    min-width: 44px;
     justify-content: flex-end;
     padding: 0 6px;
     border: none;
@@ -144,22 +144,31 @@
   #moneyText.neg { color: var(--red); }
 
   /* ===== #newsBar ===== */
-  #newsBar { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 40px; padding: 2px 8px; background: #fff2c2; border-color: var(--edge); }
+  #newsBar { display: flex; align-items: center; gap: 8px; min-width: 0; height: 42px; padding: 0 8px; background: #fff2c2; border-color: var(--edge); overflow: hidden; }
   #newsBar .star { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; background: #f6a21a; color: #fff; font-size: 14px; line-height: 22px; text-align: center; }
-  #newsText { flex: 1 1 auto; min-width: 0; font-size: 14px; font-weight: 700; line-height: 1.3; word-break: keep-all; overflow-wrap: anywhere; }
+  #newsText { flex: 1 1 auto; min-width: 0; max-height: 2.4em; font-size: 14px; font-weight: 700; line-height: 1.2; word-break: keep-all; overflow-wrap: anywhere; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   #dateText { flex: 0 0 auto; font-size: 12px; line-height: 1.2; color: var(--muted); white-space: nowrap; text-align: right; }
 
   /* ===== #mapWrap ===== */
   #mapWrap { position: relative; min-height: 0; overflow: hidden; background: #9fd0ee; border: 4px solid #e0a53a; border-radius: 3px; box-shadow: 0 0 0 3px var(--edge); }
   #mapCanvas { position: absolute; left: 0; top: 0; display: block; touch-action: none; }
   .over { position: absolute; z-index: 3; }
-  #viewBtn { top: 6px; right: 6px; min-height: 44px; padding: 0 10px; font-size: 13px; }
+  #viewBtn { top: 6px; right: 6px; min-height: 44px; padding: 2px 10px; font-size: 13px; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+  #viewBtn .cur, #viewBtn .nx { display: block; }
+  #viewBtn .nx { font-size: 12px; font-weight: 700; color: var(--muted); }
+  /* めがねの凡例（色と模様。render の buildOverlay と同じ 3 段：よい＝模様なし・ふつう＝点・わるい＝✕） */
+  #viewLegend { top: 6px; left: 6px; max-width: calc(100% - 150px); box-sizing: border-box; padding: 4px 8px; border-radius: 6px; background: rgba(255, 252, 240, 0.95); border: 2px solid var(--edge2); font: 700 12px/1.35 var(--font); pointer-events: none; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+  #viewLegend .li { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+  #viewLegend .sw { display: inline-block; width: 14px; height: 14px; border: 1px solid rgba(40, 30, 40, 0.5); font-size: 11px; line-height: 13px; text-align: center; color: #281e28; }
+  #viewLegend .sw[data-lv="0"] { background: rgb(126, 200, 136); }
+  #viewLegend .sw[data-lv="1"] { background: rgb(250, 200, 60); }
+  #viewLegend .sw[data-lv="2"] { background: rgb(250, 100, 60); }
   .zoomBtns { right: 6px; bottom: 6px; display: flex; flex-direction: column; gap: 6px; }
   .zoomBtns .btn { padding: 0; width: 44px; font-size: 24px; }
   #speedBtns { left: 6px; bottom: 6px; display: flex; gap: 4px; }
   #speedBtns .btn { padding: 0 6px; min-width: 44px; font-size: 13px; }
   #speedBtns .btn[aria-pressed="true"], #viewBtn[data-on="1"] { background: var(--accent); border-color: var(--edge); }
-  #zoomHint { left: 50%; transform: translateX(-50%); bottom: 112px; width: max-content; max-width: calc(100% - 24px); box-sizing: border-box; padding: 6px 14px; border-radius: 999px; background: rgba(255, 252, 240, 0.96); border: 2px solid var(--edge2); font-size: 13px; font-weight: 700; text-align: center; pointer-events: none; }
+  #zoomHint { left: 6px; bottom: 56px; width: max-content; max-width: calc(100% - 70px); box-sizing: border-box; padding: 6px 14px; border-radius: 999px; background: rgba(255, 252, 240, 0.96); border: 2px solid var(--edge2); font-size: 13px; font-weight: 700; text-align: center; pointer-events: none; }
   #voiceBar {
     left: 6px; right: 58px; bottom: 56px; min-height: 44px; box-sizing: border-box;
     display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 6px;
@@ -168,11 +177,13 @@
   }
   #voiceBar[data-good="1"] { border-color: #4a9a4a; }
   #voiceFace { flex: 0 0 auto; width: 32px; height: 32px; image-rendering: pixelated; }
-  #voiceText { min-width: 0; }
+  #voiceBar .vtx { min-width: 0; display: flex; flex-direction: column; }
+  #voiceSub { font-size: 12px; font-weight: 700; color: var(--muted); }
   @keyframes voiceIn { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
 
   /* ===== #toolHint・#tools ===== */
-  #toolHint { margin: 0; min-height: 18px; text-align: center; font-size: 14px; font-weight: 700; color: var(--muted); line-height: 1.4; }
+  /* 1 行の決まった高さ（文の長さで地図がずれない。はみ出す分は … で切る。文は 1 行に入る長さにしてある） */
+  #toolHint { margin: 0; height: 1.4em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center; font-size: 14px; font-weight: 700; color: var(--muted); line-height: 1.4; }
   #toolHint[data-warn="1"] { color: var(--red); }
   #tools { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
   .tool {
@@ -195,13 +206,11 @@
   /* ===== 小さい画面（背が低い）：news を地図に重ねて、道具を低く ===== */
   @media (max-height: 700px) and (orientation: portrait) {
     :root { --tool-h: 50px; --icon: 24px; }
-    .app { gap: 4px; grid-template-areas: "top" "stats" "map" "hint" "tools"; grid-template-rows: auto auto minmax(0, 1fr) auto auto; }
-    #newsBar { grid-area: map; align-self: start; z-index: 5; margin: 4px; min-height: 44px; background: rgba(255, 242, 194, 0.93); pointer-events: none; }
-    #viewBtn { top: 56px; }
-    #toolHint { min-height: 18px; font-size: 13px; }
+    .app { gap: 4px; }
+    #newsText { font-size: 13px; }
+    #toolHint { font-size: 13px; }
     .stat .val { font-size: 22px; }
     #starText { font-size: 20px; }
-    #zoomHint { bottom: 112px; }
   }
   @media (max-width: 340px) {
     #nameBtn { font-size: 13px; }
@@ -221,11 +230,8 @@
       grid-template-areas: "map top" "map stats" "map news" "map hint" "map ." "map tools";
       column-gap: 8px; row-gap: 4px;
     }
-    #newsBar { align-self: stretch; pointer-events: auto; background: #fff2c2; margin: 0; z-index: auto; }
-    #viewBtn { top: 6px; }
     .stat .val { font-size: 20px; }
     #starText { font-size: 18px; }
-    #zoomHint { bottom: 112px; }
   }
 
   /* ===== カード ===== */
@@ -235,14 +241,21 @@
   .card p { margin: 0 0 8px; font-size: 15px; line-height: 1.55; }
   .card .small { font-size: 13px; color: var(--muted); }
   .card ul { margin: 0 0 10px; padding-left: 22px; font-size: 15px; line-height: 1.6; }
+  .card ul.tools-help { padding-left: 4px; list-style: none; font-size: 14px; line-height: 1.45; }
   .card .btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .card .btns .btn { flex: 1 1 120px; }
   .primary { background: var(--accent); }
   .btn.box { background: var(--panel); }
   .info-list { margin: 0 0 8px; padding: 0; list-style: none; font-size: 15px; }
   .info-list li { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px dotted #d9c4a0; }
-  .info-list li b { font-variant-numeric: tabular-nums; }
+  .info-list li span { flex: 0 0 auto; white-space: nowrap; }
+  .info-list li b { min-width: 0; text-align: right; font-variant-numeric: tabular-nums; }
   .why { color: var(--red); font-weight: 700; }
+  .tip { color: #2f6a2c; font-weight: 700; font-size: 14px; }
+  #statusCard .card { position: relative; }
+  #statusCard h2 { padding-right: 52px; }
+  .xbtn { position: absolute; top: 8px; right: 8px; width: 44px; padding: 0; font-size: 22px; }
+  #terrainTitle:focus { outline: none; }
   #terrainList { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px 0 4px; }
   .terr { box-sizing: border-box; min-height: 44px; padding: 6px 4px 6px; display: flex; flex-direction: column; align-items: center; gap: 4px; background: var(--panel); border: 3px solid var(--edge); border-radius: 4px; cursor: pointer; font: 700 13px/1.2 var(--font); }
   .terr canvas { width: 100%; max-width: 92px; height: auto; aspect-ratio: 64 / 78; image-rendering: pixelated; border: 1px solid #c9a96a; display: block; }
@@ -284,13 +297,14 @@
 
   <div id="newsBar" class="box" role="status" aria-live="polite">
     <span class="star" aria-hidden="true">★</span>
-    <span id="newsText">みちを ひいて、そばに すむ を おこう</span>
+    <span id="newsText">いりぐち（ひかって いる ところ）から みちを ひこう</span>
     <span id="dateText">1 ねんめ 4 がつ</span>
   </div>
 
   <section id="mapWrap" aria-label="ちず">
     <canvas id="mapCanvas" aria-label="まちの ちず。ゆびで うごかす・ひろげる"></canvas>
-    <button type="button" class="over btn box" id="viewBtn" aria-label="ちずの みかたを かえる">みかた：ふつう</button>
+    <button type="button" class="over btn box" id="viewBtn" aria-label="ちずの みかた：ふつう。おすと よごれ"><span class="cur">みかた：ふつう</span><span class="nx">つぎ：よごれ</span></button>
+    <div class="over" id="viewLegend" hidden></div>
     <div class="over zoomBtns">
       <button type="button" class="btn box" data-cmd="zoom-in" aria-label="おおきく する">＋</button>
       <button type="button" class="btn box" data-cmd="zoom-out" aria-label="ちいさく する">－</button>
@@ -301,7 +315,7 @@
       <button type="button" class="btn box" data-speed="4" aria-pressed="false">はやく</button>
     </div>
     <div class="over" id="zoomHint" hidden>ゆびで ひろげると ちかくが みえるよ</div>
-    <button type="button" class="over" id="voiceBar" role="status" hidden><canvas id="voiceFace" width="8" height="8" aria-hidden="true"></canvas><span id="voiceText"></span></button>
+    <button type="button" class="over" id="voiceBar" role="status" hidden><canvas id="voiceFace" width="8" height="8" aria-hidden="true"></canvas><span class="vtx"><span id="voiceText"></span><span id="voiceSub" hidden>おすと その ばしょへ いくよ</span></span></button>
   </section>
 
   <p id="toolHint">おくものを えらんで、マスを タップ</p>
@@ -321,14 +335,14 @@
 <!-- 地形えらび（はじめと さいしょから） -->
 <div class="overlay" id="terrainCard" role="dialog" aria-modal="true" aria-labelledby="terrainTitle" hidden>
   <div class="card">
-    <h2 id="terrainTitle">どんな ちけいで はじめる？</h2>
+    <h2 id="terrainTitle" tabindex="-1">どんな ちけいで はじめる？</h2>
     <p class="small">すきな ちけいを えらんでね。ほかの ちけいも みられるよ</p>
     <div id="terrainList">
       <button type="button" class="terr" data-terrain="0" aria-label="うみべ"><canvas width="128" height="156" aria-hidden="true"></canvas><span>うみべ</span></button>
       <button type="button" class="terr" data-terrain="1" aria-label="かわの まち"><canvas width="128" height="156" aria-hidden="true"></canvas><span>かわの まち</span></button>
       <button type="button" class="terr" data-terrain="2" aria-label="やまあい"><canvas width="128" height="156" aria-hidden="true"></canvas><span>やまあい</span></button>
     </div>
-    <div class="btns"><button type="button" class="btn box" data-cmd="reroll">ほかの ちけい</button></div>
+    <div class="btns"><button type="button" class="btn box" data-cmd="reroll">ほかの ちけい</button><button type="button" class="btn box" data-cmd="terrain-cancel" hidden>やめる（いまの まちに もどる）</button></div>
   </div>
 </div>
 
@@ -336,12 +350,18 @@
 <div class="overlay" id="helpCard" role="dialog" aria-modal="true" aria-labelledby="helpTitle" hidden>
   <div class="card">
     <h2 id="helpTitle">あそびかた</h2>
-    <ul>
-      <li>みちを ひいて、そばに すむ・しごと・おみせ を おこう</li>
-      <li>じょうけんが そろうと たてものが たって、おおきく なるよ</li>
-      <li>こんざつ・よごれ・しごと の たりなさで ひとが へることも あるよ。みかたを かえて しらべよう</li>
+    <p>ひかる <b>いりぐち</b>から みちを ひいて、そばに おこう。じょうけんが そろうと たてものが たって、おおきく なるよ。</p>
+    <ul class="tools-help">
+      <li><b>すむ</b>：いえ。ひとが すむ</li>
+      <li><b>しごと</b>：こうば。はたらく ばしょ（けむりが でる）</li>
+      <li><b>おみせ</b>：かいものと はたらく ばしょ</li>
+      <li><b>みち</b>：いりぐちと つなぐ。くるまが とおる</li>
+      <li><b>せんろ</b>：はなれた みちを つなぐ（「まち」から）</li>
+      <li><b>みどり</b>：こうえん。よごれが へる</li>
+      <li><b>こわす</b>：おいた ものを けす（すぐなら おかねが もどる）</li>
+      <li><b>めぐみ</b>：おく ばしょで はたけ・りんぎょう・りょうし</li>
     </ul>
-    <p class="small">おくものを えらんで ゆびで なぞると、まとめて おけるよ。ちいさいときは ゆびで ひろげて ちかくで おいてね</p>
+    <p class="small">こんざつ・よごれ・しごとの たりなさで ひとが へることも あるよ。「みかた」で しらべよう。ゆびで なぞると まとめて おけるよ</p>
     <div class="btns">
       <button type="button" class="btn primary" data-cmd="help-close">はじめる</button>
       <button type="button" class="btn box" data-cmd="restart-ask">さいしょから</button>
@@ -387,6 +407,7 @@
 <!-- すみやすさ・おかね・ぜい -->
 <div class="overlay" id="statusCard" role="dialog" aria-modal="true" aria-labelledby="statusTitle" hidden>
   <div class="card">
+    <button type="button" class="btn box xbtn" data-cmd="close" aria-label="とじる">×</button>
     <h2 id="statusTitle">まちの ようす</h2>
     <ul class="info-list" id="statusList"></ul>
     <p id="starWhy" class="small"></p>

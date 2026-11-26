@@ -13,9 +13,13 @@
  * r.cellAt(pxCss, pyCss) → { x, y, i } | null
  * r.setPreview({ tool, cells, ok, cost, label }) | r.setPreview(null)
  * r.setView('normal' | 'poll' | 'jam' | 'live' | 'land')
- * r.flash(i); r.focus(i)
+ * r.flash(i); r.focus(i); r.lookAt(i, cell?)  // lookAt：光らせずに寄る（いりぐちへ寄せる）
  * r.thumb(terrain, canvas)          // 地形えらびの小さな絵（terrain は W×H の Uint8Array。W=64・H=78 とみなす）
- * r.stats() → { drawMs, drawMsMed, chunks, cars, trains, far, frames }
+ * r.stats() → { drawMs, drawMsMed, chunks, cars, trains, far, frames, ticks, slowFrames, gapMed, gapP95, gapMax }
+ *                                   // slowFrames は「frame() の呼び出しの間隔が 34ms をこえた数」（ほしくだき render.js の数え方。ticks はその数え方のコマの数）
+ * r.resetClock()                    // 間隔の数えを切る（main が rAF を休んだ・裏から戻ったあと）
+ * r.setEntry(cells | null)          // いりぐちの印（点滅のふち・「いりぐち」の札。動きを減らす設定では点滅しない）
+ * r.busy() → bool                   // 動いている物（カメラ・光る・育つ・点滅・作りかけのチャンク）があるか（main が rAF を休むか決める）
  * MachiRender.drawIcon(canvas, tool) // 道具のボタンの絵（main が使ってよい）
  * MachiRender.MIN_PAINT_CELL = 14    // これより小さいと置かずに寄る（約束 §7.2）
  *
@@ -97,6 +101,9 @@
     let overlay = null, overlayAt = -1, overlayKey = "";
     let haze = null, hazeKey = "";
     const times = []; let lastMs = 0, frames = 0, slow = 0;
+    const gaps = []; let lastCallAt = 0, ticks = 0, gapMax = 0;
+    let entryMark = null;         // いりぐちの印のマス [i, ...]
+    let blinkT = 0;
     let missing = false;
     let movedAt = 0, roughFar = false;
 
@@ -165,6 +172,12 @@
       const x = i % W, y = (i / W) | 0;
       animateTo({ cx: x + 0.5, cy: y + 0.5, cell: Math.max(cam.cell, 22) }, 0.5);
       flash(i);
+    }
+    // そのマスへ寄る（光らせない）。cell は今より小さくしない
+    function lookAt(i, cell) {
+      if (!(i >= 0 && i < W * H)) return;
+      const x = i % W, y = (i / W) | 0;
+      animateTo({ cx: x + 0.5, cy: y + 0.5, cell: Math.max(cam.cell, cell || 22) }, 0.5);
     }
     function flash(i) { if (i >= 0 && i < W * H) { flashes.push({ i, t: 2 }); need = true; } }
 
@@ -295,13 +308,13 @@
         const b = bad ? v : 1 - v; // 0 良い〜1 悪い
         const r = b < 0.5 ? Math.round(60 + 390 * b) : 250, gg = b < 0.5 ? 200 : Math.round(200 - 300 * (b - 0.5)), bl = b < 0.5 ? Math.round(170 - 200 * b) : 60;
         const x = i % W, y = (i / W) | 0;
-        const dots = b < 0.25 ? 0 : b < 0.5 ? 1 : b < 0.75 ? 2 : 3; // 模様：点の多さ
+        // 模様（色だけに頼らない。凡例 main の #viewLegend と同じ 3 段）：よい＝模様なし・ふつう＝点・わるい＝✕
+        const lvl = b < 1 / 3 ? 0 : b < 2 / 3 ? 1 : 2;
         for (let py = 0; py < P; py++) for (let px = 0; px < P; px++) {
           const o = ((y * P + py) * W * P + (x * P + px)) * 4;
           let dot = false;
-          if (dots === 1) dot = px === 1 && py === 1;
-          else if (dots === 2) dot = (px + py) % 2 === 0 && (px % 2 === 1);
-          else if (dots === 3) dot = (px + py) % 2 === 0;
+          if (lvl === 1) dot = px === 1 && py === 1;
+          else if (lvl === 2) dot = px === py || px + py === P - 1;
           a[o] = dot ? 40 : r; a[o + 1] = dot ? 30 : gg; a[o + 2] = dot ? 40 : bl; a[o + 3] = dot ? 150 : 120;
         }
       }
@@ -333,6 +346,18 @@
     // ---------- 1 コマ ----------
     function frame(state, events, dt) {
       if (!state) return false;
+      // コマの間隔（canvas の命令はあとでまとめて描かれるので、draw() の JS の時間ではなく 呼ばれる間隔で重さを数える。ほしくだき と同じ）
+      const tc = now();
+      if (lastCallAt) {
+        const gap = tc - lastCallAt;
+        if (gap < 1000) {               // 1 秒より長い間は休み（裏・rAF を休んだ）とみなして数えない
+          ticks++;
+          if (gap > SLOW_MS) slow++;
+          if (gap > gapMax) gapMax = gap;
+          gaps.push(gap); if (gaps.length > 240) gaps.shift();
+        }
+      }
+      lastCallAt = tc;
       if (state !== st) setState(state);
       dt = typeof dt === "number" && dt > 0 ? Math.min(dt, 0.25) : 1 / 60;
       if (events && events.length) {
@@ -380,6 +405,9 @@
       if (flashes.length) { for (const f of flashes) f.t -= dt; flashes = flashes.filter((f) => f.t > 0); need = true; }
       if (builds.length) { for (const b of builds) b.t -= dt; builds = builds.filter((b) => b.t > 0); need = true; }
       if (roughFar && now() - movedAt > 200) need = true;
+      if (entryMark) {
+        if (!reduceMotion()) { const b0 = Math.floor(blinkT * 2); blinkT += dt; if (Math.floor(blinkT * 2) !== b0) need = true; }
+      }
       if (!need && !missing) return false;
       if (camMoved()) movedAt = now();
       need = false;
@@ -387,7 +415,7 @@
       draw();
       lastMs = now() - t0;
       times.push(lastMs); if (times.length > 120) times.shift();
-      frames++; if (lastMs > SLOW_MS) slow++;
+      frames++;
       return true;
     }
 
@@ -464,6 +492,8 @@
       }
       // 置く前の影
       if (preview && preview.cells && preview.cells.length) drawPreview(ox, oy, s);
+      // いりぐちの印
+      if (entryMark) drawEntry(ox, oy, s);
       // 光る所
       for (const f of flashes) {
         const x = f.i % W, y = (f.i / W) | 0;
@@ -523,6 +553,33 @@
       ctx.lineTo(x, y + r); ctx.arc(x + r, y + r, r, Math.PI, Math.PI * 1.5);
       ctx.closePath();
     }
+    function drawEntry(ox, oy, s) {
+      let minX = 1e9, minY = 1e9, maxX = -1, maxY = -1;
+      for (const i of entryMark) { const x = i % W, y = (i / W) | 0; if (x < minX) minX = x; if (y < minY) minY = y; if (x > maxX) maxX = x; if (y > maxY) maxY = y; }
+      if (maxX < 0) return;
+      const on = reduceMotion() || Math.floor(blinkT * 2) % 2 === 0;
+      const pad = Math.max(3 * dpr, s * 0.25);
+      const bx = ox + minX * s - pad, by = oy + minY * s - pad, bw = (maxX - minX + 1) * s + pad * 2, bh = (maxY - minY + 1) * s + pad * 2;
+      ctx.lineWidth = Math.max(3 * dpr, s * 0.16);
+      ctx.strokeStyle = on ? "#ff5a1f" : "#ffffff";
+      ctx.strokeRect(bx, by, bw, bh);
+      ctx.lineWidth = Math.max(1, dpr);
+      ctx.strokeStyle = on ? "#ffffff" : "#ff5a1f";
+      ctx.strokeRect(bx - ctx.lineWidth * 2, by - ctx.lineWidth * 2, bw + ctx.lineWidth * 4, bh + ctx.lineWidth * 4);
+      // 札（印の下。地図の上の端に近いので下に出す）
+      const fs = 13 * dpr;
+      ctx.font = "800 " + fs + "px " + FONT;
+      const text = "いりぐち";
+      const w = ctx.measureText(text).width + 16 * dpr, h = fs + 10 * dpr;
+      const cx = clamp(bx + bw / 2, w / 2 + 2 * dpr, canvas.width - w / 2 - 2 * dpr);
+      let ty = by + bh + 8 * dpr;
+      if (ty + h > canvas.height - 2 * dpr) ty = Math.max(2 * dpr, by - h - 8 * dpr);
+      ctx.fillStyle = "#ff5a1f";
+      roundRect(cx - w / 2, ty, w, h, h / 2); ctx.fill();
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = Math.max(1, 1.5 * dpr); ctx.stroke();
+      ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(text, cx, ty + h / 2 + 0.5 * dpr);
+    }
     function drawJamTag(ox, oy, s) {
       const x = jam.i % W, y = (jam.i / W) | 0;
       const px = ox + (x + 0.5) * s, py = oy + (y + 0.15) * s;
@@ -531,14 +588,23 @@
       ctx.font = "800 " + fs + "px " + FONT;
       const text = jam.level >= 3 ? "おおこんざつ" : "こんざつ";
       const w = ctx.measureText(text).width + 14 * dpr, h = fs + 8 * dpr;
-      const bx = px - w / 2, by = py - h - 6 * dpr;
+      // 地図の端で札が欠けない（濁点が切れない）ように、札を内側へ寄せる。上に入らなければ下に出す
+      const m = 4 * dpr;
+      const bx = clamp(px - w / 2, m, canvas.width - w - m);
+      let by = py - h - 6 * dpr;
+      const below = by < m;
+      if (below) by = oy + (y + 1) * s + 6 * dpr;
       ctx.fillStyle = "#e8352c";
       roundRect(bx, by, w, h, h / 2); ctx.fill();
       ctx.strokeStyle = "#ffffff"; ctx.lineWidth = Math.max(1, 1.5 * dpr); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(px - 5 * dpr, by + h - 0.5); ctx.lineTo(px + 5 * dpr, by + h - 0.5); ctx.lineTo(px, py); ctx.closePath();
+      const tipX = clamp(px, bx + h / 2, bx + w - h / 2);
+      ctx.beginPath();
+      if (below) { ctx.moveTo(tipX - 5 * dpr, by + 0.5); ctx.lineTo(tipX + 5 * dpr, by + 0.5); ctx.lineTo(px, oy + (y + 0.85) * s); }
+      else { ctx.moveTo(tipX - 5 * dpr, by + h - 0.5); ctx.lineTo(tipX + 5 * dpr, by + h - 0.5); ctx.lineTo(px, py); }
+      ctx.closePath();
       ctx.fill();
       ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(text, px, by + h / 2 + 0.5 * dpr);
+      ctx.fillText(text, bx + w / 2, by + h / 2 + 0.5 * dpr);
     }
 
     function setPreview(p) {
@@ -574,18 +640,30 @@
 
     function stats() {
       const sorted = times.slice().sort((a, b) => a - b);
+      const gs = gaps.slice().sort((a, b) => a - b);
       return {
         drawMs: Math.round(lastMs * 100) / 100,
         drawMsMed: sorted.length ? Math.round(sorted[sorted.length >> 1] * 100) / 100 : 0,
-        chunks: chunks.size, cars: 0, trains: 0, far: cam.cell < NEAR_CELL, frames, slowFrames: slow,
+        chunks: chunks.size, cars: 0, trains: 0, far: cam.cell < NEAR_CELL, frames, ticks, slowFrames: slow,
+        gapMed: gs.length ? Math.round(gs[gs.length >> 1] * 10) / 10 : 0,
+        gapP95: gs.length ? Math.round(gs[Math.min(gs.length - 1, Math.floor(gs.length * 0.95))] * 10) / 10 : 0,
+        gapMax: Math.round(gapMax * 10) / 10,
         cell: Math.round(cam.cell * 100) / 100,
+        preview: preview ? (preview.label || "") : null,   // テスト用：置く前の札の文
       };
     }
 
     setSize(cssW, cssH, dpr);
     return {
       setState, frame, resize: setSize, camera, setCamera, panBy, zoomBy, fit, zoomTo, cellAt,
-      setPreview, setView, flash, focus, thumb, stats,
+      setPreview, setView, flash, focus, lookAt, thumb, stats,
+      resetClock: () => { lastCallAt = 0; },
+      setEntry: (cells) => {
+        const next = Array.isArray(cells) && cells.length ? cells.filter((i) => i >= 0 && i < W * H) : null;
+        if (String(next) !== String(entryMark)) { entryMark = next && next.length ? next : null; blinkT = 0; need = true; }
+      },
+      busy: () => need || !!anim || flashes.length > 0 || builds.length > 0 || missing || roughFar || (!!entryMark && !reduceMotion()),
+      entryCells: () => (entryMark ? entryMark.slice() : null),
       view: () => view,
       redraw: () => { need = true; },
     };

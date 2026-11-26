@@ -210,8 +210,8 @@
     // 名前が長いので、折り返すときは nameParts の切れ目（「ちきゅうを守れ！」と「ほしくだき」の間）だけで折る（約束 §1.4・§10）
     { name: "ちきゅうを守れ！ほしくだき", nameParts: ["ちきゅうを守れ！", "ほしくだき"], desc: "おおきな ほしの まわりを じきが とびまわって こわすよ。ちきゅうに つくまでに こわしきれ！", url: "games/asteroid/", bestText: () => asteroidBest(), art: "asteroid", bestWrap: true },
     { name: "あまいものあつめ", desc: "ありんこが おなじ いろの おさとうを はこぶよ", url: "games/amai/", bestText: () => amaiBest(), art: "amai", bestWrap: true, bestSmall: true },
-    // ぼくのまち：しさくちゅう（試作）の札つき（tag）。ベストは最大人口（machi.best）
-    { name: "ぼくのまち", desc: "みちと いえを おいて、まちを そだてよう。こんざつや よごれに きをつけて", url: "games/machi/", best: "machi.best", art: "machi", tag: "しさくちゅう" }
+    // ぼくのまち：しさくちゅう（試作）の札つき（tag）。ベストは最大人口（machi.best。machiBest で「N にん」）
+    { name: "ぼくのまち", desc: "みちと いえを おいて、まちを そだてよう。こんざつや よごれに きをつけて", url: "games/machi/", bestText: () => machiBest(), art: "machi", tag: "しさくちゅう", bestWrap: true }
   ];
 
   // ===== 小さな絵（Canvas で描く。画像ファイルは使わない） =====
@@ -892,6 +892,11 @@
 
   // もくもくこうば：seizai.best（届いた段の最大。1〜4、エンディングで 5）。1〜4 の整数なら段の名前（例「BEST こうじょう」）、5 なら「クリア！」、それ以外は空。
   // 約束 §10 の例「こうば まで そだった」「みなと クリア！」は iPhone SE 幅（値の欄 120px、かなは 1 字 約 17px）で「…」に欠けるため短くした
+  // ぼくのまち：いちばん おおかった ひと（machi.best）。何の数か分かるように「にん」を付ける（tech A10）
+  function machiBest() {
+    const n = readBest("machi.best");
+    return n ? `${n.toLocaleString()} にん` : "";
+  }
   function seizaiBest() {
     try {
       const raw = localStorage.getItem("seizai.best");

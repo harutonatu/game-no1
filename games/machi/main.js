@@ -13,9 +13,10 @@
   const L = window.MachiLogic, R = window.MachiRender, I = window.MachiInput;
   const $ = (id) => document.getElementById(id);
   const NAME = "ぼくのまち";
-  const KEY_SAVE = "machi.save", KEY_BAK = "machi.bak", KEY_BEST = "machi.best", KEY_SEEN = "machi.seen";
+  const KEY_SAVE = "machi.save", KEY_BAK = "machi.bak", KEY_BEST = "machi.best", KEY_SEEN = "machi.seen", KEY_TIPS = "machi.tips";
   const SAVE_EVERY_SEC = 15, SAVE_SOON_SEC = 2, UI_EVERY_SEC = 0.2;
-  const NEWS_SEC = 10, VOICE_SEC = 8, HINT_SEC = 3, ZOOM_HINT_SEC = 10;
+  const NEWS_SEC = 10, VOICE_SEC = 12, HINT_SEC = 3, TIP_SEC = 6, LINK_SEC = 5, ZOOM_HINT_SEC = 10;
+  const ENTRY_GOAL = "いりぐち（ひかって いる ところ）から みちを ひこう";
   const DEFAULT_HINT = "おくものを えらんで、マスを タップ";
 
   function safeCall(fn, fallback) { try { const v = fn(); return v === undefined ? fallback : v; } catch (e) { console.error(NAME + ":", e); return fallback; } }
@@ -25,7 +26,7 @@
     app: $("app"), back: $("backBtn"), nameBtn: $("nameBtn"), soundBtn: $("soundBtn"),
     moneyText: $("moneyText"), popText: $("popText"), starText: $("starText"), newsText: $("newsText"), dateText: $("dateText"),
     wrap: $("mapWrap"), canvas: $("mapCanvas"), viewBtn: $("viewBtn"), speedBtns: $("speedBtns"), zoomHint: $("zoomHint"),
-    voiceBar: $("voiceBar"), voiceFace: $("voiceFace"), voiceText: $("voiceText"),
+    voiceBar: $("voiceBar"), voiceFace: $("voiceFace"), voiceText: $("voiceText"), voiceSub: $("voiceSub"), viewLegend: $("viewLegend"),
     toolHint: $("toolHint"), tools: $("tools"),
     terrainCard: $("terrainCard"), helpCard: $("helpCard"), restartCard: $("restartCard"), nameCard: $("nameCard"), nameInput: $("nameInput"),
     infoCard: $("infoCard"), infoTitle: $("infoTitle"), infoList: $("infoList"), infoWhy: $("infoWhy"),
@@ -93,7 +94,8 @@
   let voiceLeft = 0, voiceI = -1;
   let firstTime = false;      // machi.seen が無かった（あそびかたを自動で出した）
   let rafId = 0;
-  const stepTimes = [];
+  const stepTimes = [], monthTimes = [];
+  let resting = false, restFrames = 0;   // 止まっていて変わる物が無いとき rAF を休む（約束 §11。A12）
   const camStart = { cell: 0 };
 
   const sumNow = () => (state ? safeCall(() => L.summary(state), null) : null);
@@ -118,6 +120,7 @@
   }
   function updateUi(force) {
     if (!state) return;
+    if (force) wakeLoop();
     const s = sumNow();
     if (!s) return;
     const money = L.formatMoney(s.money), pop = L.formatPop(s.pop);
@@ -140,8 +143,10 @@
       const T = toolDef(b.dataset.tool);
       const locked = !!(T && T.rank > state.rank);
       b.dataset.locked = locked ? "1" : "0";
-      b.setAttribute("aria-label", locked ? `${T.name}（${L.RANKS[T.rank].name} に なると つかえる）` : T ? T.name : "");
+      b.setAttribute("aria-label", locked ? `${T.name}（${rankLabel(T.rank)}に なると つかえる）` : T ? T.name : "");
     });
+    // いりぐちの印：まだ いりぐちに みちが つながっていない間だけ（UX M2）
+    render.setEntry(entryLinked() ? null : entryCells());
     if (!newsLeft) showGoal(s);
   }
   function toolDef(id) { for (const t of L.TOOLS) if (t.id === id) return t; return null; }
@@ -151,12 +156,16 @@
     if (el.newsText.textContent !== text) el.newsText.textContent = text;
     ui.news = text;
   }
+  // ランクの呼び方は「」で囲み、人数を添える（「しまで」が「島で」に読めないように。UX M1）
+  function rankLabel(r) { const R = L.RANKS[r]; return R ? `「${R.name}」（${L.formatPop(R.pop)} にん）` : ""; }
+  function nextText(s) { return `「${s.next}」（${L.formatPop(s.nextPop)} にん）まで あと ${L.formatPop(Math.max(0, s.nextPop - s.pop))} にん`; }
   function showGoal(s) {
     let t;
-    if (s.next) {
-      if (s.pop === 0 && state.month < 2) t = "みちを ひいて、そばに すむ を おこう";
-      else t = `${s.next}まで あと ${L.formatPop(Math.max(0, s.nextPop - s.pop))} にん`;
-    } else t = "だいとしに なったよ！ すきに そだてよう";
+    if (state && s.pop === 0 && !entryLinked()) t = ENTRY_GOAL;
+    else if (s.next) {
+      if (s.pop === 0 && state.month < 2) t = "みちの そばに すむ・しごと・おみせ を おこう";
+      else t = nextText(s);
+    } else t = "「だいとし」に なったよ！ すきに そだてよう";
     if (el.newsText.textContent !== t) el.newsText.textContent = t;
     ui.news = t;
   }
@@ -168,13 +177,108 @@
   function toolHintText(t) {
     const T = toolDef(t);
     if (!T) return DEFAULT_HINT;
-    if (t === "erase") return "こわす 1 マス 5 から（おいて すぐなら ぜんぶ もどる）";
+    if (t === "erase") return "こわす 1 マス 5〜（おいて すぐなら もどる）";
     if (t === "road") return `みち 1 マス ${T.cost}（はし ${T.bridgeCost}）`;
     if (t === "rail") return `せんろ 1 マス ${T.cost}（はし ${T.bridgeCost}）`;
-    if (t === "nature") return `めぐみ 1 マス ${T.cost}（おく ばしょで はたけ・りんぎょう・ぎょこう）`;
+    if (t === "nature") return `めぐみ 1 マス ${T.cost}（ばしょで しゅるいが きまる）`;
     return `${T.name} 1 マス ${T.cost}`;
   }
   function resetHint() { setHint(toolHintText(tool), false, 0); }
+  // 道具の説明（はじめて選んだときに 1 回だけ。machi.tips に選んだ道具を覚える。UX M3）
+  const TIPS = {
+    home: "すむ＝いえ。みちの そばに おこう",
+    work: "しごと＝こうば。けむりが でるよ",
+    shop: "おみせ＝はたらく ばしょ。いえの ちかくに",
+    road: "みち＝いりぐちから つなげよう",
+    rail: "せんろ＝はなれた みちを つなぐよ",
+    green: "みどり＝こうえん。よごれが へるよ",
+    erase: "こわす＝おいた ものを けすよ",
+    nature: "めぐみ＝はたけ・りんぎょう・りょうし"
+  };
+  function tipSeen(id) { const r = readKey(KEY_TIPS) || ""; return r.split(",").includes(id); }
+  function showTip(id) {
+    if (!TIPS[id] || tipSeen(id)) return false;
+    const r = readKey(KEY_TIPS);
+    writeKey(KEY_TIPS, r ? `${r},${id}` : id);
+    setHint(TIPS[id], false, TIP_SEC);   // 6 秒たつと値段のヒントに戻る
+    return true;
+  }
+
+  // ===== いりぐち（はじめの一手。UX M2・fun 1） =====
+  function entryCells() { return state && Array.isArray(state.entry) ? state.entry.map((e) => e.y * L.W + e.x) : []; }
+  function linkedRoad(i) {
+    const net = state && state.net;
+    if (!net || !net.label || !net.comps) return false;
+    const lb = net.label[i];
+    return lb >= 0 && !!net.comps[lb] && !!net.comps[lb].entry;
+  }
+  function linkedZone(i) {
+    const net = state && state.net;
+    if (!net || !net.zone || !net.comps) return false;
+    const z = net.zone[i];
+    return z >= 0 && !!net.comps[z] && !!net.comps[z].entry;
+  }
+  // いりぐちに みち が 1 マスでも つながったか（いりぐちの塊が いりぐちのマスより大きい）
+  function entryLinked() {
+    return !!safeCall(() => {
+      const ec = entryCells(), net = state.net;
+      if (!ec.length || !net || !net.label || !net.comps) return true;
+      for (const i of ec) { const lb = net.label[i]; const c = lb >= 0 ? net.comps[lb] : null; if (c && c.size > ec.length) return true; }
+      return false;
+    }, true);
+  }
+  function goToEntry() {
+    const ec = entryCells();
+    if (ec.length) render.lookAt(ec[ec.length >> 1], 22);
+  }
+  // 置く前に、つながるかを見積もる（みち：線か となりに いりぐちと つながった みち。区画：2 マス以内に つながった みち）
+  function predictLinked(t, cells) {
+    if (!state || !state.net || !state.net.label) return true;
+    const W = L.W, H = L.H;
+    const near = (i, r) => {
+      const x = i % W, y = (i / W) | 0;
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (r === 1 && dx && dy) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && ny >= 0 && nx < W && ny < H && linkedRoad(ny * W + nx)) return true;
+      }
+      return false;
+    };
+    if (t === "road") return cells.some((i) => near(i, 1));
+    if (t === "home" || t === "work" || t === "shop" || t === "nature") return cells.some((i) => near(i, 2));
+    return true;
+  }
+  // いりぐちと つながった みち のうち、cells にいちばん近いマス
+  function nearestLinked(cells) {
+    if (!cells.length) return -1;
+    let sx = 0, sy = 0;
+    for (const i of cells) { sx += i % L.W; sy += (i / L.W) | 0; }
+    sx /= cells.length; sy /= cells.length;
+    let best = -1, bd = 1e9;
+    const n = L.W * L.H;
+    for (let i = 0; i < n; i++) {
+      if (!linkedRoad(i)) continue;
+      const d = Math.abs((i % L.W) - sx) + Math.abs(((i / L.W) | 0) - sy);
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
+  // 置いたあと：つながっていなければ、先に言って、つながった みち の近い所へ寄せて光らせる（UX M4・fun 2）
+  function checkLinked(t, cells) {
+    if (!cells || !cells.length) return;
+    const zone = t === "home" || t === "work" || t === "shop" || t === "nature";
+    if (t !== "road" && !zone) return;
+    if (cells.some((i) => (zone ? linkedZone(i) : linkedRoad(i)))) return;
+    const far = zone && cells.every((i) => !(state.net.zone && state.net.zone[i] >= 0));
+    setHint(far ? "みちから はなれて いるよ（2 マスまで）" : "いりぐちと つながって いないよ", true, LINK_SEC);
+    const j = nearestLinked(cells);
+    if (j >= 0) {
+      // 見えていれば光らせるだけ。見えていなければ そこへ寄せて光らせる
+      const c = render.camera(), x = (j % L.W) + 0.5, y = ((j / L.W) | 0) + 0.5;
+      const seen = Math.abs(x - c.cx) * c.cell < el.wrap.clientWidth / 2 - 8 && Math.abs(y - c.cy) * c.cell < el.wrap.clientHeight / 2 - 8;
+      if (seen) render.flash(j); else render.focus(j);
+    }
+  }
 
   // ===== 道具 =====
   function selectTool(id) {
@@ -182,7 +286,7 @@
     const T = toolDef(id);
     if (!T) return;
     if (T.rank > state.rank) {
-      setHint(`${L.RANKS[T.rank].name} に なると つかえるよ`, true, HINT_SEC);
+      setHint(`${rankLabel(T.rank)}に なると つかえるよ`, true, HINT_SEC);
       sfx.play("deny");
       return;
     }
@@ -190,6 +294,7 @@
     el.tools.querySelectorAll("[data-tool]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tool === tool)));
     cancelPaint();
     resetHint();
+    if (tool) showTip(tool);
     sfx.play("select");
   }
   function drawToolIcons() {
@@ -201,9 +306,15 @@
   drawToolIcons();
 
   // ===== 描画（MachiRender） =====
-  const dprNow = () => Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  // 地図の canvas は DPR 2 まで（DPR 3 では 1 コマに塗る画素が 2.25 倍になり、寄って動かすと重い。ドット絵なので見た目はほぼ同じ。tech M3）
+  const dprNow = () => Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   const render = safeCall(() => R.create(el.canvas, { cssW: el.wrap.clientWidth || 300, cssH: el.wrap.clientHeight || 300, dpr: dprNow() }), null);
   if (!render) { console.error(NAME + ": 描画を始められません"); return; }
+  // 外から（テスト・デバッグ）カメラや見かたを変えても、休んでいる rAF を起こす
+  for (const k of ["setCamera", "panBy", "zoomBy", "zoomTo", "fit", "focus", "lookAt", "flash", "setView", "setPreview", "redraw", "setState"]) {
+    const f = render[k];
+    if (typeof f === "function") render[k] = function () { const r = f.apply(render, arguments); wakeLoop(); return r; };
+  }
   function resizeMap() {
     const w = el.wrap.clientWidth, h = el.wrap.clientHeight;
     if (w > 0 && h > 0) render.resize(w, h, dprNow());
@@ -214,7 +325,7 @@
 
   // ===== カード =====
   const CARDS = {
-    terrain: { box: () => el.terrainCard, primary: () => el.terrainCard.querySelector('[data-terrain="0"]') },
+    terrain: { box: () => el.terrainCard, primary: () => el.terrainCard.querySelector("h2") },   // 1 枚目に赤い枠が付いて「おすすめ」に見えないよう、見出しにフォーカス（UX L5）
     help: { box: () => el.helpCard, primary: () => el.helpCard.querySelector('[data-cmd="help-close"]') },
     restart: { box: () => el.restartCard, primary: () => el.restartCard.querySelector('[data-cmd="restart-no"]') },
     name: { box: () => el.nameCard, primary: () => el.nameInput },
@@ -237,6 +348,7 @@
     C.box().hidden = false;
     document.body.dataset.card = kind;
     if (!noFocus) { const p = C.primary(); if (p) safeCall(() => p.focus({ preventScroll: true }), null); }
+    wakeLoop();
   }
   function closeCard() {
     if (!overlay) return;
@@ -245,6 +357,7 @@
     overlay = null;
     delete document.body.dataset.card;
     lastTs = 0;                                  // カードが開いていた間の時間を足さない
+    wakeLoop();
     if (queue.length) { openCard(queue.shift()); return; }
     if (overlayBack && document.contains(overlayBack) && typeof overlayBack.focus === "function") safeCall(() => overlayBack.focus({ preventScroll: true }), null);
     overlayBack = null;
@@ -260,6 +373,9 @@
       const cv = b.querySelector("canvas");
       if (c && cv) safeCall(() => render.thumb(c.terrain, cv), null);
     });
+    // いまの町があるときだけ「やめる（いまの まちに もどる）」（tech A6）
+    const cancel = el.terrainCard.querySelector('[data-cmd="terrain-cancel"]');
+    if (cancel) cancel.hidden = !state;
     openCard("terrain");
   }
   function startGame(choice) {
@@ -274,14 +390,21 @@
     resizeMap();
     render.setView("normal"); viewIdx = 0; renderViewBtn();
     pending = [];
+    queue = [];                                  // 前の町の節目のカードを新しい町で出さない（tech A7）
     newsLeft = 0; hideVoice();
     el.terrainCard.hidden = true; overlay = null; delete document.body.dataset.card;
     saveNow();
     updateUi(true);
     sfx.play("start");
     const seen = safeCall(() => readKey(KEY_SEEN) === "1", false);
-    if (!seen) { firstTime = true; openCard("help"); }
-    else openQueued();
+    if (!seen) { firstTime = true; openHelp(true); }
+    else { goToEntry(); openQueued(); }
+  }
+  // あそびかた。はじめて（auto）のときは「さいしょから」を出さない（fun 8）
+  function openHelp(auto) {
+    const b = el.helpCard.querySelector('[data-cmd="restart-ask"]');
+    if (b) b.hidden = !!auto;
+    openCard("help");
   }
   function openQueued() { lastTs = 0; if (queue.length) openCard(queue.shift()); }
 
@@ -316,8 +439,20 @@
   // ===== events =====
   const DENY = {
     money: "おかねが たりないよ", terrain: "ここには おけないよ", rank: "まだ つかえないよ", occupied: "もう おいてあるよ",
-    entry: "いりぐちは こわせないよ", empty: "なにも ないよ"
+    entry: "いりぐちは こわせないよ", empty: "こわす ものが ないよ"
   };
+  // 置けない理由の文（canPlace の reason と、そのマスの地形で出し分ける。fun 2・UX M4）
+  function denyText(reason, i) {
+    if (reason === "terrain" && state && i >= 0) {
+      const t = state.terrain[i];
+      if (t === L.TER.SEA) return "うみには おけないよ";
+      if (t === L.TER.MOUNT) return "やまには おけないよ";
+      if (t === L.TER.RIVER) return "かわには みち・せんろ だけ おけるよ";
+    }
+    if (reason === "rank" && tool) { const T = toolDef(tool); if (T) return `${rankLabel(T.rank)}に なると つかえるよ`; }
+    return DENY[reason] || "ここには おけないよ";
+  }
+  let denyAt = {};             // doPlace の前に見た、理由ごとの はじめのマス
   const LEAVE_PLACE = { road: "road", rail: "rail", green: "green", erase: "erase" };
   function visibleCell(i) {
     const c = render.camera();
@@ -334,7 +469,7 @@
         case "erase": sfx.play("erase"); scheduleSave(); break;
         case "deny": {
           sfx.play("deny");
-          setHint(DENY[e.reason] || "ここには おけないよ", true, HINT_SEC);
+          setHint(denyText(e.reason, denyAt[e.reason] !== undefined ? denyAt[e.reason] : -1), true, HINT_SEC);
           break;
         }
         case "grow": if (e.i >= 0 && visibleCell(e.i)) sfx.play("grow"); break;
@@ -354,7 +489,8 @@
   const UNLOCK_TEXT = { rail: "せんろ", tax: "ぜいの たかさ えらび", apart: "アパート", luxury: "こうきゅうじゅうたくち", mansion: "マンション", office: "ビル（かいしゃ）", clean: "きれいな こうば", park: "おおきな こうえん", tower: "まちの タワー" };
   function onRank(e, quiet) {
     el.rankTitle.textContent = `${e.name} に なったよ！`;
-    const list = (e.unlocks || []).map((u) => UNLOCK_TEXT[u] || u);
+    // まだ道具の無い物（おおきな こうえん・まちの タワー）は「つかえる ものが ふえたよ」に出さない（tech M2）
+    const list = (e.unlocks || []).filter((u) => u !== "park" && u !== "tower").map((u) => UNLOCK_TEXT[u] || u);
     el.rankText.textContent = list.length ? `つかえる ものが ふえたよ：${list.join("・")}` : "まちが おおきく なったね";
     el.rankBonus.textContent = e.bonus ? `おいわいの おかね ${L.formatMoney(e.bonus)}` : "";
     setNews(`${e.name} に なったよ！`, 12);
@@ -379,10 +515,12 @@
     voiceLeft = VOICE_SEC;
     drawFace(!!e.good);
     el.voiceText.textContent = e.text;
+    if (el.voiceSub) el.voiceSub.hidden = !(voiceI >= 0);
     el.voiceBar.dataset.good = e.good ? "1" : "0";
     el.voiceBar.dataset.why = e.why || "";
     el.voiceBar.setAttribute("aria-label", voiceI >= 0 ? `${e.text}。おすと その ばしょへ いくよ` : e.text);
     el.voiceBar.hidden = false;
+    closeZoomHint();                             // 同じ所（地図の下の端）に出るので、拡大の案内は閉じる
     sfx.play("voice", !!e.good);
   }
   function hideVoice() { voiceLeft = 0; voiceI = -1; el.voiceBar.hidden = true; }
@@ -393,13 +531,40 @@
 
   // ===== めがね =====
   const VIEWS = [["normal", "ふつう"], ["poll", "よごれ"], ["jam", "こんざつ"], ["live", "すみやすさ"], ["land", "とちの ねだん"]];
+  // 凡例（色と模様の意味。よい → わるい の順。模様は render の buildOverlay と同じ：なし・点・✕。UX M5）
+  const LEGEND = {
+    poll: ["よごれ", ["すくない", "すこし", "おおい"]],
+    jam: ["みち", ["すいている", "こみぎみ", "こんざつ"]],
+    live: ["すみやすさ", ["たかい", "ふつう", "ひくい"]],
+    land: ["とちの ねだん", ["たかい", "ふつう", "ひくい"]]
+  };
+  const LEG_MARK = ["", "・", "✕"];
   let viewIdx = 0;
   function renderViewBtn() {
-    const [, nm] = VIEWS[viewIdx];
-    el.viewBtn.textContent = `みかた：${nm}`;
+    const [id, nm] = VIEWS[viewIdx];
+    const nx = VIEWS[(viewIdx + 1) % VIEWS.length][1];
+    el.viewBtn.textContent = "";
+    const a = document.createElement("span"), b = document.createElement("span");
+    a.className = "cur"; a.textContent = `みかた：${nm}`;
+    b.className = "nx"; b.textContent = `つぎ：${nx}`;
+    el.viewBtn.append(a, b);
+    el.viewBtn.setAttribute("aria-label", `ちずの みかた：${nm}。おすと ${nx}`);
     el.viewBtn.dataset.on = viewIdx ? "1" : "0";
+    const lg = LEGEND[id];
+    el.viewLegend.hidden = !lg;
+    el.viewLegend.textContent = "";
+    if (lg) {
+      const t = document.createElement("span"); t.className = "lt"; t.textContent = lg[0] + "："; el.viewLegend.appendChild(t);
+      lg[1].forEach((w, k) => {
+        const it = document.createElement("span"); it.className = "li";
+        const sw = document.createElement("span"); sw.className = "sw"; sw.dataset.lv = String(k); sw.textContent = LEG_MARK[k]; sw.setAttribute("aria-hidden", "true");
+        const tx = document.createElement("span"); tx.textContent = w + (LEG_MARK[k] ? `（${k === 1 ? "てん" : "✕"}）` : "");
+        it.append(sw, tx); el.viewLegend.appendChild(it);
+      });
+    }
   }
   el.viewBtn.addEventListener("click", () => {
+    closeZoomHint();
     viewIdx = (viewIdx + 1) % VIEWS.length;
     render.setView(VIEWS[viewIdx][0]);
     renderViewBtn();
@@ -409,25 +574,30 @@
   // ===== 指（MachiInput） =====
   let paint = null;           // { a, cells, ok } なぞっている間
   function cancelPaint() { if (paint) { paint = null; render.setPreview(null); } }
-  const NATURE = ["", "はたけ", "りんぎょう", "ぎょこう"];
+  const NATURE = ["", "はたけ", "りんぎょう", "りょうし"];
   function paintCells(a, b) {
     return tool === "road" || tool === "rail" ? L.lineCells(a.x, a.y, b.x, b.y) : L.rectCells(a.x, a.y, b.x, b.y);
   }
   function makePreview(cells) {
     const T = toolDef(tool);
-    let n = 0, cost = 0, nature = 0, why = null;
+    let n = 0, cost = 0, nature = 0, why = null, whyAt = -1;
+    const okCells = [];
     for (const i of cells) {
       const r = L.canPlace(state, tool, i % L.W, (i / L.W) | 0);
-      if (r.ok) { n++; cost += r.cost; if (!nature && r.natureKind) nature = r.natureKind; }
-      else if (!why) why = r.reason;
+      if (r.ok) { n++; cost += r.cost; okCells.push(i); if (!nature && r.natureKind) nature = r.natureKind; }
+      else if (!why) { why = r.reason; whyAt = i; }
     }
     const short = state.money >= 0 && cost > state.money;
     const ok = n > 0 && !short;
     // 値段は render が札の終わりに足すので、label には入れない（文だけの札のときは cost を渡さない）
     let label, shown;
-    if (!n) label = DENY[why] || "ここには おけないよ";
+    if (!n) label = denyText(why, whyAt);
     else if (short) label = "おかねが たりないよ";
-    else { label = cost < 0 ? `もどす ${n}マス` : `${tool === "nature" && nature ? NATURE[nature] : T.name} ${n}マス`; shown = Math.abs(cost); }
+    else {
+      label = cost < 0 ? `もどす ${n}マス` : `${tool === "nature" && nature ? NATURE[nature] : T.name} ${n}マス`; shown = Math.abs(cost);
+      // つながらない所は、置く前に言う（UX M4 の付記・fun 2）
+      if (cost >= 0 && !predictLinked(tool, okCells)) label += "（つながって いないよ）";
+    }
     return { tool, cells, ok, cost: shown, label };
   }
   function updatePreview(b) {
@@ -439,9 +609,16 @@
   }
   function doPlace(t, cells) {
     if (!state || !cells || !cells.length) return;
+    denyAt = {};
+    for (const i of cells) {
+      const r = safeCall(() => L.canPlace(state, t, i % L.W, (i / L.W) | 0), null);
+      if (r && !r.ok && r.reason && denyAt[r.reason] === undefined) denyAt[r.reason] = i;
+    }
     const res = safeCall(() => L.place(state, t, cells), null);
     if (!res) return;
     handleEvents(res.events);
+    const placed = (res.events || []).find((e) => e && e.kind === "place");
+    if (placed && Array.isArray(placed.cells)) safeCall(() => checkLinked(t, placed.cells), null);
     updateUi(true);
   }
   function closeZoomHint() { if (zoomHintLeft > 0 || !el.zoomHint.hidden) { zoomHintLeft = 0; el.zoomHint.hidden = true; } }
@@ -452,8 +629,9 @@
       if (overlay || !state) return;
       if (tool) {
         if (render.camera().cell < R.MIN_PAINT_CELL) {
-          render.zoomTo(px, py, 22);
-          setHint("ちかくで おいてね", false, HINT_SEC);
+          // まだ いりぐちに みちが無ければ、押した所ではなく いりぐちへ寄る（fun 1）
+          if (!entryLinked()) { goToEntry(); setHint("いりぐちから みちを ひこう", false, HINT_SEC + 2); }
+          else { render.zoomTo(px, py, 22); setHint("ちかくで おいてね", false, HINT_SEC); }
           closeZoomHint();
           return;
         }
@@ -498,6 +676,15 @@
     a.textContent = k; b.textContent = v;
     li.append(a, b); ul.appendChild(li);
   }
+  // 数字に「ひくい・ふつう・たかい」と ○▲✕（色だけにしない）。goodHigh：高いほど よい true・わるい false（UX M6）
+  const GRADE = ["ひくい", "ふつう", "たかい"];
+  function gradeRow(ul, k, v, goodHigh, lo, hi) {
+    const g = v < lo ? 0 : v < hi ? 1 : 2;
+    const mark = (goodHigh ? ["✕", "▲", "○"] : ["○", "▲", "✕"])[g];
+    addRow(ul, k, `${v}（${GRADE[g]} ${mark}）`);
+    return g;
+  }
+  function addTip(text) { const p = document.createElement("p"); p.className = "tip"; p.textContent = text; el.infoWhy.appendChild(p); }
   function openInfo(c) {
     const info = safeCall(() => L.inspect(state, c.x, c.y), null);
     if (!info) return;
@@ -508,23 +695,25 @@
     const u = info.use;
     if (u === L.USE.HOME) {
       addRow(el.infoList, "ひと", `${L.formatPop(info.people)} にん`);
-      addRow(el.infoList, "すみやすさ", `${info.live} / 100`);
-      addRow(el.infoList, "とちの ねだん", `${info.land}`);
-      addRow(el.infoList, "ひとの おおさ", `${info.dens}`);
-      addRow(el.infoList, "よごれ", `${info.poll}`);
+      gradeRow(el.infoList, "すみやすさ", info.live, true, 45, 70);
+      gradeRow(el.infoList, "とちの ねだん", info.land, true, 35, 65);
+      addRow(el.infoList, "ひとの おおさ", `${info.dens}（${GRADE[info.dens < 35 ? 0 : info.dens < 65 ? 1 : 2]}）`);
+      gradeRow(el.infoList, "よごれ", info.poll, false, 20, 40);
     } else if (u === L.USE.WORK || u === L.USE.SHOP || u === L.USE.NATURE) {
       addRow(el.infoList, "おおきさ", info.lvl ? `${info.lvl} / 3` : "あきち");
       addRow(el.infoList, "しごと", `${L.formatPop(info.jobs)} にん`);
-      addRow(el.infoList, "よごれ", `${info.poll}`);
+      gradeRow(el.infoList, "よごれ", info.poll, false, 20, 40);
     } else if (u === L.USE.ROAD || u === L.USE.CROSS || u === L.USE.ENTRY || u === L.USE.RAIL) {
       if (u !== L.USE.RAIL) addRow(el.infoList, "こみぐあい", trafficText(info.traffic));
       addRow(el.infoList, "いりぐち", info.connected ? "つながっている" : "つながって いない");
       if (info.blocked) addRow(el.infoList, "おおあめ", "とおれないよ");
     } else {
-      addRow(el.infoList, "とちの ねだん", `${info.land}`);
-      addRow(el.infoList, "よごれ", `${info.poll}`);
+      gradeRow(el.infoList, "とちの ねだん", info.land, true, 35, 65);
+      gradeRow(el.infoList, "よごれ", info.poll, false, 20, 40);
     }
     el.infoWhy.textContent = "";
+    if (info.poll >= 40) addTip("よごれが おおいよ。みどりを ちかくに おくと へるよ");
+    if (u === L.USE.HOME && info.live < 45) addTip("すみやすさが ひくいよ。みどり・おみせを ちかくに おくと あがるよ");
     if (info.reasons && info.reasons.length) {
       const p = document.createElement("p");
       p.className = "why";
@@ -537,10 +726,11 @@
     const s = sumNow();
     if (!s) return;
     el.statusList.textContent = "";
-    addRow(el.statusList, "まちの ランク", `${s.rankName}${s.next ? `（${s.next}まで あと ${L.formatPop(Math.max(0, s.nextPop - s.pop))} にん）` : ""}`);
+    addRow(el.statusList, "まちの おおきさ", `「${s.rankName}」`);
+    if (s.next) addRow(el.statusList, "つぎ", nextText(s));
     addRow(el.statusList, "まいつき はいる", L.formatMoney(s.income));
     addRow(el.statusList, "まいつき でる", L.formatMoney(s.cost));
-    addRow(el.statusList, "さいだいの ひと", `${L.formatPop(Math.max(s.bestPop, s.pop))} にん`);
+    addRow(el.statusList, "いちばん おおかった ひと", `${L.formatPop(Math.max(s.bestPop, s.pop))} にん`);
     const rs = safeCall(() => L.starReasons(state), []) || [];
     el.starWhy.textContent = rs.length ? `すみやすさを さげている わけ：${rs.join("・")}` : "すみやすさを さげる ものは いまは ないよ";
     renderTax();
@@ -552,24 +742,29 @@
       b.setAttribute("aria-pressed", String(Number(b.dataset.tax) === state.tax));
       b.dataset.locked = locked && b.dataset.tax !== "1" ? "1" : "0";
     });
-    el.taxNote.textContent = locked ? "まちに なると えらべるよ" : "ひくいと すみやすく、たかいと おかねが ふえるよ";
+    el.taxNote.textContent = locked ? `${rankLabel(1)}に なると えらべるよ` : "ひくいと すみやすく、たかいと おかねが ふえるよ";
   }
 
   // ===== ボタン =====
   function onCommand(cmd, btn) {
     sfx.unlock();
     switch (cmd) {
-      case "help": if (!overlay) openCard("help"); break;
-      case "help-close":
+      case "help": if (!overlay) openHelp(false); break;
+      case "help-close": {
+        const first = firstTime;
         closeCard();
         if (firstTime || readKey(KEY_SEEN) !== "1") {
           writeKey(KEY_SEEN, "1");
           if (firstTime) { zoomHintLeft = ZOOM_HINT_SEC; el.zoomHint.hidden = false; zoomHintShown = true; firstTime = false; }
         }
+        // はじめての町：あそびかたを閉じたら いりぐちへ寄せる（1 マス 22px。UX M2・fun 1）
+        if (first && !entryLinked()) goToEntry();
         break;
+      }
+      case "terrain-cancel": if (state && overlay === "terrain") closeCard(); break;
       case "restart-ask": closeCard(); openCard("restart"); break;
       case "restart-no": closeCard(); break;
-      case "restart": closeCard(); seed = (seed + 7919) | 0; showTerrain(); break;
+      case "restart": closeCard(); queue = []; seed = (seed + 7919) | 0; showTerrain(); break;
       case "reroll": seed = (seed + 3) | 0; showTerrain(); sfx.play("select"); break;
       case "name-ok": {
         const nm = L.normalizeName(el.nameInput.value);
@@ -597,7 +792,7 @@
     if (tl && !overlay) { selectTool(tl.dataset.tool); return; }
     const tx = t.closest("[data-tax]");
     if (tx && state) {
-      if (!L.setTax(state, Number(tx.dataset.tax))) { sfx.play("deny"); setHint("まちに なると えらべるよ", true, HINT_SEC); }
+      if (!L.setTax(state, Number(tx.dataset.tax))) { sfx.play("deny"); setHint(`${rankLabel(1)}に なると えらべるよ`, true, HINT_SEC); }
       else { sfx.play("select"); scheduleSave(); }
       renderTax();
       return;
@@ -607,7 +802,7 @@
   });
   el.nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); onCommand("name-ok"); } });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && overlay && overlay !== "terrain") { e.preventDefault(); closeCard(); }
+    if (e.key === "Escape" && overlay && (overlay !== "terrain" || state)) { e.preventDefault(); closeCard(); }
   });
   // カードの外（暗い所）を押しても、確かめの要らないカードは閉じる
   for (const id of ["infoCard", "statusCard", "rankCard"]) $(id).addEventListener("click", (e) => { if (e.target === $(id)) closeCard(); });
@@ -622,10 +817,12 @@
       const running = !overlay && !document.hidden;
       let evs = null;
       if (running) {
+        const mo = state.month;
         const t0 = performance.now();
         const res = L.step(state, wall);
         const ms = performance.now() - t0;
-        stepTimes.push(ms); if (stepTimes.length > 240) stepTimes.shift();
+        stepTimes.push(ms); if (stepTimes.length > 600) stepTimes.shift();
+        if (state.month !== mo) { monthTimes.push(ms); if (monthTimes.length > 60) monthTimes.shift(); }   // 月の終わりの重いコマ
         evs = res.events;
         if (state.speed > 0) saveSince += wall;
         if (evs && evs.length) handleEvents(evs);
@@ -641,9 +838,26 @@
       if (saveSince >= SAVE_EVERY_SEC) saveNow();
       const toRender = pending; pending = [];
       render.frame(state, toRender, wall || 1 / 60);
+      // 止まっていて（とめる・カード）変わる物が無いときは rAF を休む。触る・カメラが動く・カードを開け閉めすると起きる（約束 §11。tech A12）
+      if (canRest()) { if (++restFrames > 30) { resting = true; stopLoop(); } }
+      else restFrames = 0;
     }
   }
-  function startLoop() { if (!rafId) { lastTs = 0; rafId = requestAnimationFrame(loop); } }
+  function canRest() {
+    if (!state || paint) return false;
+    if (!(state.speed === 0 || overlay)) return false;
+    if (newsLeft > 0 || hintLeft > 0 || voiceLeft > 0 || zoomHintLeft > 0 || saveSoon > 0 || pending.length) return false;
+    return !safeCall(() => render.busy(), true);
+  }
+  function wakeLoop() {
+    restFrames = 0;
+    if (!resting) return;
+    resting = false;
+    if (!sleeping && !document.hidden) startLoop();
+  }
+  for (const t of ["pointerdown", "pointermove", "wheel", "keydown", "touchstart"]) document.addEventListener(t, wakeLoop, { capture: true, passive: true });
+  window.addEventListener("resize", wakeLoop);
+  function startLoop() { if (!rafId) { lastTs = 0; render.resetClock(); rafId = requestAnimationFrame(loop); } }
   function stopLoop() { if (rafId) { cancelAnimationFrame(rafId); rafId = 0; } }
 
   // ===== 中断と再開 =====
@@ -657,6 +871,7 @@
   function wake() {
     if (!sleeping || document.hidden) return;
     sleeping = false;
+    resting = false; restFrames = 0;
     startLoop();
   }
   document.addEventListener("visibilitychange", () => { if (document.hidden) sleep(); else if (!reloadIfStale()) wake(); });
@@ -674,12 +889,17 @@
     resetHint();
     updateUi(true);
   }
+  function pct(a, q) { if (!a.length) return 0; const s = a.slice().sort((x, y) => x - y); return Math.round(s[Math.min(s.length - 1, Math.floor(s.length * q))] * 1000) / 1000; }
   function median(a) { if (!a.length) return 0; const s = a.slice().sort((x, y) => x - y); return Math.round(s[s.length >> 1] * 1000) / 1000; }
   const D = window.YubiDebug;
   if (D && typeof D.command === "function") {
     safeCall(() => {
-      D.command("stats", () => ({ summary: sumNow(), render: render.stats(), camera: render.camera(), stepMsMed: median(stepTimes), stepMsMax: Math.round(Math.max(0, ...stepTimes) * 1000) / 1000, saved: savedCount, overlay, tool }),
-        { desc: "いまの町・描画・step の ms", args: "なし" });
+      D.command("stats", () => ({
+        summary: sumNow(), render: render.stats(), camera: render.camera(),
+        stepMsMed: median(stepTimes), stepMsP95: pct(stepTimes, 0.95), stepMsMax: Math.round(Math.max(0, ...stepTimes) * 1000) / 1000,
+        monthMsMed: median(monthTimes), monthMsMax: Math.round(Math.max(0, ...monthTimes) * 1000) / 1000, monthN: monthTimes.length, steps: stepTimes.length,
+        saved: savedCount, overlay, tool, resting
+      }), { desc: "いまの町・描画（コマの間隔）・step の ms（中央・p95・最大・月の終わり）", args: "なし" });
       D.command("addmoney", (a) => { if (!state) throw new Error("まだ はじまっていない"); state.money = Math.max(L.MONEY_MIN, Math.min(L.MONEY_MAX, state.money + Math.floor(Number(a && a.n) || 0))); updateUi(true); return { money: state.money }; },
         { desc: "お金を足す", args: "{ n }" });
       D.command("skip", (a) => {
@@ -734,7 +954,7 @@
       resizeMap();
       updateUi(true);
       const seen = readKey(KEY_SEEN) === "1";
-      if (!seen) { firstTime = true; openCard("help"); }
+      if (!seen) { firstTime = true; openHelp(true); }
     } else {
       if (raw !== null) {
         // 読めない・新しい版の保存：元を bak へ写してから新しく始める（写せなければ上書きしない＝元を消さない）
@@ -750,7 +970,7 @@
   })();
 
   // テスト・デバッグ用（読むだけ）
-  window.__machi = { get state() { return state; }, get overlay() { return overlay; }, get tool() { return tool; }, render, saveNow };
+  window.__machi = { get state() { return state; }, get overlay() { return overlay; }, get tool() { return tool; }, get resting() { return resting; }, render, saveNow };
 })();
 
 // オフラインでも遊べるようにする（https か localhost のときだけ有効）
