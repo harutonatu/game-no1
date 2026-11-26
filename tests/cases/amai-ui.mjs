@@ -2855,14 +2855,16 @@ export const tests = [
         check(`⑦先に来た古い頼みの答え（11 とおり）は捨て、今の頼みの答え（7 とおり）を出す（${J(g.paths)}・${g.counter}）`, g.counter === 'worker' && g.paths.state === 'exact' && g.paths.n === 7, { g: g.paths, c: g.counter });
         await ctx.close();
       }
-      // ⑧ 面を変えたら Worker の覚えを作り直す（技術レビュー 中-3 c）：3 面を数えた覚えの件数が、1 面のあとでも、1 面→3 面とやり直しても同じ
+      // ⑧ 面を変えたら Worker の覚えを作り直す（技術レビュー 中-3 c）：1 面のあとに 3 面を数えた覚えの件数が、Node で 3 面だけを数えた覚えの件数と同じ（1 面の分が残っていない）
       {
         const { ctx, page } = await openG(browser, 'AW47 ⑧覚え', { v: SMOKE_V() });
         await setLevel(page, 1); await waitCount(page);
         await setLevel(page, 3); const a = await waitCount(page);
         await setLevel(page, 1); await waitCount(page);
         await setLevel(page, 3); const b = await waitCount(page);
-        check(`⑧面を変えたら Worker の覚えを作り直す（3 面の覚え ${a.memoSize} 件 → 1 面のあと もう一度 3 面 ${b.memoSize} 件・${b.counter}）`, a.counter === 'worker' && Number.isSafeInteger(a.memoSize) && a.memoSize > 0 && b.memoSize === a.memoSize, { a: a.memoSize, b: b.memoSize });
+        const c3 = L.createLevel(3, L.pickPicture(3, null)), m3 = L.makeCountMemo();
+        L.countSearch(c3.state, { memo: m3, path: c3.info.solution });
+        check(`⑧面を変えたら Worker の覚えを作り直す（1 面のあとの 3 面の覚え ${a.memoSize} 件・1 面→3 面とやり直して ${b.memoSize} 件＝Node で 3 面だけを数えた覚え ${m3.size} 件・${b.counter}）`, a.counter === 'worker' && a.memoSize === m3.size && b.memoSize === m3.size && m3.size > 0, { a: a.memoSize, b: b.memoSize, node: m3.size });
         await ctx.close();
       }
       // ⑥ 裏へ回っている間（8 秒より長く）は見張らない：戻っても Worker を使い続け、Worker の答えを出す（UX レビュー 1。2026-11-26）
