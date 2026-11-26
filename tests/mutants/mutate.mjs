@@ -569,6 +569,9 @@ const M = [
   ['MA104 あまいものあつめ：運ぶ表を写さずに使い回す（元の局面の表が書きかわる。見つける：AL28）', 'ルール', 'games/amai/logic.js', 'else { b.out = Uint8Array.from(b.out); b.rt = copyRoute(b.rt); }', 'else { b.out = b.out; b.rt = b.rt; }'],
   ['MA105 あまいものあつめ：先が無い見切りの条件をゆるめる（空いたわくより 1 つ浅くしか見ない＝とける局面も 0 と言う。見つける：AL28）', 'ルール', 'games/amai/logic.js', 'const m = Math.min(c.length, f);', 'const m = Math.min(c.length, f - 1);'],
   ['MA106 あまいものあつめ：先が無い見切りで、ふちの角砂糖が 1 個だけの色を「ふちに無い」と見る（見つける：AL28）', 'ルール', 'games/amai/logic.js', 'if (hn[c[j].color] > 0) return false;', 'if (hn[c[j].color] > 1) return false;'],
+  ['MA107 あまいものあつめ：Worker の答えの番号を見ない（古い頼みの答えを今の局面の数として出す。見つける：AW47）', 'ルール', 'games/amai/main.js', 'if (!j || !j.remote || j.seq !== m.seq || j.kind !== m.t) return;', 'if (!j || !j.remote || j.kind !== m.t) return;'],
+  ['MA108 あまいものあつめ：答えない Worker を見張らない（数が出ないまま。見つける：AW47）', '操作', 'games/amai/main.js', 'const CW_SILENT_MS = 8000;', 'const CW_SILENT_MS = Infinity;'],
+  ['MA109 あまいものあつめ：Worker が面を変えても覚えを作り直さない（見つける：AW47）', 'ルール', 'games/amai/count-worker.js', 'if (!memo || memoKey !== k) { memo = L.makeCountMemo(); memoKey = k; }', 'if (!memo) { memo = L.makeCountMemo(); memoKey = k; }'],
   // ぼくのまち（games/machi/。2026-11-26。計画書 docs/plans/machi.md §7。MC1〜MC56 はロジック、MC57〜MC61 は画面）
   //   ロジックの変異は ONLY=CL1〜CL21、画面の変異は ONLY=CW1〜CW16 で絞って流す（tests/README.md「ぼくのまちの変異テスト」）
   ['MC1 ぼくのまち：いりぐちと つながっていなくても 育つ（connected が みちの塊が あるだけで真。見つける：CL3）', 'ルール', 'games/machi/logic.js', 'return z >= 0 && s.net.comps[z] && s.net.comps[z].entry;', 'return z >= 0 && !!s.net.comps[z];'],

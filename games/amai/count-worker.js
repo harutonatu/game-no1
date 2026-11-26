@@ -8,10 +8,11 @@
  *   { t: "count", seq, mk, state, path }          … state から数える。mk＝覚えの印（面・絵・ちょうせん・テストの局面。変わったら覚えを作り直す）
  *   { t: "rewind", seq, mk, states, base0Sure }   … 戻し先を探す（覚えを使う）
  *   { t: "stop" }                                 … 今の調べをやめる
+ *   （state・states の cells は Int8Array で来る。写さずに渡すため。ここで普通の配列に戻してから validateState に通す）
  * 答え（ここ → 画面）：
  *   { t: "ready" }                                … 読み込めた
  *   { t: "beat", seq }                            … 調べている（約 0.25 秒ごと。答えが来ないときの見張り用）
- *   { t: "count", seq, result, n }                … 数え終えた
+ *   { t: "count", seq, result, n, size }          … 数え終えた（size＝覚えの件数。テスト用）
  *   { t: "rewind", seq, k, sure } / { t: "rewind", seq, bad: true }   … 戻し先（bad＝局面が壊れていた：画面のスレッドで探し直す）
  *   { t: "fail", why }                            … logic.js が読めない・落ちた（画面は今までの区切って回す作りに戻る）
  */
@@ -38,17 +39,22 @@
     if (!memo || memoKey !== k) { memo = L.makeCountMemo(); memoKey = k; }
     return memo;
   }
+  // 画面は cells を Int8Array で送る（写さずに渡すため）。普通の配列に戻してから validateState に通す（中身・確かめ方は今までと同じ）
+  function unpack(st) {
+    if (st && typeof st === "object" && ArrayBuffer.isView(st.cells)) return Object.assign({}, st, { cells: Array.from(st.cells) });
+    return st;
+  }
   function post(m) { try { self.postMessage(m); } catch (e) { /* 何もしない */ } }
   function start(m) {
     const seq = m.seq;
     if (m.t === "count") {
-      const st = L.validateState(m.state);
+      const st = L.validateState(unpack(m.state));
       if (!st) { job = null; post({ t: "count", seq, result: "unknown", n: 0 }); return; }
       const path = Array.isArray(m.path) ? m.path : null;
       job = { t: "count", seq, r: L.makeCount(st, { memo: memoFor(m.mk), path }) };
     } else if (m.t === "rewind") {
       const raw = Array.isArray(m.states) ? m.states : [];
-      const list = raw.map((s) => L.validateState(s));
+      const list = raw.map((s) => L.validateState(unpack(s)));
       if (!list.length || list.some((s) => !s)) { job = null; post({ t: "rewind", seq, bad: true }); return; }
       job = { t: "rewind", seq, r: L.makeRewind(list, { base0Sure: m.base0Sure === true, memo: memoFor(m.mk) }) };
     }
@@ -66,7 +72,7 @@
     if (job !== j) { setTimeout(loop, 0); return; }
     if (r.done) {
       job = null; looping = false;
-      if (j.t === "count") post({ t: "count", seq: j.seq, result: r.result, n: Number.isSafeInteger(r.n) ? r.n : 0 });
+      if (j.t === "count") post({ t: "count", seq: j.seq, result: r.result, n: Number.isSafeInteger(r.n) ? r.n : 0, size: memo ? memo.size : 0 });   // size：覚えの件数（テスト用）
       else post({ t: "rewind", seq: j.seq, k: r.k, sure: r.sure === true });
       return;
     }

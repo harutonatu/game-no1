@@ -1661,7 +1661,7 @@ export const tests = [
   },
   // ---------- 速くする（2026-11-26。計画書 docs/plans/amai-worker.md・約束 §1.14 N11〜N14） ----------
   {
-    id: 'AL28', tier: 'full', node: true, title: 'あまいものあつめ：とける みち を速くした作り（鍵の差分③・運ぶ表の写し②・先が無い見切り④）が v86 の作り（tests/ref/amai-logic-v86.js）と同じ答え：①ふつう 6 面・ちょうせん 2 面を でたらめ混じりに遊び、押すたびに数えた結果（result・n）・うごかせなくなったときの戻し先（覚えあり・なし）・落ち着いた局面がすべて同じ ②上限で打ち切る重い局面（80 面の 1 手目の まちがい・上限 300）も同じ ③鍵：同じ局面なら同じ鍵・ちがう局面なら別の鍵（遊んだ局面と押した先の局面）、運ぶたびに直した鍵＝一から作った鍵 ④見切った局面は、見切らずに数えると（v86 の作り・上限 5 万）ちょうど 0。手で組んだ「空いたわく 2 つ・ふちの色の箱が列の 3 番目」は見切り、「2 番目」は見切らない',
+    id: 'AL28', tier: 'full', node: true, title: 'あまいものあつめ：とける みち を速くした作り（鍵の差分③・運ぶ表の写し②・先が無い見切り④）が v86 の作り（tests/ref/amai-logic-v86.js）と同じ答え：①ふつう 6 面・ちょうせん 2 面を でたらめ混じりに遊び、押すたびに数えた結果（result・n）・うごかせなくなったときの戻し先（覚えあり・なし）・落ち着いた局面が同じ（上限にかかる局面は v86 以上：数は v86 以上・言い切りは同じか より確か・戻し先は同じか より新しい。ユーザー決定「④を残す」）②上限で打ち切る重い局面（80 面の 1 手目の まちがい・上限 300）も v86 以上 ③鍵：同じ局面なら同じ鍵・ちがう局面なら別の鍵（遊んだ局面と押した先の局面）、運ぶたびに直した鍵＝一から作った鍵 ④見切った局面は、見切らずに数えると（v86 の作り・上限 5 万）ちょうど 0。手で組んだ「空いたわく 2 つ・ふちの色の箱が列の 3 番目」は見切り、「2 番目」は見切らない',
     run({ check, root }) {
       const N = load(root);
       const refF = path.join(path.dirname(fileURLToPath(import.meta.url)), '../ref/amai-logic-v86.js');
@@ -1675,7 +1675,16 @@ export const tests = [
       let seed = 4242; const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
       const diffs = [], rw = [], pool = [];
       let counted = 0, settleBad = 0;
-      const cmp = (a, b, tag) => { counted++; if (a.result !== b.result || a.n !== b.n) diffs.push({ tag, old: [a.result, a.n, a.nodes], now: [b.result, b.n, b.nodes] }); };
+      // 上限にかからない（v86 が ちょうど・100 いじょう と言い切れた）局面は v86 と同じ。上限にかかる局面（some・unknown）は、④ の見切りで多く調べられるので
+      //   「v86 以上」：数は v86 の数以上で、言い切りは同じか より確か（ユーザー決定 2026-11-26「④を残す (Recommended)」。約束 §1.14 N14）
+      let better = 0;
+      const cmp = (a, b, tag) => {
+        counted++;
+        const decided = a.result === 'exact' || a.result === 'many';
+        const ok = decided ? a.result === b.result && a.n === b.n : b.n >= a.n && (b.result !== 'unknown' || a.result === 'unknown');
+        if (!ok) diffs.push({ tag, old: [a.result, a.n, a.nodes], now: [b.result, b.n, b.nodes] });
+        else if (a.result !== b.result || a.n !== b.n) better++;
+      };
       // ① 遊ぶ
       const plays = [[1, false], [4, false], [9, false], [20, false], [36, false], [48, false], [10, true], [43, true]];
       for (const [lv, chal] of plays) {
@@ -1716,9 +1725,10 @@ export const tests = [
         const wrong = [0, 1, 2, 3].find((c) => c !== sol[0] && N.canPress(sN, c) === null);
         cmp(O.countSearch(O.press(sO, wrong).state, { limit: 300 }), N.countSearch(N.press(sN, wrong).state, { limit: 300 }), '80 面 1 手目の まちがい（上限 300）');
       }
-      const rwBad = rw.filter((r) => J(r.old) !== J(r.now));
-      check(`①②数えた ${counted} 局面の結果が v86 と同じ（ちがう ${diffs.length}）・落ち着いた局面も同じ（ちがう ${settleBad}）`, counted >= 100 && diffs.length === 0 && settleBad === 0, diffs.slice(0, 8));
-      check(`①うごかせなくなった ${rw.length} 回の戻し先（覚えあり・なし）が v86 と同じ（ちがう ${rwBad.length}）`, rw.length >= 3 && rwBad.length === 0, { rwBad, rw });
+      // 戻し先は v86 と同じか、より新しい（大きい k）。言い切れるか（sure）は v86 以上（④ で多く調べられたとき）
+      const rwBad = rw.filter((r) => !(r.now[0] >= r.old[0] && r.now[2] === r.old[2] && (r.now[1] || !r.old[1])));
+      check(`①②数えた ${counted} 局面の結果が v86 と同じ（上限にかかる局面は v86 以上。v86 より確かになった ${better}・だめ ${diffs.length}）・落ち着いた局面も同じ（ちがう ${settleBad}）`, counted >= 100 && diffs.length === 0 && settleBad === 0, diffs.slice(0, 8));
+      check(`①うごかせなくなった ${rw.length} 回の戻し先（覚えあり・なし）が v86 と同じか より新しい（だめ ${rwBad.length}）`, rw.length >= 3 && rwBad.length === 0, { rwBad, rw });
       // ③ 鍵
       const byKey = new Map(), byCanon = new Map();
       let split = 0, clash = 0, fresh = 0;
@@ -1748,6 +1758,10 @@ export const tests = [
       const near = mk(N, map, { slots: [B()], cols: [[B(), R(), R()], [B(), B(), R()], [B()], []] });
       const oDeep = O.countSearch(JSON.parse(JSON.stringify(deep)), { limit: 50000 }), oNear = O.countSearch(JSON.parse(JSON.stringify(near))), nNear = N.countSearch(near);
       check(`④見切った ${cut} 局面（うち空いたわくのある ${cutF}）は見切らずに数えると ちょうど 0（ちがう ${notZero.length}）`, cut >= 1 && notZero.length === 0, notZero.slice(0, 5));
+      // ふちに出ている色の角砂糖が ちょうど 1 個（その色の箱が手前）なら見切らない（とける＝1 とおり。技術レビュー 中-3 b）
+      const one = mk(N, ['R'], { cols: [[R(1)], [], [], []] });
+      const oOne = O.countSearch(JSON.parse(JSON.stringify(one))), nOne = N.countSearch(one);
+      check(`④ふちの角砂糖が 1 個だけの色の箱が手前なら見切らない（${N.countNoWay(one)}）・数は v86 と同じ（${oOne.result} ${oOne.n}＝今 ${nOne.result} ${nOne.n}）`, N.countNoWay(one) === false && oOne.result === 'exact' && oOne.n === 1 && nOne.result === 'exact' && nOne.n === 1, { oOne, nOne });
       check(`④手で組んだ局面：空いたわく 2 つ・ふちの色（R）の箱が列の 3 番目は見切る（${N.countNoWay(deep)}・v86 で数えると ${oDeep.result} ${oDeep.n}）、2 番目は見切らない（${N.countNoWay(near)}・v86 ${oNear.result} ${oNear.n}＝今 ${nNear.result} ${nNear.n}）`, N.countNoWay(deep) === true && oDeep.result === 'exact' && oDeep.n === 0 && N.countNoWay(near) === false && oNear.result === nNear.result && oNear.n === nNear.n, { oDeep, oNear, nNear });
     },
   },

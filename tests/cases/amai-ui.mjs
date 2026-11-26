@@ -2790,7 +2790,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW47', tier: 'full', title: 'あまいもの とける みち を Worker で数える（2026-11-26。約束 §1.14 N11・計画書 amai-worker.md）：①ふつうは Worker（counter worker）で、1 面・3 面の数が Node と同じ・ちょうせん 43 面の［だいじょうぶな ところまで もどす］の戻し先が Node と同じ ②Worker を消したページ（window.Worker なし）は画面の中で数え（counter main）、同じ数・同じ戻し先 ③Worker のファイルが読めない（404）・Worker が頼みの途中で落ちる・答えない（8 秒）ときは画面の中に戻って数が出る（落ちない）④Worker でも 押す・1手もどす のたびに古い答えを捨てて、今の局面の数（Node で数え直した数と同じ）',
+    id: 'AW47', tier: 'full', solo: true, flaky: { why: 'iPhone XS 相当（CPU 4 倍遅く）で長い処理と実時間を測る（⑤）', checks: /XS 相当：(数えている間|もどすを押してから答えまで)/ }, title: 'あまいもの とける みち を Worker で数える（2026-11-26。約束 §1.14 N11・計画書 amai-worker.md）：①ふつうは Worker（counter worker）で、1 面・3 面の数が Node と同じ・ちょうせん 43 面の［だいじょうぶな ところまで もどす］の戻し先が Node と同じ ②Worker を消したページ（window.Worker なし）は画面の中で数え（counter main）、同じ数・同じ戻し先 ③Worker のファイルが読めない（404）・Worker が頼みの途中で落ちる・答えない（8 秒）ときは画面の中に戻って数が出る（落ちない）④Worker でも 押す・1手もどす のたびに古い答えを捨てて、今の局面の数（Node で数え直した数と同じ）⑥数えている途中に裏へ回して 8 秒より長くたってから戻っても Worker を使い続ける ⑦古い頼みの答えは捨てる ⑧面を変えたら Worker の覚えを作り直す ⑤iPhone XS 相当（Chromium・CPU 4 倍遅く・375×812・実時間）で 80 面の 1 手目の まちがいを Worker で数えている間、画面のスレッドに 50ms を超える長い処理が無い・30 面で 59 手のあと［だいじょうぶな ところまで もどす］を押してから答えまでの長い処理が 100ms 以下',
     async run({ browser, check, root }) {
       const L = loadLogic(root);
       const e43 = rewindPlan(L, 43, { chal: true });
@@ -2838,6 +2838,117 @@ export const tests = [
         for (;;) { g = await gs(page); if ((g.paths.state !== 'counting' && g.counter === 'main') || Date.now() - t0 > 20000) break; await sleep(200); await wait(page, 1000); }
         const ms = Date.now() - t0;
         check(`③${tag}：画面の中に戻って（${g.counter}・${ms}ms）1 面の数 ${J(g.paths)}（Node ${n1.n}）`, g.counter === 'main' && g.paths.state === 'exact' && g.paths.n === n1.n, { g: g.paths, c: g.counter, ms });
+        await ctx.close();
+      }
+      // ⑦ 古い頼みの答えは捨てる（技術レビュー 中-3 a）：2 つめの頼み（1 面）には 0.3 秒で「11 とおり」、ほかの頼みには 1.5 秒で「7 とおり」と答える Worker に替え、
+      //   1 面を始めてすぐ押す（3 つめの頼み）。先に来る 2 つめの答え（11）は古いので捨て、3 つめの答え（7）を出す
+      {
+        const { ctx, page } = await openG(browser, 'AW47 ⑦古い答え', { v: SMOKE_V() });
+        await page.route(/\/games\/amai\/count-worker\.js/, (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: 'let i = 0; self.postMessage({ t: "ready" }); self.onmessage = (e) => { const m = e.data; if (!m || m.t !== "count") return; i += 1; const k = i; setTimeout(() => self.postMessage({ t: "count", seq: m.seq, result: "exact", n: k === 2 ? 11 : 7, size: 0 }), k === 2 ? 300 : 1500); };' }));
+        await page.reload(); await wait(page, 300);
+        await setLevel(page, 1);
+        const sol1 = await solutionOf(page);
+        await pressCol(page, sol1[0]); await wait(page, 10);
+        let g = null;
+        for (let i = 0; i < 30; i++) { await sleep(200); g = await gs(page); if (g.paths.state !== 'counting') break; }
+        await sleep(400); g = await gs(page);
+        check(`⑦先に来た古い頼みの答え（11 とおり）は捨て、今の頼みの答え（7 とおり）を出す（${J(g.paths)}・${g.counter}）`, g.counter === 'worker' && g.paths.state === 'exact' && g.paths.n === 7, { g: g.paths, c: g.counter });
+        await ctx.close();
+      }
+      // ⑧ 面を変えたら Worker の覚えを作り直す（技術レビュー 中-3 c）：3 面を数えた覚えの件数が、1 面のあとでも、1 面→3 面とやり直しても同じ
+      {
+        const { ctx, page } = await openG(browser, 'AW47 ⑧覚え', { v: SMOKE_V() });
+        await setLevel(page, 1); await waitCount(page);
+        await setLevel(page, 3); const a = await waitCount(page);
+        await setLevel(page, 1); await waitCount(page);
+        await setLevel(page, 3); const b = await waitCount(page);
+        check(`⑧面を変えたら Worker の覚えを作り直す（3 面の覚え ${a.memoSize} 件 → 1 面のあと もう一度 3 面 ${b.memoSize} 件・${b.counter}）`, a.counter === 'worker' && Number.isSafeInteger(a.memoSize) && a.memoSize > 0 && b.memoSize === a.memoSize, { a: a.memoSize, b: b.memoSize });
+        await ctx.close();
+      }
+      // ⑥ 裏へ回っている間（8 秒より長く）は見張らない：戻っても Worker を使い続け、Worker の答えを出す（UX レビュー 1。2026-11-26）
+      //   答えを 3 秒（本当の時間）遅らせる Worker に替え、数えている途中で裏へ回して 20 秒（早送り）待ってから戻す
+      {
+        const { ctx, page } = await openG(browser, 'AW47 ⑥裏', { v: SMOKE_V() });
+        await page.route(/\/games\/amai\/count-worker\.js/, (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: 'self.postMessage({ t: "ready" }); self.onmessage = (e) => { const m = e.data; if (m && m.t === "count") setTimeout(() => self.postMessage({ t: "count", seq: m.seq, result: "exact", n: 7 }), 3000); };' }));
+        await page.reload(); await wait(page, 300);
+        await setLevel(page, 1);
+        const before = await gs(page);
+        await setHidden(page, true); await wait(page, 20000);
+        const hid = await gs(page);
+        await setHidden(page, false);
+        let g = null;
+        for (let i = 0; i < 40; i++) { await sleep(200); g = await gs(page); if (g.paths.state !== 'counting') break; }
+        check(`⑥数えている途中（${before.paths.state}）に裏へ回して 20 秒たってから戻っても Worker のまま（裏 ${hid.counter} → ${g.counter}）・Worker の答え（7 とおり）を出す（${J(g.paths)}）`, before.paths.state === 'counting' && hid.counter === 'worker' && g.counter === 'worker' && g.paths.state === 'exact' && g.paths.n === 7, { before: before.paths, hid: hid.counter, g: g.paths, c: g.counter });
+        await ctx.close();
+      }
+      // ⑤ 性能（iPhone XS 相当＝CPU 4 倍遅く・375×812・実時間。§0.14・§7.5）：重い局面を Worker で数えている間、画面のスレッドに 50ms を超える長い処理が出ない
+      //   （CDP の CPU 遅くは Worker には効かないので、数が出るまでの時間は目安だけ見る。押したときの描き＝最初の 0.3 秒は数えない）
+      if (IS_CHROMIUM) {
+        const { ctx, page } = await newPage(browser, custom(375, 812, null, 'iPhone XS 375×812'), 'AW47 ⑤XS', {});
+        await gotoG(page);
+        await setOldLevel(page, 80);
+        await sleep(300);
+        const cdp = await ctx.newCDPSession(page);
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+        const sol80 = await solutionOf(page);
+        const r = await page.evaluate(async (first) => {
+          const G = window.AmaiGame, L = window.AmaiLogic;
+          const st = L.validateState(G.logic());
+          const wrong = [0, 1, 2, 3].find((c) => c !== first && L.canPress(st, c) === null);
+          const lt = [];
+          const ob = new PerformanceObserver((l) => { for (const e of l.getEntries()) lt.push({ d: e.duration, t: e.startTime }); });
+          ob.observe({ type: 'longtask' });
+          const t0 = performance.now();
+          G.press(wrong);
+          while (performance.now() - t0 < 30000) { await new Promise((res) => setTimeout(res, 50)); if (G.getState().paths.state !== 'counting') break; }
+          const t1 = performance.now();
+          await new Promise((res) => setTimeout(res, 100));
+          ob.disconnect();
+          const late = lt.filter((e) => e.t > t0 + 300 && e.t < t1 && e.d > 50);
+          return { wrong, ms: Math.round(t1 - t0), counter: G.getState().counter, end: G.getState().paths, lt: lt.map((e) => Math.round(e.d)), late: late.length, lateMax: Math.round(late.reduce((a, e) => Math.max(a, e.d), 0)) };
+        }, sol80[0]);
+        check(`⑤XS 相当（CPU 4 倍遅く・375×812）：80 面の 1 手目の まちがい（列 ${r.wrong}）を Worker で数え終える（${r.counter}・${J(r.end)}）`, r.counter === 'worker' && r.end.state !== 'counting', r);
+        check(`⑤XS 相当：数えている間（押して 0.3 秒より後）に 50ms を超える長い処理が ${r.late} 回（最大 ${r.lateMax}ms）で 0 回・数が出るまで ${r.ms}ms（15 秒以内）`, r.late === 0 && r.ms <= 15000, r);
+        await ctx.close();
+      }
+      // ⑤b 長い並びの［だいじょうぶな ところまで もどす］（30 面・64×48 の絵で 59 手。途中から再開していない面）：押した瞬間から Worker の答えが来るまでの長い処理の最大（性能レビュー 中3）
+      //   局面の並びを Worker へ送る写しが画面のスレッドを止めないこと（cells は Int8Array で渡す。§1.14 N11）。答えが来たあとの描き直し（applyRewind）は数えない
+      if (IS_CHROMIUM) {
+        const e30 = rewindPlan(L, 30);
+        const { ctx, page } = await newPage(browser, custom(375, 812, null, 'iPhone XS 375×812'), 'AW47 ⑤bXS', {});
+        await gotoG(page);
+        await setLevel(page, 30);
+        for (const c of e30.seq) {
+          await settleG(page); await skipG(page);
+          if ((await gs(page)).overlay === 'rescue') { await sleep(450); await clickCmd(page, 'close'); }
+          const k = await pressCol(page, c);
+          if (k !== 'press') throw new Error(`⑤b 列 ${c} が押せない（${k}）`);
+          await skipG(page);
+          await waitCount(page);   // 押すたびに数え終わるまで待つ（覚えが Node と同じになる）
+        }
+        await settleG(page); await skipG(page); await sleep(600);
+        let g0 = await gs(page);
+        for (let i = 0; i < 50 && g0.paths.state === 'counting'; i++) { await sleep(100); g0 = await gs(page); }
+        await sleep(500); g0 = await gs(page);
+        const cdp = await ctx.newCDPSession(page);
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+        const r = await page.evaluate(async () => {
+          const lt = [];
+          const ob = new PerformanceObserver((l) => { for (const e of l.getEntries()) lt.push({ d: e.duration, t: e.startTime }); });
+          ob.observe({ type: 'longtask' });
+          const b = document.querySelector('#overlay:not([hidden]) [data-cmd="rewindYes"]');
+          if (!b) { ob.disconnect(); return { none: true }; }
+          const t0 = performance.now();
+          b.click();
+          let last = t0;
+          while (performance.now() - t0 < 20000) { await new Promise((res) => setTimeout(res, 5)); if (!window.AmaiGame.getState().rescuing) break; last = performance.now(); }
+          await new Promise((res) => setTimeout(res, 200));
+          ob.disconnect();
+          const before = lt.filter((e) => e.t >= t0 - 1 && e.t < last);
+          return { ms: Math.round(last - t0), max: Math.round(before.reduce((a, e) => Math.max(a, e.d), 0)), n: before.length, all: lt.map((e) => Math.round(e.d)), presses: window.AmaiGame.getState().presses, counter: window.AmaiGame.getState().counter };
+        });
+        check(`⑤bXS 相当：30 面 ${e30.seq.length} 手（${g0.overlay}）で［だいじょうぶな ところまで もどす］→ 押した数 ${r.presses}（Node ${e30.memoK}）・Worker（${r.counter}）`, !r.none && g0.overlay === 'stuck' && r.presses === e30.memoK && r.counter === 'worker', { r, g0: g0.overlay, k: e30.memoK });
+        check(`⑤bXS 相当：もどすを押してから答えまで（${r.ms}ms）の長い処理の最大 ${r.max}ms（100ms 以下。ユーザー「100ms以下であれば課題ではありません」）`, !r.none && r.max <= 100, r);
         await ctx.close();
       }
     },

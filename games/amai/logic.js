@@ -490,6 +490,7 @@
   // 2 つの 32 bit の数を、全部のマスで XOR したもの（Zobrist の作り）。運ぶ（takeCell）ときは、そのマスの分だけ直す（全部を数え直さない）。
   // cells の配列 → Int32Array [h1, h2]（数えたことのある配列だけ。盤 b.hz が同じものを持ち、運ぶたびに直す）
   const ZC = 16;   // 1 マスの値の種類の幅（−1 と 色。COLORS より多くとる）
+  if (ZC < COLORS.length + 1) throw new Error("あまいものあつめ: ZC が色の数より小さい（鍵の指紋が重なる）");
   const zob1 = (i, v) => fmix(Math.imul(i * ZC + v + 1, 0x9e3779b1) ^ 0x7f4a7c15) | 0;
   const zob2 = (i, v) => fmix(Math.imul(i * ZC + v + 1, 0x85ebca77) ^ 0x2545f491) | 0;
   const hashCache = new WeakMap();
