@@ -319,7 +319,8 @@ state = {
   - `makeSave(state, at) → string`・`loadSave(raw) → state | null`・`validateBest(raw) → 整数`
   - `simulate(seed, policy, months) → { pop, money, star, rank, monthsTo: { 1000, 10000, ... }, jamMax, pollMax, log }`（自動プレイ。`policy` は `'none'`・`'greedy'`・`'grid'`・`'factory'` など。テストと数値合わせに使う）
   - `formatMoney(n)`・`formatPop(n)`（3 けたごとのカンマ）・`dateText(month) → "N ねんめ M がつ"`
-- events の kind：`place`（tool, cells）・`erase`（cells）・`deny`（reason, count）・`grow`（i, kind, lvl）・`shrink`（i）・`month`（year, month）・`money`（income, cost, delta）・`rank`（rank, unlocks）・`best`（pop）・`event`（kind, cells, text, good）・`eventEnd`（kind）・`jam`（i, level。いちばん混んでいる所）・`news`（text, why）・`leave`（why。人が 3% 以上減った）・`voice`（why, i（場所の添字。無ければ -1）, good, text）。
+- events は `{ kind: '<名前>', ... }` の形（ほかのゲームと同じ）。kind と欄：`place`（tool, cells）・`erase`（cells）・`deny`（reason, count）・`grow`（i, use, bk（建物の種類＝state.kind の値）, lvl）・`shrink`（i, use, lvl）・`month`（year, month）・`money`（income, cost, delta）・`rank`（rank, unlocks）・`best`（pop）・`event`（ev（できごとの種類 `festival` など）, cells, text, good）・`eventEnd`（ev）・`jam`（i, level。いちばん混んでいる所）・`news`（text, why）・`leave`（why。人が 3% 以上減った）・`voice`（why, i（場所の添字。無ければ -1）, good, text）。
+- （2026-11-26 ロジック担当：events の外側の `kind` と欄の名前がぶつかるので、`grow` の建物の種類は `bk`、できごとの種類は `ev` にした）
 - 関数の追加：`voiceOf(state) → { why, i, good, text } | null`（§5.18 の選び方。step が月に 1 回呼んで `voice` を出す）。
 
 ### 6.3 性能（iPhone XS（A12）を基準に重くしない。§7.0）
