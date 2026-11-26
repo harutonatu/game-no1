@@ -467,14 +467,15 @@
   }
   function renderPaths() {
     const r = countRes;
-    let st = "counting", lab = "とける みち", val = el.pathsVal.textContent || "かぞえてるよ…";
+    // 数え始めて COUNT_SHOW_MS までは前の言葉のまま（左右とも。「とける みち とけないよ」のように混ぜない）
+    let st = "counting", lab = el.pathsLab.textContent, val = el.pathsVal.textContent;
     if (!state || state.won || phase === "clear") { st = "none"; lab = ""; val = ""; }
-    else if (!r) { if (countSlow) val = "かぞえてるよ…"; }
+    else if (!r) { if (countSlow || !val) { lab = "とける みち"; val = "かぞえてるよ…"; } }
     else if (r.result === "exact" && r.n === 0) { st = "zero"; lab = "この ままだと"; val = "とけないよ"; }
-    else if (r.result === "exact") { st = "exact"; val = `${r.n} とおり`; }
-    else if (r.result === "many") { st = "many"; val = `${L.COUNT_CAP || 100} いじょう`; }
-    else if (r.result === "some") { st = "some"; val = `${r.n} いじょう`; }
-    else { st = "unknown"; val = "わからない"; }
+    else if (r.result === "exact") { st = "exact"; lab = "とける みち"; val = `${r.n} とおり`; }
+    else if (r.result === "many") { st = "many"; lab = "とける みち"; val = `${L.COUNT_CAP || 100} いじょう`; }
+    else if (r.result === "some") { st = "some"; lab = "とける みち"; val = `${r.n} いじょう`; }
+    else { st = "unknown"; lab = "とける みち"; val = "わからない"; }
     el.paths.dataset.state = st;
     el.paths.dataset.n = r && st !== "counting" && st !== "none" ? String(r.n) : "";
     if (el.pathsLab.textContent !== lab) el.pathsLab.textContent = lab;
