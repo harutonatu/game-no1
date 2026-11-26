@@ -53,6 +53,7 @@ export const GROUPS = [
   { key: 'KW', title: 'KW ほしくだき 画面（飛んで壊す・強くする・2択・時間切れともういちど・クリア・保存 v3・古い保存を消す・戻る・中断・画面内・横向き・性能・キーボード・音・オフライン・メニュー・ハード）', file: 'asteroid-ui.mjs', weight: { smoke: 8, full: 84 } },
   { key: 'AL', title: 'AL あまいものあつめ 計算ロジック(Node)', file: 'amai-logic.mjs', weight: { smoke: 0, full: 0 } },
   { key: 'AW', title: 'AW あまいものあつめ 画面（押す・運ぶ・もどす・うごかせない・保存・戻る・画面内・横向き・中断・はやく・ずかん・キーボード・音・色覚・オフライン・メニュー）', file: 'amai-ui.mjs', weight: { smoke: 8, full: 45 } },
+  { key: 'CL', title: 'CL ぼくのまち 計算ロジック(Node)', file: 'machi-logic.mjs', weight: { smoke: 0, full: 0 } },
 ];
 
 const args = process.argv.slice(2);
