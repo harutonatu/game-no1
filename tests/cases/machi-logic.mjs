@@ -678,10 +678,12 @@ export const tests = [
       for (let n = 0; n < 15; n++) L.step(a, 0.25);   // 月の終わりの前まで（入るお金で払えるようにならない）
       check(`まち・お金 0 では 1 段より上へ育たない（2 段 ${lv2(a)}）`, lv2(a) === 0 && a.money === s0, { n: lv2(a), money: a.money });
       const b = mk(1, 100000);
-      const evb = months(L, b, 6).filter((e) => e.kind === 'money');
+      const evAll = months(L, b, 6);
+      const evb = evAll.filter((e) => e.kind === 'money');
+      const grown = evAll.filter((e) => e.kind === 'grow' && e.use === 5 && e.lvl >= 2).length;   // 払って育った回数
       const paid = evb.reduce((x, e) => x + e.build, 0);
       const want = Math.round((L.HOME[3].people[2] - L.HOME[3].people[1]) * (L.BUILD_PAY + b.pop * L.BUILD_PAY_RATE));
-      check(`まち・お金あり：育つ（2 段 ${lv2(b)}）・育つのに払う（6 か月で ${paid}。1 段ぶん 約 ${want}）・money の delta に入る`, lv2(b) > 0 && paid >= lv2(b) * 4 * L.BUILD_PAY && evb.every((e) => e.delta === e.income - e.cost - e.build + e.subsidy), { n: lv2(b), paid, want });
+      check(`まち・お金あり：育つ（2 段 ${lv2(b)}）・育つのに払う（6 か月で ${paid}。1 段ぶん 約 ${want}）・money の delta に入る`, lv2(b) > 0 && grown > 0 && paid > grown * 4 * L.BUILD_PAY && evb.every((e) => e.delta === e.income - e.cost - e.build + e.subsidy), { n: lv2(b), paid, want });
       const c = mk(0, 0);
       months(L, c, 6);
       check(`むら では お金 0 でも ただで育つ（2 段 ${lv2(c)}）`, lv2(c) > 0, lv2(c));
@@ -717,6 +719,109 @@ export const tests = [
       const share = (rs) => { const c = [0, 0, 0, 0, 0]; for (const r of rs) { const s = r.state; for (let i = 0; i < L.N; i++) if (s.use[i] === 5 && s.lvl[i] > 0) c[s.kind[i]]++; } return { c, low: (c[3] + c[4]) / (c[1] + c[2] + c[3] + c[4]) }; };
       const g = share(seeds.map((sd) => L.simulate(sd, 'greedy', 480, { choice: sd - 1 }))), gr = share(T[1]);
       check(`住宅地＋高級住宅地の割合：greedy 40 年 ${(g.low * 100).toFixed(0)}%・grid 30 年 ${(gr.low * 100).toFixed(0)}%（2 割以上）`, g.low >= 0.2 && gr.low >= 0.2, { g, gr });
+    },
+  },
+  {
+    id: 'CL21', tier: 'smoke', node: true, title: 'ぼくのまち：変異テスト MC の見逃しを見つける確かめ（区画は いりぐちとつながった みち を先に選ぶ・仕事が足りない すむ は育たない・ふみきりの維持費 4・こわすは建物の段ぶん・お金がマイナスで育たない・むら は育つのに ただ・来たい人は 3 か月ぶんまで・渋滞の段 3・とめている間は clock が進まない・保存の いりぐち数／税／ベスト・はじめの 2 年は おおあめ・かじ が無い）',
+    run({ check, root }) {
+      const L = load(root);
+      // MC2：区画の近くに「つながっていない みち」と「いりぐちとつながった みち」の両方があるとき、後者を選ぶ（前者が先に見つかる並びで）
+      const a = flat(L);
+      roadV(L, a, EX, 3, 12);
+      setUse(L, a, EX - 4, 6, L.USE.ROAD);                    // 島の みち（区画の左上。いちばん先に調べる所）
+      const ha = setUse(L, a, EX - 2, 8, L.USE.HOME);          // 右 2 マスに いりぐちとつながった みち
+      L.recalc(a);
+      check('近くに つながっていない みち が先にあっても、いりぐちとつながった みち を選ぶ（しらべる connected）', L.inspect(a, EX - 2, 8).connected === true, L.inspect(a, EX - 2, 8));
+      months(L, a, 24);
+      check('そのとき すむ は育つ', a.lvl[ha] > 0, a.lvl[ha]);
+      // MC3：みどり でよく見えても、はたらく人に仕事が足りない（r < 0.8）すむ は育たない
+      const b = flat(L);
+      roadV(L, b, EX, 3, 12);
+      setUse(L, b, EX + 1, 4, L.USE.HOME, 3, 3);              // 12 人（仕事 0 → r ＝ 0.625）
+      for (let y = 3; y <= 9; y++) setUse(L, b, EX - 1, y, L.USE.GREEN);
+      const hb = setUse(L, b, EX + 1, 8, L.USE.HOME);
+      L.recalc(b);
+      const rb = L.summary(b).r;
+      check(`みどり があって すみやすさ ≧ 55 でも（${b.live[hb]}）、仕事が足りない（r ${rb.toFixed(2)} < 0.8）と育たない`, b.live[hb] >= 55 && rb < 0.8 && rb >= 0.6, { live: b.live[hb], r: rb });
+      months(L, b, 24);
+      check('24 か月たっても空き地のまま・まわりの すむ も小さくならない', b.lvl[hb] === 0 && b.lvl[I(L, EX + 1, 4)] === 3, { lvl: b.lvl[hb] });
+      // MC14：ふみきり（みち＋せんろ）の維持費は 4（みち 1・せんろ 3 ではなく）
+      const c = flat(L, { money: 1000 });
+      roadV(L, c, EX, 3, 6);
+      setUse(L, c, EX, 7, L.USE.CROSS); setUse(L, c, EX - 1, 7, L.USE.RAIL); setUse(L, c, EX + 1, 7, L.USE.RAIL);
+      L.recalc(c);
+      const mc = months(L, c, 1).find((e) => e.kind === 'money');
+      check(`維持費＝みち 4 マス（4）＋ふみきり（4）＋せんろ 2 マス（6）＝ 14（${mc && mc.cost}）`, mc && mc.cost === 14, mc);
+      // MC19：こわす の値段は 5 ＋ 10×段（段 2 の すむ は 25）
+      const d = flat(L, { money: 1000 });
+      const hd = setUse(L, d, EX + 1, 5, L.USE.HOME, 3, 2);
+      L.recalc(d);
+      const rd = L.place(d, 'erase', [hd]);
+      check(`こわす：段 2 の すむ は 25（お金 1000 → ${d.money}）`, rd.placed === 1 && rd.cost === 25 && d.money === 975, { cost: rd.cost, money: d.money });
+      // MC24：お金がマイナスの間は、ほかの条件が全部そろっていても育たない
+      const e = flat(L, { money: -5000 });
+      roadV(L, e, EX, 3, 20);
+      const he = []; for (let y = 4; y <= 19; y++) he.push(setUse(L, e, EX + 1, y, L.USE.HOME));
+      L.recalc(e);
+      months(L, e, 12);
+      check(`お金 ${e.money}（マイナス）の 12 か月は 16 軒とも空き地のまま`, e.money < 0 && he.every((i) => e.lvl[i] === 0), he.filter((i) => e.lvl[i] > 0).length);
+      // MC25：むら（rank 0）の間は、育つのに お金を払わない
+      const f = flat(L, { money: 1, rank: 0 });
+      roadV(L, f, EX, 3, 12);
+      const hf = []; for (let y = 4; y <= 11; y++) hf.push(setUse(L, f, EX + 1, y, L.USE.HOME, 3, 1));
+      setUse(L, f, EX - 1, 5, L.USE.WORK, 1, 2);
+      L.recalc(f);
+      const evf = months(L, f, 36);
+      check('むら では育つのに払うお金が 0（money の build は全部 0）・それでも育つ', f.rank === 0 && evf.filter((x) => x.kind === 'money').every((x) => x.build === 0) && hf.some((i) => f.lvl[i] > 1), { rank: f.rank, lvls: hf.map((i) => f.lvl[i]) });
+      // MC26：来たい人は 3 か月ぶんまで
+      const g = flat(L);
+      months(L, g, 12);
+      const cap = 10;   // GROW_BASE 10 × 町の ほし 3（×1）× 税 ふつう（×1）
+      check(`何も建たない 12 か月でも 来たい人は 3 か月ぶん（${cap * 3}）まで（${g.inflow}）`, Math.abs(g.inflow - cap * 3) < 1e-9, g.inflow);
+      // MC32：混みかたが 1.5 を超えると 段 3
+      const h = flat(L, { rank: 1 });
+      roadV(L, h, EX, 3, 30);
+      for (let y = 4; y <= 30; y++) for (const x of [EX - 2, EX - 1, EX + 1, EX + 2]) setUse(L, h, x, y, L.USE.HOME, 1, 3);
+      L.recalc(h);
+      check(`アパートだらけ の まっすぐの みち は 段 3 まで行く（${maxRoadTraffic(L, h)}）`, maxRoadTraffic(L, h) === 3, maxRoadTraffic(L, h));
+      // MC54：とめている間（speed 0）は、遊んでいる秒（clock。5 秒の取り消しに使う）も進まない
+      const i0 = flat(L);
+      i0.speed = 0;
+      for (let n = 0; n < 40; n++) L.step(i0, 0.25);
+      check(`とめて 10 秒：clock も month も進まない（${i0.clock}・${i0.month}）`, i0.clock === 0 && i0.month === 0 && i0.tick === 0, { clock: i0.clock, month: i0.month });
+      i0.speed = 1; L.step(i0, 0.25);
+      check('動かすと clock が進む', i0.clock === 0.25, i0.clock);
+      // MC45・MC48・MC50：保存の いりぐち数・まち前の税・ベスト
+      const sv = L.newGame(7, 1);
+      const raw = L.makeSave(sv, 1);
+      const mut = (fn) => mut0(raw, fn);
+      const extra = mut((x) => { const u = Buffer.from(x.use, 'base64'); const t = Buffer.from(x.terrain, 'base64'); let k = 0; while (u[k] !== 0 || t[k] !== 0) k++; u[k] = 9; x.use = u.toString('base64'); });
+      check('いりぐち（use 9）が entry の数より多い保存は null', L.loadSave(raw) !== null && L.loadSave(extra) === null, null);
+      const tx = L.loadSave(mut((x) => { x.rank = 0; x.tax = 2; }));
+      check('むら（rank 0）の保存で 税 たかい は ふつう（1）に直して読む', tx && tx.rank === 0 && tx.tax === 1, tx && { rank: tx.rank, tax: tx.tax });
+      check('validateBest：9,999,999 まで・10,000,000 は 0', L.validateBest(9999999) === 9999999 && L.validateBest(10000000) === 0 && L.validateBest('9999999') === 9999999, null);
+      // MC51：はじめの 2 年（24 か月）は、おおあめ・かじ が起きない（起きる月では 起きる）
+      const mk = () => {
+        const s = flat(L, { rank: 1 });
+        for (let x = 0; x < L.W; x++) s.terrain[I(L, x, 60)] = L.TER.RIVER;
+        roadV(L, s, EX, 3, 62);
+        for (let y = 4; y <= 58; y++) { setUse(L, s, EX + 1, y, L.USE.HOME, 3, 3); setUse(L, s, EX - 1, y, L.USE.WORK, 1, 1); }
+        L.recalc(s);
+        return s;
+      };
+      const bad = (month) => {
+        const s = mk();
+        let n = 0;
+        for (let t = 0; t < 250; t++) {
+          s.rng = (t * 7919 + 13) | 0; s.ev.cool = 0; s.ev.active = []; s.month = month; s.tick = month * L.TICKS_PER_MONTH; s.fest = 0;
+          for (let y = 4; y <= 58; y++) { const j = I(L, EX + 1, y); s.use[j] = 5; s.kind[j] = 3; s.lvl[j] = 3; }
+          L.recalc(s);
+          for (const x of months(L, s, 1)) if (x.kind === 'event' && (x.ev === 'rain' || x.ev === 'fire')) n++;
+        }
+        return n;
+      };
+      const early = bad(5), late = bad(30);
+      check(`月 5 の 250 回：おおあめ・かじ は 0 回（${early}）・月 30 の 250 回では起きる（${late}）`, early === 0 && late > 0, { early, late });
     },
   },
   {
