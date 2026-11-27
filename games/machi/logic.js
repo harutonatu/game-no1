@@ -133,7 +133,8 @@
   const JOB_TAX = 0.12, NATURE_TAX = 0.2;            // 約束の仮（税 0.6〜3.0・仕事 0.5／0.8）を 1/4 にした（数値合わせ）
   const WORKER_RATE = 0.5;
   const RAIL_MIN = 8, RAIL_REACH = 3;
-  const RAIL_ONLY_TEXT = "せんろ だけでは そだたないよ。みちも ひいてね";   // せんろ のそばで つながらない区画（ユーザー「入り口とつながっていないと出ます」。計画書 machi-rail-view）
+  const RAIL_ONLY_TEXT = "せんろ だけでは そだたないよ。みちも ひいてね";   // せんろ のそばで 2 マス以内に みち が無い区画（ユーザー「入り口とつながっていないと出ます」。計画書 machi-rail-view）
+  const RAIL_SHORT_TEXT = "せんろは 8 マス いじょう つなげてね";            // みち は あるが つながらず、そばの せんろ の線が 8 マス未満（レビュー 技術 中1）
   const CAP_ROAD = 20, CAP_X = 10, CAP_CROSS = 8;
   const TRIP_RATE = 0.3;              // 約束の仮 0.1 → 0.3（交差点で渋滞が起きるように。数値合わせ）
   // 密度 d（§5.5）＝ DENS_BASE ＋ せんろ 35 ＋ 交差点 DENS_X ＋ 半径 6 の仕事 DENS_JOB_STEP 人ごと +5（最大 DENS_JOB_MAX）＋ 町の大きさ
@@ -884,7 +885,7 @@
       if (k.jamLv >= 2 && k.jamI >= 0 && free("jam")) return mk("jam", k.jamI, false);
       if (free("noroad")) {
         const i = findCell(s, from, (j) => isZoneUse(s.use[j]) && !connected(s, j));
-        if (i >= 0) return mk("noroad", i, false);
+        if (i >= 0) return mk("noroad", i, false, UNLINKED_TEXT[unlinkedWhyOf(s, i)]);   // せんろ のそば・短い線は言い分ける（レビュー 技術 低1）
       }
       if (free("smoke")) {
         let bi = -1, bv = 39;
@@ -1142,21 +1143,39 @@
     }
     return false;
   }
-  // 区画が いりぐちと つながらない わけ："rail"（せんろ のそば。みち が要る）・"far"（2 マス以内に みち が無い）・"noentry"（みち は あるが いりぐちと つながらない）・null（つながっている／区画でない）
+  // 2 マス以内に みち（ふみきり・いりぐち も。おおあめで通れなくても）が あるか
+  function roadNear2(s, i) {
+    const x = i % W, y = (i / W) | 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      const ny = y + dy;
+      if (ny < 0 || ny >= H) continue;
+      for (let dx = -2; dx <= 2; dx++) { const nx = x + dx; if (nx >= 0 && nx < W && isRoadUse(s.use[ny * W + nx])) return true; }
+    }
+    return false;
+  }
+  // 区画が いりぐちと つながらない わけ（レビュー 技術 中1）：
+  //   "rail"   … 2 マス以内に みち が無く（つながりの番号 -1）、せんろ・ふみきり が 3 マス以内にあり、2 マス以内に みち の形も無い（おおあめで通れない みち は "far" のまま）
+  //   "short"  … 2 マス以内に みち は あるが つながらず、3 マス以内に せんろ があるのに 8 マス以上の線のそばではない（railNear は 8 マス以上の線だけ）
+  //   "far"    … 2 マス以内に みち が無い・"noentry" … みち は あるが いりぐちと つながらない・null … つながっている／区画でない
   function unlinkedWhyOf(s, i) {
     if (!isZoneUse(s.use[i]) || connected(s, i)) return null;
-    if (railNearCell(s, i)) return "rail";
-    return s.net.zone[i] < 0 ? "far" : "noentry";
+    const rn = railNearCell(s, i);
+    if (s.net.zone[i] < 0) return rn && !roadNear2(s, i) ? "rail" : "far";
+    if (rn && !scratch(s).railNear[i]) return "short";
+    return "noentry";
   }
-  // 月の知らせ：つながらない区画のうち 1 つでも せんろ のそばなら RAIL_ONLY_TEXT
+  const UNLINKED_TEXT = { rail: RAIL_ONLY_TEXT, short: RAIL_SHORT_TEXT };
+  // 月の知らせ：つながらない区画のうち rail があれば RAIL_ONLY_TEXT、無くて short があれば RAIL_SHORT_TEXT、ほかは いつもの言葉
   function unconnectedNews(s) {
-    let any = false;
+    let any = false, short = false;
     for (let i = 0; i < N; i++) {
-      if (!isZoneUse(s.use[i]) || connected(s, i)) continue;
-      if (railNearCell(s, i)) return RAIL_ONLY_TEXT;
+      const w = unlinkedWhyOf(s, i);
+      if (!w) continue;
+      if (w === "rail") return RAIL_ONLY_TEXT;
+      if (w === "short") short = true;
       any = true;
     }
-    return any ? "いりぐちと つながって いないよ" : "";
+    return short ? RAIL_SHORT_TEXT : any ? "いりぐちと つながって いないよ" : "";
   }
 
   // 1 tick（0.25 秒ぶん）
@@ -1379,7 +1398,7 @@
       if (isZoneUse(u)) {
         const z = s.net.zone[i], rc = z >= 0 ? s.net.comps[z].r : s.r;
         const uw = unlinkedWhyOf(s, i);
-        if (uw === "rail") reasons.push(RAIL_ONLY_TEXT);
+        if (UNLINKED_TEXT[uw]) reasons.push(UNLINKED_TEXT[uw]);
         else if (uw === "far") reasons.push("みちが とおい（2 マス いないに みちが いるよ）");
         else if (uw === "noentry") reasons.push("いりぐちと つながって いないよ");
         if (s.money < 0) reasons.push("おかねが たりないよ");
@@ -1753,7 +1772,7 @@
     EVENT_RATE, EVENT_COOL, EVENT_MIN_POP, EVENT_BAD_FROM, GROW_BASE, GROW_RATE, STAR_MUL, R_SOFT, RAIL_MIN, CAP_ROAD, CAP_X, CAP_CROSS,
     terrainChoices, newGame, step, canPlace, place, lineCells, rectCells, inspect, summary, setTax, setSpeed, rename, normalizeName,
     starReasons, voiceOf, makeSave, loadSave, saveVersionOf, validateBest, simulate, formatMoney, formatPop, dateText,
-    RAIL_ONLY_TEXT, unlinkedWhy: (s, i) => { try { if (!okState(s) || !(i >= 0 && i < N)) return null; const k = scratch(s); if (!k.ready) recalc(s); if (k.netDirty) buildNet(s); return unlinkedWhyOf(s, i | 0); } catch (e) { return null; } },
+    RAIL_ONLY_TEXT, RAIL_SHORT_TEXT, unlinkedWhy: (s, i) => { try { if (!okState(s) || !(i >= 0 && i < N)) return null; const k = scratch(s); if (!k.ready) recalc(s); if (k.netDirty) buildNet(s); return unlinkedWhyOf(s, i | 0); } catch (e) { return null; } },
     recalc, homeKindOf, natureKindAt, startEvent: (s, kind) => { try { const ev = []; if (!okState(s)) return null; const k = scratch(s); if (!k.ready) recalc(s); startEvent(s, k, kind, ev); if (k.netDirty) buildNet(s); if (k.netDirty || k.needTally) { tally(s); k.needTally = false; } return ev; } catch (e) { return null; } }
   };
   return Object.freeze(api);

@@ -15,7 +15,7 @@
   const NAME = "ぼくのまち";
   const KEY_SAVE = "machi.save", KEY_BAK = "machi.bak", KEY_BEST = "machi.best", KEY_SEEN = "machi.seen", KEY_TIPS = "machi.tips";
   const SAVE_EVERY_SEC = 15, SAVE_SOON_SEC = 2, UI_EVERY_SEC = 0.2;
-  const NEWS_SEC = 10, VOICE_SEC = 12, HINT_SEC = 3, TIP_SEC = 6, LINK_SEC = 5, ZOOM_HINT_SEC = 10, VIEW_TIP_MS = 3000;
+  const NEWS_SEC = 10, VOICE_SEC = 12, HINT_SEC = 3, TIP_SEC = 6, LINK_SEC = 5, ZOOM_HINT_SEC = 10, VIEW_TIP_MS = 5000, VIEW_HINT_MS = 10000;
   const ENTRY_GOAL = "いりぐち（ひかって いる ところ）から みちを ひこう";
   const DEFAULT_HINT = "おくものを えらんで、マスを タップ";
 
@@ -26,7 +26,7 @@
     app: $("app"), back: $("backBtn"), nameBtn: $("nameBtn"), soundBtn: $("soundBtn"),
     moneyText: $("moneyText"), popText: $("popText"), starText: $("starText"), newsText: $("newsText"), dateText: $("dateText"),
     wrap: $("mapWrap"), canvas: $("mapCanvas"), viewBtn: $("viewBtn"), speedBtns: $("speedBtns"), zoomHint: $("zoomHint"),
-    voiceBar: $("voiceBar"), voiceFace: $("voiceFace"), voiceText: $("voiceText"), voiceSub: $("voiceSub"), viewLegend: $("viewLegend"), viewTip: $("viewTip"),
+    voiceBar: $("voiceBar"), voiceFace: $("voiceFace"), voiceText: $("voiceText"), voiceSub: $("voiceSub"), viewLegend: $("viewLegend"), viewTip: $("viewTip"), viewHint: $("viewHint"),
     toolHint: $("toolHint"), tools: $("tools"),
     terrainCard: $("terrainCard"), helpCard: $("helpCard"), restartCard: $("restartCard"), nameCard: $("nameCard"), nameInput: $("nameInput"),
     infoCard: $("infoCard"), infoTitle: $("infoTitle"), infoList: $("infoList"), infoWhy: $("infoWhy"),
@@ -193,7 +193,7 @@
     shop: "おみせ＝はたらく ばしょ。いえの ちかくに",
     road: "みち＝いりぐちから つなげよう",
     // せんろ は 2 つに分けて 6 秒ずつ続けて出す（1 行に収めるため。計画書 machi-rail-view §1）
-    rail: ["せんろ＝はなれた みちどうしを つなぐよ", "そばに みちも いるよ。みちの うえにも ひけるよ"],
+    rail: ["せんろ＝みちと みちを つなぐよ", "せんろの そばに みちも ひいてね"],   // 2 枚目の「（みちの うえにも ひけるよ）」は SE 縦の 1 行に入らないので あそびかた だけ（レビュー UX 中2）
     green: "みどり＝こうえん。よごれが へるよ",
     erase: "こわす＝おいた ものを けすよ",
     nature: "めぐみ＝はたけ・りんぎょう・りょうし"
@@ -268,6 +268,11 @@
     }
     return best;
   }
+  // マスが地図の中に見えているか（ふちから 8px 内側）
+  function seenCell(j) {
+    const c = render.camera(), x = (j % L.W) + 0.5, y = ((j / L.W) | 0) + 0.5;
+    return Math.abs(x - c.cx) * c.cell < el.wrap.clientWidth / 2 - 8 && Math.abs(y - c.cy) * c.cell < el.wrap.clientHeight / 2 - 8;
+  }
   // 置いたあと：つながっていなければ、先に言って、つながった みち の近い所へ寄せて光らせる（UX M4・fun 2）
   function checkLinked(t, cells) {
     if (!cells || !cells.length) return;
@@ -275,9 +280,17 @@
     if (t !== "road" && !zone) return;
     if (cells.some((i) => (zone ? linkedZone(i) : linkedRoad(i)))) return;
     const far = zone && cells.every((i) => !(state.net.zone && state.net.zone[i] >= 0));
-    // せんろ のそばの区画は「せんろ だけでは そだたないよ」（ユーザー「入り口とつながっていないと出ます」。計画書 machi-rail-view §1）
-    const railOnly = zone && cells.some((i) => L.unlinkedWhy(state, i) === "rail");
-    setHint(railOnly ? L.RAIL_ONLY_TEXT : far ? "みちから はなれて いるよ（2 マスまで）" : "いりぐちと つながって いないよ", true, LINK_SEC);
+    // せんろ のそばの区画は言い分ける（ユーザー「入り口とつながっていないと出ます」。計画書 machi-rail-view §1・レビュー 技術 中1）
+    const whys = zone ? cells.map((i) => L.unlinkedWhy(state, i)) : [];
+    const railOnly = whys.includes("rail");
+    const railShort = !railOnly && whys.includes("short");
+    setHint(railOnly ? L.RAIL_ONLY_TEXT : railShort ? L.RAIL_SHORT_TEXT : far ? "みちから はなれて いるよ（2 マスまで）" : "いりぐちと つながって いないよ", true, LINK_SEC);
+    if (railOnly || railShort) {
+      // せんろ の知らせのときは いりぐちへ寄せない。置いた区画を光らせる（見えていなければ そこへ寄せる。レビュー UX 中3）
+      const k = cells[cells.length >> 1];
+      if (seenCell(k)) render.flash(k); else render.focus(k);
+      return;
+    }
     const j = nearestLinked(cells);
     if (j >= 0) {
       // 見えていれば光らせるだけ。見えていなければ そこへ寄せて光らせる
@@ -325,6 +338,7 @@
   function resizeMap() {
     const w = el.wrap.clientWidth, h = el.wrap.clientHeight;
     if (w > 0 && h > 0) render.resize(w, h, dprNow());
+    if (!el.viewTip.hidden) hideViewTip();   // 位置が古くなるので消す（レビュー 技術 低2）
   }
   if (window.ResizeObserver) new ResizeObserver(resizeMap).observe(el.wrap);
   window.addEventListener("resize", resizeMap);
@@ -395,7 +409,7 @@
     resetHint();
     render.setState(state);
     resizeMap();
-    render.setView("normal"); viewIdx = 0; renderViewBtn();
+    render.setView("normal"); viewIdx = 0; renderViewBtn(); hideViewTip();
     pending = [];
     queue = [];                                  // 前の町の節目のカードを新しい町で出さない（tech A7）
     newsLeft = 0; hideVoice();
@@ -566,8 +580,21 @@
       });
     }
   }
-  // 見かたの名前は押した直後に 3 秒だけ出す（動きなし。動きを減らす設定でも同じ。凡例と重なるときは凡例の下へ）
   let viewTipTimer = 0;
+  function hideViewTip() { clearTimeout(viewTipTimer); el.viewTip.hidden = true; }
+  // めがねに気づく手がかり（はじめの 1 回だけ。machi.tips に view。レビュー UX 高1）
+  let viewHintTimer = 0, viewHintDone = false;
+  function closeViewHint() { clearTimeout(viewHintTimer); el.viewHint.hidden = true; }
+  function maybeViewHint() {
+    viewHintDone = true;
+    if (tipSeen("view")) return;
+    const r = readKey(KEY_TIPS);
+    writeKey(KEY_TIPS, r ? `${r},view` : "view");
+    el.viewHint.hidden = false;
+    clearTimeout(viewHintTimer);
+    viewHintTimer = setTimeout(closeViewHint, VIEW_HINT_MS);
+  }
+  // 見かたの名前は押した直後に 5 秒だけ出す（動きなし。動きを減らす設定でも同じ。凡例と重なるときは凡例の下へ）
   function showViewTip() {
     clearTimeout(viewTipTimer);
     const t = el.viewTip;
@@ -581,6 +608,7 @@
   }
   el.viewBtn.addEventListener("click", () => {
     closeZoomHint();
+    closeViewHint();
     viewIdx = (viewIdx + 1) % VIEWS.length;
     render.setView(VIEWS[viewIdx][0]);
     renderViewBtn();
@@ -849,6 +877,7 @@
       if (hintLeft > 0) { hintLeft -= wall; if (hintLeft <= 0) { hintLeft = 0; if (hintNext.length) { const rest = hintNext.slice(1); setHint(hintNext[0], false, TIP_SEC); hintNext = rest; } else resetHint(); } }
       if (voiceLeft > 0) { voiceLeft -= wall; if (voiceLeft <= 0) hideVoice(); }
       if (zoomHintLeft > 0) { zoomHintLeft -= wall; if (zoomHintLeft <= 0) closeZoomHint(); }
+      if (!viewHintDone && !overlay) maybeViewHint();
       uiSince += wall;
       if (uiSince >= UI_EVERY_SEC) { uiSince = 0; updateUi(false); }
       if (saveSoon > 0) { saveSoon -= wall; if (saveSoon <= 0) saveNow(); }

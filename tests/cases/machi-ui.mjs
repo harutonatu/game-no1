@@ -863,11 +863,11 @@ export const tests = [
     },
   },
   {
-    id: 'CW17', tier: 'full', title: 'ぼくのまち せんろ の知らせ と めがね（ユーザー「入り口とつながっていないと出ます」「上の汚れとか出てくるやつこれが1部と被ってちょっと見づらい」。計画書 docs/plans/machi-rail-view.md）：375×812 と SE 縦（動きを減らす設定）で、せんろ をはじめて選ぶと説明 2 つを 6 秒ずつ・1 行に収まる、せんろ のそばに すむ を置くと「せんろ だけでは そだたないよ。みちも ひいてね」（1 行）・しらべる の わけ も同じ、めがねは 44×44 の絵だけ・押すと「みかた：○○」を 3 秒・凡例と ほかの重ね物（ズーム・速さ・声・拡大のヒント）に重ならず地図の中',
+    id: 'CW17', tier: 'full', flaky: { why: '札が出る・消える時間（6 秒・5 秒・10 秒・12 秒）を数える', checks: /秒/ }, title: 'ぼくのまち せんろ の知らせ と めがね（ユーザー「入り口とつながっていないと出ます」「上の汚れとか出てくるやつこれが1部と被ってちょっと見づらい」「直して公開して」。計画書 docs/plans/machi-rail-view.md）：375×812 と SE 縦（動きを減らす設定）で、はじめは めがねの下に手がかりの札（いりぐち・ほかの重ね物に重ならない・10 秒で消える・2 回目は出ない）、せんろ をはじめて選ぶと説明 2 つを 6 秒ずつ・1 行に収まる（1 枚目の間に置けない所を押すと 2 枚目は出ない）、せんろ だけのそばに すむ を置くと「せんろ だけでは そだたないよ。みちも ひいてね」・短い せんろ と つながらない みち のそばは「せんろは 8 マス いじょう つなげてね」（1 行・いりぐちへ寄せない）・しらべる の わけ も同じ、めがねは 44×44 の絵だけ・押すと「みかた：○○」を 5 秒（押し直すと数え直す）・凡例と ほかの重ね物（ズーム・速さ・声・拡大のヒント）に重ならず地図の中',
     async run({ browser, check, root }) {
       const L = logicOf(root);
-      const RT = 'せんろ だけでは そだたないよ。みちも ひいてね';
-      const TIP1 = 'せんろ＝はなれた みちどうしを つなぐよ', TIP2 = 'そばに みちも いるよ。みちの うえにも ひけるよ';
+      const RT = 'せんろ だけでは そだたないよ。みちも ひいてね', ST = 'せんろは 8 マス いじょう つなげてね';
+      const TIP1 = 'せんろ＝みちと みちを つなぐよ', TIP2 = 'せんろの そばに みちも ひいてね';
       const s0 = L.newGame(5, 0);
       s0.rank = 1; s0.money = 50000;
       const run = findRun(L, s0, 12);
@@ -875,11 +875,37 @@ export const tests = [
       let hc = null;
       for (const dy of [1, -1, 2, -2]) { const x = run.x + 6, y = run.y + dy; if (freeCell(L, s0, y * L.W + x)) { hc = { x, y }; break; } }
       if (!hc) throw new Error('せんろ のそばに空いた へいち が無い');
+      // 短い せんろ（3 マス・ふみきり つき）と つながらない みち（9 マス）。せんろ だけの線から 8 マス以上はなす
+      let blk = null;
+      for (let y = 6; y < L.H - 6 && !blk; y++) for (let x = 3; x + 9 < L.W - 3 && !blk; x++) {
+        if (Math.abs(y - run.y) < 9) continue;
+        let ok = true;
+        for (let b = -2; b <= 2 && ok; b++) for (let a = 0; a < 9 && ok; a++) ok = freeCell(L, s0, (y + b) * L.W + x + a);
+        if (ok) blk = { x, y };
+      }
+      if (!blk) throw new Error('短い せんろ を置く 9×5 の へいち が無い');
+      for (let a = 0; a < 9; a++) s0.use[blk.y * L.W + blk.x + a] = L.USE.ROAD;
+      s0.use[blk.y * L.W + blk.x + 4] = L.USE.CROSS; s0.use[(blk.y - 1) * L.W + blk.x + 4] = L.USE.RAIL; s0.use[(blk.y - 2) * L.W + blk.x + 4] = L.USE.RAIL;
+      const sc = { x: blk.x + 6, y: blk.y + 1 };
+      const sea = (() => { for (let y = 2; y < L.H - 2; y++) for (let x = 2; x < L.W - 2; x++) if (s0.terrain[y * L.W + x] === L.TER.SEA) return { x, y }; throw new Error('うみ が無い'); })();
       const fits = (p) => p.evaluate(() => { const e = document.querySelector('#toolHint'); return { sw: e.scrollWidth, cw: e.clientWidth, h: e.getBoundingClientRect().height, t: e.textContent }; });
       const over = (a, b) => !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+      const R = (p, sel) => p.evaluate((s) => { const e = document.querySelector(s); return e && !e.closest('[hidden]') && e.getBoundingClientRect().width > 0 ? e.getBoundingClientRect().toJSON() : null; }, sel);
+      const entryRects = (p) => p.evaluate(() => {
+        const s = window.__machi.state, c = window.__machi.render.camera(), b = document.querySelector('#mapCanvas').getBoundingClientRect();
+        return s.entry.map((e) => { const x = b.left + b.width / 2 + (e.x - c.cx) * c.cell, y = b.top + b.height / 2 + (e.y - c.cy) * c.cell; return { left: x, top: y, right: x + c.cell, bottom: y + c.cell }; });
+      });
       for (const [v, rm] of [[STD_V(), 'no-preference'], [SE_P(), 'reduce']]) {
-        const { ctx, page } = await openM(browser, `CW17 ${v.label}`, { v, raw: mkRaw(L, s0), debug: true, opts: { reducedMotion: rm } });
-        await page.click('#speedBtns [data-speed="0"]'); await wait(page, 100);
+        const { ctx, page } = await openM(browser, `CW17 ${v.label}`, { v, raw: mkRaw(L, s0), debug: true, seen: false, opts: { reducedMotion: rm } });
+        // はじめて：あそびかた を閉じると いりぐちへ寄り、めがねの手がかりの札
+        check(`${v.label}：あそびかた の文に「めがね（みかた）」・せんろ の行（ふみきり）`, /みぎうえの めがね（みかた）で しらべよう/.test(await txt(page, '#helpCard')) && /せんろ：はなれた みちと みちを つなぐ（「まち」から）。ちかくに みちも ひこう。みちの うえにも ひけるよ（ふみきり）/.test(await txt(page, '#helpCard')), await txt(page, '#helpCard .tools-help'));
+        await page.click('[data-cmd="help-close"]'); await wait(page, 900);
+        const vh = { r: await R(page, '#viewHint'), t: await txt(page, '#viewHint'), map: await R(page, '#mapWrap'), ent: await entryRects(page), others: { めがね: await R(page, '#viewBtn'), ズーム: await R(page, '.zoomBtns'), 速さ: await R(page, '#speedBtns'), 拡大のヒント: await R(page, '#zoomHint'), 声: await R(page, '#voiceBar') }, tips: await stored(page, 'machi.tips') };
+        const vhGap = vh.r ? Math.min(...vh.ent.map((e) => Math.max(vh.r.left - e.right, e.left - vh.r.right, vh.r.top - e.bottom, e.top - vh.r.bottom))) : null;
+        const vhBad = vh.r ? [...vh.ent.filter((e) => over(vh.r, e)).map(() => 'いりぐち'), ...Object.entries(vh.others).filter(([, r]) => r && over(vh.r, r)).map(([n]) => n)] : ['出ない'];
+        check(`${v.label}：はじめは めがねの下に「${vh.t}」の札・地図の中・重なり ${vhBad.join(' ') || 'なし'}（いりぐち ${vh.ent.length} マスとの すきま ${vhGap === null ? '-' : Math.round(vhGap)}px・拡大のヒント ${vh.others['拡大のヒント'] ? 'あり' : 'なし'}）・machi.tips に view`, vh.t.replace(/\s+/g, '') === 'めがねをおすとみかたがかわるよ' && vhBad.length === 0 && vh.r.left >= vh.map.left && vh.r.right <= vh.map.right && vh.r.top >= vh.others['めがね'].bottom && /(^|,)view(,|$)/.test(vh.tips || ''), vh);
+        await page.click('#speedBtns [data-speed="0"]'); await wait(page, 9500);
+        check(`${v.label}：めがねの手がかりは 10 秒で消える`, !(await vis(page, '#viewHint')), null);
         // せんろ の説明（2 つを 6 秒ずつ）
         await pick(page, 'rail');
         const t1 = await fits(page);
@@ -890,21 +916,36 @@ export const tests = [
         check(`${v.label}：せんろ をはじめて選ぶと「${t1.t}」→ 6 秒 →「${t2.t}」→ 6 秒 →「${t3.t}」。どれも 1 行に収まる（はば ${t1.sw}/${t1.cw}・${t2.sw}/${t2.cw}）`, t1.t === TIP1 && t2.t === TIP2 && /せんろ 1 マス 40/.test(t3.t) && [t1, t2].every((f) => f.sw <= f.cw + 1 && f.h < 24), { t1, t2, t3 });
         await pick(page, 'rail'); await pick(page, 'rail');
         check(`${v.label}：2 回目は説明を出さない（「${(await fits(page)).t}」）`, /せんろ 1 マス 40/.test((await fits(page)).t), null);
-        // せんろ のそばに すむ
+        // 1 枚目の間に置けない所（うみ）を押すと、2 枚目は出ない
+        await page.evaluate(() => { localStorage.setItem('machi.tips', 'view'); });
+        await pick(page, 'rail'); await pick(page, 'rail');
+        const u1 = (await fits(page)).t;
+        await centerOn(page, sea.x, sea.y); await tapCell(page, sea.x, sea.y);
+        const u2 = (await fits(page)).t;
+        await wait(page, 12000);
+        const u3 = (await fits(page)).t;
+        check(`${v.label}：説明 1 枚目（「${u1}」）の間に うみ を押すと「${u2}」・12 秒後も 2 枚目を出さない（「${u3}」）`, u1 === TIP1 && /うみには おけないよ/.test(u2) && u3 !== TIP2 && /せんろ 1 マス 40/.test(u3), { u1, u2, u3 });
+        // せんろ だけのそばに すむ：いりぐちへ寄せない
         await pick(page, 'home'); await wait(page, 6300);
         await centerOn(page, hc.x, hc.y);
-        await tapCell(page, hc.x, hc.y);
-        const h = await fits(page);
-        check(`${v.label}：せんろ のそば（みち なし）に すむ を置くと札「${h.t}」・赤・1 行に収まる（はば ${h.sw}/${h.cw}）`, (await cellUse(page, hc.x, hc.y)).use === L.USE.HOME && h.t === RT && (await page.getAttribute('#toolHint', 'data-warn')) === '1' && h.sw <= h.cw + 1 && h.h < 24, h);
+        const ca = await camera(page);
+        await tapCell(page, hc.x, hc.y); await wait(page, 800);
+        const h = await fits(page), cb = await camera(page);
+        check(`${v.label}：せんろ だけのそば（みち なし）に すむ を置くと札「${h.t}」・赤・1 行に収まる（はば ${h.sw}/${h.cw}）`, (await cellUse(page, hc.x, hc.y)).use === L.USE.HOME && h.t === RT && (await page.getAttribute('#toolHint', 'data-warn')) === '1' && h.sw <= h.cw + 1 && h.h < 24, h);
+        check(`${v.label}：せんろ の知らせのときは いりぐちへ寄せない（真ん中 ${ca.cx.toFixed(1)},${ca.cy.toFixed(1)} → ${cb.cx.toFixed(1)},${cb.cy.toFixed(1)}）`, Math.abs(cb.cx - ca.cx) < 1 && Math.abs(cb.cy - ca.cy) < 1 && !(await entryView(page)).some((e) => e.in && Math.abs(cb.cy - 1) < 3), { ca, cb });
+        // 短い せんろ と つながらない みち のそば
+        await centerOn(page, sc.x, sc.y);
+        const cc = await camera(page);
+        await tapCell(page, sc.x, sc.y); await wait(page, 800);
+        const hs = await fits(page), cd = await camera(page);
+        check(`${v.label}：短い せんろ（3 マス）と つながらない みち のそばは札「${hs.t}」・1 行（はば ${hs.sw}/${hs.cw}）・寄せない`, (await cellUse(page, sc.x, sc.y)).use === L.USE.HOME && hs.t === ST && hs.sw <= hs.cw + 1 && hs.h < 24 && Math.abs(cd.cx - cc.cx) < 1 && Math.abs(cd.cy - cc.cy) < 1, { hs, cc, cd });
         await pick(page, 'home');   // 選ばない（しらべる）
-        await centerOn(page, hc.x, hc.y);
-        await tapCell(page, hc.x, hc.y); await wait(page, 100);
-        const why = await txt(page, '#infoWhy');
-        check(`${v.label}：しらべる の わけ「${why}」に せんろ の言葉・「いりぐちと つながって いない」は出さない`, why.includes(RT) && !/いりぐちと つながって いない/.test(why), why);
-        await page.click('#infoCard [data-cmd="close"]'); await wait(page, 100);
+        const whys = [];
+        for (const c of [hc, sc]) { await centerOn(page, c.x, c.y); await tapCell(page, c.x, c.y); await wait(page, 100); whys.push(await txt(page, '#infoWhy')); await page.click('#infoCard [data-cmd="close"]'); await wait(page, 100); }
+        check(`${v.label}：しらべる の わけ「${whys.join('」「')}」に それぞれ せんろ の言葉・「いりぐちと つながって いない」は出さない`, whys[0].includes(RT) && whys[1].includes(ST) && whys.every((w) => !/いりぐちと つながって いない/.test(w)), whys);
         // めがね
         const b0 = await page.evaluate(() => { const b = document.querySelector('#viewBtn'), r = b.getBoundingClientRect(); return { w: r.width, h: r.height, text: b.textContent.trim(), svg: !!b.querySelector('svg'), label: b.getAttribute('aria-label') }; });
-        check(`${v.label}：めがねは ${Math.round(b0.w)}×${Math.round(b0.h)}（44 以上・60 以下）・文字なしの絵（svg）・名前「${b0.label}」・はじめは札を出さない`, b0.w >= 44 && b0.h >= 44 && b0.w <= 60 && b0.h <= 60 && b0.text === '' && b0.svg && b0.label === 'ちずの みかた：ふつう。おすと よごれ' && !(await vis(page, '#viewTip')) && (await reachable(page, '#viewBtn')), b0);
+        check(`${v.label}：めがねは ${Math.round(b0.w)}×${Math.round(b0.h)}（44 以上・60 以下）・文字なしの絵（svg）・名前「${b0.label}」・押すまで札を出さない`, b0.w >= 44 && b0.h >= 44 && b0.w <= 60 && b0.h <= 60 && b0.text === '' && b0.svg && b0.label === 'ちずの みかた：ふつう。おすと よごれ' && !(await vis(page, '#viewTip')) && (await reachable(page, '#viewBtn')), b0);
         await dbg(page, 'voice', { why: 'jam', text: 'みちが こんで いるよ' });
         await page.evaluate(() => { document.querySelector('#zoomHint').hidden = false; });
         const names = ['よごれ', 'こんざつ', 'すみやすさ', 'とちの ねだん', 'ふつう'];
@@ -928,12 +969,23 @@ export const tests = [
         }
         check(`${v.label}：めがねを押すたびに「みかた：○○」の札（${geo.map((g) => g.text).join('・')}）・ふつう以外は凡例。札・凡例・めがね は地図の中で、たがいにも ズーム・速さ・声・拡大のヒント にも重ならない（${bad.join(' ') || 'なし'}）`, bad.length === 0 && geo.every((g) => g.zoom && g.speed), geo);
         const lab = await page.getAttribute('#viewBtn', 'aria-label');
-        await wait(page, 2500);
+        await wait(page, 4500);
         const still = await vis(page, '#viewTip');
         await wait(page, 700);
         const gone = !(await vis(page, '#viewTip'));
-        check(`${v.label}：札は 3 秒出て消える（2.5 秒 ${still ? 'あり' : 'なし'}・3.2 秒 ${gone ? 'なし' : 'あり'}${rm === 'reduce' ? '・動きを減らす設定' : ''}）・名前「${lab}」`, still && gone && lab === 'ちずの みかた：ふつう。おすと よごれ', { still, gone, lab });
+        check(`${v.label}：札は 5 秒出て消える（4.5 秒 ${still ? 'あり' : 'なし'}・5.2 秒 ${gone ? 'なし' : 'あり'}${rm === 'reduce' ? '・動きを減らす設定' : ''}）・名前「${lab}」`, still && gone && lab === 'ちずの みかた：ふつう。おすと よごれ', { still, gone, lab });
+        await page.click('#viewBtn'); await wait(page, 2000);
+        await page.click('#viewBtn'); await wait(page, 4000);
+        const re1 = await vis(page, '#viewTip'), reT = await txt(page, '#viewTip');
+        await wait(page, 1500);
+        const re2 = !(await vis(page, '#viewTip'));
+        check(`${v.label}：押す → 2 秒 → 押すと 5 秒を数え直す（2 回目から 4 秒 ${re1 ? `あり「${reT}」` : 'なし'}・5.5 秒 ${re2 ? 'なし' : 'あり'}）`, re1 && reT === 'みかた：こんざつ' && re2, { re1, reT, re2 });
         await ctx.close();
+        // 2 回目に開いたときは めがねの手がかりを出さない
+        const { ctx: c2, page: p2 } = await openM(browser, `CW17 ${v.label} 2 回目`, { v, raw: mkRaw(L, s0), items: { 'machi.tips': 'view' } });
+        await wait(p2, 500);
+        check(`${v.label}：machi.tips に view があれば めがねの手がかりは出さない`, !(await vis(p2, '#viewHint')), null);
+        await c2.close();
       }
     },
   },
