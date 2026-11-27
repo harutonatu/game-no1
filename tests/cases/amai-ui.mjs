@@ -415,7 +415,9 @@ export const tests = [
       const c0 = sol[0], front = s0.cols[c0][0];
       const kind = await pressCol(page, c0);
       await skipG(page); await wait(page, 50);
-      const s1 = await gs(page), dom1 = await domBoard(page);
+      // 状態と画面を読む間に 1 はこび入ると食い違って見えるので、時計を止めて読む（課題 T-43。2026-11-28）
+      let s1 = null, dom1 = null;
+      await frozen(page, async () => { s1 = await gs(page); dom1 = await domBoard(page); });
       check(`列 ${c0} の手前を押す（${kind}）：一番左のわく 0 に入り（id ${front.id}・色 ${front.color}・数 ${front.count}）、列が 1 つ詰まり、presses 1`,
         kind === 'press' && s1.slots[0] && s1.slots[0].id === front.id && s1.slots[0].color === front.color && s1.cols[c0].length === s0.cols[c0].length - 1
         && (s1.cols[c0].length === 0 || s1.cols[c0][0].id === s0.cols[c0][1].id) && s1.presses === 1, { slots: s1.slots, col: s1.cols[c0].map((b) => b.id), was: s0.cols[c0].map((b) => b.id) });
