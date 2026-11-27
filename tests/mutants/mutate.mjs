@@ -576,6 +576,7 @@ const M = [
   ['MA110 あまいものあつめ：とける みち の棒の長さを、まだ押していない箱でなく のこりの角砂糖の割合で出す（見つける：AW48）', 'UX', 'games/amai/main.js', 'return boxBase > 0 ? Math.max(1, Math.min(100, Math.round(100 * n / boxBase))) : 100;', 'return state && state.total > 0 ? Math.max(1, Math.min(100, Math.round(100 * state.left / state.total))) : 100;'],
   ['MA111 あまいものあつめ：押しても とける みち の棒の長さを書き直さない（見つける：AW48）', 'UX', 'games/amai/main.js', 'if (fill.style.width !== w) fill.style.width = w;', 'if (!fill.style.width) fill.style.width = w;'],
   ['MA112 あまいものあつめ：setState の局面で、面の最初の箱の数を覚え直さない（棒の長さがずれる。見つける：AW48）', 'UX', 'games/amai/main.js', '      boxBase = boxesNow(st);', '      void 0;'],
+  ['MA113 あまいものあつめ：途中から再開した面で、面の最初でなく再開した局面の箱の数を棒の元にする（開き直すと棒が 100 に戻る。見つける：AW48）', 'UX', 'games/amai/main.js', 'boxBase = boxesNow(created.state);', 'boxBase = boxesNow(st);'],
   // ぼくのまち（games/machi/。2026-11-26。計画書 docs/plans/machi.md §7。MC1〜MC56 はロジック、MC57〜MC61 は画面）
   //   ロジックの変異は ONLY=CL1〜CL21、画面の変異は ONLY=CW1〜CW16 で絞って流す（tests/README.md「ぼくのまちの変異テスト」）
   ['MC1 ぼくのまち：いりぐちと つながっていなくても 育つ（connected が みちの塊が あるだけで真。見つける：CL3）', 'ルール', 'games/machi/logic.js', 'return z >= 0 && s.net.comps[z] && s.net.comps[z].entry;', 'return z >= 0 && !!s.net.comps[z];'],

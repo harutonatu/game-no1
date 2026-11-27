@@ -602,7 +602,7 @@
       box.appendChild(document.createElement("i"));
       el.pathsVal.appendChild(box);
     }
-    const fill = box.firstChild, w = bar + "%";
+    const fill = box.firstChild, w = bar + "%";   // 見た目は CSS の min-width で 4px より細くしない（data-bar は 1〜100 のまま。レビュー UX-5）
     if (fill.style.width !== w) fill.style.width = w;
   }
   function startCount() {
@@ -1222,7 +1222,7 @@
         <li>てまえの はこを おすと、<b>わく</b>（したの ${chal ? 2 : 3}つの しかく）に はいって ありんこが でてくるよ。</li>
         <li>はこべるのは <b>おなじ いろ</b>で、<b>ふち</b>（えの そとがわ）に ある おさとうだけ。</li>
         <li><b>なかの いろ</b>は、そとの いろを さきに はこんで <b>みちを あけて</b> ね。</li>
-        <li>えの したの <b>とける みち</b> は、ここから クリアできる やりかたの かず。すすむと へるのは ふつうだよ。</li>
+        <li>えの したの <b>とける みち</b> は、ここから クリアできる やりかたの かず。たくさん あるときは ぼうで みせるよ。みじかく なるのは ふつうだよ。</li>
         <li>うごけなくなったら<span style="white-space:nowrap">『1手もどす』</span>。なんども やりなおして いいよ。えを ぜんぶ はこぶと <b>ずかん</b>に はいるよ。${chal ? "ちょうせんで もどすと きんの わは つかないよ。" : ""}</li>
       </ol>
       <div class="btns"><button class="cta primary" type="button" data-cmd="close">わかった</button></div>`, {}, "help");

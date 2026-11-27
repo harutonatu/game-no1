@@ -2690,7 +2690,7 @@ export const tests = [
       await setLevel(page, 3);
       const g3 = await waitCount(page);
       const bar3 = await page.evaluate(() => { const b = document.querySelector('#pathsVal .bar'); return b ? { role: b.getAttribute('role'), label: b.getAttribute('aria-label'), w: b.firstElementChild && b.firstElementChild.style.width } : null; });
-      check(`②3 面の最初（100 いじょう）は棒 100（${J(g3.paths)}・${J(bar3)}。2026-11-27 に「100 いじょう」の文字から棒へ）`, g3.paths.state === 'many' && g3.paths.n === 100 && g3.paths.bar === 100 && g3.paths.text === 'とける みち' && !!bar3 && bar3.role === 'img' && bar3.label === 'たくさん' && bar3.w === '100%', { paths: g3.paths, bar3 });
+      check(`②3 面の最初（100 いじょう）は棒 100（${J(g3.paths)}・${J(bar3)}。2026-11-27 に「100 いじょう」の文字から棒へ）`, g3.paths.state === 'many' && g3.paths.n === 100 && g3.paths.bar === 100 && g3.paths.text === 'とける みち' && !!bar3 && bar3.role === 'img' && bar3.label === 'たくさん' && /(^|\D)100%/.test(bar3.w), { paths: g3.paths, bar3 });
       // ③ 押した直後
       const sol3 = await solutionOf(page);
       const right = await page.evaluate((c) => { window.AmaiGame.press(c); return window.AmaiGame.getState().paths; }, sol3[0]);
@@ -2958,7 +2958,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW48', tier: 'smoke', title: 'あまいもの とける みち の棒（2026-11-27。約束 §1.14 N7・計画書 amai-paths-bar.md）：①3 面の最初（100 いじょう）は棒 100（role=img・aria-label「たくさん」）②解の順に押して数え終わるたび、棒＝round(100 × まだ押していない箱 ÷ 面の最初の箱) で前より短い（増えない）③1手もどす で前の長さに戻る ④setState の局面は その局面を面の最初として棒 100 ⑤棒の中身と溝・絵の箱の下の地のコントラストが 3:1 以上 ⑥SE 縦・Safari 縦・SE 横・Safari 横 568×270・XS 375×812 で棒が巣をはさんで右の欄に収まる',
+    id: 'AW48', tier: 'smoke', title: 'あまいもの とける みち の棒（2026-11-27。約束 §1.14 N7・計画書 amai-paths-bar.md）：①3 面の最初（100 いじょう）は棒 100（role=img・aria-label「たくさん」）②解の順に押して数え終わるたび、棒＝round(100 × まだ押していない箱 ÷ 面の最初の箱) で前より短い（増えない）③1手もどす で前の長さに戻る ④setState の局面は その局面を面の最初として棒 100 ⑤棒の中身と溝・絵の箱の下の地のコントラストが 3:1 以上 ⑥SE 縦・Safari 縦・SE 横・Safari 横 568×270・XS 375×812・iPad 縦（96px より長い）で棒が巣をはさんで右の欄に収まる ⑦途中から再開した面（3 面を 3 手押して開き直す）も面の最初の箱の数で割った長さ',
     async run({ browser, check, root }) {
       const L = loadLogic(root);
       const boxes = (g) => g.cols.reduce((a, c) => a + c.length, 0);
@@ -2969,7 +2969,7 @@ export const tests = [
       const g0 = await waitCount(page);
       const base = boxes(g0);
       const dom = await page.evaluate(() => { const b = document.querySelector('#pathsVal .bar'); return b ? { role: b.getAttribute('role'), label: b.getAttribute('aria-label'), w: b.firstElementChild.style.width, data: document.querySelector('#paths').dataset.bar } : null; });
-      check(`①3 面の最初は棒 100（${J(g0.paths)}・${J(dom)}）`, g0.paths.state === 'many' && g0.paths.bar === 100 && !!dom && dom.role === 'img' && dom.label === 'たくさん' && dom.w === '100%' && dom.data === '100', { paths: g0.paths, dom });
+      check(`①3 面の最初は棒 100（${J(g0.paths)}・${J(dom)}）`, g0.paths.state === 'many' && g0.paths.bar === 100 && !!dom && dom.role === 'img' && dom.label === 'たくさん' && /(^|\D)100%/.test(dom.w) && dom.data === '100', { paths: g0.paths, dom });
       // ② 解の順に押す
       const sol = await solutionOf(page);
       const seen = [];
@@ -2982,7 +2982,7 @@ export const tests = [
         const w = want(boxes(g), base);
         const dw = await page.evaluate(() => { const i = document.querySelector('#pathsVal .bar i'); return i ? i.style.width : null; });   // 画面の棒の長さ（data-bar だけでなく）
         seen.push({ bar: g.paths.bar, dom: dw, want: w, boxes: boxes(g) });
-        if (g.paths.bar !== w || dw !== w + '%' || !(g.paths.bar < prev)) ok2 = false;
+        if (g.paths.bar !== w || !new RegExp(`(^|\\D)${w}%`).test(dw || '') || !(g.paths.bar < prev)) ok2 = false;
         prev = g.paths.bar;
       }
       check(`②押すたびに棒が縮む（${J(seen)}・面の最初の箱 ${base}）`, ok2 && seen.filter((x) => x.bar !== undefined).length >= 4, seen);
@@ -2999,7 +2999,7 @@ export const tests = [
       await page.evaluate((s) => window.AmaiGame.setState(s), JSON.parse(JSON.stringify(s5))); await wait(page, 100);
       const g5 = await waitCount(page);
       const dom5 = await page.evaluate(() => { const i = document.querySelector('#pathsVal .bar i'); return i ? i.style.width : null; });
-      check(`④setState の局面（30 面のあと、5 面を 2 手進めた局面）は その局面を面の最初として棒 100（${J(g5.paths)}・画面 ${dom5}）`, g5.paths.state === 'many' && g5.paths.bar === 100 && dom5 === '100%', { paths: g5.paths, dom5 });
+      check(`④setState の局面（30 面のあと、5 面を 2 手進めた局面）は その局面を面の最初として棒 100（${J(g5.paths)}・画面 ${dom5}）`, g5.paths.state === 'many' && g5.paths.bar === 100 && /(^|\D)100%/.test(dom5 || ''), { paths: g5.paths, dom5 });
       // ⑤ コントラスト（中身と溝・中身と絵の箱の下の地）
       await setLevel(page, 3); await waitCount(page);
       const cc = await page.evaluate(() => {
@@ -3015,19 +3015,30 @@ export const tests = [
         return { fillTrack: Math.round(100 * cr(fill, track)) / 100, fillGround: Math.round(100 * cr(fill, ground)) / 100, fill, track, ground };
       });
       check(`⑤棒の中身と溝 ${cc.fillTrack}:1・中身と絵の箱の下の地 ${cc.fillGround}:1（どちらも 3:1 以上）`, cc.fillTrack >= 3 && cc.fillGround >= 3, cc);
+      // ⑦ 途中から再開した面：3 面で解の順に 3 手押して開き直すと、面の最初の箱の数で割った長さ（100 より短い。技術レビュー M-1）
+      {
+        const sol3 = await solutionOf(page);
+        for (const c of sol3.slice(0, 3)) { await settleG(page); await skipG(page); await pressCol(page, c); await skipG(page); await waitCount(page); }
+        await settleG(page); await skipG(page); await wait(page, 100);
+        await page.reload(); await wait(page, 300);
+        const gr = await waitCount(page);
+        const wr = want(boxes(gr), base);
+        check(`⑦3 面を 3 手押して開き直すと（押した数 ${gr.presses}）、棒 ${gr.paths.bar}＝round(100 × ${boxes(gr)} ÷ 面の最初の ${base})＝${wr} で 100 より短い`, gr.level === 3 && gr.presses === 3 && gr.paths.state === 'many' && gr.paths.bar === wr && wr < 100, { paths: gr.paths, presses: gr.presses, level: gr.level, boxes: boxes(gr), base });
+      }
       await ctx.close();
       // ⑥ 画面の大きさ
       const bad = [];
-      for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), custom(568, 270, null, 'SE Safari 横 568×270'), custom(375, 812, null, 'iPhone XS 375×812')]) {
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), custom(568, 270, null, 'SE Safari 横 568×270'), custom(375, 812, null, 'iPhone XS 375×812'), view('iPad', 'p', 'app')]) {
         const { ctx: c2, page: p2 } = await openG(browser, 'AW48-' + v.label, { v });
         await setLevel(p2, 3);
         const g = await waitCount(p2);
         const bx = await pathsBox(p2);
-        const inCell = await p2.evaluate(() => { const b = document.querySelector('#pathsVal .bar'), v2 = document.querySelector('#pathsVal'); if (!b) return false; const r = b.getBoundingClientRect(), q = v2.getBoundingClientRect(); return r.width >= 24 && r.left >= q.left - 0.5 && r.right <= q.right + 0.5; });
+        const wide = /iPad/.test(v.label);   // iPad の大きな画面は棒を 120px まで（96px より長い。技術レビュー L-2）
+        const inCell = await p2.evaluate((wide) => { const b = document.querySelector('#pathsVal .bar'), v2 = document.querySelector('#pathsVal'); if (!b) return false; const r = b.getBoundingClientRect(), q = v2.getBoundingClientRect(); return r.width >= (wide ? 96.5 : 24) && r.left >= q.left - 0.5 && r.right <= q.right + 0.5; }, wide);
         if (!(g.paths.bar === 100 && bx.ok && inCell)) bad.push({ v: v.label, paths: g.paths, bx, inCell });
         await c2.close();
       }
-      check(`⑥SE 縦・Safari 縦・SE 横・568×270・XS で棒が巣をはさんで右の欄に収まる（だめ ${bad.length}）`, bad.length === 0, bad);
+      check(`⑥SE 縦・Safari 縦・SE 横・568×270・XS・iPad 縦（96px より長い）で棒が巣をはさんで右の欄に収まる（だめ ${bad.length}）`, bad.length === 0, bad);
     },
   },
 ];
