@@ -153,11 +153,12 @@
   #mapWrap { position: relative; min-height: 0; overflow: hidden; background: #9fd0ee; border: 4px solid #e0a53a; border-radius: 3px; box-shadow: 0 0 0 3px var(--edge); }
   #mapCanvas { position: absolute; left: 0; top: 0; display: block; touch-action: none; }
   .over { position: absolute; z-index: 3; }
-  #viewBtn { top: 6px; right: 6px; min-height: 44px; padding: 2px 10px; font-size: 13px; flex-direction: column; align-items: flex-end; line-height: 1.2; }
-  #viewBtn .cur, #viewBtn .nx { display: block; }
-  #viewBtn .nx { font-size: 12px; font-weight: 700; color: var(--muted); }
+  /* めがね：44×44 の絵だけのボタン。見かたの名前は押した直後に #viewTip へ 3 秒（ユーザー「上の汚れとか出てくるやつこれが1部と被ってちょっと見づらい」。計画書 machi-rail-view） */
+  #viewBtn { top: 6px; right: 6px; width: 44px; height: 44px; min-height: 44px; padding: 0; font-size: 13px; }
+  #viewBtn svg { width: 32px; height: 32px; display: block; pointer-events: none; }
+  #viewTip { top: 56px; right: 6px; max-width: calc(100% - 12px); box-sizing: border-box; padding: 4px 10px; border-radius: 6px; background: rgba(255, 252, 240, 0.96); border: 2px solid var(--edge2); font: 700 13px/1.3 var(--font); white-space: nowrap; pointer-events: none; }
   /* めがねの凡例（色と模様。render の buildOverlay と同じ 3 段：よい＝模様なし・ふつう＝点・わるい＝✕） */
-  #viewLegend { top: 6px; left: 6px; max-width: calc(100% - 150px); box-sizing: border-box; padding: 4px 8px; border-radius: 6px; background: rgba(255, 252, 240, 0.95); border: 2px solid var(--edge2); font: 700 12px/1.35 var(--font); pointer-events: none; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+  #viewLegend { top: 6px; left: 6px; max-width: calc(100% - 62px); box-sizing: border-box; padding: 4px 8px; border-radius: 6px; background: rgba(255, 252, 240, 0.95); border: 2px solid var(--edge2); font: 700 12px/1.35 var(--font); pointer-events: none; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
   #viewLegend .li { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
   #viewLegend .sw { display: inline-block; width: 14px; height: 14px; border: 1px solid rgba(40, 30, 40, 0.5); font-size: 11px; line-height: 13px; text-align: center; color: #281e28; }
   #viewLegend .sw[data-lv="0"] { background: rgb(126, 200, 136); }
@@ -303,7 +304,8 @@
 
   <section id="mapWrap" aria-label="ちず">
     <canvas id="mapCanvas" aria-label="まちの ちず。ゆびで うごかす・ひろげる"></canvas>
-    <button type="button" class="over btn box" id="viewBtn" aria-label="ちずの みかた：ふつう。おすと よごれ"><span class="cur">みかた：ふつう</span><span class="nx">つぎ：よごれ</span></button>
+    <button type="button" class="over btn box" id="viewBtn" aria-label="ちずの みかた：ふつう。おすと よごれ"><svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M3 15 L7 9 M29 15 L25 9" fill="none" stroke="#4a2c10" stroke-width="2.5" stroke-linecap="round"/><circle cx="9.5" cy="18" r="6" fill="#d8f0ff" stroke="#4a2c10" stroke-width="2.5"/><circle cx="22.5" cy="18" r="6" fill="#d8f0ff" stroke="#4a2c10" stroke-width="2.5"/><path d="M15.5 17 Q16 15.5 16.5 17" fill="none" stroke="#4a2c10" stroke-width="2.5" stroke-linecap="round"/><path d="M6.5 16 Q7.5 14 9.5 13.8" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="M19.5 16 Q20.5 14 22.5 13.8" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+    <div class="over" id="viewTip" aria-hidden="true" hidden></div>
     <div class="over" id="viewLegend" hidden></div>
     <div class="over zoomBtns">
       <button type="button" class="btn box" data-cmd="zoom-in" aria-label="おおきく する">＋</button>
@@ -356,12 +358,12 @@
       <li><b>しごと</b>：こうば。はたらく ばしょ（けむりが でる）</li>
       <li><b>おみせ</b>：かいものと はたらく ばしょ</li>
       <li><b>みち</b>：いりぐちと つなぐ。くるまが とおる</li>
-      <li><b>せんろ</b>：はなれた みちを つなぐ（「まち」から）</li>
+      <li><b>せんろ</b>：はなれた みちどうしを つなぐ（「まち」から）。そばに みちも いるよ。みちの うえにも ひける（ふみきり）</li>
       <li><b>みどり</b>：こうえん。よごれが へる</li>
       <li><b>こわす</b>：おいた ものを けす（すぐなら おかねが もどる）</li>
       <li><b>めぐみ</b>：おく ばしょで はたけ・りんぎょう・りょうし</li>
     </ul>
-    <p class="small">こんざつ・よごれ・しごとの たりなさで ひとが へることも あるよ。「みかた」で しらべよう。ゆびで なぞると まとめて おけるよ</p>
+    <p class="small">こんざつ・よごれ・しごとの たりなさで ひとが へることも あるよ。みぎうえの めがねで しらべよう。ゆびで なぞると まとめて おけるよ</p>
     <div class="btns">
       <button type="button" class="btn primary" data-cmd="help-close">はじめる</button>
       <button type="button" class="btn box" data-cmd="restart-ask">さいしょから</button>

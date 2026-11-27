@@ -7,7 +7,7 @@
 //     ・地形は種で決まるので、ほとんどの項目は Node の logic.js（同じ root）で作った保存（newGame(5, 0)＋手で置いた物）を seed() で入れてから開く（毎回同じ町）
 //     ・保存を直接書くときは、ゲームのページで書いて reload しない（pagehide で上書きされる）。seed() で中立のページへ移って書いてから開く
 //     ・無いときに合格にしない：window.__machi・MachiLogic が無ければ例外で不合格にする
-//   smoke：CW1〜CW4。full：CW5〜CW16（CW12 は CDP の CPU 低速化なので Chromium だけ・solo、CW11 は AudioContext が要る）。
+//   smoke：CW1〜CW4。full：CW5〜CW17（CW12 は CDP の CPU 低速化なので Chromium だけ・solo、CW11 は AudioContext が要る）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -518,10 +518,10 @@ export const tests = [
       const greens = await useCount(page, L.USE.GREEN);
       check(`みどり を四角になぞると、8×8（64 マス）までで止まる（置けた ${greens} マス・お金 ${m} → ${(await st(page)).money}）。置ける所だけ`, greens > 0 && greens <= 64, { greens });
       const views = [];
-      const nexts = [];
-      for (let i = 0; i < 5; i++) { views.push(await txt(page, '#viewBtn .cur')); nexts.push(await txt(page, '#viewBtn .nx')); await page.click('#viewBtn'); await wait(page, 60); }
+      const tips = [];
+      for (let i = 0; i < 5; i++) { views.push(await page.getAttribute('#viewBtn', 'aria-label')); await page.click('#viewBtn'); await wait(page, 60); tips.push((await vis(page, '#viewTip')) ? await txt(page, '#viewTip') : null); }
       const names = ['ふつう', 'よごれ', 'こんざつ', 'すみやすさ', 'とちの ねだん'];
-      check(`めがね：${views.join(' → ')} →（ふつう に戻る）。ボタンに次の種類（${nexts.join('・')}）`, views.every((v, i) => v === `みかた：${names[i]}`) && nexts.every((v, i) => v === `つぎ：${names[(i + 1) % 5]}`) && (await txt(page, '#viewBtn .cur')) === 'みかた：ふつう', { views, nexts });
+      check(`めがね：${views.join(' → ')} →（ふつう に戻る）。押すと札（${tips.join('・')}）`, views.every((v, i) => v === `ちずの みかた：${names[i]}。おすと ${names[(i + 1) % 5]}`) && tips.every((v, i) => v === `みかた：${names[(i + 1) % 5]}`) && /^ちずの みかた：ふつう。/.test(await page.getAttribute('#viewBtn', 'aria-label')), { views, tips });
       await ctx.close();
     },
   },
@@ -818,12 +818,12 @@ export const tests = [
       check('ふつうの見かたでは凡例を出さない', !(await vis(page, '#viewLegend')), null);
       await page.click('#viewBtn'); await wait(page, 60);
       const lg = await page.evaluate(() => { const e = document.querySelector('#viewLegend'), r = e.getBoundingClientRect(), b = document.querySelector('#viewBtn').getBoundingClientRect(), m = document.querySelector('#mapWrap').getBoundingClientRect(); return { text: e.textContent, sw: [...e.querySelectorAll('.sw')].map((s) => ({ lv: s.dataset.lv, mark: s.textContent, bg: getComputedStyle(s).backgroundColor })), inMap: r.left >= m.left && r.right <= m.right && r.top >= m.top, overBtn: !(r.right <= b.left || r.left >= b.right || r.bottom <= b.top || r.top >= b.bottom), fs: parseFloat(getComputedStyle(e).fontSize) }; });
-      check(`めがね よごれ：凡例「${lg.text}」（色 3 つ・模様 なし／点／✕ の 3 段・12px 以上・ボタンに重ならない）・ボタンに「${await txt(page, '#viewBtn .nx')}」`, /よごれ：/.test(lg.text) && /すくない/.test(lg.text) && /すこし（てん）/.test(lg.text) && /おおい（✕）/.test(lg.text) && lg.sw.length === 3 && new Set(lg.sw.map((s) => s.bg)).size === 3 && lg.sw.map((s) => s.mark).join('|') === '|・|✕' && lg.inMap && !lg.overBtn && lg.fs >= 12 && (await txt(page, '#viewBtn .nx')) === 'つぎ：こんざつ', lg);
+      check(`めがね よごれ：凡例「${lg.text}」（色 3 つ・模様 なし／点／✕ の 3 段・12px 以上・ボタンに重ならない）・ボタンの名前「${await page.getAttribute('#viewBtn', 'aria-label')}」`, /よごれ：/.test(lg.text) && /すくない/.test(lg.text) && /すこし（てん）/.test(lg.text) && /おおい（✕）/.test(lg.text) && lg.sw.length === 3 && new Set(lg.sw.map((s) => s.bg)).size === 3 && lg.sw.map((s) => s.mark).join('|') === '|・|✕' && lg.inMap && !lg.overBtn && lg.fs >= 12 && /おすと こんざつ$/.test(await page.getAttribute('#viewBtn', 'aria-label')), lg);
       const legs = [];
       for (let k = 0; k < 3; k++) { await page.click('#viewBtn'); await wait(page, 60); legs.push(await txt(page, '#viewLegend')); }
       check(`こんざつ・すみやすさ・とちの ねだん にも凡例（${legs.join(' / ')}）`, /みち：.*すいている.*こみぎみ.*こんざつ/.test(legs[0]) && /すみやすさ：.*たかい.*ふつう.*ひくい/.test(legs[1]) && /とちの ねだん：.*たかい.*ふつう.*ひくい/.test(legs[2]), legs);
       await page.click('#viewBtn'); await wait(page, 60);
-      check('ふつうに戻ると凡例が消える', !(await vis(page, '#viewLegend')) && (await txt(page, '#viewBtn .cur')) === 'みかた：ふつう', null);
+      check('ふつうに戻ると凡例が消える', !(await vis(page, '#viewLegend')) && /^ちずの みかた：ふつう。/.test(await page.getAttribute('#viewBtn', 'aria-label')), null);
       // しらべるカード
       const home = await page.evaluate(() => { const s = window.__machi.state; for (let i = 0; i < s.use.length; i++) if (s.use[i] === 5 && s.lvl[i] > 0) { const x = i % s.W, y = (i / s.W) | 0; s.poll[(y >> 2) * (s.W >> 2) + (x >> 2)] = 90; return [x, y]; } return null; });
       if (!home) throw new Error('すむ の建物が無い');
@@ -860,6 +860,81 @@ export const tests = [
       const f2 = await page.evaluate(() => window.__machi.render.stats().ticks);
       check('触ると起きて動く（＋で広がる・コマが進む）', (await page.evaluate(() => window.__machi.resting)) === false && f2 > f1 && (await camera(page)).cell > cz0.cell, { f1, f2 });
       await ctx.close();
+    },
+  },
+  {
+    id: 'CW17', tier: 'full', title: 'ぼくのまち せんろ の知らせ と めがね（ユーザー「入り口とつながっていないと出ます」「上の汚れとか出てくるやつこれが1部と被ってちょっと見づらい」。計画書 docs/plans/machi-rail-view.md）：375×812 と SE 縦（動きを減らす設定）で、せんろ をはじめて選ぶと説明 2 つを 6 秒ずつ・1 行に収まる、せんろ のそばに すむ を置くと「せんろ だけでは そだたないよ。みちも ひいてね」（1 行）・しらべる の わけ も同じ、めがねは 44×44 の絵だけ・押すと「みかた：○○」を 3 秒・凡例と ほかの重ね物（ズーム・速さ・声・拡大のヒント）に重ならず地図の中',
+    async run({ browser, check, root }) {
+      const L = logicOf(root);
+      const RT = 'せんろ だけでは そだたないよ。みちも ひいてね';
+      const TIP1 = 'せんろ＝はなれた みちどうしを つなぐよ', TIP2 = 'そばに みちも いるよ。みちの うえにも ひけるよ';
+      const s0 = L.newGame(5, 0);
+      s0.rank = 1; s0.money = 50000;
+      const run = findRun(L, s0, 12);
+      for (let k = 0; k < 12; k++) s0.use[run.y * L.W + run.x + k] = L.USE.RAIL;   // いりぐちと つながらない せんろ（みち は無い）
+      let hc = null;
+      for (const dy of [1, -1, 2, -2]) { const x = run.x + 6, y = run.y + dy; if (freeCell(L, s0, y * L.W + x)) { hc = { x, y }; break; } }
+      if (!hc) throw new Error('せんろ のそばに空いた へいち が無い');
+      const fits = (p) => p.evaluate(() => { const e = document.querySelector('#toolHint'); return { sw: e.scrollWidth, cw: e.clientWidth, h: e.getBoundingClientRect().height, t: e.textContent }; });
+      const over = (a, b) => !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+      for (const [v, rm] of [[STD_V(), 'no-preference'], [SE_P(), 'reduce']]) {
+        const { ctx, page } = await openM(browser, `CW17 ${v.label}`, { v, raw: mkRaw(L, s0), debug: true, opts: { reducedMotion: rm } });
+        await page.click('#speedBtns [data-speed="0"]'); await wait(page, 100);
+        // せんろ の説明（2 つを 6 秒ずつ）
+        await pick(page, 'rail');
+        const t1 = await fits(page);
+        await wait(page, 6300);
+        const t2 = await fits(page);
+        await wait(page, 6300);
+        const t3 = await fits(page);
+        check(`${v.label}：せんろ をはじめて選ぶと「${t1.t}」→ 6 秒 →「${t2.t}」→ 6 秒 →「${t3.t}」。どれも 1 行に収まる（はば ${t1.sw}/${t1.cw}・${t2.sw}/${t2.cw}）`, t1.t === TIP1 && t2.t === TIP2 && /せんろ 1 マス 40/.test(t3.t) && [t1, t2].every((f) => f.sw <= f.cw + 1 && f.h < 24), { t1, t2, t3 });
+        await pick(page, 'rail'); await pick(page, 'rail');
+        check(`${v.label}：2 回目は説明を出さない（「${(await fits(page)).t}」）`, /せんろ 1 マス 40/.test((await fits(page)).t), null);
+        // せんろ のそばに すむ
+        await pick(page, 'home'); await wait(page, 6300);
+        await centerOn(page, hc.x, hc.y);
+        await tapCell(page, hc.x, hc.y);
+        const h = await fits(page);
+        check(`${v.label}：せんろ のそば（みち なし）に すむ を置くと札「${h.t}」・赤・1 行に収まる（はば ${h.sw}/${h.cw}）`, (await cellUse(page, hc.x, hc.y)).use === L.USE.HOME && h.t === RT && (await page.getAttribute('#toolHint', 'data-warn')) === '1' && h.sw <= h.cw + 1 && h.h < 24, h);
+        await pick(page, 'home');   // 選ばない（しらべる）
+        await centerOn(page, hc.x, hc.y);
+        await tapCell(page, hc.x, hc.y); await wait(page, 100);
+        const why = await txt(page, '#infoWhy');
+        check(`${v.label}：しらべる の わけ「${why}」に せんろ の言葉・「いりぐちと つながって いない」は出さない`, why.includes(RT) && !/いりぐちと つながって いない/.test(why), why);
+        await page.click('#infoCard [data-cmd="close"]'); await wait(page, 100);
+        // めがね
+        const b0 = await page.evaluate(() => { const b = document.querySelector('#viewBtn'), r = b.getBoundingClientRect(); return { w: r.width, h: r.height, text: b.textContent.trim(), svg: !!b.querySelector('svg'), label: b.getAttribute('aria-label') }; });
+        check(`${v.label}：めがねは ${Math.round(b0.w)}×${Math.round(b0.h)}（44 以上・60 以下）・文字なしの絵（svg）・名前「${b0.label}」・はじめは札を出さない`, b0.w >= 44 && b0.h >= 44 && b0.w <= 60 && b0.h <= 60 && b0.text === '' && b0.svg && b0.label === 'ちずの みかた：ふつう。おすと よごれ' && !(await vis(page, '#viewTip')) && (await reachable(page, '#viewBtn')), b0);
+        await dbg(page, 'voice', { why: 'jam', text: 'みちが こんで いるよ' });
+        await page.evaluate(() => { document.querySelector('#zoomHint').hidden = false; });
+        const names = ['よごれ', 'こんざつ', 'すみやすさ', 'とちの ねだん', 'ふつう'];
+        const geo = [];
+        for (const nm of names) {
+          await page.click('#viewBtn'); await wait(page, 60);
+          geo.push(await page.evaluate((nm) => {
+            const R = (s) => { const e = document.querySelector(s); return e && !e.closest('[hidden]') && e.getBoundingClientRect().width > 0 ? e.getBoundingClientRect().toJSON() : null; };
+            return { nm, tip: R('#viewTip'), text: document.querySelector('#viewTip').textContent, leg: R('#viewLegend'), btn: R('#viewBtn'), map: R('#mapWrap'), zoom: R('.zoomBtns'), speed: R('#speedBtns'), voice: R('#voiceBar'), zh: R('#zoomHint') };
+          }, nm));
+        }
+        const bad = [];
+        for (const g of geo) {
+          if (!g.tip || g.text !== `みかた：${g.nm}`) bad.push(`${g.nm}：札「${g.text}」が出ない`);
+          if ((g.nm === 'ふつう') !== !g.leg) bad.push(`${g.nm}：凡例 ${g.leg ? 'あり' : 'なし'}`);
+          const inMap = (r) => r.left >= g.map.left - 0.5 && r.right <= g.map.right + 0.5 && r.top >= g.map.top - 0.5 && r.bottom <= g.map.bottom + 0.5;
+          const tops = [['札', g.tip], ['凡例', g.leg], ['めがね', g.btn]].filter((x) => x[1]);
+          for (const [n, r] of tops) if (!inMap(r)) bad.push(`${g.nm}：${n}が地図の外`);
+          const all = [...tops, ['ズーム', g.zoom], ['速さ', g.speed], ['声', g.voice], ['拡大のヒント', g.zh]].filter((x) => x[1]);
+          for (let a = 0; a < tops.length; a++) for (let c = a + 1; c < all.length; c++) if (over(tops[a][1], all[c][1])) bad.push(`${g.nm}：${tops[a][0]}と${all[c][0]}が重なる`);
+        }
+        check(`${v.label}：めがねを押すたびに「みかた：○○」の札（${geo.map((g) => g.text).join('・')}）・ふつう以外は凡例。札・凡例・めがね は地図の中で、たがいにも ズーム・速さ・声・拡大のヒント にも重ならない（${bad.join(' ') || 'なし'}）`, bad.length === 0 && geo.every((g) => g.zoom && g.speed), geo);
+        const lab = await page.getAttribute('#viewBtn', 'aria-label');
+        await wait(page, 2500);
+        const still = await vis(page, '#viewTip');
+        await wait(page, 700);
+        const gone = !(await vis(page, '#viewTip'));
+        check(`${v.label}：札は 3 秒出て消える（2.5 秒 ${still ? 'あり' : 'なし'}・3.2 秒 ${gone ? 'なし' : 'あり'}${rm === 'reduce' ? '・動きを減らす設定' : ''}）・名前「${lab}」`, still && gone && lab === 'ちずの みかた：ふつう。おすと よごれ', { still, gone, lab });
+        await ctx.close();
+      }
     },
   },
 ];

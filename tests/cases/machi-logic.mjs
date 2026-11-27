@@ -825,6 +825,48 @@ export const tests = [
     },
   },
   {
+    id: 'CL22', tier: 'full', node: true, title: 'ぼくのまち：せんろ の知らせの言い分け（せんろ・ふみきり が 3 マス以内なのに いりぐちと つながった みち が 2 マス以内に無い区画は「せんろ だけでは そだたないよ。みちも ひいてね」。unlinkedWhy・しらべる の わけ・月の知らせ。はなれた区画は いつもの言葉。みち を引くと つながる。計画書 docs/plans/machi-rail-view.md）',
+    run({ check, root }) {
+      const L = load(root);
+      const RT = 'せんろ だけでは そだたないよ。みちも ひいてね';
+      check(`RAIL_ONLY_TEXT が「${L.RAIL_ONLY_TEXT}」・unlinkedWhy がある`, L.RAIL_ONLY_TEXT === RT && typeof L.unlinkedWhy === 'function', L.RAIL_ONLY_TEXT);
+      // いりぐちから せんろ だけ（18 マス）＋そばの すむ（みち は 2 マス以内に無い）
+      const s = flat(L, { rank: 1 });
+      for (let y = 3; y <= 20; y++) setUse(L, s, EX, y, L.USE.RAIL);
+      const d = setUse(L, s, EX + 1, 10, L.USE.HOME);      // せんろ のとなり
+      const e = setUse(L, s, EX + 3, 14, L.USE.HOME);      // せんろ から 3 マス
+      const f = setUse(L, s, EX + 4, 14, L.USE.HOME);      // せんろ から 4 マス（はなれている）
+      L.recalc(s);
+      check(`せんろ のそば（となり・3 マス）は "rail"（${L.unlinkedWhy(s, d)}・${L.unlinkedWhy(s, e)}）、4 マス はなれると "far"（${L.unlinkedWhy(s, f)}）`, L.unlinkedWhy(s, d) === 'rail' && L.unlinkedWhy(s, e) === 'rail' && L.unlinkedWhy(s, f) === 'far', null);
+      const rs = L.inspect(s, EX + 1, 10).reasons;
+      check(`しらべる（せんろ のそば）の わけ「${rs.join('／')}」に せんろ の言葉・「いりぐちと つながって いない」「みちが とおい」は出さない`, rs.includes(RT) && !rs.some((t) => /いりぐちと つながって いない|みちが とおい/.test(t)), rs);
+      const rf = L.inspect(s, EX + 4, 14).reasons;
+      check(`しらべる（はなれた区画）は いつもの「みちが とおい」（「${rf.join('／')}」）`, rf.some((t) => /みちが とおい/.test(t)) && !rf.includes(RT), rf);
+      const ev = months(L, s, 2).filter((x) => x.kind === 'news' && x.why === 'noroad');
+      check(`月の知らせ noroad が せんろ の言葉（「${ev.map((x) => x.text).join('／')}」）`, ev.length > 0 && ev.every((x) => x.text === RT), ev);
+      // ふみきり（みち の上の せんろ）でも同じ。いりぐちと つながらない みち の上
+      const s3 = flat(L, { rank: 1 });
+      roadH(L, s3, 40, 20, 40);
+      for (let y = 30; y <= 50; y++) setUse(L, s3, 30, y, y === 40 ? L.USE.CROSS : L.USE.RAIL);
+      const g = setUse(L, s3, 32, 41, L.USE.HOME);         // つながらない みち・ふみきり のそば
+      const h = setUse(L, s3, 22, 41, L.USE.HOME);         // つながらない みち のそば・せんろ から 8 マス
+      L.recalc(s3);
+      check(`つながらない みち と ふみきり のそばは "rail"（${L.unlinkedWhy(s3, g)}）、せんろ から はなれた所は "noentry"・「いりぐちと つながって いないよ」（${L.unlinkedWhy(s3, h)}）`, L.unlinkedWhy(s3, g) === 'rail' && L.unlinkedWhy(s3, h) === 'noentry' && L.inspect(s3, 22, 41).reasons.includes('いりぐちと つながって いないよ'), null);
+      // せんろ の無い町の知らせは いつもの言葉
+      const s4 = flat(L);
+      roadH(L, s4, 30, 30, 36); setUse(L, s4, 33, 31, L.USE.HOME);
+      L.recalc(s4);
+      const ev4 = months(L, s4, 2).filter((x) => x.kind === 'news' && x.why === 'noroad');
+      check(`せんろ の無い町の月の知らせは「いりぐちと つながって いないよ」（「${ev4.map((x) => x.text).join('／')}」）`, ev4.length > 0 && ev4.every((x) => x.text === 'いりぐちと つながって いないよ'), ev4);
+      // みち を引いて つなぐと null（そだつ）
+      roadV(L, s, EX + 2, 3, 12); setUse(L, s, EX + 1, 3, L.USE.ROAD); setUse(L, s, EX - 1, 2, L.USE.ROAD); setUse(L, s, EX + 1, 2, L.USE.ROAD);
+      roadH(L, s, 2, EX + 1, EX + 2);
+      L.recalc(s);
+      check(`みち を引いて いりぐちと つなぐと null（${L.unlinkedWhy(s, d)}）・しらべる に せんろ の言葉が出ない`, L.unlinkedWhy(s, d) === null && !L.inspect(s, EX + 1, 10).reasons.includes(RT), L.inspect(s, EX + 1, 10).reasons);
+      check('壊れた引数でも落ちない（null）', L.unlinkedWhy(null, 0) === null && L.unlinkedWhy(s, -1) === null && L.unlinkedWhy(s, L.N) === null && L.unlinkedWhy(s, I(L, 0, 40)) === null, null);
+    },
+  },
+  {
     id: 'CL18', tier: 'smoke', flaky: { why: 'Node で step の時間を測る', checks: /ms/ }, node: true, solo: true, title: 'ぼくのまち：重さ（64×78 の greedy 20 年の町で step 1 回：中央 3ms 以内・95% 1.5ms 以内・月の終わりを含む最大 20ms 以内（Node））',
     run({ check, root }) {
       const L = load(root);

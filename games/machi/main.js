@@ -15,7 +15,7 @@
   const NAME = "ぼくのまち";
   const KEY_SAVE = "machi.save", KEY_BAK = "machi.bak", KEY_BEST = "machi.best", KEY_SEEN = "machi.seen", KEY_TIPS = "machi.tips";
   const SAVE_EVERY_SEC = 15, SAVE_SOON_SEC = 2, UI_EVERY_SEC = 0.2;
-  const NEWS_SEC = 10, VOICE_SEC = 12, HINT_SEC = 3, TIP_SEC = 6, LINK_SEC = 5, ZOOM_HINT_SEC = 10;
+  const NEWS_SEC = 10, VOICE_SEC = 12, HINT_SEC = 3, TIP_SEC = 6, LINK_SEC = 5, ZOOM_HINT_SEC = 10, VIEW_TIP_MS = 3000;
   const ENTRY_GOAL = "いりぐち（ひかって いる ところ）から みちを ひこう";
   const DEFAULT_HINT = "おくものを えらんで、マスを タップ";
 
@@ -26,7 +26,7 @@
     app: $("app"), back: $("backBtn"), nameBtn: $("nameBtn"), soundBtn: $("soundBtn"),
     moneyText: $("moneyText"), popText: $("popText"), starText: $("starText"), newsText: $("newsText"), dateText: $("dateText"),
     wrap: $("mapWrap"), canvas: $("mapCanvas"), viewBtn: $("viewBtn"), speedBtns: $("speedBtns"), zoomHint: $("zoomHint"),
-    voiceBar: $("voiceBar"), voiceFace: $("voiceFace"), voiceText: $("voiceText"), voiceSub: $("voiceSub"), viewLegend: $("viewLegend"),
+    voiceBar: $("voiceBar"), voiceFace: $("voiceFace"), voiceText: $("voiceText"), voiceSub: $("voiceSub"), viewLegend: $("viewLegend"), viewTip: $("viewTip"),
     toolHint: $("toolHint"), tools: $("tools"),
     terrainCard: $("terrainCard"), helpCard: $("helpCard"), restartCard: $("restartCard"), nameCard: $("nameCard"), nameInput: $("nameInput"),
     infoCard: $("infoCard"), infoTitle: $("infoTitle"), infoList: $("infoList"), infoWhy: $("infoWhy"),
@@ -169,7 +169,9 @@
     if (el.newsText.textContent !== t) el.newsText.textContent = t;
     ui.news = t;
   }
+  let hintNext = [];   // 道具の説明の続き（せんろ）。ほかの知らせが出たら捨てる
   function setHint(text, warn, sec) {
+    hintNext = [];
     el.toolHint.textContent = text;
     el.toolHint.dataset.warn = warn ? "1" : "0";
     hintLeft = text === DEFAULT_HINT || !sec ? (warn ? HINT_SEC : 0) : sec;
@@ -190,7 +192,8 @@
     work: "しごと＝こうば。けむりが でるよ",
     shop: "おみせ＝はたらく ばしょ。いえの ちかくに",
     road: "みち＝いりぐちから つなげよう",
-    rail: "せんろ＝はなれた みちを つなぐよ",
+    // せんろ は 2 つに分けて 6 秒ずつ続けて出す（1 行に収めるため。計画書 machi-rail-view §1）
+    rail: ["せんろ＝はなれた みちどうしを つなぐよ", "そばに みちも いるよ。みちの うえにも ひけるよ"],
     green: "みどり＝こうえん。よごれが へるよ",
     erase: "こわす＝おいた ものを けすよ",
     nature: "めぐみ＝はたけ・りんぎょう・りょうし"
@@ -200,7 +203,9 @@
     if (!TIPS[id] || tipSeen(id)) return false;
     const r = readKey(KEY_TIPS);
     writeKey(KEY_TIPS, r ? `${r},${id}` : id);
-    setHint(TIPS[id], false, TIP_SEC);   // 6 秒たつと値段のヒントに戻る
+    const t = TIPS[id];
+    setHint(Array.isArray(t) ? t[0] : t, false, TIP_SEC);   // 6 秒たつと値段のヒントに戻る
+    if (Array.isArray(t)) hintNext = t.slice(1);            // 続きは 6 秒ずつ（ほかの知らせが出たら捨てる）
     return true;
   }
 
@@ -270,7 +275,9 @@
     if (t !== "road" && !zone) return;
     if (cells.some((i) => (zone ? linkedZone(i) : linkedRoad(i)))) return;
     const far = zone && cells.every((i) => !(state.net.zone && state.net.zone[i] >= 0));
-    setHint(far ? "みちから はなれて いるよ（2 マスまで）" : "いりぐちと つながって いないよ", true, LINK_SEC);
+    // せんろ のそばの区画は「せんろ だけでは そだたないよ」（ユーザー「入り口とつながっていないと出ます」。計画書 machi-rail-view §1）
+    const railOnly = zone && cells.some((i) => L.unlinkedWhy(state, i) === "rail");
+    setHint(railOnly ? L.RAIL_ONLY_TEXT : far ? "みちから はなれて いるよ（2 マスまで）" : "いりぐちと つながって いないよ", true, LINK_SEC);
     const j = nearestLinked(cells);
     if (j >= 0) {
       // 見えていれば光らせるだけ。見えていなければ そこへ寄せて光らせる
@@ -543,11 +550,7 @@
   function renderViewBtn() {
     const [id, nm] = VIEWS[viewIdx];
     const nx = VIEWS[(viewIdx + 1) % VIEWS.length][1];
-    el.viewBtn.textContent = "";
-    const a = document.createElement("span"), b = document.createElement("span");
-    a.className = "cur"; a.textContent = `みかた：${nm}`;
-    b.className = "nx"; b.textContent = `つぎ：${nx}`;
-    el.viewBtn.append(a, b);
+    el.viewTip.textContent = `みかた：${nm}`;
     el.viewBtn.setAttribute("aria-label", `ちずの みかた：${nm}。おすと ${nx}`);
     el.viewBtn.dataset.on = viewIdx ? "1" : "0";
     const lg = LEGEND[id];
@@ -563,11 +566,25 @@
       });
     }
   }
+  // 見かたの名前は押した直後に 3 秒だけ出す（動きなし。動きを減らす設定でも同じ。凡例と重なるときは凡例の下へ）
+  let viewTipTimer = 0;
+  function showViewTip() {
+    clearTimeout(viewTipTimer);
+    const t = el.viewTip;
+    t.style.top = "";
+    t.hidden = false;
+    if (!el.viewLegend.hidden) {
+      const w = el.wrap.getBoundingClientRect(), g = el.viewLegend.getBoundingClientRect(), r = t.getBoundingClientRect();
+      if (!(r.right <= g.left || r.left >= g.right || r.bottom <= g.top || r.top >= g.bottom)) t.style.top = `${Math.ceil(g.bottom - w.top - el.wrap.clientTop) + 4}px`;
+    }
+    viewTipTimer = setTimeout(() => { t.hidden = true; }, VIEW_TIP_MS);
+  }
   el.viewBtn.addEventListener("click", () => {
     closeZoomHint();
     viewIdx = (viewIdx + 1) % VIEWS.length;
     render.setView(VIEWS[viewIdx][0]);
     renderViewBtn();
+    showViewTip();
     sfx.play("select");
   });
 
@@ -829,7 +846,7 @@
       }
       // 見せる物の時間（カードが開いていても進める）
       if (newsLeft > 0) { newsLeft -= wall; if (newsLeft <= 0) { newsLeft = 0; showGoal(sumNow() || { next: null, pop: 0 }); } }
-      if (hintLeft > 0) { hintLeft -= wall; if (hintLeft <= 0) { hintLeft = 0; resetHint(); } }
+      if (hintLeft > 0) { hintLeft -= wall; if (hintLeft <= 0) { hintLeft = 0; if (hintNext.length) { const rest = hintNext.slice(1); setHint(hintNext[0], false, TIP_SEC); hintNext = rest; } else resetHint(); } }
       if (voiceLeft > 0) { voiceLeft -= wall; if (voiceLeft <= 0) hideVoice(); }
       if (zoomHintLeft > 0) { zoomHintLeft -= wall; if (zoomHintLeft <= 0) closeZoomHint(); }
       uiSince += wall;

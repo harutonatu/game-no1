@@ -577,8 +577,8 @@ const M = [
   ['MA111 あまいものあつめ：押しても とける みち の棒の長さを書き直さない（見つける：AW48）', 'UX', 'games/amai/main.js', 'if (fill.style.width !== w) fill.style.width = w;', 'if (!fill.style.width) fill.style.width = w;'],
   ['MA112 あまいものあつめ：setState の局面で、面の最初の箱の数を覚え直さない（棒の長さがずれる。見つける：AW48）', 'UX', 'games/amai/main.js', '      boxBase = boxesNow(st);', '      void 0;'],
   ['MA113 あまいものあつめ：途中から再開した面で、面の最初でなく再開した局面の箱の数を棒の元にする（開き直すと棒が 100 に戻る。見つける：AW48）', 'UX', 'games/amai/main.js', 'boxBase = boxesNow(created.state);', 'boxBase = boxesNow(st);'],
-  // ぼくのまち（games/machi/。2026-11-26。計画書 docs/plans/machi.md §7。MC1〜MC56 はロジック、MC57〜MC61 は画面）
-  //   ロジックの変異は ONLY=CL1〜CL21、画面の変異は ONLY=CW1〜CW16 で絞って流す（tests/README.md「ぼくのまちの変異テスト」）
+  // ぼくのまち（games/machi/。2026-11-26。計画書 docs/plans/machi.md §7。MC1〜MC56・MC62 はロジック、MC57〜MC61・MC63 は画面）
+  //   ロジックの変異は ONLY=CL1〜CL22、画面の変異は ONLY=CW1〜CW17 で絞って流す（tests/README.md「ぼくのまちの変異テスト」）
   ['MC1 ぼくのまち：いりぐちと つながっていなくても 育つ（connected が みちの塊が あるだけで真。見つける：CL3）', 'ルール', 'games/machi/logic.js', 'return z >= 0 && s.net.comps[z] && s.net.comps[z].entry;', 'return z >= 0 && !!s.net.comps[z];'],
   ['MC2 ぼくのまち：区画が いりぐちとつながった みちを先に選ばない（近い みち の塊だけ見る。見つける：CL21）', 'ルール', 'games/machi/logic.js', 'if (best < 0 || (!comps[best].entry && comps[lb].entry)) best = lb;', 'if (best < 0) best = lb;'],
   ['MC3 ぼくのまち：すむ が 仕事の釣り合いを見ずに育つ（見つける：CL21）', 'ルール', 'games/machi/logic.js', 'good = s.live[i] >= 55 && rc >= 0.8;', 'good = s.live[i] >= 55;'],
@@ -640,6 +640,9 @@ const M = [
   ['MC59 ぼくのまち：自分で書いたあとの「最後に見た machi.save」を更新しない（自分の保存を ほかで書き換わった と見まちがえて開き直す。X-20。見つける：CW15）', 'データ', 'games/machi/main.js', 'function noteSaved(key) { if (seenRaw.has(key)) seenRaw.set(key, readKey(key)); }', 'function noteSaved(key) { }'],
   ['MC60 ぼくのまち：表に戻ったとき、ほかで書き換わったかを見ない（古いページが書き戻す。X-20。見つける：CW15）', 'データ消失', 'games/machi/main.js', 'if (!stale && !changedElsewhere()) return false;', 'if (!stale) return false;'],
   ['MC61 ぼくのまち：開き直しの知らせ（X-24）の目印を付けない（見つける：CW15）', 'UX', 'games/machi/main.js', 'if (window.YubiNotice) window.YubiNotice.markReload();', ''],
+  // せんろ の知らせの言い分け（2026-11-27。計画書 docs/plans/machi-rail-view.md）
+  ['MC62 ぼくのまち：せんろ のそばで つながらない区画を言い分けない（「いりぐちと つながって いないよ」のまま。見つける：CL22）', 'UX', 'games/machi/logic.js', 'if (railNearCell(s, i)) return "rail";', 'if (false) return "rail";'],
+  ['MC63 ぼくのまち：置いたあとの札が せんろ のそばを言い分けない（見つける：CW17）', 'UX', 'games/machi/main.js', 'const railOnly = zone && cells.some((i) => L.unlinkedWhy(state, i) === "rail");', 'const railOnly = false;'],
 ];
 const tiers = which === 'both' ? ['smoke', 'full'] : [which];
 const PICK = process.env.M ? process.env.M.split(',') : null;
