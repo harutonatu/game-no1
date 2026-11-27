@@ -230,6 +230,10 @@
   .paths[data-state="counting"] .pv { color: rgba(58, 42, 23, 0.7); }
   .paths[data-state="zero"] { color: #8a1f0f; }
   .paths[data-state="none"] { visibility: hidden; }
+  /* 「100 いじょう」のときの棒（2026-11-27。§1.14 N7）：長さ＝まだ押していない箱の割合。色でなく長さで分かる。
+     中身（#6b2a06）と溝（#e0c7a8 相当）は 6.6:1、中身と絵の箱の下の地（#b98b55）は 3.5:1 */
+  .paths .pv .bar { display: inline-block; vertical-align: middle; box-sizing: border-box; width: 100%; max-width: 96px; height: 8px; border-radius: 4px; background: rgba(255, 248, 236, 0.55); box-shadow: inset 0 0 0 1px rgba(58, 42, 23, 0.55); overflow: hidden; }
+  .paths .pv .bar i { display: block; height: 100%; border-radius: 4px; background: #6b2a06; }
   .nest {
     grid-row: 3;
     grid-column: 1;   /* #paths と同じ升（列を足さない） */
@@ -433,6 +437,7 @@
     .hud { font-size: 16px; height: 18px; }
     .hud b { font-size: 16px; }
     .paths { font-size: 15px; }
+    .paths .pv .bar { max-width: 120px; height: 10px; border-radius: 5px; }
     .hint { font-size: 16px; }
     h1.title { font-size: 18px; }
   }
@@ -700,7 +705,7 @@
         <span class="chaltag">ちょうせん</span>
         <span class="leftbox">のこり <b id="left">0</b> こ</span></p>
       <canvas class="pic" id="pic" role="img" aria-label="え"></canvas>
-      <p class="paths" id="paths" data-state="counting" data-n=""><span class="pl" id="pathsLab">とける みち</span><span class="pv" id="pathsVal">かぞえてるよ…</span></p>
+      <p class="paths" id="paths" data-state="counting" data-n="" data-bar=""><span class="pl" id="pathsLab">とける みち</span><span class="pv" id="pathsVal">かぞえてるよ…</span></p>
       <div class="nest" id="nest" aria-hidden="true"></div>
     </div>
     <div class="slots" id="slots" role="group" aria-label="わく">

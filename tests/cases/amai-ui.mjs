@@ -2674,7 +2674,7 @@ export const tests = [
   },
   // ---------- とける みち（2026-11-26。約束 §0.13・§1.14・計画書 docs/plans/amai-count.md） ----------
   {
-    id: 'AW45', tier: 'smoke', title: 'あまいもの とける みち の表示（2026-11-26。約束 §1.14）：①1 面の最初は「とける みち ／ N とおり」（N＝Node の countSearch のちょうどの数）・巣をはさんで左に「とける みち」、右に数（絵の箱の下の行・絵に重ならない・SE 縦に収まる・字 12px 以上）②3 面の最初は「100 いじょう」③押した直後は数えている（data-state counting）→ 数え終わると数 ④とけない局面（あと 1 手で必ず うごかせない・うごかせない）は「この ままだと とけないよ」（zero）⑤クリアしたら出さない',
+    id: 'AW45', tier: 'smoke', title: 'あまいもの とける みち の表示（2026-11-26。約束 §1.14）：①1 面の最初は「とける みち ／ N とおり」（N＝Node の countSearch のちょうどの数）・巣をはさんで左に「とける みち」、右に数（絵の箱の下の行・絵に重ならない・SE 縦に収まる・字 12px 以上）②3 面の最初（100 いじょう）は棒（長さ 100・読み上げ「たくさん」）③押した直後は数えている（data-state counting）→ 数え終わると数 ④とけない局面（あと 1 手で必ず うごかせない・うごかせない）は「この ままだと とけないよ」（zero）⑤クリアしたら出さない',
     async run({ browser, check, root }) {
       const L = loadLogic(root);
       const { ctx, page } = await openG(browser, 'AW45', { v: SMOKE_V() });
@@ -2689,7 +2689,8 @@ export const tests = [
       // ② 3 面
       await setLevel(page, 3);
       const g3 = await waitCount(page);
-      check(`②3 面の最初は 100 いじょう（${J(g3.paths)}）`, g3.paths.state === 'many' && g3.paths.n === 100 && g3.paths.text === 'とける みち 100 いじょう', g3.paths);
+      const bar3 = await page.evaluate(() => { const b = document.querySelector('#pathsVal .bar'); return b ? { role: b.getAttribute('role'), label: b.getAttribute('aria-label'), w: b.firstElementChild && b.firstElementChild.style.width } : null; });
+      check(`②3 面の最初（100 いじょう）は棒 100（${J(g3.paths)}・${J(bar3)}。2026-11-27 に「100 いじょう」の文字から棒へ）`, g3.paths.state === 'many' && g3.paths.n === 100 && g3.paths.bar === 100 && g3.paths.text === 'とける みち' && !!bar3 && bar3.role === 'img' && bar3.label === 'たくさん' && bar3.w === '100%', { paths: g3.paths, bar3 });
       // ③ 押した直後
       const sol3 = await solutionOf(page);
       const right = await page.evaluate((c) => { window.AmaiGame.press(c); return window.AmaiGame.getState().paths; }, sol3[0]);
@@ -2717,7 +2718,7 @@ export const tests = [
     },
   },
   {
-    id: 'AW46', tier: 'full', title: 'あまいもの とける みち と もどす先（2026-11-26。約束 §1.14）：①80 面（前の絵）で解の 1 手目を押してから まちがえて うごかせなくなると、［だいじょうぶな ところまで もどす］は覚えている「とける」いちばん新しい局面へ（面の最初まで戻らない。Node で同じ手を数えた戻し先と同じ）・戻ったら数が 1 とおり いじょう ②ちょうせん（43 面）でも同じ ③1手もどす・やりなおし・開き直し（途中から再開）のあとも、その局面の数（Node で数え直した数と同じ） ④実時間で数えるのに長くかかる局面（80 面の 1 手目の まちがい）では「かぞえてるよ…」を出してから「わからない」か数 ⑤SE 縦・Safari 縦・SE 横・Safari 横で、どの言葉も巣をはさんで はみ出さない',
+    id: 'AW46', tier: 'full', title: 'あまいもの とける みち と もどす先（2026-11-26。約束 §1.14）：①80 面（前の絵）で解の 1 手目を押してから まちがえて うごかせなくなると、［だいじょうぶな ところまで もどす］は覚えている「とける」いちばん新しい局面へ（面の最初まで戻らない。Node で同じ手を数えた戻し先と同じ）・戻ったら数が 1 とおり いじょう ②ちょうせん（43 面）でも同じ ③1手もどす・やりなおし・開き直し（途中から再開）のあとも、その局面の数（Node で数え直した数と同じ） ④実時間で数えるのに長くかかる局面（80 面の 1 手目の まちがい）では「かぞえてるよ…」を出してから「わからない」か数 ⑤SE 縦・Safari 縦・SE 横・Safari 横で、どの言葉と 100 いじょう の棒も巣をはさんで はみ出さない',
     async run({ browser, check, root }) {
       const L = loadLogic(root);
       const { ctx, page } = await openG(browser, 'AW46', { v: SMOKE_V() });
@@ -2774,19 +2775,20 @@ export const tests = [
         await c2.close();
       }
       // ⑤ 画面の大きさ：どの言葉も はみ出さない
-      const WORDS = [['とける みち', 'かぞえてるよ…'], ['とける みち', '99 とおり'], ['とける みち', '100 いじょう'], ['とける みち', '99 いじょう'], ['とける みち', 'まだ わからない'], ['この ままだと', 'とけないよ']];
+      const BAR = '<span class="bar" role="img" aria-label="たくさん"><i style="width:100%"></i></span>';   // 100 いじょう の棒（2026-11-27）
+      const WORDS = [['とける みち', 'かぞえてるよ…'], ['とける みち', '99 とおり'], ['とける みち', BAR], ['とける みち', '99 いじょう'], ['とける みち', 'まだ わからない'], ['この ままだと', 'とけないよ'], ['とける みち', '100 いじょう']];
       const bad = [];
       for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), custom(568, 270, null, 'SE Safari 横 568×270')]) {
         const { ctx: c3, page: p3 } = await openG(browser, 'AW46-' + v.label, { v });
         await setLevel(p3, 80); await wait(p3, 300);
         for (const [a, b] of WORDS) {
-          await p3.evaluate(([a, b]) => { document.querySelector('#pathsLab').textContent = a; document.querySelector('#pathsVal').textContent = b; }, [a, b]);
+          await p3.evaluate(([a, b]) => { document.querySelector('#pathsLab').textContent = a; const v = document.querySelector('#pathsVal'); if (b.startsWith('<')) v.innerHTML = b; else v.textContent = b; }, [a, b]);
           const bx = await pathsBox(p3);
           if (!bx.ok) bad.push({ v: v.label, a, b, bx });
         }
         await c3.close();
       }
-      check(`⑤SE 縦・Safari 縦・SE 横・Safari 横で 6 つの言葉が どれも巣をはさんで収まる（だめ ${bad.length}）`, bad.length === 0, bad);
+      check(`⑤SE 縦・Safari 縦・SE 横・Safari 横で 6 つの言葉と棒が どれも巣をはさんで収まる（だめ ${bad.length}）`, bad.length === 0, bad);
     },
   },
   {
@@ -2953,6 +2955,79 @@ export const tests = [
         check(`⑤bXS 相当：もどすを押してから答えまで（${r.ms}ms）の長い処理の最大 ${r.max}ms（100ms 以下。ユーザー「100ms以下であれば課題ではありません」）`, !r.none && r.max <= 100, r);
         await ctx.close();
       }
+    },
+  },
+  {
+    id: 'AW48', tier: 'smoke', title: 'あまいもの とける みち の棒（2026-11-27。約束 §1.14 N7・計画書 amai-paths-bar.md）：①3 面の最初（100 いじょう）は棒 100（role=img・aria-label「たくさん」）②解の順に押して数え終わるたび、棒＝round(100 × まだ押していない箱 ÷ 面の最初の箱) で前より短い（増えない）③1手もどす で前の長さに戻る ④setState の局面は その局面を面の最初として棒 100 ⑤棒の中身と溝・絵の箱の下の地のコントラストが 3:1 以上 ⑥SE 縦・Safari 縦・SE 横・Safari 横 568×270・XS 375×812 で棒が巣をはさんで右の欄に収まる',
+    async run({ browser, check, root }) {
+      const L = loadLogic(root);
+      const boxes = (g) => g.cols.reduce((a, c) => a + c.length, 0);
+      const want = (n, base) => Math.max(1, Math.min(100, Math.round(100 * n / base)));
+      const { ctx, page } = await openG(browser, 'AW48', { v: SMOKE_V() });
+      // ① 3 面の最初
+      await setLevel(page, 3);
+      const g0 = await waitCount(page);
+      const base = boxes(g0);
+      const dom = await page.evaluate(() => { const b = document.querySelector('#pathsVal .bar'); return b ? { role: b.getAttribute('role'), label: b.getAttribute('aria-label'), w: b.firstElementChild.style.width, data: document.querySelector('#paths').dataset.bar } : null; });
+      check(`①3 面の最初は棒 100（${J(g0.paths)}・${J(dom)}）`, g0.paths.state === 'many' && g0.paths.bar === 100 && !!dom && dom.role === 'img' && dom.label === 'たくさん' && dom.w === '100%' && dom.data === '100', { paths: g0.paths, dom });
+      // ② 解の順に押す
+      const sol = await solutionOf(page);
+      const seen = [];
+      let prev = 100, ok2 = true;
+      for (const c of sol.slice(0, 6)) {
+        await settleG(page); await skipG(page);
+        await pressCol(page, c); await skipG(page);
+        const g = await waitCount(page);
+        if (g.paths.state !== 'many') { seen.push({ st: g.paths.state }); continue; }
+        const w = want(boxes(g), base);
+        const dw = await page.evaluate(() => { const i = document.querySelector('#pathsVal .bar i'); return i ? i.style.width : null; });   // 画面の棒の長さ（data-bar だけでなく）
+        seen.push({ bar: g.paths.bar, dom: dw, want: w, boxes: boxes(g) });
+        if (g.paths.bar !== w || dw !== w + '%' || !(g.paths.bar < prev)) ok2 = false;
+        prev = g.paths.bar;
+      }
+      check(`②押すたびに棒が縮む（${J(seen)}・面の最初の箱 ${base}）`, ok2 && seen.filter((x) => x.bar !== undefined).length >= 4, seen);
+      // ③ 1手もどす
+      const before = (await gs(page)).paths.bar;
+      await page.click('#undoBtn'); await wait(page, 100); await settleG(page); await skipG(page);
+      const gu = await waitCount(page);
+      check(`③1手もどす で棒が伸びる（${before} → ${gu.paths.bar}・のぞむ ${want(boxes(gu), base)}）`, gu.paths.state === 'many' && gu.paths.bar === want(boxes(gu), base) && gu.paths.bar > before, { before, after: gu.paths });
+      // ④ setState の局面（前の面は箱の多い 30 面にしておく：覚え直さないと 30 面の箱の数で割って 100 より短くなる）
+      await setLevel(page, 30); await waitCount(page);
+      const c5 = L.createLevel(5, L.pickPicture(5, null));
+      let s5 = c5.state;
+      for (const c of c5.info.solution.slice(0, 2)) { for (;;) { const r = L.step(s5); if (!r.moved) break; s5 = r.state; } s5 = L.press(s5, c).state; }
+      await page.evaluate((s) => window.AmaiGame.setState(s), JSON.parse(JSON.stringify(s5))); await wait(page, 100);
+      const g5 = await waitCount(page);
+      const dom5 = await page.evaluate(() => { const i = document.querySelector('#pathsVal .bar i'); return i ? i.style.width : null; });
+      check(`④setState の局面（30 面のあと、5 面を 2 手進めた局面）は その局面を面の最初として棒 100（${J(g5.paths)}・画面 ${dom5}）`, g5.paths.state === 'many' && g5.paths.bar === 100 && dom5 === '100%', { paths: g5.paths, dom5 });
+      // ⑤ コントラスト（中身と溝・中身と絵の箱の下の地）
+      await setLevel(page, 3); await waitCount(page);
+      const cc = await page.evaluate(() => {
+        const rgb = (t) => (t.match(/[\d.]+/g) || []).map(Number);
+        const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+        const lum = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+        const cr = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+        const b = document.querySelector('#pathsVal .bar'), i = b.firstElementChild;
+        const ground = rgb(getComputedStyle(document.documentElement).getPropertyValue('--wood-dark').trim().replace(/^#(..)(..)(..)$/, (m, r, g, bb) => `${parseInt(r, 16)},${parseInt(g, 16)},${parseInt(bb, 16)}`));
+        const fill = rgb(getComputedStyle(i).backgroundColor);
+        const t = rgb(getComputedStyle(b).backgroundColor), a = t.length > 3 ? t[3] : 1;
+        const track = [0, 1, 2].map((k) => t[k] * a + ground[k] * (1 - a));
+        return { fillTrack: Math.round(100 * cr(fill, track)) / 100, fillGround: Math.round(100 * cr(fill, ground)) / 100, fill, track, ground };
+      });
+      check(`⑤棒の中身と溝 ${cc.fillTrack}:1・中身と絵の箱の下の地 ${cc.fillGround}:1（どちらも 3:1 以上）`, cc.fillTrack >= 3 && cc.fillGround >= 3, cc);
+      await ctx.close();
+      // ⑥ 画面の大きさ
+      const bad = [];
+      for (const v of [view('SE', 'p', 'app'), view('SE', 'p', 'safari'), view('SE', 'l', 'app'), custom(568, 270, null, 'SE Safari 横 568×270'), custom(375, 812, null, 'iPhone XS 375×812')]) {
+        const { ctx: c2, page: p2 } = await openG(browser, 'AW48-' + v.label, { v });
+        await setLevel(p2, 3);
+        const g = await waitCount(p2);
+        const bx = await pathsBox(p2);
+        const inCell = await p2.evaluate(() => { const b = document.querySelector('#pathsVal .bar'), v2 = document.querySelector('#pathsVal'); if (!b) return false; const r = b.getBoundingClientRect(), q = v2.getBoundingClientRect(); return r.width >= 24 && r.left >= q.left - 0.5 && r.right <= q.right + 0.5; });
+        if (!(g.paths.bar === 100 && bx.ok && inCell)) bad.push({ v: v.label, paths: g.paths, bx, inCell });
+        await c2.close();
+      }
+      check(`⑥SE 縦・Safari 縦・SE 横・568×270・XS で棒が巣をはさんで右の欄に収まる（だめ ${bad.length}）`, bad.length === 0, bad);
     },
   },
 ];

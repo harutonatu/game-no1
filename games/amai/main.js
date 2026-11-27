@@ -201,6 +201,7 @@
   let countSeq = 0;             // 局面が変わる（押す・もどす・やりなおし・面を始める）たびに 1 増やす
   let countRes = null;          // { result, n }。数えている間は null
   let countSlow = false;        // 数えるのに COUNT_SHOW_MS より長くかかっている（「かぞえてるよ…」を出す）
+  let boxBase = 0;              // 面の最初の列の箱の合計（とける みち の棒の長さの元。2026-11-27。計画書 docs/plans/amai-paths-bar.md・§1.14 N7）
   let memoGen = 0;              // setState のたびに 1 増やす（Worker の覚えを作り直す印）
   // Worker（§1.14 N11）。cw＝Worker（使えないときは null）・cwSeq＝頼みの番号（古い答えを捨てる）・cwHeard＝最後に何か来た時刻
   // 見張りの時計は now()（performance.now）。テストの早送り（page.clock）は performance.now も Event の時刻も進めるので、早送りで 8 秒を超えると
@@ -560,21 +561,49 @@
     for (let i = 0; i < presses.length; i++) if (presses[i][1] !== sol[i]) return null;
     return sol.slice(presses.length);
   }
+  // とける みち の棒（2026-11-27。計画書 docs/plans/amai-paths-bar.md・§1.14 N7）：「100 いじょう」のとき、右の欄を棒にする。
+  // 長さ＝まだ押していない箱（列の箱の合計）÷ 面の最初の列の箱の合計。押すたびに 1 箱へるので縮むだけ（1手もどす・もどす では伸びる）
+  function boxesNow(s) {
+    let n = 0;
+    if (s && Array.isArray(s.cols)) for (const c of s.cols) n += Array.isArray(c) ? c.length : 0;
+    return n;
+  }
+  function pathsBar() {
+    const n = boxesNow(state);
+    return boxBase > 0 ? Math.max(1, Math.min(100, Math.round(100 * n / boxBase))) : 100;
+  }
   function renderPaths() {
     const r = countRes;
-    // 数え始めて COUNT_SHOW_MS までは前の言葉のまま（左右とも。「とける みち とけないよ」のように混ぜない）
-    let st = "counting", lab = el.pathsLab.textContent, val = el.pathsVal.textContent;
-    if (!state || state.won || phase === "clear") { st = "none"; lab = ""; val = ""; }
-    else if (!r) { if (countSlow || !val) { lab = "とける みち"; val = "かぞえてるよ…"; } }
-    else if (r.result === "exact" && r.n === 0) { st = "zero"; lab = "この ままだと"; val = "とけないよ"; }
-    else if (r.result === "exact") { st = "exact"; lab = "とける みち"; val = `${r.n} とおり`; }
-    else if (r.result === "many") { st = "many"; lab = "とける みち"; val = `${L.COUNT_CAP || 100} いじょう`; }
-    else if (r.result === "some") { st = "some"; lab = "とける みち"; val = `${r.n} いじょう`; }
-    else { st = "unknown"; lab = "とける みち"; val = "まだ わからない"; }
+    // 数え始めて COUNT_SHOW_MS までは前の見た目のまま（左右とも・棒も。「とける みち とけないよ」のように混ぜない）
+    const was = el.paths.dataset.bar;
+    let st = "counting", lab = el.pathsLab.textContent, val = el.pathsVal.textContent, bar = was === "" || was === undefined ? null : Number(was);
+    if (!state || state.won || phase === "clear") { st = "none"; lab = ""; val = ""; bar = null; }
+    else if (!r) { if (countSlow || (!val && bar === null)) { lab = "とける みち"; val = "かぞえてるよ…"; bar = null; } }
+    else if (r.result === "exact" && r.n === 0) { st = "zero"; lab = "この ままだと"; val = "とけないよ"; bar = null; }
+    else if (r.result === "exact") { st = "exact"; lab = "とける みち"; val = `${r.n} とおり`; bar = null; }
+    else if (r.result === "many") { st = "many"; lab = "とける みち"; val = ""; bar = pathsBar(); }
+    else if (r.result === "some") { st = "some"; lab = "とける みち"; val = `${r.n} いじょう`; bar = null; }
+    else { st = "unknown"; lab = "とける みち"; val = "まだ わからない"; bar = null; }
     el.paths.dataset.state = st;
     el.paths.dataset.n = r && st !== "counting" && st !== "none" ? String(r.n) : "";
+    el.paths.dataset.bar = bar === null ? "" : String(bar);
     if (el.pathsLab.textContent !== lab) el.pathsLab.textContent = lab;
-    if (el.pathsVal.textContent !== val) el.pathsVal.textContent = val;
+    let box = el.pathsVal.querySelector(".bar");
+    if (bar === null) {
+      if (box || el.pathsVal.textContent !== val) el.pathsVal.textContent = val;
+      return;
+    }
+    if (!box) {
+      el.pathsVal.textContent = "";
+      box = document.createElement("span");
+      box.className = "bar";
+      box.setAttribute("role", "img");
+      box.setAttribute("aria-label", "たくさん");   // 読み上げ：「とける みち たくさん」
+      box.appendChild(document.createElement("i"));
+      el.pathsVal.appendChild(box);
+    }
+    const fill = box.firstChild, w = bar + "%";
+    if (fill.style.width !== w) fill.style.width = w;
   }
   function startCount() {
     countSeq += 1;
@@ -762,6 +791,7 @@
     chal = ch;
     el.playView.dataset.mode = chal ? "chal" : "normal";
     info = created.info || null;
+    boxBase = boxesNow(created.state);   // 途中から再開した面も、作った面の最初の局面から（棒の長さの元）
     // 絵がまだ無い面（予備 2 のりんごで作った面）は、作った局面の絵の名前を出す
     picture = safeCall(() => L.pictureById(pick.id, pick.mirror), null) || safeCall(() => L.pictureById(st.picture, st.mirror), null);
     state = st;
@@ -1734,7 +1764,7 @@
         timers: timers.size, runId, ants: st && Number.isFinite(st.ants) ? st.ants : 0,
         canUndo: presses.length > 0, book: bookCountNow(),
         doomed, rescuing, chalUsed, counter: cw ? "worker" : "main", memoSize: cw ? cwMemoSize : (countMemo ? countMemo.size : null),   // とける みち を どこで数えているか（§1.14 N11。テスト用）
-        paths: { state: el.paths.dataset.state || "", n: el.paths.dataset.n === "" || el.paths.dataset.n === undefined ? null : Number(el.paths.dataset.n), text: (el.pathsLab.textContent + " " + el.pathsVal.textContent).trim() },   // とける みち（2026-11-26。§1.14）
+        paths: { state: el.paths.dataset.state || "", n: el.paths.dataset.n === "" || el.paths.dataset.n === undefined ? null : Number(el.paths.dataset.n), text: (el.pathsLab.textContent + " " + el.pathsVal.textContent).trim(), bar: el.paths.dataset.bar === "" || el.paths.dataset.bar === undefined ? null : Number(el.paths.dataset.bar) },   // とける みち（2026-11-26。§1.14）
         challenge: chal, slotCount: state && Array.isArray(state.slots) ? state.slots.length : 0,
         picture: pick.id, mirror: !!pick.mirror, repeat: !!pick.repeat, custom: !!custom,
         pressList: clone(presses), hint: el.hint.textContent, edge: edgeColors(),
@@ -1773,6 +1803,7 @@
       cancelPending();
       safeCall(() => render.finishAll());
       custom = st;
+      boxBase = boxesNow(st);   // テストの局面は、その局面を面の最初として棒の長さを出す
       chal = !!(opt && opt.challenge === true);
       el.playView.dataset.mode = chal ? "chal" : "normal";
       customHist = [];
